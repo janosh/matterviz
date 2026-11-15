@@ -1,7 +1,6 @@
-import { html_to_text } from 'svelte-widgets/utils'
+import { html_to_text, is_plain_object } from 'svelte-widgets/utils'
 import {
   decode_url_safe_base64,
-  is_plain_object,
   memo_by_identity,
   parse_leading_num,
   parse_num_token,

@@ -1,11 +1,11 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { track_settings } from '#lib/controls.js'
   import { ISO_COLORMAPS } from './coloring'
   import type { VolumetricData } from './types'
   import { format_data_value, index_volumes, normalize_active_volume_id } from './types'
   import { html_to_text } from 'svelte-widgets/utils'
-  import { SettingsSection } from '#lib/layout/index.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { Vec3 } from '#lib/math.js'
   import { to_color_scale_config } from '#lib/plot/core/scales.js'

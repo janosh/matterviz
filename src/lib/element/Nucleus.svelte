@@ -1,9 +1,9 @@
 <script lang="ts">
+  import { pick_contrast_color } from 'svelte-widgets/attachments'
   import {
     composite_colors,
     is_concrete_color,
     is_opaque_color,
-    pick_contrast_color,
     resolve_backdrop,
   } from '#lib/colors/index.js'
   import type { NucleonPaint, SymbolPaint } from '#lib/element/index.js'
@@ -65,7 +65,7 @@
   ])
 
   const text_color = (fill: string, text: string | undefined): string =>
-    text ?? pick_contrast_color({ background: fill, backdrop: backdrop.current })
+    text ?? pick_contrast_color({ bg_color: fill, backdrop: backdrop.current })
   const symbol_color = $derived(text_color(neutron.fill, symbol_paint.text))
   const neutron_surface = $derived(
     is_opaque_color(neutron.fill)
@@ -77,7 +77,7 @@
     if (outline === `none`) return undefined
     if (outline) return outline
     return is_concrete_color(symbol_color)
-      ? pick_contrast_color({ background: symbol_color, backdrop: neutron_surface })
+      ? pick_contrast_color({ bg_color: symbol_color, backdrop: neutron_surface })
       : undefined
   })
 </script>

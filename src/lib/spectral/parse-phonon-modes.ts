@@ -9,10 +9,10 @@
 // u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes that weighting; consumers that need
 // displacements must divide by sqrt(mass) themselves.
 
+import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { load as yaml_load } from 'js-yaml'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { is_plain_object } from '#lib/utils.js'
 import type {
   BornChargeData,
   PhononMode,

@@ -1,16 +1,14 @@
-import FlashHarness from './fixtures/FlashHarness.svelte'
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
 import { stub_reduced_motion, trigger_intersection } from './setup'
 import {
   create_delayed_flag,
-  type create_flash,
   create_prop_state,
   motion_duration,
   pulsing_highlight_opacity,
 } from '#lib/effects.svelte.js'
 import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 const requested_frames = new Map<number, FrameRequestCallback>()
 let next_frame_id = 1
@@ -285,70 +283,6 @@ test(`create_placed_tween refreshes frozen placements when decorations change`, 
   expect(placed_tween?.coords.target).toEqual({ x: 60, y: 20 })
   expect(on_element_resize).toHaveBeenCalledTimes(replacement_notifications + 2)
   dispose()
-})
-
-describe(`create_flash`, () => {
-  // Mounted, since the timer is dropped by a teardown effect that only exists in a component
-  const mount_flash = () => {
-    type StringFlash = ReturnType<typeof create_flash<string>>
-    let flash!: StringFlash
-    const component = mount(FlashHarness, {
-      target: document.body,
-      props: {
-        resting: `idle`,
-        duration_ms: 1000,
-        bind_flash: (value: StringFlash) => (flash = value),
-      },
-    })
-    // flushSync so the teardown effect runs before the assertion, not on a later microtask
-    return { flash, unmount: () => flushSync(() => void unmount(component)) }
-  }
-
-  beforeEach(() => vi.useFakeTimers())
-  afterEach(() => {
-    vi.useRealTimers()
-    document.body.innerHTML = ``
-  })
-
-  // without clearing the pending timer, the FIRST show's timeout lands mid-window and hides
-  // the second one early
-  test(`reverts once the window elapses, a second show restarting the window`, () => {
-    const { flash, unmount: teardown } = mount_flash()
-    expect(flash.value).toBe(`idle`)
-    flash.show(`first`)
-    expect(flash.value).toBe(`first`)
-    vi.advanceTimersByTime(900)
-    flash.show(`second`)
-    vi.advanceTimersByTime(100) // the first timer would have fired here
-    expect(flash.value).toBe(`second`)
-    vi.advanceTimersByTime(899)
-    expect(flash.value).toBe(`second`)
-    vi.advanceTimersByTime(1)
-    expect(flash.value).toBe(`idle`)
-    teardown()
-  })
-
-  // A leaked timer is invisible through `value` (it writes the resting value the reset already
-  // wrote), so the pending count is what says whether reset actually dropped it
-  test(`reset reverts at once and leaves no pending timer`, () => {
-    const { flash, unmount: teardown } = mount_flash()
-    flash.show(`copied`)
-    expect(vi.getTimerCount()).toBe(1)
-    flash.reset()
-    expect(flash.value).toBe(`idle`)
-    expect(vi.getTimerCount()).toBe(0)
-    teardown()
-  })
-
-  test(`unmounting inside the window drops the pending timer`, () => {
-    const { flash, unmount: teardown } = mount_flash()
-    flash.show(`copied`)
-    teardown()
-    expect(vi.getTimerCount()).toBe(0)
-    // without the teardown the timer would still land and revert this to `idle`
-    vi.advanceTimersByTime(2000)
-    expect(flash.value).toBe(`copied`)
-  })
 })
 
 // The state a component's deriveds read in place of a prop it writes itself: its own writes

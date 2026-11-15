@@ -1,9 +1,10 @@
 // One row per site with its coordinates and every per-site property the parsers keep (forces,
 // magmoms, charges, velocities, selective dynamics, …), shared by the trajectory data inspector
 // and the structure viewer's site sidebar.
+import type { CellVal, RowData } from 'svelte-widgets/table'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import type { TrajPropertyConfig } from '#lib/labels.js'
-import type { CellVal, Column, RowData } from '#lib/table/index.js'
+import type { Column } from '#lib/table/index.js'
 import type { Site } from './index'
 
 const VEC3_AXES = [`x`, `y`, `z`] as const

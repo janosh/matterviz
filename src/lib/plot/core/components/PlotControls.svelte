@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { enum_labels, type SettingType } from '#lib/settings.js'
 
   export { enum_options }
@@ -7,7 +8,6 @@
 <script lang="ts">
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
-  import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { timeFormat } from 'd3-time-format'

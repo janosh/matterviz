@@ -1,12 +1,6 @@
+import type { CellSnippetArgs, RowData, RowId, SummaryStat } from 'svelte-widgets/table'
 import type { ShowControlsProp } from '#lib/controls.js'
-import type {
-  CellSnippetArgs,
-  ColumnPrefs,
-  Column,
-  RowData,
-  RowId,
-  SummaryStat,
-} from '#lib/table/index.js'
+import type { ColumnPrefs, Column } from '#lib/table/index.js'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
 import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'

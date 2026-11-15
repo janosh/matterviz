@@ -1,11 +1,9 @@
 import type { ComponentProps } from 'svelte'
-import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/browser'
 import type ViewerPaneComponent from './ViewerPane.svelte'
 
 export { default as ControlPane } from './ControlPane.svelte'
 export { default as DragControlTab } from './DragControlTab.svelte'
 export { default as FloatingPopup } from './FloatingPopup.svelte'
-export { default as GlassChip } from 'svelte-widgets/GlassChip.svelte'
 export { default as ToolbarMenu } from './ToolbarMenu.svelte'
 export { default as ViewerPane } from './ViewerPane.svelte'
 
@@ -16,8 +14,6 @@ export type ViewerPaneOptions = Omit<
   ComponentProps<typeof ViewerPaneComponent>,
   `children` | `open` | `pane_name` | `class_prefix` | `closed_icon`
 >
-
-export { InformationOutline as info_pane_icon } from 'svelte-widgets/icons'
 
 // Label/value rows grouped into titled cards, as rendered by InfoPaneCards
 export type InfoPaneRow = {
@@ -34,9 +30,3 @@ export type InfoPaneCard = {
   // Set, the rows form a table: their labels, then one cell per column
   columns?: readonly { label: string; tooltip?: string }[]
 }
-
-// Info panes stay usable when clipboard access is denied, so log rather than reject.
-export const create_clipboard_feedback = (
-  duration = 1000,
-  on_error = (error: unknown) => console.error(`Failed to copy to clipboard:`, error),
-) => widget_clipboard_feedback(duration, on_error)

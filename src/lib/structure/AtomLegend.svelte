@@ -154,7 +154,7 @@
   let property_legend_node = $state<HTMLDivElement>()
   const backdrop = resolve_backdrop(() => property_legend_node)
   const property_text_color = (background: string): string =>
-    contrast_text_color({ background, backdrop: backdrop.current })
+    contrast_text_color({ bg_color: background, backdrop: backdrop.current })
   // Click handler and labels shared by the discrete-colorbar and categorical value toggles
   const prop_val_toggle = (value: number | string, hidden: boolean) => ({
     onclick: (event: MouseEvent) =>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
 
@@ -14,7 +16,6 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportItem, ExportSection } from '#lib/io/types.js'
   import { display_idx, from_display_idx } from '#lib/labels.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import {

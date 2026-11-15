@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { clamp } from 'svelte-widgets/utils'
   import { create_delayed_flag } from '#lib/effects.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
@@ -11,7 +12,7 @@
   import type { ExportSection } from '#lib/io/index.js'
   import { json_source, type ExportSources } from '#lib/io/export.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'
+  import { ViewerChrome } from '#lib/layout/index.js'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   import { ViewerPane } from '#lib/overlays/index.js'
   import { HIGHLIGHT } from '#lib/colors/index.js'

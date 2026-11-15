@@ -1,4 +1,4 @@
-import type { SortDir, TableSort } from '#lib/table/index.js'
+import type { SortDir, TableSort } from 'svelte-widgets/table'
 import { parse_num_token } from '#lib/utils.js'
 import type { QueryParams, UrlParamEntry, ValidQueryValues } from 'svelte-widgets/browser'
 import { valid_query_param } from 'svelte-widgets/browser'

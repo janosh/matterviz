@@ -1,5 +1,5 @@
+import { is_plain_object } from 'svelte-widgets/utils'
 import { det_3x3, EPS, is_finite_matrix3x3 } from '#lib/math.js'
-import { is_plain_object } from '#lib/utils.js'
 import type { Crystal } from './index'
 import { numeric_sites } from './site'
 

@@ -1,6 +1,10 @@
 import { clamp } from 'svelte-widgets/utils'
-import { color as d3_color, rgb, type RGBColor } from 'd3-color'
-import { pick_contrast_color as pick_widget_contrast } from 'svelte-widgets/attachments'
+import { rgb, type RGBColor } from 'd3-color'
+import {
+  type ContrastOptions,
+  parse_color,
+  pick_contrast_color,
+} from 'svelte-widgets/attachments'
 import type { ColorSchemeName } from '#lib/constants.js'
 import { evict_oldest } from '#lib/labels.js'
 import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index.js'
@@ -98,80 +102,13 @@ export const is_color = (val: unknown): val is string => {
     to_rendered_rgb(trimmed) !== undefined
   )
 }
-const parse_rgb_function = (color: string): RGBColor | undefined => {
-  const match = /^rgba?\(\s*(?<channels>[^/]+?)(?:\s*\/\s*(?<alpha>[^,\s]+))?\s*\)$/i.exec(
-    color,
-  )
-  if (!match?.groups) return undefined
-  const { channels: channel_text, alpha: slash_alpha } = match.groups
-  const comma_syntax = channel_text.includes(`,`)
-  const channels = channel_text.trim().split(comma_syntax ? /\s*,\s*/ : /\s+/)
-  let alpha: string | undefined = slash_alpha
-  if (comma_syntax && alpha) return undefined
-  // rgb() and rgba() are aliases (CSS Color 4): either takes an optional fourth alpha
-  if (comma_syntax && channels.length === 4) alpha = channels.pop()
-  if (channels.length !== 3) return undefined
-  // CSS decimals only: Number() also reads `` (rgb(,,)) as 0 and 0x10 as 16
-  const parse_component = (value: string, percent_scale: number): number => {
-    const number = value.endsWith(`%`) ? value.slice(0, -1) : value
-    if (!/^[+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?$/i.test(number)) return NaN
-    return number === value ? Number(number) : (Number(number) * percent_scale) / 100
-  }
-  const components = [...channels, alpha ?? `1`].map((value, idx) =>
-    parse_component(value, idx < 3 ? 255 : 1),
-  )
-  const [red, green, blue, opacity] = components
-  return components.some(Number.isNaN) ? undefined : rgb(red, green, blue, opacity)
-}
-const to_rgb = (color: string): RGBColor | undefined => {
-  const parsed = parse_rgb_function(color) ?? d3_color(color)?.rgb()
-  if (!parsed) return undefined
-  // The `transparent` keyword has NaN channels; normalize only that case without
-  // discarding channels from explicit rgba(..., 0).
-  if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite))
-    return parsed.opacity === 0 ? rgb(0, 0, 0, 0) : undefined
-  const [red, green, blue] = [parsed.r, parsed.g, parsed.b].map((val) => clamp(val, 0, 255))
-  return rgb(red, green, blue, clamp01(parsed.opacity))
-}
-let color_canvas_context: CanvasRenderingContext2D | null | undefined
-// Canvas-parsed colors by string (FIFO-bounded): each parse is a pixel write + readback
-const canvas_rgb_memo = new Map<string, RGBColor | undefined>()
+// svelte-widgets' parse_color (browser canvas for color-mix() and friends) as a d3 color,
+// channels clamped into range
 function to_rendered_rgb(color: string): RGBColor | undefined {
-  const parsed = to_rgb(color)
-  if (parsed) return parsed
-  if (
-    typeof document === `undefined` ||
-    typeof CanvasRenderingContext2D === `undefined` ||
-    /^(?:var\(|currentcolor$)/i.test(color)
-  )
-    return undefined
-  if (canvas_rgb_memo.has(color)) return canvas_rgb_memo.get(color)
-  color_canvas_context ??= document
-    .createElement(`canvas`)
-    .getContext(`2d`, { willReadFrequently: true })
-  const context = color_canvas_context
-  if (!context) return undefined
-  const rendered = canvas_rgb(context, color)
-  evict_oldest(canvas_rgb_memo)
-  canvas_rgb_memo.set(color, rendered)
-  return rendered
-}
-// The browser's own parse of `color`, undefined if rejected: a rejected assignment keeps the
-// previous fillStyle, so black and white priors then read back differently
-const canvas_rgb = (
-  context: CanvasRenderingContext2D,
-  color: string,
-): RGBColor | undefined => {
-  context.fillStyle = `black`
-  context.fillStyle = color
-  const parsed_style = context.fillStyle
-  context.fillStyle = `white`
-  context.fillStyle = color
-  if (context.fillStyle !== parsed_style) return undefined
-  context.clearRect(0, 0, 1, 1)
-  context.fillRect(0, 0, 1, 1)
-  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
-  return rgb(red, green, blue, alpha / 255)
+  const parsed = parse_color(color)
+  if (!parsed) return undefined
+  const [red, green, blue] = parsed.map((channel) => clamp(channel, 0, 255))
+  return rgb(red, green, blue, clamp01(parsed[3]))
 }
 export const is_concrete_color = (val: unknown): val is string =>
   typeof val === `string` && (to_rendered_rgb(val.trim())?.opacity ?? 0) > 0
@@ -229,47 +166,20 @@ export const composite_colors = (foreground: string, backdrop: string): string =
   composite_rgb(parse_rgb(foreground), parse_rgb(backdrop)).formatRgb()
 
 // What gets painted where, so text contrast is computed from data instead of inferred from
-// rendered DOM. `background` is painted on the element itself; `backdrop` is the opaque color
-// behind it, only consulted (and only required) when `background` is translucent.
-export interface Paint {
-  background: string
-  backdrop?: string
-  choices?: readonly [string, string]
-}
-
-// svelte-widgets' WCAG pick: the lighter choice whenever it reaches AA (4.5:1), else the
-// higher-contrast one. Stricter than the widget about translucency: a translucent background
-// needs the backdrop it sits on, since assuming a white page is wrong in dark mode. Colors go
-// through parse_rgb first, whose canvas pass reads what the widget parser can't (color-mix(),
-// relative colors, system colors).
-export function pick_contrast_color(paint: Paint): string {
-  const { background, backdrop, choices } = paint
-  const bg = parse_rgb(background)
-  if (!backdrop && bg.opacity < 1) {
-    throw new Error(`Translucent background requires a backdrop: ${background}`)
-  }
-  const as_rgb = (color: string) => parse_rgb(color).formatRgb()
-  const [dark, light] = choices ?? [`black`, `white`]
-  const rgb_choices = [as_rgb(dark), as_rgb(light)] as const
-  const picked = pick_widget_contrast({
-    bg_color: bg.formatRgb(),
-    backdrop: backdrop === undefined ? undefined : as_rgb(backdrop),
-    choices: rgb_choices,
-  })
-  // hand back the caller's own spelling of the winner, not its rgb() conversion
-  return picked === rgb_choices[0] ? dark : light
-}
+// rendered DOM: bg_color on the element itself, backdrop the opaque color behind it, only
+// consulted (and only required) when bg_color is translucent.
+export type Paint = ContrastOptions & { bg_color: string }
 
 // Like pick_contrast_color but gives up on backgrounds JS cannot resolve (CSS vars,
 // currentcolor), where inheriting the surrounding text color is the only honest answer.
 export const contrast_text_color = (paint: Paint): string =>
-  is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
+  is_concrete_color(paint.bg_color) ? pick_contrast_color(paint) : `currentColor`
 
 // Black/white against an opaque background; translucent or unresolvable (CSS var,
 // currentcolor, transparent) backgrounds inherit, since without a known backdrop there is
 // nothing to contrast against. For marks drawn in place with the color the user supplies.
 export const opaque_contrast_color = (background: string): string =>
-  is_opaque_color(background) ? pick_contrast_color({ background }) : `currentColor`
+  is_opaque_color(background) ? pick_contrast_color({ bg_color: background }) : `currentColor`
 
 export interface TooltipPaint {
   background: string
@@ -284,7 +194,7 @@ export const tooltip_paint = (fill: unknown): TooltipPaint | null => {
   if (!parsed?.opacity) return null
   const opaque = parsed.copy({ opacity: 1 })
   const background = parsed.opacity === 1 ? fill : opaque.formatRgb()
-  return { background, color: pick_contrast_color({ background: opaque.formatRgb() }) }
+  return { background, color: pick_contrast_color({ bg_color: opaque.formatRgb() }) }
 }
 
 // Distinct backgrounds a memo holds at once (a continuous scale yields a string per value).
@@ -322,7 +232,7 @@ export const contrast_color_memo = (
     if (contrast === undefined) {
       contrast = is_concrete_color(background)
         ? pick({
-            background: alpha === undefined ? background : add_alpha(background, alpha),
+            bg_color: alpha === undefined ? background : add_alpha(background, alpha),
             backdrop,
           })
         : null

@@ -3,26 +3,9 @@
 import type { ExportSource } from '#lib/io/export.js'
 import { series_text } from '#lib/plot/core/data-transform.js'
 import { html_to_text } from 'svelte-widgets/utils'
-import { escape_csv_field } from 'svelte-widgets/format'
+import { type CsvCell, csv_line } from 'svelte-widgets/format'
 
 // === CSV ===
-
-export type CsvCell = string | number | null | undefined
-
-// Non-finite chart values represent missing data, not literal NaN/Infinity fields. Text
-// starting like a formula (e.g. a label decoded from `&#61;SUM(...)`) gets a leading quote so
-// spreadsheets show it rather than evaluate it; numeric text (a `-2` category) is no formula.
-const csv_cell = (cell: CsvCell): string =>
-  escape_csv_field(
-    typeof cell === `number` && !Number.isFinite(cell)
-      ? null
-      : typeof cell === `string` && /^[=+\-@\t\r]/.test(cell) && Number.isNaN(Number(cell))
-        ? `'${cell}`
-        : cell,
-  )
-
-export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
-  [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)
 
 // Long format (one row per point, series named in a column) rather than wide: series
 // can differ in length, sit on different axes and carry different extra channels, none
@@ -92,5 +75,5 @@ export const csv_source =
   (table: () => { header: readonly string[]; rows: CsvCell[][] }): ExportSource =>
   () => {
     const { header, rows } = table()
-    return to_csv(header, rows)
+    return [header, ...rows].map(csv_line).join(`\n`)
   }

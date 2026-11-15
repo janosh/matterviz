@@ -31,8 +31,7 @@ import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { MaterialOpenError, open_material, type OpenedMaterial } from './open'
-import { is_plain_object } from '#lib/utils.js'
-import { escape_html, to_error } from 'svelte-widgets/utils'
+import { escape_html, is_plain_object, to_error } from 'svelte-widgets/utils'
 
 export type MatterVizApp = ReturnType<typeof mount>
 

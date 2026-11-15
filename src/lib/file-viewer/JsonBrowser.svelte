@@ -1,9 +1,6 @@
 <script lang="ts">
-  import {
-    contrast_text_color,
-    pick_contrast_color,
-    resolve_backdrop,
-  } from '#lib/colors/index.js'
+  import { pick_contrast_color } from 'svelte-widgets/attachments'
+  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
   import { format_path, resolve_path } from 'svelte-widgets/json-tree/path'
   import { relative_path_segments } from 'svelte-widgets/json-tree/utils'
   import { plural } from '#lib/labels.js'
@@ -196,7 +193,7 @@
         badge.dataset.renderable_path = data_path
         badge.dataset.renderable_type = type
         badge.style.background = TYPE_COLORS[type]
-        badge.style.color = pick_contrast_color({ background: TYPE_COLORS[type] })
+        badge.style.color = pick_contrast_color({ bg_color: TYPE_COLORS[type] })
         badge.draggable = true
         insert_after.after(badge)
       }
@@ -619,7 +616,7 @@
               class="panel-label"
               style:background={panel_background}
               style:color={contrast_text_color({
-                background: panel_background,
+                bg_color: panel_background,
                 backdrop: backdrop.current,
               })}
             >

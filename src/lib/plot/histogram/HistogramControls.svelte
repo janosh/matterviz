@@ -1,10 +1,11 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { series_text } from '#lib/plot/core/data-transform.js'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { track_settings } from '#lib/controls.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type { BarStyle, HistogramSeries, PlotConfig } from '#lib/plot/index.js'
   import { PlotControls } from '#lib/plot/index.js'
   import type { PlotControlsProps } from '#lib/plot/core/types.js'

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { shown_point_style, series_text } from '#lib/plot/core/data-transform.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import PlotControls from '#lib/plot/core/components/PlotControls.svelte'
   import type {
     DataSeries,

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import { track_settings } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type { SankeyNodeAlign, Orientation } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'

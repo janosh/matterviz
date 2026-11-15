@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { InformationOutline } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import { ViewerPane, info_pane_icon } from '#lib/overlays/index.js'
+  import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShortcutScope } from '#lib/shortcuts.js'
@@ -108,7 +109,7 @@
   max_width="24em"
   {toggle_props}
   {pane_props}
-  closed_icon={info_pane_icon}
+  closed_icon={InformationOutline}
   {shortcut_scopes}
   {...rest}
 >

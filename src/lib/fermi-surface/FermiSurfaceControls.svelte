@@ -1,8 +1,9 @@
 <script lang="ts">
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { track_settings } from '#lib/controls.js'
   import { ISO_COLORMAP_SELECT_PROPS } from '#lib/isosurface/coloring.js'
-  import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import CameraSection from '#lib/scene/CameraSection.svelte'

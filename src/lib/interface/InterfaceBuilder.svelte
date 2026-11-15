@@ -3,10 +3,11 @@
   // matches (scatter of cell area vs strain, plus a keyboard-friendly <select>), the gap,
   // vacuum and in-plane registry shift. The built Crystal is exposed through
   // `bind:interface` so the caller decides how to render it (typically a <Structure>).
+  import KeyValueList from 'svelte-widgets/KeyValueList.svelte'
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { format_num } from 'svelte-widgets/format'
   import type { Vec2 } from '#lib/math.js'
   import * as math from '#lib/math.js'
-  import { KeyValueList, SettingsGroup } from '#lib/layout/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { clamp, to_error } from 'svelte-widgets/utils'

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { InformationOutline } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
   import type { MaterialSource } from '#lib/file-viewer/open.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
@@ -15,7 +16,7 @@
   import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
-  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
@@ -456,7 +457,7 @@
           bind:open={info_pane_open}
           pane_name="Brillouin zone info"
           class_prefix="bz-info"
-          closed_icon={info_pane_icon}
+          closed_icon={InformationOutline}
           toggle_props={shortcut_attrs(`info_pane`)}
           shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
         >

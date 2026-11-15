@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { track_settings } from '#lib/controls.js'
@@ -6,7 +7,6 @@
   import { plot_color } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, type Vec2 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '#lib/plot/core/scales.js'

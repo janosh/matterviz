@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { CellSnippetArgs, CellVal, RowData } from 'svelte-widgets/table'
+  import { is_invalid } from 'svelte-widgets/table'
   import { format_num } from 'svelte-widgets/format'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
@@ -8,14 +10,7 @@
   import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index.js'
   import { numeric_sites, site_count } from '#lib/structure/site.js'
   import { vector_reader } from '#lib/structure/vectors.js'
-  import {
-    type CellSnippetArgs,
-    type CellVal,
-    HeatmapTable,
-    is_invalid,
-    type Column,
-    type RowData,
-  } from '#lib/table/index.js'
+  import { HeatmapTable, type Column } from '#lib/table/index.js'
   import SiteTable from '#lib/structure/SiteTable.svelte'
   import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'

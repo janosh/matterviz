@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { DEFAULTS } from '#lib/settings.js'
 
@@ -11,7 +12,6 @@
   import { format_label_html, format_label_svg } from '#lib/composition/formula-markup.js'
   import { track_settings } from '#lib/controls.js'
   import { symbol_map } from '#lib/labels.js'
-  import { SettingsSection } from '#lib/layout/index.js'
   import { PlotControls } from '#lib/plot/index.js'
   import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
   import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'

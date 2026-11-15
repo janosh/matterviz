@@ -35,7 +35,7 @@ describe(`trajectory helpers`, () => {
       'msd, total': Float64Array.of(0.5, 1),
       'g "Na-Cl"\n': [7],
     })
-    expect(csv).toBe(`lag,"msd, total","g ""Na-Cl""\n"\n1,0.5,7\n2,1,NaN\n3,NaN,NaN`)
+    expect(csv).toBe(`lag,"msd, total","g ""Na-Cl""\n"\n1,0.5,7\n2,1,\n3,,`)
     expect(columns_to_csv({})).toBe(``)
   })
 

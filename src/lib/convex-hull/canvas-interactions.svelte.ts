@@ -2,10 +2,11 @@
 // create_hull_selection covers what 2D/3D/4D all do (selection, hover, structure popup,
 // clipboard copy, keyboard and file drop); create_canvas_interactions adds the canvas-specific
 // mouse handling, sizing and render scheduling behind ConvexHullCanvas.
+import { create_flash } from 'svelte-widgets/browser'
 import { clamp } from 'svelte-widgets/utils'
 import { create_canvas_surface } from '#lib/canvas-surface.svelte.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import { create_flash, create_pulse_animation } from '#lib/effects.svelte.js'
+import { create_pulse_animation } from '#lib/effects.svelte.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { open_material } from '#lib/file-viewer/open.js'
 import { raw_file_drop_zone } from '#lib/io/index.js'

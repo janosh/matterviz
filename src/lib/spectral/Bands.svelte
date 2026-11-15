@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { join_hover_link, TooltipValue } from '#lib/tooltip/index.js'
   import { band_hover_qpoint } from './band-path-link.svelte'
@@ -8,7 +9,6 @@
   import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types.js'
   import { HIGHLIGHT, is_dark_mode, plot_color, resolve_backdrop } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { SettingsSection } from '#lib/layout/index.js'
   import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { InformationOutline } from 'svelte-widgets/icons'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import type {
     InfoPaneCard,
@@ -6,11 +8,7 @@
     PaneProps,
     PaneToggleProps,
   } from '#lib/overlays/index.js'
-  import {
-    ViewerPane,
-    create_clipboard_feedback,
-    info_pane_icon,
-  } from '#lib/overlays/index.js'
+  import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
@@ -83,7 +81,7 @@
   } = $props()
   const palette = get_element_palette()
 
-  const { copy } = create_clipboard_feedback()
+  const { copy } = create_clipboard_feedback(1000, console.error)
 
   // Whether the hover came from this pane's site cards. Closing the pane (Esc) unmounts them
   // under the pointer without a mouseleave, so the close clears their hover itself, leaving
@@ -346,7 +344,7 @@
       .filter(Boolean)
       .join(`; `),
   }}
-  closed_icon={info_pane_icon}
+  closed_icon={InformationOutline}
   {...rest}
 >
   <div class="structure-info">

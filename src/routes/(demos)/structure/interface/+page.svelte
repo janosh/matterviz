@@ -1,9 +1,9 @@
 <script lang="ts">
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { browser } from '$app/env'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { InterfaceBuilder } from '#lib/interface/index.js'
-  import { SettingsGroup } from '#lib/layout/index.js'
   import type { Heterostructure } from '#lib/interface/index.js'
   import { SlabBuilder } from '#lib/slab/index.js'
   import type { Slab } from '#lib/slab/index.js'

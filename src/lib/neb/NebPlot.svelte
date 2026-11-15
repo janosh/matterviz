@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { clamp } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
   import { track_settings } from '#lib/controls.js'
@@ -6,7 +7,6 @@
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
   import { plot_color } from '#lib/colors/index.js'
-  import { SettingsSection } from '#lib/layout/index.js'
   import { nearest_value_idx } from '#lib/math.js'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'

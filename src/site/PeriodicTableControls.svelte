@@ -1,11 +1,12 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { track_settings } from '#lib/controls.js'
   // Docs playground for the periodic table's CSS custom properties: every control writes one
   // variable onto the document root while mounted, so all tables on the page follow it. Only
   // the tile font color is bindable (ElementTile's text_color prop, passed through by the demo).
   import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
   import type { ElementCategory } from '#lib/element/index.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import { colors, selected } from '#lib/state.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
 

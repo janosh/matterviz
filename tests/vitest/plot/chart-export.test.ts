@@ -4,29 +4,8 @@ import {
   csv_source,
   export_filename,
   series_to_csv_rows,
-  to_csv,
 } from '#lib/plot/core/utils/chart-export.js'
 import { describe, expect, test } from 'vite-plus/test'
-
-describe(`to_csv`, () => {
-  test.each([
-    [`plain values stay unquoted`, [[1, 2]], `a,b\n1,2`],
-    [`commas force quotes`, [[`x,y`, 1]], `a,b\n"x,y",1`],
-    [`embedded quotes double`, [[`say "hi"`, 1]], `a,b\n"say ""hi""",1`],
-    [`newlines force quotes`, [[`two\nlines`, 1]], `a,b\n"two\nlines",1`],
-    [`carriage returns force quotes`, [[`two\rlines`, 1]], `a,b\n"two\rlines",1`],
-    // A cell that silently became `NaN`/`Infinity` would read as data downstream
-    [`non-finite numbers blank out`, [[NaN, Infinity]], `a,b\n,`],
-    [`null and undefined blank out`, [[null, undefined]], `a,b\n,`],
-    // Spreadsheets would evaluate these; negative numbers stay numbers
-    [`formula-leading text gets a quote`, [[`=SUM(A1)`, -1]], `a,b\n'=SUM(A1),-1`],
-    [`+ @ - lead too`, [[`@x`, `+y`, `-z`]], `a,b\n'@x,'+y,'-z`],
-    // signed numeric text (oxidation-state categories) is data, not a formula
-    [`numeric text stays as is`, [[`-2`, `+1.5e3`]], `a,b\n-2,+1.5e3`],
-  ])(`%s`, (_name, rows, expected) => {
-    expect(to_csv([`a`, `b`], rows)).toBe(expected)
-  })
-})
 
 describe(`series_to_csv_rows`, () => {
   // an HTML label (as legends render it) is named by its text

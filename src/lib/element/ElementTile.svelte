@@ -115,7 +115,7 @@
   let node = $state<HTMLElement | null>(null)
   const backdrop = resolve_backdrop(() => node, { override: () => backdrop_color })
   const auto_text_color = (background: string): string =>
-    contrast_text_color({ background, backdrop: backdrop.current })
+    contrast_text_color({ bg_color: background, backdrop: backdrop.current })
   // Symbol and number sit across all segments, so on a split tile they contrast against
   // the backdrop rather than against any one segment.
   let computed_text_color = $derived(

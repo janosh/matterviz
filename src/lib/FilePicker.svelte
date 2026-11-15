@@ -49,7 +49,7 @@
   const badge_contrast = (bg_color: string) => (node: HTMLElement) => {
     void style_epoch
     node.style.color = contrast_text_color({
-      background: getComputedStyle(node).backgroundColor || bg_color,
+      bg_color: getComputedStyle(node).backgroundColor || bg_color,
       backdrop: backdrop.current,
     })
   }

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { DEFAULT_GAS_PRESSURES, type GasSpecies } from '#lib/convex-hull/types.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type { Vec2 } from '#lib/math.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'

@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { InformationOutline, Graph } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
   import { value_key } from '#lib/utils.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { ParseProgress, TrajectoryRun } from '#lib/trajectory/index.js'
   import { create_request_owner } from '#lib/trajectory/async-result.svelte.js'
   import {
@@ -11,7 +12,6 @@
     suggest_frame_stride,
   } from '#lib/trajectory/runs/accumulate.js'
   import { to_error } from 'svelte-widgets/utils'
-  import { Graph } from 'svelte-widgets/icons'
   import {
     collect_trajectory_spectroscopy_input,
     INFRARED_SIGNAL_KEYS,
@@ -320,7 +320,7 @@
     bind:open={details_open}
     pane_name="spectroscopy details"
     class_prefix="spectroscopy-details"
-    closed_icon={info_pane_icon}
+    closed_icon={InformationOutline}
     max_width="min(32em, 90cqw)"
     toggle_props={{ 'aria-label': `Spectroscopy details` }}
     pane_props={{ style: `--pane-z-index: 21` }}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { VirtualScroll } from 'svelte-widgets/table'
+  import { with_defaults } from 'svelte-widgets/utils'
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
@@ -25,8 +27,6 @@
   import type { Rect } from '#lib/plot/core/layout.js'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { virtual_window } from 'svelte-widgets/virtual'
-  import { with_defaults } from '#lib/utils.js'
-  import type { VirtualScroll } from '#lib/table/index.js'
   import { format_num, rows_to_csv } from 'svelte-widgets/format'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
   import type { ComponentProps, Snippet } from 'svelte'

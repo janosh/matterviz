@@ -1,6 +1,6 @@
 // HeatmapTable: svelte-widgets' DataTable plus per-column color scales, the heatmap controls
 // pane and MatterViz's export pane. The table engine and its row helpers live upstream in
-// svelte-widgets/table and are re-exported here.
+// svelte-widgets/table.
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { ExportFormat } from '#lib/io/export.js'
 import { contrast_color_memo } from '#lib/colors/index.js'
@@ -20,47 +20,6 @@ import type {
 import { NULL_CELL_COLOR } from 'svelte-widgets/table'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
-export {
-  cell_readers,
-  cell_text,
-  compute_column_stats,
-  DATETIME_MODE_LABELS,
-  DATETIME_MODES_BY_KIND,
-  discover_columns,
-  format_datetime,
-  infer_datetime_kind,
-  is_html_str,
-  is_invalid,
-  middle_ellipsis_parts,
-  MIDDLE_ELLIPSIS_MIN_LENGTH,
-  NULL_CELL_COLOR,
-  parse_datetime_val,
-  parse_numeric_val,
-  resolve_domain,
-  sort_table_rows,
-  text_matches_query,
-} from 'svelte-widgets/table'
-export type {
-  CellColor,
-  CellSnippet,
-  CellSnippetArgs,
-  CellVal,
-  ColorStats,
-  ColumnStats,
-  DateTimeFormatMode,
-  DomainMode,
-  Pagination,
-  PinSide,
-  RowData,
-  RowId,
-  Search,
-  SortDir,
-  SortHint,
-  SummaryStat,
-  TableSort,
-  VirtualScroll,
-} from 'svelte-widgets/table'
-export { virtual_window } from 'svelte-widgets/virtual'
 
 // Formats HeatmapTable's export pane downloads. TSV is offered as a clipboard copy instead.
 export const TABLE_EXPORT_FORMATS = [

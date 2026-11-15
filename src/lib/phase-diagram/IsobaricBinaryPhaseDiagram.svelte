@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { create_flash } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import { add_alpha } from '#lib/colors/index.js'
-  import { create_flash } from '#lib/effects.svelte.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { is_plain_object } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { is_color, resolve_backdrop } from '#lib/colors/index.js'
@@ -24,7 +25,6 @@
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { colors } from '#lib/state.svelte.js'
-  import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'

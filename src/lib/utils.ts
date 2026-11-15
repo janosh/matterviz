@@ -1,11 +1,4 @@
-import { to_error } from 'svelte-widgets/utils'
-
-// Object literals, JSON mappings and null-prototype records; class instances are leaves.
-export const is_plain_object = (value: unknown): value is Record<string, unknown> => {
-  if (typeof value !== `object` || value === null) return false
-  const prototype: unknown = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
+import { is_plain_object, to_error } from 'svelte-widgets/utils'
 
 // Deep copy of the arrays and plain objects in `value`, the only things Svelte proxies (typed
 // arrays, maps and class instances are kept as they are). $state.snapshot does the same but
@@ -217,12 +210,3 @@ export function decode_url_safe_base64(encoded: string): string | undefined {
     return undefined
   }
 }
-
-// Feature props come as `true` (enable with defaults), an object (override them) or off (null)
-export const with_defaults = <Defaults extends object, Config extends object>(
-  option: boolean | Config | undefined,
-  defaults: Defaults,
-): (Defaults & Config) | null =>
-  option
-    ? ({ ...defaults, ...(typeof option === `object` ? option : {}) } as Defaults & Config)
-    : null

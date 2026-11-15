@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { track_settings } from '#lib/controls.js'
   import type {
     ScatterPlotOptions,
@@ -18,7 +19,6 @@
   import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { to_error } from 'svelte-widgets/utils'
-  import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
   import { structure_drop_zone } from '#lib/plot/core/structure-input.js'

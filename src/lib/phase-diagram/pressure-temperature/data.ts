@@ -1,8 +1,9 @@
 // Validation, units and phase styling for pressure-temperature phase diagrams
 
+import { is_plain_object } from 'svelte-widgets/utils'
 import { plot_color } from '#lib/colors/index.js'
 import { array_extent, type Vec2 } from '#lib/math.js'
-import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
+import { JSON_KINDS } from '#lib/utils.js'
 import type { TempUnit } from '../types'
 import { named_phase_color } from '../utils'
 import type {
