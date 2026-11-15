@@ -1870,8 +1870,13 @@ test(`a background load leaves the shown spectra's props untouched`, async () =>
 test(`a supplied descriptor's frames need no fill`, async () => {
   const { settle, note, loaded } = fill_setup({ descriptor: `tc` })
   expect(note()).toBeNull()
-  await settle(0, 1)
-  expect(loaded()).toEqual([0, 1])
+  // the second frame's load is requested after the first resolves, which a busy run delays
+  // past one macrotask, so wait for both requests rather than a fixed tick
+  await vi.waitFor(async () => {
+    await settle(0, 1)
+    expect(loaded()).toEqual([0, 1])
+  })
+  expect(note()).toBeNull()
 })
 
 const TRENDS_PANES: ElectronicPane[] = [`structure`, `trends`]
