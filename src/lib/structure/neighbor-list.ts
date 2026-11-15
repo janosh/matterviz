@@ -683,10 +683,25 @@ export function neighbor_query_cutoff(
 // or linear cluster has a zero-thickness box; 1 A per axis keeps its volume finite.
 const k_search_bounds = (
   structure: AnyStructure,
+  order: number,
+  pbc: Pbc,
 ): { total_volume: number; max_cutoff: number } => {
   if (`lattice` in structure) {
     const { volume, matrix } = structure.lattice
-    return { total_volume: volume, max_cutoff: 4 * Math.max(...math.cell_heights(matrix)) }
+    const lengths = matrix.map((vec) => Math.hypot(...vec))
+    // within the cell, no two sites are farther apart than the sum of its edges
+    const cell_span = lengths[0] + lengths[1] + lengths[2]
+    const periodic = lengths.filter((_, axis) => pbc[axis])
+    // q = ceil(k / n) images of every site along the shortest periodic axis lie within
+    // (q + 1) |a| + span, so that radius holds at least (2q + 1) n - 1 >= k neighbors however
+    // few axes are periodic; four cell heights is the old floor, ample for 3D crystals
+    const periodic_reach = periodic.length
+      ? (Math.ceil(order / structure.sites.length) + 1) * Math.min(...periodic) + cell_span
+      : cell_span
+    return {
+      total_volume: volume,
+      max_cutoff: Math.max(4 * Math.max(...math.cell_heights(matrix)), periodic_reach),
+    }
   }
   const mins: Vec3 = [Infinity, Infinity, Infinity]
   const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
@@ -752,7 +767,11 @@ export function neighbor_query(
   }
   const n_sites = structure.sites.length
   if (n_sites === 0) return neighbor_query_cutoff(structure, 1, { pbc, sorted: true })
-  const { total_volume, max_cutoff } = k_search_bounds(structure)
+  const { total_volume, max_cutoff } = k_search_bounds(
+    structure,
+    order,
+    lattice_pbc_or_throw(structure, pbc),
+  )
   const atom_volume = total_volume / n_sites
   // radius of the sphere holding k+1 atoms at the mean density, widened 30% so the first
   // pass usually suffices even for an anisotropic first shell

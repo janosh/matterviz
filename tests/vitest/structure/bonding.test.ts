@@ -1597,6 +1597,40 @@ describe(`neighbor_query`, () => {
     }
   })
 
+  // the k-search radius cap used to be four cell heights whatever the periodicity, so a chain
+  // periodic along one axis stopped at 8 of its 14 nearest images (±1..±4 cells)
+  test.each([
+    [
+      [true, false, false],
+      [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7],
+    ],
+    [
+      [true, true, false],
+      [
+        1,
+        1,
+        1,
+        1,
+        Math.SQRT2,
+        Math.SQRT2,
+        Math.SQRT2,
+        Math.SQRT2,
+        2,
+        2,
+        2,
+        2,
+        Math.sqrt(5),
+        Math.sqrt(5),
+      ],
+    ],
+  ] as const)(`k=14 reaches every nearest image with pbc=%j`, (pbc, expected) => {
+    const lattice = make_crystal(1, [{ element: `Fe`, abc: [0, 0, 0] }], { pbc: [...pbc] })
+    const knn = neighbor_list.neighbor_query(lattice, { k: 14 })
+    expect(Array.from(knn.offsets)).toEqual([0, 14])
+    const distances = Array.from(knn.distances)
+    for (const [idx, dist] of expected.entries()) expect(distances[idx]).toBeCloseTo(dist, 12)
+  })
+
   test(`molecule: no images, k capped by system size, cutoff list sorted`, () => {
     const water = make_molecule([
       [`O`, [0, 0, 0]],
