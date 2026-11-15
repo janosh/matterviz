@@ -31,8 +31,8 @@ import {
   type BondNeighborQuery,
   create_bond_query,
   electroneg_ratio,
-  neighbor_query,
 } from '#lib/structure/bonding.js'
+import { neighbor_query } from '#lib/structure/neighbor-list.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 import { merge_polyhedra_buffers } from '#lib/structure/polyhedra-render.js'
 import { make_supercell } from '#lib/structure/supercell.js'

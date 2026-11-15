@@ -1,11 +1,8 @@
 import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import type { BondingStrategy } from '#lib/structure/bonding.js'
-import {
-  compute_bonds,
-  lattice_pbc_or_throw,
-  get_majority_element,
-} from '#lib/structure/bonding.js'
+import { compute_bonds, get_majority_element } from '#lib/structure/bonding.js'
+import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list.js'
 import { split_site_partners } from '#lib/structure/partial-occupancy.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 

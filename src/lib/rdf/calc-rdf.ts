@@ -3,7 +3,7 @@
 // N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
 import { calc_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { visit_neighbor_distances } from '#lib/structure/bonding.js'
+import { visit_neighbor_distances } from '#lib/structure/neighbor-list.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
 import type { RdfOptions, RdfPattern } from './index'
 

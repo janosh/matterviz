@@ -18,7 +18,7 @@ import {
   vector_display_defaults,
   VECTOR_PALETTE,
 } from '#lib/structure/index.js'
-import { neighbor_query } from '#lib/structure/bonding.js'
+import { neighbor_query } from '#lib/structure/neighbor-list.js'
 import { applies_to_structure } from '#lib/structure/settings.js'
 import {
   make_site as create_site,
