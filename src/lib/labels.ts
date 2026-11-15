@@ -1,7 +1,7 @@
 import type { ChemicalElement } from '#lib/element/types.js'
 import type { Vec3 } from '#lib/math.js'
 import { normalize_unicode_minus } from '#lib/utils.js'
-import { format } from 'd3-format'
+import { format_num as format_spec } from 'svelte-widgets/format'
 import {
   type SymbolType,
   symbolAsterisk,
@@ -45,17 +45,6 @@ export const evict_oldest = (
   if (oldest !== undefined) cache.delete(oldest)
 }
 
-// d3 `format()` re-parses the spec and rebuilds a closure per call, so cache one per spec
-const formatters = new Map<string, (num: number) => string>()
-const formatter_for = (spec: string): ((num: number) => string) => {
-  let formatter = formatters.get(spec)
-  if (!formatter) {
-    evict_oldest(formatters)
-    formatters.set(spec, (formatter = format(spec)))
-  }
-  return formatter
-}
-
 // DEFAULT_FMT slot for num: the SI format for 1 <= |num| < 1e27, else the sub-1 format, which
 // goes scientific for huge values. d3's largest SI prefix is yotta (1e24), so past it `s`
 // writes 1e27 as 1,000Y and 1e100 as a 100-digit run.
@@ -65,7 +54,7 @@ const default_fmt_idx = (num: number): 0 | 1 =>
 // fmt as number allows [].map(format_num) without a type error.
 export const format_num = (num: number, fmt?: string | number): string => {
   if (!fmt || typeof fmt !== `string`) fmt = DEFAULT_FMT[default_fmt_idx(num)]
-  return compact_scientific(formatter_for(fmt)(num), fmt, num)
+  return compact_scientific(format_spec(num, fmt), fmt, num)
 }
 
 // A value within a millionth of `magnitude` (the data's largest |value|) as exactly 0, so
@@ -121,7 +110,7 @@ export function format_value(value: number, formatter?: string): string {
   if (!formatter) return `${value}`
   if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
 
-  const formatted = normalize_unicode_minus(formatter_for(formatter)(value))
+  const formatted = normalize_unicode_minus(format_spec(value, formatter))
   // Fixed-precision currency keeps its zeros ($1.50); everything else drops trailing zeros
   // after the decimal point, keeping a % suffix
   if (formatter.includes(`$`) && /\.\d+f/.test(formatter)) return formatted
