@@ -161,9 +161,8 @@
     if (element_count < 2 || element_count > 4) return
     if (hull_face_opacity_prop !== hull_face_opacity)
       hull_face_opacity_prop = hull_face_opacity
-    if (max_hull_dist_show_phases_prop !== max_hull_dist_show_phases) {
+    if (max_hull_dist_show_phases_prop !== max_hull_dist_show_phases)
       max_hull_dist_show_phases_prop = max_hull_dist_show_phases
-    }
   })
 
   $effect(() => {
@@ -313,9 +312,6 @@
 {#snippet chrome_content(context: ReturnType<typeof create_canvas_interactions> | null)}
   {@const { phase_stats, stable_entries, unstable_entries } = hull_data}
   {@const title = merged_controls.title || phase_stats?.chemical_system || ``}
-  {@const gas_controls_config = hull_data.gas_analysis.has_gas_dependent_elements
-    ? hull_data.merged_gas_config
-    : undefined}
   <h3 class="hull-title" bind:clientHeight={title_height}>{@html sanitize_html(title)}</h3>
 
   <!-- Control buttons (top-right corner) -->
@@ -467,7 +463,7 @@
     />
   {/if}
 
-  {#if (hull_data.has_temp_data && temperature !== undefined) || gas_controls_config}
+  {#if (hull_data.has_temp_data && temperature !== undefined) || hull_data.gas_config}
     <div class="right-controls">
       {#if hull_data.has_temp_data && temperature !== undefined}
         <TemperatureSlider
@@ -476,9 +472,9 @@
           bind:temperature
         />
       {/if}
-      {#if gas_controls_config}
+      {#if hull_data.gas_config}
         <GasPressureControls
-          config={gas_controls_config}
+          config={hull_data.gas_config}
           bind:pressures={gas_pressures}
           temperature={temperature ?? DEFAULT_GAS_TEMP}
         />

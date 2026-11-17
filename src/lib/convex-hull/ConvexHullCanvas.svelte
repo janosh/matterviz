@@ -300,25 +300,24 @@
   ></canvas>
   <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
 
+  {#snippet color_bar(title: string, bar_scale: ColorScaleConfig, side: `left` | `right`)}
+    <ColorBar
+      {title}
+      color_scale={bar_scale}
+      wrapper_style="position: absolute; bottom: 1em; {side}: 1em; width: min(200px, 50cqw - 2.5em);"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
+    />
+  {/snippet}
   {#if color_mode === `energy` && plot_entries.length > 0}
-    <ColorBar
-      title="Energy above hull (eV/atom)"
-      color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries))
-        .color_scale}
-      wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 2.5em);"
-      bar_style="height: 12px;"
-      title_style="margin-bottom: 4px;"
-    />
+    {@const { color_scale: hull_dist_scale } = resolve_color_scale(
+      color_scale,
+      hull_distance_range(plot_entries),
+    )}
+    {@render color_bar(`Energy above hull (eV/atom)`, hull_dist_scale, `left`)}
   {/if}
-
   {#if plot_entries.length > 0 && show_hull_faces && hull_facets.length > 0 && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
-    <ColorBar
-      title="Formation energy (eV/atom)"
-      color_scale={e_form_color_scale}
-      wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 2.5em);"
-      bar_style="height: 12px;"
-      title_style="margin-bottom: 4px;"
-    />
+    {@render color_bar(`Formation energy (eV/atom)`, e_form_color_scale, `right`)}
   {/if}
 
   {@render chrome(interactions)}
@@ -396,20 +395,16 @@
     pointer-events: auto;
     transition: opacity 0.2s ease-in-out;
   }
-  .gizmo-wrapper[data-placement='top-right'] {
+  .gizmo-wrapper[data-placement^='top'] {
     top: 1.8em;
+  }
+  .gizmo-wrapper[data-placement^='bottom'] {
+    bottom: 2.5em;
+  }
+  .gizmo-wrapper[data-placement$='right'] {
     right: 1ex;
   }
-  .gizmo-wrapper[data-placement='top-left'] {
-    top: 1.8em;
-    left: 1ex;
-  }
-  .gizmo-wrapper[data-placement='bottom-right'] {
-    bottom: 2.5em;
-    right: 1ex;
-  }
-  .gizmo-wrapper[data-placement='bottom-left'] {
-    bottom: 2.5em;
+  .gizmo-wrapper[data-placement$='left'] {
     left: 1ex;
   }
   .gizmo-wrapper.hover-visible {

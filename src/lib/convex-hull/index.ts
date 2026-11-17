@@ -61,7 +61,7 @@ export type { EnergyModeInfo, EnergySourceMode, HullModel } from './model'
 export { default as StructurePopup } from './StructurePopup.svelte'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
 export {
-  calculate_e_above_hull,
+  compute_e_above_hull,
   compute_e_above_hull_nd,
   compute_e_form_per_atom,
   compute_lower_hull_nd,
@@ -105,30 +105,20 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // Options for the controls pane: title, show_counts and show_label_controls.
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>
-  // Controls visibility configuration.
-  // - 'always': controls always visible
-  // - 'hover': controls visible on component hover (default)
-  // - 'never': controls never visible
-  // - object: { mode, hidden, style } for fine-grained control
-  //
-  // Control names: 'reset', 'info-pane', 'fullscreen', 'controls'
+  // Controls visibility: 'always', 'hover' (default), 'never' or { mode, hidden, style }.
+  // Control names: 'reset', 'info-pane', 'export-pane', 'fullscreen', 'controls'
   show_controls?: ShowControlsProp<ConvexHullControlName>
-  // Called with the entry whose point was clicked.
-  on_point_click?: (entry: AnyDimEntry) => void
+  on_point_click?: (entry: AnyDimEntry) => void // Called with the clicked entry
   // Called with the hovered entry's details, or null when the pointer leaves.
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean // bindable fullscreen state
   fullscreen_toggle?: boolean // show/hide the fullscreen button
-  // Allow the info pane (hull statistics) and its toggle button.
-  enable_info_pane?: boolean
-  // The root element. Read-only.
-  wrapper?: HTMLDivElement
+  enable_info_pane?: boolean // Allow the info pane (hull statistics) and its toggle
+  wrapper?: HTMLDivElement // The root element. Read-only.
   // Datasets larger than this start with labels hidden, unless label toggles are passed
   label_threshold?: number
-  // Visibility
   show_stable?: boolean // Draw entries on the hull (e_above_hull = 0)
-  // Draw entries above the hull, up to max_hull_dist_show_phases.
-  show_unstable?: boolean
+  show_unstable?: boolean // Draw entries above the hull, up to max_hull_dist_show_phases
   // Categorical classification rendered as marker shapes + controls-pane filter toggles.
   // Defaults to MAGNETIC_ORDERING_CATEGORY (entries with FM/FiM/AFM/NM data light up
   // automatically); pass a custom EntryCategoryConfig for other classifications
@@ -139,12 +129,9 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // Point coloring: `stability` by hull distance, `energy` by formation energy via color_scale.
   color_mode?: `stability` | `energy`
   color_scale?: ColorScale // energy-mode point colors; unset value_range ends fit the data
-  // Whether the info pane (phase statistics) is open.
-  info_pane_open?: boolean
-  // Controls (legend) pane open state
-  controls_open?: boolean
-  // Energy threshold for showing unstable entries (eV/atom above hull)
-  max_hull_dist_show_phases?: number
+  info_pane_open?: boolean // Whether the info pane (phase statistics) is open
+  controls_open?: boolean // Controls (legend) pane open state
+  max_hull_dist_show_phases?: number // Threshold for showing unstable entries (eV/atom above hull)
   // Largest energy above the hull in eV/atom at which unstable entries still get labels (needs show_unstable_labels).
   max_hull_dist_show_labels?: number
   show_stable_labels?: boolean
@@ -154,17 +141,14 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   allow_file_drop?: boolean
   // Called with each dropped file's entries once they are shown
   on_file_load?: (data: PhaseEntriesLoadData) => void
-  // Enable click selection/highlighting of entries (default: true)
-  // When false, clicking entries won't set selected_entry
+  // Click selection/highlighting of entries (default: true); false never sets selected_entry
   enable_click_selection?: boolean
-  // Enable structure preview popup when clicking entries with structure data
+  // Structure preview popup when clicking entries with structure data
   enable_structure_preview?: boolean
   // Use the data's `precomputed` formation energies or recompute them `on-the-fly` from absolute energies; recomputing is forced when needed.
   energy_source_mode?: EnergySourceMode
-  // Display configuration for grid lines and other visual elements
-  display?: { x_grid?: boolean; y_grid?: boolean }
-  // Highlighted entries with customizable visual effects
-  highlighted_entries?: (string | AnyDimEntry)[]
+  display?: { x_grid?: boolean; y_grid?: boolean } // grid lines
+  highlighted_entries?: (string | AnyDimEntry)[] // styled via highlight_style
   // Channel of an enclosing hover_links() this hull's hover joins: entries hovered in other
   // views on it (by entry_id) highlight here, and this hull's hovered entry there
   link_hover?: string
@@ -176,34 +160,25 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]> // `model` as from get_model()
   // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
   tooltip?: ConvexHullTooltipProp<AnyDimEntry>
-  // Temperature for temperature-dependent free energy G(T) data
-  // When entries have temperatures/free_energies arrays, this selects the active temperature
+  // Active temperature (K) for entries with temperatures/free_energies arrays (G(T) data)
   temperature?: number
-  // Enable linear interpolation for temperatures not in the data (default: true)
-  // When true, entries missing the exact temperature but having values above and below
-  // will have their energy linearly interpolated
+  // Linearly interpolate G(T) between bracketing temperatures missing from the data (default: true)
   interpolate_temperature?: boolean
-  // Maximum temperature gap (Kelvin) allowed for interpolation (default: 500)
-  // Prevents extrapolation over unreasonably large gaps
+  // Largest temperature gap (K) to interpolate across (default: 500)
   max_interpolation_gap?: number
-  // Gas thermodynamics configuration for atmosphere-controlled phase diagrams
-  // Enables chemical potential corrections based on gas partial pressures
+  // Gas atmospheres: chemical potential corrections from gas partial pressures
   gas_config?: GasThermodynamicsConfig
-  // Bindable gas partial pressures (in bar) - overrides values in gas_config.pressures
-  // Use this for two-way binding to gas pressure controls
+  // Bindable partial pressures (bar) over gas_config.pressures, e.g. for GasPressureControls
   gas_pressures?: Partial<Record<GasSpecies, number>>
 }
 
 // Additional props specific to 3D and 4D convex hulls
 export interface Hull3DProps {
-  // Draw the hull's facets (3D and 4D only).
-  show_hull_faces?: boolean
-  // Opacity (0-1) of the hull facets; unset uses a per-dimension default.
-  hull_face_opacity?: number
+  show_hull_faces?: boolean // Draw the hull's facets (3D and 4D only)
+  hull_face_opacity?: number // Facet opacity (0-1); unset uses a per-dimension default
   // How hull facets are colored: `uniform`, `formation_energy`, `dominant_element` or `facet_index`.
   hull_face_color_mode?: HullFaceColorMode
-  // Orientation gizmo: false to disable, true for defaults, object to customize
-  // Supports placement plus the appearance options in GizmoOptions (#lib/scene)
+  // Orientation gizmo: false, true for defaults, or placement + GizmoOptions (#lib/scene)
   gizmo?: boolean | ConvexHullGizmoOptions
 }
 
@@ -223,12 +198,9 @@ export const default_controls: ConvexHullControlsType = {
   show_label_controls: true,
 }
 
-// Convex hull defaults shared by 2D, 3D, and 4D.
-// NOTE: deliberately disjoint from DEFAULTS.convex_hull in [[src/lib/settings.ts]],
-// which holds per-arity (binary/ternary/quaternary) camera + phase-visibility
-// settings. This object holds render styling (colors, fonts, sizes) not exposed via
-// the settings schema. Keep it that way: don't add keys here that exist in
-// DEFAULTS.convex_hull (read those via DEFAULTS instead) or the two will drift.
+// Render styling (colors, fonts, sizes) shared by 2D, 3D and 4D, not in the settings schema.
+// Keep it disjoint from DEFAULTS.convex_hull in [[src/lib/settings.ts]] (per-arity camera and
+// phase visibility) so the two cannot drift.
 export const default_hull_config: ConvexHullConfig = {
   show_labels: true,
   show_hull: true,

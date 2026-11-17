@@ -164,10 +164,14 @@ describe(`create_hull_selection timers: copy feedback and hover preview`, () => 
 })
 
 // Category markers are applied once per model, so a threshold step keeps the plot entries'
-// identities: selection, hover and popups match id-less entries by identity
-it.each([0.5, 0.05])(
-  `hull distance threshold %s keeps the marked plot entries`,
-  (threshold) => {
+// identities: selection, hover and popups match id-less entries by identity. The gas controls'
+// config is only exposed for a gas some entry's elements derive from (O2, not N2, for Li-O).
+it.each([
+  [0.5, `N2`],
+  [0.05, `O2`],
+] as const)(
+  `hull distance threshold %s keeps the marked plot entries (%s enabled)`,
+  (threshold, gas) => {
     const entries = [
       make_phase({ Li: 1 }),
       make_phase({ O: 1 }),
@@ -182,7 +186,7 @@ it.each([0.5, 0.05])(
         temperature: () => undefined,
         interpolate_temperature: () => true,
         max_interpolation_gap: () => 500,
-        gas_config: () => undefined,
+        gas_config: () => ({ enabled_gases: [gas] }),
         gas_pressures: () => ({}),
         energy_source_mode: () => `on-the-fly`,
         components: () => undefined,
@@ -206,6 +210,7 @@ it.each([0.5, 0.05])(
     flushSync()
     expect(pipeline.plot_entries.length).toBeGreaterThan(0)
     for (const plot_entry of pipeline.plot_entries) expect(before).toContain(plot_entry)
+    expect(pipeline.gas_config?.enabled_gases).toEqual(gas === `O2` ? [`O2`] : undefined)
     destroy()
   },
 )

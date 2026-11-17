@@ -26,7 +26,7 @@ import {
   type TempUnit,
 } from './types'
 import {
-  calculate_lever_rule,
+  compute_lever_rule,
   find_region_at,
   format_composition,
   format_temperature,
@@ -191,7 +191,7 @@ export function diagram_errors(value: unknown): string[] {
     }
     check_points(where, vertices, 3, `vertices`)
   })
-  data.boundaries.forEach(({ kind, phases: refs, side, points }, idx) => {
+  data.boundaries.forEach(({ kind, phases: refs, side, points, sigma_T }, idx) => {
     const where = `boundaries[${idx}]`
     check_ids(where, refs)
     if (side != null && !(Array.isArray(refs) && refs.includes(side))) {
@@ -202,22 +202,12 @@ export function diagram_errors(value: unknown): string[] {
     if (kind === `magnetic` && (length(refs) !== 1 || side != null)) {
       errors.push(`${where} is magnetic: one phase and no side`)
     }
-    if (
-      (kind === `polymorphic` || kind === `invariant`) &&
-      (length(refs) !== 3 || side != null)
-    ) {
+    if ([`polymorphic`, `invariant`].includes(kind) && (length(refs) !== 3 || side != null)) {
       errors.push(`${where} is ${kind}: three phases and no side`)
     }
     check_points(where, points, 2, `points`)
-    const { sigma_T } = data.boundaries[idx]
-    if (
-      sigma_T !== undefined &&
-      !(
-        Array.isArray(sigma_T) &&
-        sigma_T.length === length(points) &&
-        sigma_T.every(non_negative)
-      )
-    ) {
+    const sigma_shaped = Array.isArray(sigma_T) && length(sigma_T) === length(points)
+    if (sigma_T !== undefined && !(sigma_shaped && sigma_T.every(non_negative))) {
       errors.push(`${where} sigma_T needs one non-negative number per point`)
     }
   })
@@ -658,32 +648,20 @@ export function diagram_hit(
   const region = find_region_at(regions, composition, temperature)
   return {
     region,
-    lever_rule: region && calculate_lever_rule(region, composition, temperature),
+    lever_rule: region && compute_lever_rule(region, composition, temperature),
   }
 }
 
 // Lever rule as one row per tie-line end: its phase, phase fraction and composition
-export function lever_rule_rows(
+export const lever_rule_rows = (
   lever_rule: LeverRuleResult,
   label_of: (id: string) => string,
-) {
-  const { left_phase, right_phase, fraction_left, fraction_right } = lever_rule
-  const { left_composition, right_composition } = lever_rule
-  return [
-    {
-      id: left_phase,
-      label: label_of(left_phase),
-      fraction: fraction_left,
-      location: left_composition,
-    },
-    {
-      id: right_phase,
-      label: label_of(right_phase),
-      fraction: fraction_right,
-      location: right_composition,
-    },
-  ]
-}
+) =>
+  ([`left`, `right`] as const).map((side) => {
+    const id = lever_rule[`${side}_phase`]
+    const location = lever_rule[`${side}_composition`]
+    return { id, label: label_of(id), fraction: lever_rule[`fraction_${side}`], location }
+  })
 
 // Hover info as copyable text for the clipboard, with each shown overlay's phase set at the
 // same (x, T) (info.overlay_hits, so it matches the tooltip, pinned snapshots included)

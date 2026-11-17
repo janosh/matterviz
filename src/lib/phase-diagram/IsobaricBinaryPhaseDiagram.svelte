@@ -595,12 +595,7 @@
         ...beside_left,
       ]
       const box_of = ([x_val, y_val, text_anchor]: (typeof spots)[number]): Box => {
-        const x_min =
-          text_anchor === `start`
-            ? x_val
-            : text_anchor === `end`
-              ? x_val - text_w
-              : x_val - text_w / 2
+        const x_min = x_val - text_w * { start: 0, middle: 0.5, end: 1 }[text_anchor]
         return [x_min, y_val - half_h, x_min + text_w, y_val + half_h]
       }
       const fits = (box: Box) =>
@@ -1174,15 +1169,9 @@
   // `e` toggles the export pane, `m` the lens, `i` the isopleth at the pointer, Escape
   // unpins the tooltip
   const keys = viewer_keys(() => ({
-    e: () => {
-      export_pane_open = !export_pane_open
-    },
-    m: () => {
-      lens = !lens
-    },
-    i: () => {
-      set_isopleth(isopleth === null && cursor ? cursor.composition : null)
-    },
+    e: () => (export_pane_open = !export_pane_open),
+    m: () => (lens = !lens),
+    i: () => set_isopleth(isopleth === null && cursor ? cursor.composition : null),
     Escape: pin.unpin,
   }))
 
@@ -1222,33 +1211,18 @@
   hovered = false,
   lit = false,
 )}
-  {@const fill = merged_config.colors.special_point}
   {@const shape = POINT_SYMBOLS[category]}
+  {@const attrs = {
+    fill: merged_config.colors.special_point,
+    stroke: `white`,
+    'stroke-width': 1.5,
+    class: [`special-point-marker`, { hovered, lit: lit && !hovered }],
+    'data-category': category,
+  }}
   {#if shape === `Circle`}
-    <circle
-      cx={x_val}
-      cy={y_val}
-      r={marker_radius}
-      {fill}
-      stroke="white"
-      stroke-width={1.5}
-      class="special-point-marker"
-      class:hovered
-      class:lit={lit && !hovered}
-      data-category={category}
-    />
+    <circle cx={x_val} cy={y_val} r={marker_radius} {...attrs} />
   {:else}
-    <path
-      d={symbol_paths[shape]}
-      transform="translate({x_val}, {y_val})"
-      {fill}
-      stroke="white"
-      stroke-width={1.5}
-      class="special-point-marker"
-      class:hovered
-      class:lit={lit && !hovered}
-      data-category={category}
-    />
+    <path d={symbol_paths[shape]} transform="translate({x_val}, {y_val})" {...attrs} />
   {/if}
 {/snippet}
 
@@ -1827,26 +1801,15 @@
       {/if}
 
       {#if remote_cursor}
+        {@const { svg_x, svg_y } = remote_cursor}
         <g class="remote-cursor" style="pointer-events: none">
-          <line
-            x1={remote_cursor.svg_x}
-            x2={remote_cursor.svg_x}
-            y1={top}
-            y2={bottom}
-            stroke={TIE_LINE_COLOR}
-            stroke-dasharray="4,3"
-          />
-          <line
-            x1={left}
-            x2={right}
-            y1={remote_cursor.svg_y}
-            y2={remote_cursor.svg_y}
-            stroke={TIE_LINE_COLOR}
-            stroke-dasharray="4,3"
-          />
+          <!-- vertical, then horizontal crosshair line -->
+          {#each [[svg_x, svg_x, top, bottom], [left, right, svg_y, svg_y]] as [x1, x2, y1, y2], idx (idx)}
+            <line {x1} {x2} {y1} {y2} stroke={TIE_LINE_COLOR} stroke-dasharray="4,3" />
+          {/each}
           <circle
-            cx={remote_cursor.svg_x}
-            cy={remote_cursor.svg_y}
+            cx={svg_x}
+            cy={svg_y}
             r={4}
             fill={TIE_LINE_COLOR}
             stroke="white"

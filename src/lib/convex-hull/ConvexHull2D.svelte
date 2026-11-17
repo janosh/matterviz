@@ -117,14 +117,9 @@
       const highlight = is_highlighted(entry) ? merged_highlight_style : null
       const colored = highlight?.effect === `color` || highlight?.effect === `both`
       const sized = highlight?.effect === `size` || highlight?.effect === `both`
+      const stability_color = is_stable ? stable_color : unstable_color
       return {
-        fill: colored
-          ? highlight?.color
-          : is_energy_mode
-            ? undefined
-            : is_stable
-              ? stable_color
-              : unstable_color,
+        fill: colored ? highlight?.color : is_energy_mode ? undefined : stability_color,
         stroke: is_stable ? `#ffffff` : `#000000`,
         radius: sized ? base_radius * (highlight?.size_multiplier ?? 1) : base_radius,
         symbol_type: entry.marker && marker_d3_name(entry.marker),

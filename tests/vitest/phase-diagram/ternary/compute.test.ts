@@ -115,12 +115,8 @@ describe(`E_form-only entries`, () => {
   // no `energy` (or a 0 eV placeholder): E_form is all the data carries; the lowest-E_form
   // unary is the reference, whatever the entry order, and a polymorph sits at E_form + E_ref =
   // 0.05 + 0 exactly. The placeholder used to be read as an absolute energy: dG_f = 0 for all.
-  test.each([
-    [`auto`, undefined],
-    [`static`, undefined],
-    [`auto`, 0],
-    [`static`, 0],
-  ] as const)(`%s mode uses e_form_per_atom as dG_f (energy: %s)`, (mode, energy) => {
+  // oxfmt-ignore
+  test.each([[`auto`, undefined], [`static`, undefined], [`auto`, 0], [`static`, 0]] as const)(`%s mode uses e_form_per_atom as dG_f (energy: %s)`, (mode, energy) => {
     const entries = (
       [
         [{ Li: 1 }, 0.05, `Li-high`],

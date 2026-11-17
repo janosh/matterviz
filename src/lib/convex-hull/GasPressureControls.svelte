@@ -24,8 +24,7 @@
   } = $props()
 
   // Log scale range for pressure slider: 10^-10 to 10^2 bar
-  const LOG_P_MIN = -10
-  const LOG_P_MAX = 2
+  const [LOG_P_MIN, LOG_P_MAX] = [-10, 2]
   const LOG_P_RANGE = LOG_P_MAX - LOG_P_MIN
   const MIN_PRESSURE = 1e-15 // Safe minimum to avoid log(0) or NaN
 
@@ -59,9 +58,8 @@
     return pressure.toExponential(1)
   }
 
-  const set_pressure = (gas: GasSpecies, pressure: number): void => {
-    pressures = { ...pressures, [gas]: pressure }
-  }
+  const set_pressure = (gas: GasSpecies, pressure: number) =>
+    (pressures = { ...pressures, [gas]: pressure })
 </script>
 
 {#if enabled_gases.length > 0}
@@ -85,6 +83,7 @@
           <input
             type="text"
             class="pressure-input"
+            style="width: 5.5ch"
             value={format_pressure(pressure)}
             onchange={(evt) => {
               const val = Number(evt.currentTarget.value)
@@ -114,9 +113,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-  .pressure-input {
-    width: 5.5ch;
   }
   .gas-name {
     font-size: 0.9em;

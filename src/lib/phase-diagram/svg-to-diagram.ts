@@ -315,6 +315,14 @@ function element_fill(element: Element): string | null {
   return fill
 }
 
+// Corners of an axis-aligned box [min_x, min_y, max_x, max_y], starting at its min corner
+const box_ring = ([min_x, min_y, max_x, max_y]: Vec4): Vec2[] => [
+  [min_x, min_y],
+  [max_x, min_y],
+  [max_x, max_y],
+  [min_x, max_y],
+]
+
 // Closed vertex rings of a segment chain. parse_path_segments emits no segment for an M, so a
 // gap between one segment's end and the next one's start begins a new subpath.
 function segments_to_rings(segments: Vec4[]): Vec2[][] {
@@ -331,40 +339,23 @@ function segments_to_rings(segments: Vec4[]): Vec2[][] {
 // (matplotlib's fill_between fills a <use> of a <defs> polygon). Transforms aren't applied.
 function shape_rings(element: Element): Vec2[][] | null {
   const tag = element.tagName.toLowerCase()
+  const num_attr = (attr: string) => parse_float_attr(element, attr)
+  const [x_px, y_px] = [num_attr(`x`) ?? 0, num_attr(`y`) ?? 0]
   if (tag === `use`) {
     const href = element.getAttribute(`href`) ?? element.getAttribute(`xlink:href`) ?? ``
     const target = href.startsWith(`#`)
       ? element.ownerDocument.querySelector(`[id="${href.slice(1).replaceAll(`"`, `\\"`)}"]`)
       : null
     const rings = target && target.tagName.toLowerCase() !== `use` ? shape_rings(target) : null
-    const [delta_x, delta_y] = [
-      parse_float_attr(element, `x`) ?? 0,
-      parse_float_attr(element, `y`) ?? 0,
-    ]
     return (
-      rings?.map((ring) => ring.map(([x_px, y_px]) => [x_px + delta_x, y_px + delta_y])) ??
+      rings?.map((ring) => ring.map(([vert_x, vert_y]) => [vert_x + x_px, vert_y + y_px])) ??
       null
     )
   }
   if (tag === `rect`) {
-    const [x_px, y_px] = [
-      parse_float_attr(element, `x`) ?? 0,
-      parse_float_attr(element, `y`) ?? 0,
-    ]
-    const [width, height] = [
-      parse_float_attr(element, `width`),
-      parse_float_attr(element, `height`),
-    ]
+    const [width, height] = [num_attr(`width`), num_attr(`height`)]
     if (width === null || height === null) return null
-    const [max_x, max_y] = [x_px + width, y_px + height]
-    return [
-      [
-        [x_px, y_px],
-        [max_x, y_px],
-        [max_x, max_y],
-        [x_px, max_y],
-      ],
-    ]
+    return [box_ring([x_px, y_px, x_px + width, y_px + height])]
   }
   if (tag === `polygon`) {
     const nums = ((element.getAttribute(`points`) ?? ``).match(NUMBER_REGEX) ?? []).map(Number)
@@ -472,11 +463,21 @@ function infer_regions(
     for (const row of spanned_cells(y1, y2, y_coords, y_tol)) v_walls[col][row] = true
   }
 
+  // Flood-fill connected cells that share an open edge (no wall between them)
   let next_region_id = 0
-  for (let col = 0; col < n_cols; col++) {
-    for (let row = 0; row < n_rows; row++) {
-      if (cell_ids[col][row] !== -1) continue
-      flood_fill(cell_ids, h_walls, v_walls, col, row, n_cols, n_rows, next_region_id)
+  for (let start_col = 0; start_col < n_cols; start_col++) {
+    for (let start_row = 0; start_row < n_rows; start_row++) {
+      if (cell_ids[start_col][start_row] !== -1) continue
+      const stack: Vec2[] = [[start_col, start_row]]
+      for (let item = stack.pop(); item; item = stack.pop()) {
+        const [col, row] = item
+        if (cell_ids[col][row] !== -1) continue
+        cell_ids[col][row] = next_region_id
+        if (col > 0 && !v_walls[col][row]) stack.push([col - 1, row])
+        if (col < n_cols - 1 && !v_walls[col + 1][row]) stack.push([col + 1, row])
+        if (row > 0 && !h_walls[col][row]) stack.push([col, row - 1])
+        if (row < n_rows - 1 && !h_walls[col][row + 1]) stack.push([col, row + 1])
+      }
       next_region_id++
     }
   }
@@ -501,31 +502,6 @@ function infer_regions(
     ).map(([col, row]): Vec2 => [round(x_coords[col]), round(y_coords[row])])
     return { label, vertices }
   })
-}
-
-// Flood-fill connected cells that share an open edge
-function flood_fill(
-  cell_ids: number[][],
-  h_walls: boolean[][],
-  v_walls: boolean[][],
-  start_col: number,
-  start_row: number,
-  n_cols: number,
-  n_rows: number,
-  region_id: number,
-): void {
-  const stack: Vec2[] = [[start_col, start_row]]
-  for (let item = stack.pop(); item; item = stack.pop()) {
-    const [col, row] = item
-    if (col < 0 || col >= n_cols || row < 0 || row >= n_rows) continue
-    if (cell_ids[col][row] !== -1) continue
-    cell_ids[col][row] = region_id
-    // Neighbours with no wall between them (left, right, bottom, top)
-    if (col > 0 && !v_walls[col][row]) stack.push([col - 1, row])
-    if (col < n_cols - 1 && !v_walls[col + 1][row]) stack.push([col + 1, row])
-    if (row > 0 && !h_walls[col][row]) stack.push([col, row - 1])
-    if (row < n_rows - 1 && !h_walls[col][row + 1]) stack.push([col, row + 1])
-  }
 }
 
 // Outer outline of region_id's cells as rectilinear polygon in grid-vertex coords [col, row],
@@ -581,12 +557,7 @@ export function trace_region_outline(
       console.warn(
         `Phase region "${name}": outline is not closed at grid vertex (${key}); using its bounding box instead`,
       )
-      return [
-        [min_col, min_row],
-        [max_col, min_row],
-        [max_col, max_row],
-        [min_col, max_row],
-      ]
+      return box_ring([min_col, min_row, max_col, max_row])
     }
     // Prefer the right-hand turn (negative cross product of incoming × outgoing direction)
     let next = candidates[0]
@@ -666,17 +637,11 @@ function assemble_boundaries(
       [round(x2), round(y2)],
     ]
     const [mid_x, mid_y] = [(x1 + x2) / 2, (y1 + y2) / 2]
-    const sides: Vec2[] = vertical
-      ? [
-          [mid_x - x_tol, mid_y],
-          [mid_x + x_tol, mid_y],
-        ]
-      : [
-          [mid_x, mid_y - y_tol],
-          [mid_x, mid_y + y_tol],
-        ]
-    const phases = sides.flatMap(
-      ([x_val, y_val]) => find_region_at(regions, x_val, y_val)?.phases ?? [],
+    // probe just across the line on either side
+    const [step_x, step_y] = vertical ? [x_tol, 0] : [0, y_tol]
+    const phases = [-1, 1].flatMap(
+      (sign) =>
+        find_region_at(regions, mid_x + sign * step_x, mid_y + sign * step_y)?.phases ?? [],
     )
     const ids = [...new Set(phases)]
     // an invariant line is three-phase by definition; any other line stays a plain solvus
@@ -892,11 +857,9 @@ function parse_translate(element: Element | null): Vec2 | null {
 
 // Unique sorted values, merging values within `tol` of the previous kept one
 function collect_unique_sorted(values: number[], tol: number): number[] {
-  if (values.length === 0) return []
-  const sorted = values.toSorted((val_a, val_b) => val_a - val_b)
-  const unique: number[] = [sorted[0]]
-  for (let idx = 1; idx < sorted.length; idx++) {
-    if (Math.abs(sorted[idx] - unique[unique.length - 1]) > tol) unique.push(sorted[idx])
+  const unique: number[] = []
+  for (const val of values.toSorted((val_a, val_b) => val_a - val_b)) {
+    if (!unique.length || Math.abs(val - unique[unique.length - 1]) > tol) unique.push(val)
   }
   return unique
 }

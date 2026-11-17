@@ -287,15 +287,12 @@ export function e_above_hull_distances(
 }
 
 // Energy above hull (clamped to >= 0) of one entry, or of many in input order
-export function calculate_e_above_hull(
-  entry: PhaseData,
-  reference_entries: PhaseData[],
-): number
-export function calculate_e_above_hull(
+export function compute_e_above_hull(entry: PhaseData, reference_entries: PhaseData[]): number
+export function compute_e_above_hull(
   entries: PhaseData[],
   reference_entries: PhaseData[],
 ): number[]
-export function calculate_e_above_hull(
+export function compute_e_above_hull(
   input: PhaseData | PhaseData[],
   reference_entries: PhaseData[],
 ): number | number[] {
@@ -646,21 +643,24 @@ export function compute_e_above_hull_nd(
       1 - lambda.reduce((sum, val) => sum + val, 0) >= -HULL_EPS,
     )
   }
+  // Plane energies of every facet at the current query, reused across queries (this scan is
+  // most of a large hull's distance pass, so it stays allocation-free)
+  const energies = new Float64Array(facets.length)
   const hull_energy = (query: number[]): number => {
-    const energies = facets.map((facet) => facet_energy(facet, query))
+    let e_max = -Infinity
+    for (let idx = 0; idx < facets.length; idx++) {
+      const energy = facet_energy(facets[idx], query)
+      energies[idx] = energy
+      if (energy > e_max) e_max = energy
+    }
     const covers = (idx: number) =>
       Number.isFinite(energies[idx]) && contains(facets[idx], query)
-    const e_max = energies.reduce((max, energy) => (energy > max ? energy : max), -Infinity)
-    const near_max = energies.findIndex(
-      (energy, idx) => energy >= e_max - HULL_EPS && covers(idx),
-    )
-    const covering =
-      near_max !== -1
-        ? near_max
-        : energies
-            .map((_, idx) => idx)
-            .toSorted((idx_a, idx_b) => energies[idx_b] - energies[idx_a])
-            .find(covers)
+    for (let idx = 0; idx < facets.length; idx++) {
+      if (energies[idx] >= e_max - HULL_EPS && covers(idx)) return energies[idx]
+    }
+    const covering = Array.from(energies, (_, idx) => idx)
+      .toSorted((idx_a, idx_b) => energies[idx_b] - energies[idx_a])
+      .find(covers)
     return covering === undefined ? NaN : energies[covering]
   }
   // The hull energy depends only on the composition coordinates: polymorphs and repeated

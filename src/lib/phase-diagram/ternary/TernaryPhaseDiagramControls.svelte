@@ -49,106 +49,58 @@
     readonly [TernaryDisplay[K], string, string][],
   ]
 
+  // oxfmt-ignore
   const MODES: [FreeEnergyMode, string, string][] = [
-    [
-      `auto`,
-      `Auto`,
-      `Tabulated G(T) where present, else SISSO when a volume is known, else 0 K energies`,
-    ],
-    [
-      `tabulated`,
-      `G(T) tables`,
-      `Only the entries' own temperatures/free_energies vary with T`,
-    ],
-    [
-      `sisso`,
-      `SISSO`,
-      `Bartel et al. 2018 descriptor from volume per atom and reduced mass with experimental elemental references (300-2000 K)`,
-    ],
+    [`auto`, `Auto`, `Tabulated G(T) where present, else SISSO when a volume is known, else 0 K energies`],
+    [`tabulated`, `G(T) tables`, `Only the entries' own temperatures/free_energies vary with T`],
+    [`sisso`, `SISSO`, `Bartel et al. 2018 descriptor from volume per atom and reduced mass with experimental elemental references (300-2000 K)`],
     [`static`, `0 K`, `Temperature-independent 0 K energies`],
   ]
   const SOURCE_LABELS: Record<FreeEnergySource, string> = {
     tabulated: `tabulated G(T)`,
     sisso: `SISSO G(T)`,
     static: `0 K energies`,
+    gas: `gas μ(T, p)`,
   }
-  const VIEW: Toggle<`view`> = [
-    `view`,
-    `Mode`,
-    [
-      [`section`, `2D section`, `Isothermal section at the current temperature`],
-      [
-        `prism`,
-        `3D prism`,
-        `Composition-temperature prism with a draggable cutting plane (WebGPU)`,
-      ],
-    ],
-  ]
-  const FACE: Toggle<`face_color_mode`> = [
-    `face_color_mode`,
-    `Fill colour`,
-    [
-      [`uniform`, `Uniform`, `One colour for every tie-triangle`],
-      [`formation_energy`, `Formation energy`, `Mean formation energy of the vertices`],
-      [`facet_index`, `Index`, `Distinct colour per tie-triangle`],
-    ],
-  ]
-  const ROWS: Toggle<`map_filter`> = [
-    `map_filter`,
-    `Rows`,
-    [
-      [`stable_ever`, `Stable`, `Phases on the hull at some temperature`],
-      [
-        `near_hull`,
-        `Near hull`,
-        `Phases within the threshold of the hull at some temperature`,
-      ],
-      [`all`, `All`, `Every phase`],
-    ],
-  ]
-  const SORT: Toggle<`map_sort`> = [
-    `map_sort`,
-    `Sort`,
-    [
-      [`first_stable`, `Onset`, `Phases stable earliest first`],
-      [`composition`, `Composition`, `By position in the triangle`],
-      [`min_e_hull`, `Hull distance`, `Closest to the hull first`],
-    ],
-  ]
+  // oxfmt-ignore
+  const VIEW: Toggle<`view`> = [`view`, `Mode`, [
+    [`section`, `2D section`, `Isothermal section at the current temperature`],
+    [`prism`, `3D prism`, `Composition-temperature prism with a draggable cutting plane (WebGPU)`],
+  ]]
+  // oxfmt-ignore
+  const FACE: Toggle<`face_color_mode`> = [`face_color_mode`, `Fill colour`, [
+    [`uniform`, `Uniform`, `One colour for every tie-triangle`],
+    [`formation_energy`, `Formation energy`, `Mean formation energy of the vertices`],
+    [`facet_index`, `Index`, `Distinct colour per tie-triangle`],
+  ]]
+  // oxfmt-ignore
+  const ROWS: Toggle<`map_filter`> = [`map_filter`, `Rows`, [
+    [`stable_ever`, `Stable`, `Phases on the hull at some temperature`],
+    [`near_hull`, `Near hull`, `Phases within the threshold of the hull at some temperature`],
+    [`all`, `All`, `Every phase`],
+  ]]
+  // oxfmt-ignore
+  const SORT: Toggle<`map_sort`> = [`map_sort`, `Sort`, [
+    [`first_stable`, `Onset`, `Phases stable earliest first`],
+    [`composition`, `Composition`, `By position in the triangle`],
+    [`min_e_hull`, `Hull distance`, `Closest to the hull first`],
+  ]]
+  // oxfmt-ignore
   const PRISM: Checkbox[] = [
-    [
-      `show_sheets`,
-      `Tie-line sheets`,
-      `Vertical sheets swept out by each tie-line between the transitions that create and destroy it`,
-    ],
-    [
-      `show_rods`,
-      `Stability rods`,
-      `Stable phases as vertical rods spanning their stability windows`,
-    ],
-    [
-      `show_event_rings`,
-      `Transition rings`,
-      `Triangle outlines at every transition temperature`,
-    ],
+    [`show_sheets`, `Tie-line sheets`, `Vertical sheets swept out by each tie-line between the transitions that create and destroy it`],
+    [`show_rods`, `Stability rods`, `Stable phases as vertical rods spanning their stability windows`],
+    [`show_event_rings`, `Transition rings`, `Triangle outlines at every transition temperature`],
     [`ghost_above_plane`, `Cut-away`, `Fade rods and sheets above the cutting plane`],
   ]
+  // oxfmt-ignore
   const SECTION: Checkbox[] = [
     [`show_tie_lines`, `Tie-lines`, `Outline the tie-triangles`],
     [`show_tie_triangles`, `Tie-triangles`, `Fill the three-phase regions`],
-    [
-      `show_unstable`,
-      `Unstable phases`,
-      `Show phases above the hull, coloured by hull distance`,
-    ],
+    [`show_unstable`, `Unstable phases`, `Show phases above the hull, coloured by hull distance`],
     [`show_stable_labels`, `Stable labels`, `Label stable phases`],
     [`show_unstable_labels`, `Unstable labels`, `Label unstable phases within the threshold`],
     [`show_grid`, `Grid`, `10% composition grid`],
-    [
-      `show_upcoming`,
-      `Upcoming changes`,
-      `Ring the phases that change at the next transition on heating`,
-    ],
+    [`show_upcoming`, `Upcoming changes`, `Ring the phases that change at the next transition on heating`],
   ]
   const MAP: Checkbox[] = [
     [`show_map`, `Stability map`, `Phase × temperature stability map`],
@@ -156,24 +108,11 @@
     [`show_map_elements`, `Elements`, `Include the pure elements as map rows`],
     [`show_event_lines`, `Transition lines`, `Mark transition temperatures in the map`],
   ]
+  // oxfmt-ignore
   const SLIDERS = {
-    sheet: [
-      `sheet_opacity`,
-      `Sheet opacity`,
-      `Opacity of the tie-line sheets`,
-      0.02,
-      0.6,
-      0.02,
-    ],
+    sheet: [`sheet_opacity`, `Sheet opacity`, `Opacity of the tie-line sheets`, 0.02, 0.6, 0.02],
     face: [`face_opacity`, `Fill opacity`, `Opacity of the tie-triangle fills`, 0, 1, 0.05],
-    threshold: [
-      `max_e_above_hull`,
-      `E_hull threshold`,
-      `Hull-distance ceiling (eV/atom) for unstable phases and the stability-map colour scale`,
-      0,
-      1,
-      0.01,
-    ],
+    threshold: [`max_e_above_hull`, `E_hull threshold`, `Hull-distance ceiling (eV/atom) for unstable phases and the stability-map colour scale`, 0, 1, 0.01],
     speed: [`play_speed`, `Play speed (K/s)`, `Heating rate of the play button`, 10, 2000, 10],
   } satisfies Record<string, Slider>
 </script>
@@ -274,7 +213,7 @@
     {#if relevant_gases.length > 0}
       <label
         {@attach tooltip({
-          content: `Treat gas-forming elements as an atmosphere: their reference becomes mu(T, p) of the gas`,
+          content: `Gas atmosphere at mu(T, p): an elemental gas (O2) becomes its element's reference, a compound gas (CO2) a phase replacing the entries of its formula`,
         })}
       >
         <span>Gas atmosphere</span>

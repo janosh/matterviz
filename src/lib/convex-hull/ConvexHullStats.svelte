@@ -331,7 +331,7 @@
         </span>
         {#each subsystem_coverage as { pair, count } (pair)}
           <span class="subsystem-chip" class:has-entries={count > 0}>
-            <span class="pair">{pair}</span>
+            <span style="font-weight: 500">{pair}</span>
             <span class="count">{count}</span>
           </span>
         {/each}
@@ -427,7 +427,7 @@
         Table
       </button>
     </div>
-    <div class="view-panels">
+    <div style="display: grid; min-width: 0">
       {@render view_panel(`stats`, stats_panel)}
       {@render view_panel(`table`, table_panel)}
     </div>
@@ -502,10 +502,6 @@
     );
     font-weight: 500;
   }
-  .view-panels {
-    display: grid;
-    min-width: 0;
-  }
   .view-panel {
     grid-area: 1 / 1;
     min-width: 0;
@@ -557,17 +553,14 @@
     line-height: 1.2;
     background: color-mix(in srgb, currentColor 5%, transparent);
     color: var(--text-color-muted, light-dark(#666, #bbb));
-    .pair {
-      font-weight: 500;
-    }
     .count {
       margin-left: 3pt;
       font-size: 0.9em;
       font-weight: 600;
     }
-  }
-  .subsystem-chip.has-entries {
-    background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 15%, transparent);
-    color: inherit;
+    &.has-entries {
+      background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 15%, transparent);
+      color: inherit;
+    }
   }
 </style>

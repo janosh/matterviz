@@ -48,7 +48,7 @@ export type * from './types'
 // Rendering internals (SVG path/label helpers, config merging, formula markup) stay
 // module-private; these are the pieces a custom tooltip or hover handler needs.
 export {
-  calculate_lever_rule,
+  compute_lever_rule,
   convert_temp,
   find_region_at,
   format_composition,

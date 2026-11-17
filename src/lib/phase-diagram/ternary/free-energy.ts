@@ -4,13 +4,16 @@
 // - sisso: dH_f(0 K) + G^delta(V, m, T) - sum_e x_e G_e^exp(T), the Bartel et al. 2018 descriptor
 //   with experimental elemental Gibbs energies (g-els-data.ts)
 // - static: E_i - sum_e x_e G_e(T)
-// Gas-phase elements (O from O2, ...) shift the references by mu_e(T, p) - mu_e(ref).
+// - gas: compound gases (CO, CO2, H2O) at mu(T, p) in the same frame as the compounds
+// Elemental gases (O from O2, ...) shift the references by mu_e(T, p) - mu_e(ref).
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
-  compute_gas_correction,
-  DEFAULT_ELEMENT_TO_GAS,
+  compute_element_mu_shift,
+  compute_gas_chemical_potential,
+  ELEMENTAL_GASES,
+  gas_pressure_term,
+  get_default_gas_provider,
   get_effective_pressures,
-  tabulated_reference_shift,
 } from '#lib/convex-hull/gas-thermodynamics.js'
 import { interpolate_energy_at_temperature } from '#lib/convex-hull/helpers.js'
 import {
@@ -120,7 +123,7 @@ export function sisso_supports(entry: PhaseData): boolean {
   )
 }
 
-// === Gas references ===
+// === Gas atmosphere ===
 
 type GasShift = (
   element: ElementSymbol,
@@ -128,40 +131,48 @@ type GasShift = (
   reference_has_entropy: boolean,
 ) => number
 
-// Per-atom shift of an element's chemical potential from the atmosphere. Against a 0 K computed
-// reference that is the full mu(T, p) - mu(0 K, 1 bar); a reference that already carries its
-// own G(T) (tabulated entry, SISSO's experimental 1 bar gas) only lacks k_B T ln(p/p0), and
-// compound gases (CO2, CO, H2O) have no such reference at all
-function build_gas_shift(
+interface Atmosphere {
+  // Per-atom shift of an element's chemical potential from its elemental gas (O from O2). Against
+  // a 0 K computed reference that is the full mu(T, p) - mu(0 K, 1 bar); a reference that already
+  // carries its own G(T) (tabulated entry, SISSO's experimental 1 bar gas) only lacks
+  // k_B T ln(p/p0). Elements without an enabled elemental gas (C under CO2) never move.
+  shift: GasShift
+  // mu(T, p) per atom of a gas on the elements' 0 K enthalpy scale (its formation energy there)
+  mu: (gas: GasSpecies, temperature: number) => number
+  // mu°(T) per atom of a gas at 1 bar
+  mu_standard: (gas: GasSpecies, temperature: number) => number
+}
+
+function build_atmosphere(
   config: GasThermodynamicsConfig | undefined,
   pressures_override: Partial<Record<GasSpecies, number>> | undefined,
-): GasShift | null {
+): Atmosphere | null {
   if (!config?.enabled_gases?.length) return null
   const merged: GasThermodynamicsConfig = {
     ...config,
     pressures: { ...config.pressures, ...pressures_override },
   }
   const pressures = get_effective_pressures(merged)
-  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...merged.element_to_gas }
+  const provider = merged.provider ?? get_default_gas_provider()
   const enabled = new Set(merged.enabled_gases)
   // Every phase is evaluated at one T before the next, so one remembered value per element
   // spares the provider lookup for all but the first
   const last = new Map<ElementSymbol, Vec2>()
-  return (element, temperature, reference_has_entropy) => {
-    const gas = element_to_gas[element]
-    if (!gas || !enabled.has(gas)) return 0
-    if (reference_has_entropy)
-      return tabulated_reference_shift(gas, temperature, pressures[gas])
-    const memo = last.get(element)
-    if (memo?.[0] === temperature) return memo[1]
-    const shift = compute_gas_correction(
-      { composition: { [element]: 1 }, energy: 0 },
-      merged,
-      temperature,
-      pressures,
-    )
-    last.set(element, [temperature, shift])
-    return shift
+  return {
+    shift: (element, temperature, reference_has_entropy) => {
+      const gas = ELEMENTAL_GASES[element]
+      if (!gas || !enabled.has(gas)) return 0
+      if (reference_has_entropy) return gas_pressure_term(gas, temperature, pressures[gas])
+      const memo = last.get(element)
+      if (memo?.[0] === temperature) return memo[1]
+      const shift = compute_element_mu_shift(element, merged, temperature, pressures)
+      last.set(element, [temperature, shift])
+      return shift
+    },
+    mu: (gas, temperature) =>
+      compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]),
+    mu_standard: (gas, temperature) =>
+      provider.get_standard_chemical_potential(gas, temperature),
   }
 }
 
@@ -174,6 +185,7 @@ function pick_source(
   mode: FreeEnergyOptions[`mode`],
   compounds_use_sisso: boolean,
 ): FreeEnergySource {
+  if (entry.gas) return `gas`
   const tabulated = entry_has_temp_data(entry)
   if (mode === `static`) return `static`
   if (mode === `tabulated`) return tabulated ? `tabulated` : `static`
@@ -233,7 +245,7 @@ export function build_free_energy_model(
   // Without a reference entry the element's corner sits at dG_f = 0 (synthetic element)
   for (const element of elements)
     unary_refs[element] ??= { composition: { [element]: 1 }, energy: 0 }
-  const gas_shift = build_gas_shift(options.gas_config, options.gas_pressures)
+  const atmosphere = build_atmosphere(options.gas_config, options.gas_pressures)
 
   // Static energy per atom: the entry's own energy, else E_form on the references' scale (also
   // for a 0 eV placeholder `energy`), else throw rather than sit at 0
@@ -278,17 +290,20 @@ export function build_free_energy_model(
     const source = pick_source(entry, mode, compounds_use_sisso)
     const fractions = atomic_fractions(entry)
     const unary = fractions.length === 1
+    // Gas phases take the compounds' reference frame: SISSO's experimental elements when
+    // compounds use SISSO, else the reference entries
+    const sisso_frame = source === `sisso` || (source === `gas` && compounds_use_sisso)
     // Elements are their own (shifted) reference, so only compounds feel the gas shift
     const shift = (temperature: number): number =>
-      gas_shift && !unary
+      atmosphere && !unary
         ? fractions.reduce(
             (sum, [element, frac]) =>
               sum +
               frac *
-                gas_shift(
+                atmosphere.shift(
                   element,
                   temperature,
-                  source === `sisso` || ref_tabulated.has(element),
+                  sisso_frame || ref_tabulated.has(element),
                 ),
             0,
           )
@@ -298,6 +313,36 @@ export function build_free_energy_model(
       g_of: (element: ElementSymbol, temperature: number) => number,
     ) => fractions.reduce((sum, [element, frac]) => sum + frac * g_of(element, temperature), 0)
 
+    if (source === `gas`) {
+      const { gas } = entry
+      if (!gas || !atmosphere) {
+        throw new Error(
+          `Gas phase ${entry.entry_id ?? JSON.stringify(entry.composition)} needs gas_config.enabled_gases`,
+        )
+      }
+      // Reference level G_e(T) of each element relative to its 0 K energy, the scale mu(T, p)
+      // is on. SISSO's experimental G_e(T) - H_e(298 K) is that up to H_e(298 K) - H_e(0 K):
+      // exact for gaseous elements via their own mu°(T) (O: G_O2(T) - H(298 K) + 0.045 eV/atom),
+      // neglected for solid ones (graphite: 0.011 eV/atom of C, 0.004 eV/atom of CO2).
+      const level = (element: ElementSymbol, temperature: number): number => {
+        if (sisso_frame) {
+          const elemental_gas = ELEMENTAL_GASES[element]
+          return elemental_gas
+            ? atmosphere.mu_standard(elemental_gas, temperature)
+            : g_element_experimental(element, temperature)
+        }
+        const ref_g_of = ref_g[element]
+        return ref_tabulated.has(element) && ref_g_of
+          ? ref_g_of(temperature) - static_energy(unary_refs[element])
+          : 0
+      }
+      return {
+        source,
+        t_range: intersect_ranges([sisso_frame ? SISSO_T_RANGE : null, reference_t_range]),
+        dg_form: (temperature) =>
+          atmosphere.mu(gas, temperature) - weighted(temperature, level) - shift(temperature),
+      }
+    }
     if (source === `sisso`) {
       // Unary entries: the experimental reference makes the ground state dG_f = 0 and leaves
       // polymorphs at their 0 K offset
