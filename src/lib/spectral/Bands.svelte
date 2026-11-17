@@ -1077,8 +1077,8 @@
         >
           E<tspan dy="2" font-size="8">g:</tspan>
           <tspan dy="-2">{Number(gap_data.gap.toPrecision(4))} eV</tspan>
-          <tspan class="gap-kind" x={gap_label_x} dy="1.2em" font-size="9" opacity="0.8">
-            {gap_data.is_direct ? `direct` : `indirect`}
+          <tspan class="gap-kind" opacity="0.8">
+            ({gap_data.is_direct ? `direct` : `indirect`})
           </tspan>
         </text>
       {/if}

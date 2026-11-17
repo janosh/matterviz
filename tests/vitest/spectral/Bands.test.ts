@@ -641,7 +641,7 @@ describe(`Bands component`, () => {
       show_gap_annotation: true,
       ...(spin_mode && { band_spin_mode: spin_mode }),
     })
-    expect(doc_query(`.gap-label .gap-kind`).textContent?.trim()).toBe(kind)
+    expect(doc_query(`.gap-label .gap-kind`).textContent?.trim()).toBe(`(${kind})`)
     const markers = [...document.querySelectorAll(`circle.band-edge`)]
     expect(markers.map((marker) => marker.classList.contains(`vbm`))).toEqual([true, false])
     const [vbm_x, cbm_x] = markers.map((marker) => Number(marker.getAttribute(`cx`)))

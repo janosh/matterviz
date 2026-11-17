@@ -5,6 +5,7 @@ import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
 import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
 import type { Vec2 } from '#lib/math.js'
 import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
+import { EV_PER_ENERGY_UNIT } from '#lib/spectral/frequency-units.js'
 import { band_crossings, band_k_path, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
@@ -145,19 +146,26 @@ test(`a band click pins its energy and isolates its sheet, a second click ends i
   }
 })
 
-// band structures are eV, so a grid of another or an unknown unit (BXSF and FRMSF name none)
-// cannot preview, pin or mark energies on them; band highlighting still links
-test.each([null, `Ry`] as const)(`a %s grid links no energies to the bands`, (energy_unit) => {
+// band structures are eV: Ry and Ha grids convert at the link (mu stays in the grid's unit,
+// values exact in floats), a grid of unknown unit (BXSF and FRMSF name none) cannot preview,
+// pin or mark energies on them; band highlighting still links
+test.each([
+  [null, [undefined, 0.25, false, 1], [0.25, null]],
+  [`Ry`, [EV_PER_ENERGY_UNIT.Ry, 1, true, 1], [0.25, 1]],
+  [`Ha`, [EV_PER_ENERGY_UNIT.Ha, 1, true, 1], [0.25, 1]],
+] as const)(`a %s grid links energies %j to the bands`, (energy_unit, hovered, clicked) => {
   const { link, host } = make_link()
   host.band_data = { ...band_data, energy_unit }
   host.mu = 0.25
-  link.band_hover(band_event(1, 1.5))
+  const ev_per_unit = energy_unit ? EV_PER_ENERGY_UNIT[energy_unit] : 1
+  link.band_hover(band_event(1, 2 * ev_per_unit))
   flushSync()
   const { fermi_energy, mu, previewing, highlighted_band } = link
-  expect([fermi_energy, mu, previewing, highlighted_band]).toEqual([undefined, 0.25, false, 1])
-  link.band_click(band_event(1, 1.25))
+  expect([fermi_energy, mu, previewing, highlighted_band]).toEqual(hovered)
+  link.band_hover(null)
+  link.band_click(band_event(1, 1.25 * ev_per_unit))
   flushSync()
-  expect([host.mu, link.isolated_band]).toEqual([0.25, null])
+  expect([host.mu, link.isolated_band]).toEqual(clicked)
   expect(link.crossings).toEqual([])
 })
 

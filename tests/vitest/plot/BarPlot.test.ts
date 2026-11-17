@@ -770,6 +770,16 @@ describe(`BarPlot`, () => {
     const text = await hovered_text(`.plot-tooltip`)
     expect(text).toContain(`Group A`)
     expect(text).toContain(`Count`)
+    expect(text).not.toContain(`±`)
+    // the value axis shows its y_error: ± σ, or +upper / −lower
+    for (const [y_error, orientation, expected] of [
+      [0.5, `vertical`, `Count: 10 ± 0.5`],
+      [{ upper: [2], lower: [1] }, `vertical`, `Count: 10 +2 / −1`],
+      [0.5, `horizontal`, `x: 10 ± 0.5`],
+    ] as const) {
+      const series = [{ x: [1], y: [10], y_error }]
+      expect(await hovered_text(`.plot-tooltip`, { series, orientation })).toContain(expected)
+    }
     const tooltip = createRawSnippet<[BarHandlerProps]>((data) => ({
       render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
     }))

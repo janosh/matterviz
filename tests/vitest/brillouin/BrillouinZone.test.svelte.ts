@@ -1,7 +1,8 @@
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
+import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath.js'
 import type { BrillouinZoneData } from '#lib/brillouin/types.js'
-import { reciprocal_lattice } from '#lib/math.js'
+import { cross_3d, dot, reciprocal_lattice, subtract } from '#lib/math.js'
 import type * as symmetry from '#lib/symmetry/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
@@ -14,7 +15,13 @@ import {
   mock_parse_worker,
   expect_shortcuts_in_pane,
 } from '../setup'
-import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
+import {
+  cubic_matrix,
+  fcc_cell,
+  init_moyo_for_tests,
+  make_crystal,
+  type SimpleSite,
+} from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
 
@@ -470,4 +477,46 @@ test.each([
   if (n_calls)
     await vi.waitFor(() => expect(notice()).toMatch(/Default k-path failed: no space group/))
   else expect(notice()).toBeUndefined()
+})
+
+// On a conventional cell some standard path points (fcc X, bcc H) lie outside the cell's own
+// zone, so with the default path shown the zone and IBZ are its primitive cell's
+const bcc_sites: SimpleSite[] = [
+  [`Fe`, [0, 0, 0]],
+  [`Fe`, [0.5, 0.5, 0.5]],
+]
+test.each([
+  [`fcc`, fcc_cell(4)],
+  [`bcc`, make_crystal(4, bcc_sites)],
+])(`default k-path of a conventional %s cell lies in the zone`, async (_name, structure) => {
+  await init_moyo_for_tests()
+  const { analyze_structure_symmetry: analyze } =
+    await vi.importActual<typeof symmetry>(`#lib/symmetry/index.js`)
+  analyze_structure_symmetry.mockImplementationOnce(analyze)
+  const { matrix } = structure.lattice
+  const { points } = kpath_to_k_path_data(
+    high_symmetry_kpath(matrix, await analyze(structure)),
+  )
+  // path points outside a convex zone: in front of a face plane (Γ is inside) by over 1e-9
+  const n_outside = ({ vertices, faces }: BrillouinZoneData) =>
+    points.filter((point) =>
+      faces.some(([idx0, idx1, idx2]) => {
+        const [v0, v1, v2] = [idx0, idx1, idx2].map((idx) => vertices[idx])
+        const normal = cross_3d(subtract(v1, v0), subtract(v2, v0))
+        const height = Math.sign(dot(normal, v0)) * dot(normal, subtract(point, v0))
+        return height > 1e-9 * Math.hypot(...normal)
+      }),
+    ).length
+  const own_k_lattice = reciprocal_lattice(matrix, { two_pi: true })
+  expect(n_outside(compute_brillouin_zone(own_k_lattice, 1))).toBeGreaterThan(0)
+  const { children, rendered } = zone_probe()
+  const ibz_data = null as ComponentProps<typeof BrillouinZone>[`ibz_data`]
+  const props = $state({ structure, default_k_path: true, children, show_ibz: true, ibz_data })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  // the point group, carried into the primitive basis, still cuts the 1/48 wedge
+  await vi.waitFor(() => {
+    const zone = rendered()
+    const ibz_ratio = ((props.ibz_data?.volume ?? 0) * 48) / (zone?.volume ?? 1)
+    expect([zone && n_outside(zone), ibz_ratio]).toEqual([0, expect.closeTo(1, 9)])
+  })
 })

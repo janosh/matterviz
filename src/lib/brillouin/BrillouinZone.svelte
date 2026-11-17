@@ -43,8 +43,8 @@
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
-  import { high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
-  import { reciprocal_lattice } from '#lib/math.js'
+  import { type HighSymmKPath, high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
+  import { dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math.js'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
@@ -276,10 +276,13 @@
   // Zone derived from the structure at the current order. A caller-supplied `bz_data` (e.g.
   // pymatviz's `BrillouinZoneWidget(structure=..., bz_data=...)`) wins and is never written
   // back; without one the derived zone renders and follows structure/bz_order changes.
+  // With the default k-path shown, it is the zone of the path's primitive cell, so every path
+  // point lies on or inside it.
   const derived_bz = $derived.by((): { zone?: BrillouinZoneData; error?: string } => {
     const real = structure?.lattice?.matrix
     try {
-      const lattice = k_lattice ?? (real && reciprocal_lattice(real, { two_pi: true }))
+      const lattice =
+        path_k_lattice ?? k_lattice ?? (real && reciprocal_lattice(real, { two_pi: true }))
       if (!lattice) return {}
       return { zone: compute_brillouin_zone(lattice, clamp(bz_order, 1, 3) as 1 | 2 | 3) }
     } catch (err) {
@@ -331,28 +334,36 @@
     if (!show_ibz || !zone) return { data: null }
     if (`error` in symmetry) return failed(symmetry.error)
     if (!symmetry.data) return { data: null }
+    // rotations act on input-fractional coords, the default k-path's primitive cell (rows P)
+    // zone on x_prim = P⁻ᵀ·x_input
+    const prim = bz_data ? undefined : default_k_path_result.primitive
+    const prim_t = prim && transpose_3x3(prim)
+    const to_prim = (rot: Matrix3x3) =>
+      prim_t ? dot(dot(inverse_3x3(prim_t), rot), prim_t) : rot
     try {
-      return {
-        data: compute_irreducible_bz(zone, point_group_rotations(symmetry.data.operations)),
-      }
+      const rotations = point_group_rotations(symmetry.data.operations).map(to_prim)
+      return { data: compute_irreducible_bz(zone, rotations) }
     } catch (err) {
       return failed(err)
     }
   })
-  // The default k-path follows the structure (its reciprocal basis), not a caller's k_lattice
-  const default_k_path_result = $derived.by((): { data?: KPathData; error?: string } => {
+  // The default k-path follows the structure (its primitive cell), not a caller's k_lattice
+  type DefaultKPath = Partial<HighSymmKPath> & { data?: KPathData; error?: string }
+  const default_k_path_result = $derived.by((): DefaultKPath => {
     const lattice = structure?.lattice?.matrix
     const { data } = symmetry
     if (k_path || !default_k_path || !lattice || !(data || `error` in symmetry)) return {}
     try {
       if (!data) throw symmetry.error
-      const own_k_lattice = reciprocal_lattice(lattice, { two_pi: true })
-      return { data: kpath_to_k_path_data(high_symmetry_kpath(lattice, data), own_k_lattice) }
+      const kpath = high_symmetry_kpath(lattice, data)
+      return { ...kpath, data: kpath_to_k_path_data(kpath) }
     } catch (err) {
       return { error: `Default k-path failed: ${to_error(err).message}` }
     }
   })
   const shown_k_path = $derived(k_path ?? default_k_path_result.data)
+  // own derived: a new result without one must not re-derive (and re-report) the zone
+  const path_k_lattice = $derived(default_k_path_result.k_lattice)
 
   let ibz_error = $state<string | undefined>()
   $effect(() => {
