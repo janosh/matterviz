@@ -3,6 +3,7 @@
   // One draw call per visual class; instanceId maps pointer events back to atoms.
   import { AtomInstances, atom_sphere_segments, type InstancedAtom } from './atom-instances'
   import { AtomFieldMaterial, type AtomColorField } from './atom-color-field'
+  import { set_material_opacity } from './instance-colors'
   import { attribute, normalView, positionGeometry } from 'three/tsl'
   import { T, useTask, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
@@ -129,14 +130,7 @@
   })
 
   $effect(() => {
-    const alpha = opacity * (ghost ? 0.5 : 1)
-    const transparent = alpha < 1
-    if (material.transparent !== transparent) {
-      material.transparent = transparent
-      material.needsUpdate = true
-    }
-    material.opacity = alpha
-    material.visible = alpha > 0
+    set_material_opacity(material, opacity, ghost)
     invalidate()
   })
   $effect(() => {

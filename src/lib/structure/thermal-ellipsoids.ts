@@ -6,6 +6,8 @@ import type { Site } from './index'
 
 // Site property holding the Cartesian mean-square displacement tensor U (Å², symmetric 3x3)
 export const ADP_KEY = `adp_U_cart`
+// CIF's U_ij component order
+export const ADP_COMPONENTS = [`11`, `22`, `33`, `12`, `13`, `23`] as const
 
 export const site_adp = (site: Site | undefined): Matrix3x3 | undefined => {
   const value = site?.properties?.[ADP_KEY]

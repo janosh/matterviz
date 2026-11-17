@@ -4,6 +4,7 @@ import * as math from '#lib/math.js'
 import { mul_3x3_vec3, transpose_3x3 } from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { explicit_only } from '#lib/structure/bonding.js'
+import { structure_to_cif_str } from '#lib/structure/export.js'
 import {
   detect_structure_type,
   normalize_fractional_coords,
@@ -1178,6 +1179,33 @@ O2   O   0.410  0.140  0.880  1.000`
       const b_cif = u_cif.map((val) => 8 * Math.PI ** 2 * val)
       expect(max_abs_diff(read(`B`, b_cif), from_u)).toBeLessThan(1e-16)
       expect(max_abs_diff(read(`beta`, beta), from_u)).toBeLessThan(1e-16)
+      // a Uiso-only row is the isotropic Uiso·I (B_iso = 8π² Uiso likewise) in any cell
+      const iso = math.IDENTITY_3X3.map((row) => math.scale([...row], 0.02)) as Matrix3x3
+      for (const [kind, value] of Object.entries({ U: 0.02, B: 0.16 * Math.PI ** 2 })) {
+        const loop = `${site_loop}\n_atom_site_${kind}_iso_or_equiv\nFe1 Fe 0.1 0.2 0.3 ${value}`
+        const { sites } = parse_cif(`data_test\n${cell}\n${loop}`)
+        expect(max_abs_diff(sites[0].properties.adp_U_cart as Matrix3x3, iso)).toBeLessThan(
+          1e-16,
+        )
+      }
+    })
+
+    // export writes both back (the inverse transforms), so parse -> export -> parse keeps
+    // every symmetry image's Cartesian moment and U in an oblique cell
+    test(`moments and ADPs round-trip through CIF export`, () => {
+      const aniso = aniso_loop(`U`, `Fe1 0.011 0.022 0.033 0.004 -0.005 0.006`)
+      const loops = [aniso, `loop_`, ...moment_tags(`_`), `Fe1 1 -2 3`, `O1 0.5 0 0.25`]
+      const cell = cif_cell(5, 6, 7, [80, 100, 110])
+      const original = parse_cif(adp_cif(cell, loops.join(`\n`), [`x,y,z`, `-x,y,-z`]))
+      const reparsed = parse_cif(structure_to_cif_str(original))
+      for (const key of [`magmom`, `adp_U_cart`]) {
+        const [before, after] = [original, reparsed].map(({ sites }) =>
+          sites.flatMap((site) => [site.properties[key] ?? []].flat(2) as number[]),
+        )
+        expect(after).toHaveLength(before.length)
+        const max_diff = Math.max(...after.map((val, idx) => Math.abs(val - before[idx])))
+        expect(max_diff).toBeLessThan(1e-10) // measured ~1e-17
+      }
     })
 
     // riding hydrogens often carry `?` aniso values: that row is skipped, the rest still read

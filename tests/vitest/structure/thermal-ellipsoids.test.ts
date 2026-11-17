@@ -1,11 +1,13 @@
-import type { Matrix3x3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
+import { EllipsoidAtoms } from '#lib/structure/ellipsoid-atoms.js'
 import {
   chi3_cdf,
   ellipsoid_scale,
   symmetric_eigen_3x3,
   thermal_ellipsoid,
 } from '#lib/structure/thermal-ellipsoids.js'
+import { Color, InstancedMesh } from 'three/webgpu'
 import { describe, expect, test } from 'vite-plus/test'
 
 const max_abs_diff = (mat_a: Matrix3x3, mat_b: Matrix3x3): number =>
@@ -75,5 +77,23 @@ describe(`thermal ellipsoids`, () => {
     // oxfmt-ignore
     const adp: Matrix3x3 = [[0.01, 0, 0], [0, -0.002, 0], [0, 0, 0.03]]
     expect(thermal_ellipsoid(adp, 0.5)).toBeNull()
+  })
+
+  // edit-atoms mode's image atoms go to a ghost group: faded toward gray at half opacity
+  test(`EllipsoidAtoms ghost group fades colors and halves opacity`, () => {
+    const ellipsoid = math.IDENTITY_3X3.map((row) => math.scale([...row], 0.5)) as Matrix3x3
+    const atoms = [{ position: [0, 0, 0] as Vec3, radius: 1, color: `#ff0000`, ellipsoid }]
+    const [solid, ghost] = [false, true].map((is_ghost) => new EllipsoidAtoms(is_ghost))
+    const [red, faded] = [solid, ghost].map((group) => {
+      group.update(atoms, 8)
+      group.set_opacity(0.8)
+      const mesh = group.children.find((child) => child instanceof InstancedMesh)
+      if (!mesh) throw new Error(`expected an ellipsoid mesh`)
+      expect(mesh.material).toMatchObject({ opacity: group === ghost ? 0.4 : 0.8 })
+      return mesh.getColorAt(0, new Color()).toArray()
+    })
+    // instance colors are float32: |error| <= 6e-8 on channels <= 1, under closeTo's 5e-7
+    const expected = new Color().fromArray(red).lerp(new Color(0x999999), 0.4).toArray()
+    expect(faded).toEqual(expected.map((val) => expect.closeTo(val, 6)))
   })
 })

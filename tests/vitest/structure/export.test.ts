@@ -567,22 +567,25 @@ describe(`Export functionality`, () => {
     // CIF keeps only cell parameters, which readers rebuild as a right-handed cell, so a
     // left-handed lattice (det < 0) came back as its mirror image: the C->(H, F, Cl) triple
     // product flipped from +1.68 to -1.68 (pymatgen's CifWriter does the same). POSCAR and
-    // XYZ keep the matrix and +1.68.
+    // XYZ keep the matrix and +1.68. The C moment's projection on C->H (1) must survive too.
     it(`keeps the handedness of a left-handed lattice through CIF`, () => {
       const poscar = `left\n1.0\n0 6 0\n6 0 0\n0 0 6\nC H F Cl\n1 1 1 1\nCartesian\n0 0 0\n1 0 0\n0 1.2 0\n0 0 1.4`
       const original = parse_poscar(poscar)
       expect(math.det_3x3(original.lattice.matrix)).toBeCloseTo(-216, 10)
+      original.sites[0].properties.magmom = [1, 2, 3]
       // C->X minimum-image bond vectors, so wrapping a coordinate cannot move an atom
-      const triple_product = ({ sites, lattice }: typeof original): number => {
+      const invariants = ({ sites, lattice }: typeof original): number[] => {
         const [carbon, ...others] = sites.map((site) => site.abc)
         const [vec_h, vec_f, vec_cl] = others.map((abc) => {
           const delta = math.subtract(abc, carbon)
           const min_image = delta.map((coord) => coord - Math.round(coord)) as Vec3
           return math.mul_3x3_vec3(math.transpose_3x3(lattice.matrix), min_image)
         })
-        return math.dot(vec_h, math.cross_3d(vec_f, vec_cl))
+        const magmom = sites[0].properties.magmom as Vec3
+        return [math.dot(vec_h, math.cross_3d(vec_f, vec_cl)), math.dot(magmom, vec_h)]
       }
-      expect(triple_product(original)).toBeCloseTo(1.68, 12)
+      const close_to = (digits: number) => [1.68, 1].map((val) => expect.closeTo(val, digits))
+      expect(invariants(original)).toEqual(close_to(12))
       const exported = structure_to_cif_str(original)
       // the lattice matrix alone (no a/b/c/angles) is all the writer needs
       const matrix_only = { ...original, lattice: { matrix: original.lattice.matrix } }
@@ -590,7 +593,7 @@ describe(`Export functionality`, () => {
       const reparsed = parse_cif(exported)
       expect(math.det_3x3(reparsed.lattice.matrix)).toBeGreaterThan(0)
       // 8-decimal fractional coords in a 6 Å cell leave ~1e-8 Å per coordinate
-      expect(triple_product(reparsed)).toBeCloseTo(1.68, 6)
+      expect(invariants(reparsed)).toEqual(close_to(6))
     })
 
     describe(`disordered sites`, () => {

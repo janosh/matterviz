@@ -2,7 +2,7 @@ import { grow_capacity, same_position } from '#lib/math.js'
 import type { InstancedAtom } from './atom-instances'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
-import { set_instance_color } from './instance-colors'
+import { set_instance_color, set_material_opacity } from './instance-colors'
 import type { SliceGeometry } from './partial-occupancy'
 import {
   CircleGeometry,
@@ -115,11 +115,7 @@ export class PartialAtoms extends Group {
 
   set_opacity(opacity: number): void {
     for (const [idx, material] of this.materials.entries()) {
-      const alpha = opacity * (idx % 2 ? 0.5 : 1)
-      if (material.transparent !== alpha < 1) material.needsUpdate = true
-      material.transparent = alpha < 1
-      material.opacity = alpha
-      material.visible = alpha > 0
+      set_material_opacity(material, opacity, idx % 2 === 1)
     }
   }
 

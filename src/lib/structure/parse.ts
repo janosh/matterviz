@@ -54,7 +54,7 @@ import {
 } from '#lib/structure/parsers/vasp-header.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
-import { ADP_KEY } from '#lib/structure/thermal-ellipsoids.js'
+import { ADP_COMPONENTS, ADP_KEY } from '#lib/structure/thermal-ellipsoids.js'
 import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
@@ -447,7 +447,8 @@ const CIF_ATOM_SITE_FIELDS = [
   [`_atom_site_fract_x`, `x`], [`_atom_site_fract_y`, `y`], [`_atom_site_fract_z`, `z`],
   [`_atom_site_cartn_x`, `cart_x`], [`_atom_site_cartn_y`, `cart_y`], [`_atom_site_cartn_z`, `cart_z`],
   [`_atom_site_occupancy`, `occupancy`], [`_atom_site_disorder_group`, `disorder`],
-  [`_atom_site_disorder_assembly`, `assembly`],
+  [`_atom_site_disorder_assembly`, `assembly`], [`_atom_site_u_iso_or_equiv`, `u_iso`],
+  [`_atom_site_b_iso_or_equiv`, `b_iso`],
   [`_atom_site_label_comp_id`, `residue`], [`_atom_site_auth_comp_id`, `residue`],
   [`_atom_site_group_pdb`, `residue`],
 ]
@@ -485,6 +486,7 @@ type CifAtom = {
   occupancy: number
   type_symbol?: string // the raw _atom_site_type_symbol, keys the _atom_type oxidation loop
   oxidation_state?: number // from a charged type symbol (`Fe2+`) or the _atom_type loop
+  u_iso?: number // isotropic ADP (Å²): _atom_site_U_iso_or_equiv, else B_iso / 8π²
 }
 
 // CIF labels (and the odd type symbol) naming water, deuterium or a polyatomic group, mapped
@@ -612,7 +614,9 @@ const parse_cif_atom_data = (
   coord_indices: number[],
   atom_idx: number,
 ): CifAtom => {
-  const { label, symbol = -1, occupancy: occu_idx = -1 } = indices
+  const { label, symbol = -1 } = indices
+  const number_at = (idx?: number): number | null =>
+    idx !== undefined && raw_data[idx] ? parse_cif_uncertain_number(raw_data[idx]) : null
 
   const coords = vec3_from_values(
     coord_indices.map((idx) => {
@@ -626,10 +630,9 @@ const parse_cif_atom_data = (
   )
 
   // Explicit 0 is kept; missing / `.` / `?` (null) default to fully occupied.
-  const occupancy =
-    (occu_idx >= 0 && raw_data[occu_idx]
-      ? parse_cif_uncertain_number(raw_data[occu_idx])
-      : null) ?? 1
+  const occupancy = number_at(indices.occupancy) ?? 1
+  const u_iso =
+    number_at(indices.u_iso) ?? (number_at(indices.b_iso) ?? NaN) / (8 * Math.PI ** 2)
 
   // unset placeholders (unquoted `.`/`?`) are undefined, so an unset type symbol leaves the
   // label's element to key the _atom_type oxidation lookup
@@ -643,7 +646,7 @@ const parse_cif_atom_data = (
   )
   const id = raw_label === `` ? undefined : raw_label
   const oxidation_state = cif_type_symbol_oxidation(type_symbol)
-  return { id, element, ambiguity, coords, occupancy, type_symbol, oxidation_state }
+  return { id, element, ambiguity, coords, occupancy, type_symbol, oxidation_state, u_iso }
 }
 
 // A centering translation applied on top of every symmetry op; time_reversal -1 marks an
@@ -809,7 +812,6 @@ const cif_moments = (lines: string[]): Map<string, Vec3> => {
 // U* = N U N (N = diag(a*, b*, c*)), so the Cartesian tensor of a site is A U* A^T with A's
 // columns the lattice vectors, and a symmetry op W (fractional) maps U* to W U* W^T. Reads
 // the first of the _atom_site_aniso_U_ij, _B_ij (B = 8π² U) or _beta_ij (β = 2π² U*) loops.
-const ADP_COMPONENTS = [`11`, `22`, `33`, `12`, `13`, `23`] as const
 // oxfmt-ignore
 const ADP_TENSOR_IDX = [[0, 3, 4], [3, 1, 5], [4, 5, 2]] // ADP_COMPONENTS index of each U_ij
 const ADP_KINDS = [
@@ -996,7 +998,9 @@ export const parse_cif = (content: string): Crystal => {
   // floor(k / n_shifts), centering k % n_shifts, see apply_symmetry_ops). A fractional
   // displacement maps as W d, so with A's columns the lattice vectors, (A W) takes the row's
   // fractional-basis vector or tensor to Cartesian: U_cart = (A W) U* (A W)^T. Moments are
-  // axial, so they also pick up det(W) and the op's (and centering's) time reversal.
+  // axial, so they also pick up det(W) and the op's (and centering's) time reversal. A
+  // Uiso-only row gets the isotropic U_cart = Uiso·I, i.e. U* = Uiso·G⁻¹ (G = A^T A, the
+  // metric tensor), which every image keeps.
   const moments = cif_moments(block_lines)
   const reciprocal_lengths = math
     .reciprocal_lattice(lattice_matrix)
@@ -1011,11 +1015,16 @@ export const parse_cif = (content: string): Crystal => {
   )
   const axis_lengths: Vec3 = [lattice_a, lattice_b, lattice_c]
   // a row's moment as lattice-basis components (μB along a/|a| is 1/|a| of a), its U* as is
-  const row_data = atoms.map(({ id = `` }) => ({
+  const inv_metric = math.inverse_3x3(math.dot(lattice_matrix, lattice_columns))
+  const row_data = atoms.map(({ id = ``, u_iso = NaN }) => ({
     moment: moments.get(id)?.map((comp, axis) => comp / axis_lengths[axis]) as
       | Vec3
       | undefined,
-    adp: adps.get(id),
+    adp:
+      adps.get(id) ??
+      (u_iso > 0
+        ? (inv_metric.map((row) => math.scale(row, u_iso)) as math.Matrix3x3)
+        : undefined),
   }))
   const atom_ids = new Set(atoms.map(({ id }) => id))
   const unmatched = new Set(

@@ -13,6 +13,7 @@ import { get_element_counts } from './density'
 import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
 import { structure_json_data } from './site'
+import { ADP_COMPONENTS, site_adp } from './thermal-ellipsoids'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
 // underscore runs condensed, no leading or trailing underscore
@@ -497,6 +498,41 @@ export function structure_to_cif_str(input?: AnyStructure): string {
       lines.push(`${cif_token(label)} ${symbol} ${coords_str} ${occu}`)
     }
   }
+
+  // mCIF moments (μB along a/|a|, b/|b|, c/|c|) and U_ij ADPs (Å²), inverting parse_cif's
+  // reads: lattice-basis components f = cart_to_frac(m), and U_ij = ê*_i · U ê*_j with ê*_i
+  // the unit reciprocal vectors (U* = N⁻¹ A⁻¹ U A⁻ᵀ N⁻¹, A⁻¹'s rows being a*, b*, c*). The
+  // (-a, -b, -c) basis of a left-handed lattice negates f and keeps U.
+  const site_loop = (tags: string[], values_of: (site: Site) => number[] | null) => {
+    const rows = structure.sites.flatMap((site, idx) => {
+      const values = values_of(site)
+      return values ? [`${cif_token(site_labels[idx])} ${values.join(` `)}`] : []
+    })
+    if (rows.length > 0) lines.push(``, `loop_`, ...tags, ...rows)
+  }
+  const lengths = [params.a, params.b, params.c].map((len) => (left_handed ? -len : len))
+  const moment_keys = [`label`, `crystalaxis_x`, `crystalaxis_y`, `crystalaxis_z`]
+  site_loop(
+    moment_keys.map((key) => `_atom_site_moment_${key}`),
+    ({ properties: { magmom } }) =>
+      math.is_finite_vec3(magmom)
+        ? cart_to_frac(magmom).map((comp, axis) => comp * lengths[axis])
+        : null,
+  )
+  site_loop(
+    [`_atom_site_aniso_label`, ...ADP_COMPONENTS.map((ij) => `_atom_site_aniso_U_${ij}`)],
+    (site) => {
+      const adp = site_adp(site)
+      if (!adp) return null
+      const units = math
+        .reciprocal_lattice(lattice.matrix)
+        .map((vec) => math.normalize_vec(vec))
+      const along = (axis: string) => units[Number(axis) - 1]
+      return ADP_COMPONENTS.map(([row, col]) =>
+        math.dot(along(row), math.mul_3x3_vec3(adp, along(col))),
+      )
+    },
+  )
 
   return lines.join(`\n`)
 }

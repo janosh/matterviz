@@ -6,7 +6,7 @@ import { grow_capacity } from '#lib/math.js'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import type { InstancedAtom } from './atom-instances'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
-import { set_instance_color } from './instance-colors'
+import { set_instance_color, set_material_opacity } from './instance-colors'
 import {
   Color,
   DynamicDrawUsage,
@@ -24,8 +24,12 @@ const color = new Color()
 const matrix = new Matrix4()
 
 // Picks and reports instanceId as the index into the atoms passed to update, like the sphere
-// meshes, so the scene's per-mesh pointer handlers resolve sites the same way
+// meshes, so the scene's per-mesh pointer handlers resolve sites the same way. A `ghost` group
+// draws edit-atoms mode's image atoms faded and at half opacity, like the image spheres.
 export class EllipsoidAtoms extends Group {
+  constructor(private readonly ghost = false) {
+    super()
+  }
   private mesh: InstancedMesh | null = null
   private segments = 0
   private readonly material = new MeshStandardNodeMaterial()
@@ -64,7 +68,7 @@ export class EllipsoidAtoms extends Group {
         0, 0, 0, 1,
       )
       mesh.setMatrixAt(slot, matrix)
-      set_instance_color(color, css ?? `#999999`)
+      set_instance_color(color, css ?? `#999999`, this.ghost)
       if (color_field) atom_field_color(color_field, position, color)
       mesh.setColorAt(slot, color) // allocates instanceColor before the first render
     }
@@ -74,11 +78,7 @@ export class EllipsoidAtoms extends Group {
   }
 
   set_opacity(opacity: number): void {
-    const { material } = this
-    if (material.transparent !== opacity < 1) material.needsUpdate = true
-    material.transparent = opacity < 1
-    material.opacity = opacity
-    material.visible = opacity > 0
+    set_material_opacity(this.material, opacity, this.ghost)
   }
 
   dispose(): void {
