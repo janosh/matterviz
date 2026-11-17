@@ -736,11 +736,7 @@ function symmetry_tiling(
     unavailable_reason: `Symmetry overlay for tiling ${counts.join(`x`)} ${reason}. Reduce the supercell or hide element kinds.`,
   })
   if (!counts.every(Number.isFinite)) return unavailable(`needs finite repeat counts`)
-  if (
-    !elements.length ||
-    (is_identity(supercell) && elements.length <= MAX_TILED_SYM_ELEMENTS)
-  )
-    return { elements, unavailable_reason: null }
+  if (!elements.length) return { elements, unavailable_reason: null }
   // x · M⁻¹ as integer numerators (of det · M⁻¹) over det, exact like a plain division
   // for a diagonal M; an offset is reduced by the whole supercells it spans, so the
   // supercell holds every image of a center inside the input cell (others stay outside)
@@ -803,11 +799,17 @@ function symmetry_tiling(
     return shift_count(first) * shift_count(second)
   }
   const attempts = elements.map(clip_attempts)
+  const total_attempts = attempts.reduce((sum, val) => sum + val, 0)
+  // an already-sheared input cell can hand over costly families even without a supercell
+  if (is_identity(supercell) && elements.length <= MAX_TILED_SYM_ELEMENTS)
+    return total_attempts <= MAX_CLIP_ATTEMPTS
+      ? { elements, unavailable_reason: null }
+      : unavailable(`exceeds the axis and plane clipping work limit`)
   // Below these upper bounds, none of the element, traversal or clipping caps can be hit.
   if (
     !collect_elements &&
     elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS &&
-    attempts.reduce((sum, val) => sum + val, 0) * n_tiles <= MAX_CLIP_ATTEMPTS
+    total_attempts * n_tiles <= MAX_CLIP_ATTEMPTS
   )
     return { elements: [], unavailable_reason: null }
   const tiled: SymmetryElement[] = []

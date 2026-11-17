@@ -880,6 +880,12 @@ describe(`tile_symmetry_elements`, () => {
         unavailable_reason: expect.stringContaining(clip_limit),
       })
     }
+    // an already-sheared input cell hands over such an axis directly: no supercell, still refused
+    const sheared_axis = { ...two_fold, axis: [1, -wrap_n, wrap_n ** 2] } as SymmetryElement
+    expect(tile_symmetry_elements([sheared_axis], math.IDENTITY_3X3)).toMatchObject({
+      elements: [],
+      unavailable_reason: expect.stringContaining(clip_limit),
+    })
     // det 1, though its Number products N² and N² - 1 both round to 10000000200000000
     const det_n = 100_000_001
     // oxfmt-ignore
