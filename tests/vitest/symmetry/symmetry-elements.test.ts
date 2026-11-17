@@ -3,6 +3,7 @@
 
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
+import { diagonal_matrix } from '#lib/structure/supercell.js'
 import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
 import {
   classify_symmetry_op,
@@ -641,6 +642,11 @@ describe(`dash_segments`, () => {
 })
 
 describe(`tile_symmetry_elements`, () => {
+  // diagonal supercells as per-axis tile counts
+  const tile = (elements: SymmetryElement[], counts: Vec3) =>
+    tile_symmetry_elements(elements, diagonal_matrix(counts))
+  const tiling_reason = (elements: SymmetryElement[], counts: Vec3) =>
+    symmetry_tiling_reason(elements, diagonal_matrix(counts))
   const cell = cubic_matrix(4)
   const mirror: SymmetryElement = {
     kind: `mirror`,
@@ -671,9 +677,9 @@ describe(`tile_symmetry_elements`, () => {
     [Infinity, 1, 1],
   ] as Vec3[])(`preflights %s,%s,%s without allocating translated elements`, (...tiling) => {
     const elements = [mirror, screw]
-    const expected = tile_symmetry_elements(elements, tiling).unavailable_reason
+    const expected = tile(elements, tiling).unavailable_reason
     expect(
-      symmetry_tiling_reason(
+      tiling_reason(
         elements.map((element) => ({
           ...element,
           get point(): Vec3 {
@@ -689,11 +695,11 @@ describe(`tile_symmetry_elements`, () => {
 
   test(`repeats each element per tile at unchanged Cartesian positions`, () => {
     const elements = [mirror, screw]
-    expect(tile_symmetry_elements(elements, [1, 1, 1]).elements).toBe(elements)
+    expect(tile(elements, [1, 1, 1]).elements).toBe(elements)
     const tiling: Vec3 = [2, 1, 3]
     const block = math.scale_lattice_matrix(cell, tiling)
     // Along-plane/axis translations must not add coincident geometry.
-    const tiled = tile_symmetry_elements([mirror, screw], tiling).elements
+    const tiled = tile([mirror, screw], tiling).elements
     expect(tiled.filter((copy) => copy.locus === mirror.locus)).toHaveLength(2)
     expect(tiled.filter((copy) => copy.locus === screw.locus)).toHaveLength(2)
 
@@ -712,8 +718,8 @@ describe(`tile_symmetry_elements`, () => {
       .toSorted((one, two) => one - two)
     expect(mirror_x.map((coord) => Number(coord.toFixed(9)))).toEqual([1, 5])
     // the screw line runs along c, so tiling along c alone adds nothing
-    expect(tile_symmetry_elements([screw], [1, 1, 4]).elements).toHaveLength(1)
-    expect(tile_symmetry_elements([mirror], [1, 4, 4]).elements).toHaveLength(1)
+    expect(tile([screw], [1, 1, 4]).elements).toHaveLength(1)
+    expect(tile([mirror], [1, 4, 4]).elements).toHaveLength(1)
 
     // Cartesian screw/glide translations survive the basis change.
     for (const copy of tiled) {
@@ -725,7 +731,7 @@ describe(`tile_symmetry_elements`, () => {
     }
     // while directions stay primitive integer vectors for the family clippers
     const oblique: SymmetryElement = { ...mirror, axis: [1, 1, 0], plane_normal: [1, 1, 0] }
-    expect(tile_symmetry_elements([oblique], tiling).elements[0]).toMatchObject({
+    expect(tile([oblique], tiling).elements[0]).toMatchObject({
       axis: [1, 2, 0],
       plane_normal: [2, 1, 0],
     })
@@ -740,7 +746,7 @@ describe(`tile_symmetry_elements`, () => {
     ]
     // Cartesian normal along x: direction [1, 0, 0], plane (2 -1 0) in this cell
     const mirror_x: SymmetryElement = { ...mirror, plane_normal: [2, -1, 0], point: [0, 0, 0] }
-    const tiled = tile_symmetry_elements([mirror_x], [1, 2, 1]).elements
+    const tiled = tile([mirror_x], [1, 2, 1]).elements
     expect(tiled).toHaveLength(2)
     // the two planes really do sit at different distances along the normal
     const block = math.scale_lattice_matrix(hexagonal, [1, 2, 1])
@@ -748,9 +754,9 @@ describe(`tile_symmetry_elements`, () => {
     const offsets = tiled.map((copy) => to_cart(copy.point)[0])
     expect(Math.abs(offsets[0] - offsets[1])).toBeCloseTo(1.5, 9)
     // while a translation that genuinely lies in the plane still dedups away
-    expect(tile_symmetry_elements([mirror_x], [1, 1, 3]).elements).toHaveLength(1)
+    expect(tile([mirror_x], [1, 1, 3]).elements).toHaveLength(1)
     const planes: SymmetryElement[] = [mirror, { ...mirror, kind: `glide`, label: `g` }]
-    expect(tile_symmetry_elements(planes, [1, 1e9, 1e9])).toEqual({
+    expect(tile(planes, [1, 1e9, 1e9])).toEqual({
       elements: planes,
       unavailable_reason: null,
     })
@@ -768,40 +774,37 @@ describe(`tile_symmetry_elements`, () => {
       locus: `line-z`,
     }
     const roto: SymmetryElement = { ...rotation, kind: `rotoinversion`, label: `-4` }
-    expect(tile_symmetry_elements([rotation], [1, 1, 3]).elements).toHaveLength(1)
-    expect(tile_symmetry_elements([roto], [1, 1, 3]).elements).toHaveLength(3)
+    expect(tile([rotation], [1, 1, 3]).elements).toHaveLength(1)
+    expect(tile([roto], [1, 1, 3]).elements).toHaveLength(3)
     const centers = [roto, { ...roto, point: [0, 0, 0.5] as Vec3 }]
-    expect(
-      tile_symmetry_elements(centers, [1, 1, 3]).elements.map(({ point }) => point[2]),
-    ).toEqual([0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6])
+    const center_z = tile(centers, [1, 1, 3]).elements.map(({ point }) => point[2])
+    expect(center_z).toEqual([0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6])
     // Custom source centers outside the unit cell remain outside it; coincident copies dedup.
     expect(
-      tile_symmetry_elements([roto, { ...roto, point: [0, 0, 1] }], [1, 1, 2]).elements.map(
+      tile([roto, { ...roto, point: [0, 0, 1] }], [1, 1, 2]).elements.map(
         ({ point }) => point[2],
       ),
     ).toEqual([0, 0.5, 1])
     // and the two never collapse into each other despite sharing a locus
-    expect(tile_symmetry_elements([rotation, roto], [1, 1, 2]).elements).toHaveLength(3)
+    expect(tile([rotation, roto], [1, 1, 2]).elements).toHaveLength(3)
   })
 
   test(`deduplicates before enforcing the cap and refuses oversized overlays`, () => {
     const many = Array.from({ length: 200 }, (_, idx) => ({ ...mirror, locus: `m-${idx}` }))
     expect(many.length * 64).toBeGreaterThan(MAX_TILED_SYM_ELEMENTS)
-    expect(tile_symmetry_elements(many, [4, 4, 4]).elements).toHaveLength(800)
-    expect(tile_symmetry_elements(many, [2, 1, 1]).elements).toHaveLength(400)
-    expect(tile_symmetry_elements(many, [20, 1, 1]).elements).toHaveLength(
-      MAX_TILED_SYM_ELEMENTS,
-    )
-    const refused = tile_symmetry_elements(many, [21, 1, 1])
+    expect(tile(many, [4, 4, 4]).elements).toHaveLength(800)
+    expect(tile(many, [2, 1, 1]).elements).toHaveLength(400)
+    expect(tile(many, [20, 1, 1]).elements).toHaveLength(MAX_TILED_SYM_ELEMENTS)
+    const refused = tile(many, [21, 1, 1])
     expect(refused.elements).toEqual([])
     expect(refused.unavailable_reason).toContain(
       `exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`,
     )
-    expect(tile_symmetry_elements([], [1e9, 1e9, 1e9]).elements).toEqual([])
-    expect(tile_symmetry_elements([mirror], [1, 1e9, 1e9]).elements).toHaveLength(1)
-    expect(tile_symmetry_elements([screw], [1, 1, 1e9]).elements).toHaveLength(1)
+    expect(tile([], [1e9, 1e9, 1e9]).elements).toEqual([])
+    expect(tile([mirror], [1, 1e9, 1e9]).elements).toHaveLength(1)
+    expect(tile([screw], [1, 1, 1e9]).elements).toHaveLength(1)
     const diagonal: SymmetryElement = { ...mirror, axis: [1, 1, 1], plane_normal: [1, 1, 1] }
-    expect(tile_symmetry_elements([diagonal], [100, 100, 100]).elements).toHaveLength(298)
+    expect(tile([diagonal], [100, 100, 100]).elements).toHaveLength(298)
   })
 
   test(`treats a null axis (inversion centre) and fractional counts safely`, () => {
@@ -815,10 +818,22 @@ describe(`tile_symmetry_elements`, () => {
       translation: null,
       locus: `inv`,
     }
-    const tiled = tile_symmetry_elements([centre], [2, 1, 1]).elements
+    const tiled = tile([centre], [2, 1, 1]).elements
     expect(tiled.map((copy) => copy.axis)).toEqual([null, null])
     expect(tiled.map((copy) => copy.point[0])).toEqual([0, 0.5])
-    expect(tile_symmetry_elements([centre], [0.5, 1, 1]).elements).toEqual([centre])
+    expect(tile([centre], [0.5, 1, 1]).elements).toEqual([centre])
+    // a sheared det-2 supercell holds base cells 0 and b, whose centre (0, 1, 0) · M⁻¹ lands
+    // at (½, ½, 0); a mirror ⟂ a becomes the (1 -1 0) plane of the supercell basis
+    // oxfmt-ignore
+    const sheared: Matrix3x3 = [[1, 1, 0], [-1, 1, 0], [0, 0, 1]]
+    const centres = tile_symmetry_elements([centre], sheared).elements
+    expect(centres.map(({ point }) => point)).toEqual([
+      [0, 0, 0],
+      [0.5, 0.5, 0],
+    ])
+    const mirror_a = { ...centre, kind: `mirror`, plane_normal: [1, 0, 0] } as SymmetryElement
+    const [plane] = tile_symmetry_elements([mirror_a], sheared).elements
+    expect(plane.plane_normal).toEqual([1, -1, 0])
   })
 })
 

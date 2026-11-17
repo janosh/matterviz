@@ -362,7 +362,7 @@
     symmetry_elements?: SymmetryElement[]
     symmetry_elements_props?: Omit<
       ComponentProps<typeof SymmetryElements>,
-      `elements` | `lattice` | `tiling`
+      `elements` | `lattice` | `supercell`
     >
     // While symmetry elements show, hide polyhedra and computed bonds and shrink atoms so
     // axes/planes/centers stay readable (derived: hiding the overlay restores the rest)
@@ -818,8 +818,9 @@
   let visual_lattice = $derived(
     base_structure && `lattice` in base_structure ? base_structure.lattice : lattice,
   )
-  // Whole base cells along a/b/c of a diagonal supercell. A non-diagonal one tiles no box of
-  // them, so tiled overlays stay in one base cell and the outline follows the supercell.
+  // Whole base cells along a/b/c of a diagonal supercell, whose cell grid Lattice draws. A
+  // non-diagonal one tiles no box of them, so its outline follows the supercell instead.
+  // Isosurfaces, color fields and symmetry elements span any supercell_matrix themselves.
   const supercell_tiling: Vec3 = $derived(diagonal_scaling(supercell_matrix) ?? [1, 1, 1])
   const cell_lattice = $derived(diagonal_scaling(supercell_matrix) ? visual_lattice : lattice)
 
@@ -1789,7 +1790,7 @@
           <SymmetryElements
             elements={symmetry_elements}
             lattice={visual_lattice.matrix}
-            tiling={supercell_tiling}
+            supercell={supercell_matrix}
             {...symmetry_elements_props}
           />
         {/if}
@@ -1883,7 +1884,7 @@
         <Isosurface
           volumes={volumetric_data}
           settings={isosurface_settings}
-          tiling={supercell_tiling}
+          supercell={supercell_matrix}
           bind:building={isosurfaces_building}
         />
       {/if}
@@ -1895,7 +1896,7 @@
           field={volume_color_field}
           opacity={volume_opacity}
           {cutaway}
-          tiling={supercell_tiling}
+          supercell={supercell_matrix}
         />
       </T.Group>
     {/if}

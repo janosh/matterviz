@@ -3,6 +3,7 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import LatticePlanes from '#lib/structure/LatticePlanes.svelte'
+import { diagonal_matrix } from '#lib/structure/supercell.js'
 import Lattice from '#lib/structure/Lattice.svelte'
 import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
 import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
@@ -133,11 +134,11 @@ test(`cell arrows keep slender proportions as the lattice changes size`, () => {
 
 test.each([
   [[1, 1, 1], false],
-  [[0.5, -1, 1.9], false],
   [[2, 1, 1], true],
 ] as [Vec3, boolean][])(
-  `symmetry overlays normalize %j, explain oversized tiling, and recover (shared=%s)`,
-  async (tiling, shared) => {
+  `symmetry overlays tile %j, explain oversized supercells, and recover (shared=%s)`,
+  async (counts, shared) => {
+    const supercell = diagonal_matrix(counts)
     const read_point = vi.fn((): Vec3 => [0, 0, 0])
     const element: SymmetryElement = {
       kind: `rotation`,
@@ -167,15 +168,15 @@ test.each([
     const props = $state({
       elements,
       lattice: structuredClone(cubic),
-      tiling,
+      supercell,
       show_kinds,
-      tiling_result: shared ? tile_symmetry_elements(elements, tiling) : undefined,
+      tiling_result: shared ? tile_symmetry_elements(elements, supercell) : undefined,
     })
     const update = () => {
       if (shared)
         props.tiling_result = tile_symmetry_elements(
           props.elements.filter((item) => props.show_kinds[item.kind]),
-          props.tiling,
+          props.supercell,
         )
       flushSync()
     }
@@ -209,7 +210,7 @@ test.each([
     geometry.computeBoundingBox()
     expect(geometry.boundingBox?.max.z).toBe(4)
     props.lattice = structuredClone(cubic)
-    props.tiling = [...tiling]
+    props.supercell = structuredClone(supercell)
     props.elements = structuredClone($state.snapshot(props.elements))
     props.show_kinds = { ...props.show_kinds }
     update()
@@ -269,14 +270,14 @@ test.each([
       threlte_stub.nodes.find((node) => node.tag === `MeshStandardMaterial`)?.props.color,
     ).toBe(SYM_ELEM_COLORS.axis_by_order[6])
     const resized_disposed = geometries().map((item) => vi.spyOn(item, `dispose`))
-    props.tiling = [4001, 1, 1]
+    props.supercell = diagonal_matrix([4001, 1, 1])
     update()
     expect(document.querySelector(`[role="status"]`)?.textContent).toContain(
       `exceeds 4000 unique elements`,
     )
     expect(threlte_stub.nodes.filter((node) => node.props.geometry)).toHaveLength(0)
     expect(resized_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1, 1])
-    props.tiling = [1, 1, 1]
+    props.supercell = math.IDENTITY_3X3
     update()
     expect(document.querySelector(`[role="status"]`)).toBeNull()
     expect(geometries()).toHaveLength(4)
@@ -297,7 +298,7 @@ test.each([
     }
     props.elements = [{ ...element, kind: `rotoinversion`, order: 4, label: `-4` }]
     props.show_kinds = { rotoinversion: true }
-    props.tiling = [1, 1, 3]
+    props.supercell = diagonal_matrix([1, 1, 3])
     update()
     expect(recovered_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1, 1])
     expect(geometries()).toHaveLength(1)
@@ -343,7 +344,8 @@ test(`draws each tiled plane once`, () => {
     translation: null,
   }
   const show_kinds = { mirror: true }
-  const props = { elements: [plane], lattice: cubic, tiling: [2, 1, 1] as Vec3, show_kinds }
+  const supercell = diagonal_matrix([2, 1, 1])
+  const props = { elements: [plane], lattice: cubic, supercell, show_kinds }
   const component = mount(SymmetryElements, { target: document.body, props })
   teardown = () => void unmount(component)
   flushSync()

@@ -10,6 +10,10 @@ import type {
 } from '#lib/isosurface/types.js'
 import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
 import type * as worker_client from '#lib/worker-client.svelte.js'
+import { parse_supercell_matrix } from '#lib/structure/supercell.js'
+import { compute_isosurface_geometries } from '#lib/isosurface/geometry.js'
+import { type DisplayRange, prepare_geometry_grid } from '#lib/isosurface/sampling.js'
+import type { Vec3 } from '#lib/math.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -76,6 +80,7 @@ type Props = {
   settings: IsosurfaceSettings
   on_error?: (message: string) => void
   building?: boolean
+  supercell?: ReturnType<typeof parse_supercell_matrix>
 }
 let teardown: (() => void) | undefined
 
@@ -224,6 +229,27 @@ describe(`Isosurface`, () => {
       .toSorted((idx_a, idx_b) => x_of(idx_a) - x_of(idx_b))
       .map((idx) => materials()[idx].props.color)
     expect(colors).toEqual(expected_colors)
+  })
+
+  // A diagonal supercell extracts main's one tiled window (halo around the whole block); any
+  // other draws unpadded one-cell copies at t·L ((0, 1, 0) · M⁻¹ = (½, ½, 0) here), so a
+  // halo never double-draws the faces copies share
+  // oxfmt-ignore
+  test.each([
+    [`2 1 1`, [[-0.1, 2.1], [-0.1, 1.1], [-0.1, 1.1]], [[0, 0, 0]]],
+    [`1 1 0 -1 1 0 0 0 1`, [[0, 1], [0, 1], [0, 1]], [[0, 0, 0], [0, 5, 0]]],
+  ] as [string, DisplayRange, Vec3[]][])(`supercell %s extracts %j at %j`, async (scaling, range, offsets) => {
+    // isovalue 0.001 crosses the cell faces (the blob is ~0.002 there), so padding shows
+    const volume = positive_volume()
+    const settings = with_layers([layer(0.001, { opacity: 1 })], { halo: 0.1 })
+    mount_isosurface({ volumes: [volume], settings, supercell: parse_supercell_matrix(scaling) })
+    await settle()
+    const job = { ...prepare_geometry_grid(volume, range), surfaces: [{ token: ``, isovalue: 0.001 }] }
+    const [{ positions }] = compute_isosurface_geometries({ volumes: [job] }).surfaces
+    const drawn = meshes().map((node) => geometry_of(node).getAttribute(`position`).array)
+    expect(drawn).toEqual(offsets.map(() => positions))
+    const groups = threlte_stub.nodes.filter((node) => node.tag === `Group`)
+    expect(groups.map(({ props }) => props.position)).toEqual(offsets)
   })
 
   test(`layers skip missing volume IDs without retargeting`, async () => {

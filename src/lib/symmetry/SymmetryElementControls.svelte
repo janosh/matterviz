@@ -6,7 +6,8 @@ only drawn while the viewer renders the analyzed (input) cell; pass `in_input_fr
 while a conventional/primitive cell is shown to disable the toggles and say why. -->
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import type { Matrix3x3 } from '#lib/math.js'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     count_symmetry_elements,
@@ -22,7 +23,7 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
     elements = [],
     show_kinds = $bindable({ ...DEFAULT_SHOW_SYM_KINDS }),
     in_input_frame = true,
-    tiling = [1, 1, 1],
+    supercell = math.IDENTITY_3X3,
     tiling_result,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -30,7 +31,7 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
     show_kinds?: ShowSymmetryKinds
     // Whether the viewer currently renders the original (input) cell the elements belong to
     in_input_frame?: boolean
-    tiling?: Vec3
+    supercell?: Matrix3x3 // integer supercell matrix the overlay tiles over
     // Share the selected overlay with the renderer when both use the same inputs.
     tiling_result?: ReturnType<typeof tile_symmetry_elements>
   } = $props()
@@ -43,7 +44,7 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
       ? tiling_result.unavailable_reason
       : symmetry_tiling_reason(
           elements.filter((element) => show_kinds[element.kind]),
-          tiling,
+          supercell,
         ),
   )
   const reasons = $derived(
@@ -58,7 +59,7 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
                 elements.filter(
                   (element) => show_kinds[element.kind] || element.kind === kind,
                 ),
-                tiling,
+                supercell,
               ),
       ]),
     ),

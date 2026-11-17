@@ -3,7 +3,7 @@
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
   import type { AnyStructure, StructureSettings } from '#lib/structure/index.js'
-  import { is_crystal, parse_supercell_scaling, Structure } from '#lib/structure/index.js'
+  import { is_crystal, parse_supercell_matrix, Structure } from '#lib/structure/index.js'
   import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '#lib/symmetry/index.js'
   import {
     DEFAULT_SHOW_SYM_KINDS,
@@ -72,12 +72,12 @@
       : [],
   )
 
-  const sym_tiling = $derived(parse_supercell_scaling(top_ex_tiling))
+  const sym_supercell = $derived(parse_supercell_matrix(top_ex_tiling))
   const sym_tiling_result = $derived(
     is_crystal(top_ex_structure) && top_ex_cell_type === `original`
       ? tile_symmetry_elements(
           sym_elements.filter((element) => show_sym_kinds[element.kind]),
-          sym_tiling,
+          sym_supercell,
         )
       : undefined,
   )
@@ -155,7 +155,7 @@
           elements={sym_elements}
           bind:show_kinds={show_sym_kinds}
           in_input_frame={top_ex_cell_type === `original`}
-          tiling={sym_tiling}
+          supercell={sym_supercell}
           tiling_result={sym_tiling_result}
           style="margin: 0.5em 0 0 1.5em"
         />

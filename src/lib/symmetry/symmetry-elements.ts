@@ -686,15 +686,35 @@ const tiled_element_key = (element: SymmetryElement) => {
   return { identity, key, changes }
 }
 
-// Translate elements through the block, then divide coordinates/directions by tile counts
-// to express them in the block basis. Deduplicate after each axis to avoid walking every tile.
+// Integer rows reduced (by Euclid row operations) to an upper-triangular basis of the same
+// lattice: the box ∏[0, |H_ii|) of integer vectors is then one set of coset representatives
+// of ℤ³ modulo the lattice, i.e. the cells a supercell M (any integer matrix) holds
+const triangular_basis = (matrix: Matrix3x3): number[][] => {
+  const rows = matrix.map((row) => [...row])
+  for (let col = 0; col < 3; col++) {
+    for (let row = col + 1; row < 3; row++) {
+      while (rows[row][col] !== 0) {
+        const quotient = Math.trunc(rows[col][col] / rows[row][col])
+        rows[col] = rows[col].map((val, idx) => val - quotient * rows[row][idx])
+        ;[rows[col], rows[row]] = [rows[row], rows[col]]
+      }
+    }
+  }
+  return rows
+}
+
+// Translate elements through the supercell M's cells, then map coordinates/directions by M⁻¹
+// into the supercell basis (centers wrapped into it; lines and planes are drawn as families
+// of supercell translates anyway). Deduplicate after each axis to avoid walking every tile.
 // Refusal returns a visible reason, never a partial overlay or a render-time exception.
 function symmetry_tiling(
   elements: SymmetryElement[],
-  tiling: Vec3,
+  supercell: Matrix3x3,
   collect_elements: boolean,
 ): { elements: SymmetryElement[]; unavailable_reason: string | null } {
-  const counts = whole_tile_counts(tiling)
+  const counts = whole_tile_counts(
+    triangular_basis(supercell).map((row, idx) => Math.abs(row[idx])) as Vec3,
+  )
   const n_tiles = counts[0] * counts[1] * counts[2]
   const unavailable = (reason: string) => ({
     elements: [],
@@ -706,24 +726,33 @@ function symmetry_tiling(
   // Below this upper bound, neither the element cap nor the traversal cap can be hit.
   if (!collect_elements && elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS)
     return { elements: [], unavailable_reason: null }
-  const shrink = (vec: Vec3): Vec3 => [
-    vec[0] / counts[0],
-    vec[1] / counts[1],
-    vec[2] / counts[2],
-  ]
+  // x · M⁻¹ as integer numerators (of det · M⁻¹) over det, exact like a plain division
+  // for a diagonal M; an offset is reduced by the whole supercells it spans, so the
+  // supercell holds every image of a center inside the input cell (others stay outside)
+  const det = Math.round(math.det_3x3(supercell))
+  const numerators = math
+    .transpose_3x3(math.inverse_3x3(supercell))
+    .map((row) => row.map((val) => Math.round(val * det))) as Matrix3x3
+  const shrink = (vec: Vec3): Vec3 =>
+    math.mul_3x3_vec3(numerators, vec).map((val) => val / det) as Vec3
+  const supercell_t = math.transpose_3x3(supercell)
+  const supercell_point = (point: Vec3, offset: Vec3): Vec3 => {
+    const whole_cells = math.mul_3x3_vec3(supercell_t, shrink(offset).map(Math.floor) as Vec3)
+    return shrink(math.add(point, math.subtract(offset, whole_cells)))
+  }
   // Directions stay primitive integer vectors in the block basis, as the family clippers need:
-  // axis_i / counts_i times the lcm of its nonzero components' counts; plane indices × counts
+  // axis · M⁻¹ scaled by its smallest component to the least integer multiple; plane
+  // indices M · n
   const block_axis = (axis: Vec3): Vec3 => {
-    const lcm = axis.reduce(
-      (acc, val, idx) => (val === 0 ? acc : (acc / math.gcd(acc, counts[idx])) * counts[idx]),
-      1,
-    )
-    return math.reduce_miller_indices(
-      axis.map((val, idx) => (val * lcm) / counts[idx]) as Vec3,
-    )
+    const frac = shrink(axis)
+    const unit = Math.min(...frac.filter((val) => val !== 0).map(Math.abs))
+    const scaled = (mult: number) => frac.map((val) => (val / unit) * mult)
+    let mult = 1
+    while (scaled(mult).some((val) => Math.abs(val - Math.round(val)) > 1e-6)) mult++
+    return math.reduce_miller_indices(scaled(mult).map(Math.round) as Vec3)
   }
   const block_normal = (normal: Vec3): Vec3 =>
-    math.reduce_miller_indices(normal.map((val, idx) => val * counts[idx]) as Vec3)
+    math.reduce_miller_indices(math.mul_3x3_vec3(supercell, normal))
   const tiled: SymmetryElement[] = []
   const seen = new Set<string>()
   let visits = 0
@@ -755,7 +784,7 @@ function symmetry_tiling(
       if (collect_elements)
         tiled.push({
           ...element,
-          point: shrink(element.point.map((coord, axis) => coord + offset[axis]) as Vec3),
+          point: supercell_point(element.point, offset),
           axis: element.axis && block_axis(element.axis),
           plane_normal: element.plane_normal && block_normal(element.plane_normal),
           translation: element.translation && shrink(element.translation),
@@ -768,11 +797,11 @@ function symmetry_tiling(
 // The controls can preflight candidates without allocating block-frame element copies.
 export const symmetry_tiling_reason = (
   elements: SymmetryElement[],
-  tiling: Vec3,
-): string | null => symmetry_tiling(elements, tiling, false).unavailable_reason
+  supercell: Matrix3x3,
+): string | null => symmetry_tiling(elements, supercell, false).unavailable_reason
 
 export const tile_symmetry_elements = (
   elements: SymmetryElement[],
-  tiling: Vec3,
+  supercell: Matrix3x3,
 ): { elements: SymmetryElement[]; unavailable_reason: string | null } =>
-  symmetry_tiling(elements, tiling, true)
+  symmetry_tiling(elements, supercell, true)

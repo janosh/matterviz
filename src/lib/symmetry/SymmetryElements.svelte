@@ -41,7 +41,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     tile_symmetry_elements,
   } from './symmetry-elements'
 
-  import { whole_tile_counts } from '#lib/structure/supercell.js'
   import { untrack } from 'svelte'
   import { T } from '@threlte/core'
   import SceneLabel from '#lib/scene/SceneLabel.svelte'
@@ -77,7 +76,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   let {
     elements = [],
     lattice,
-    tiling = [1, 1, 1],
+    supercell = math.IDENTITY_3X3,
     // Per-kind visibility. Defaults to rotation axes ONLY: drawing every kind at once
     // buries the structure under overlays for high-symmetry cells. Toggle additional
     // kinds individually (e.g. via SymmetryElementControls).
@@ -86,9 +85,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   }: {
     elements?: SymmetryElement[]
     lattice: Matrix3x3
-    // Unit cells the rendered structure spans along a/b/c. Elements repeat at every lattice
-    // translation, so a tiled view draws them across the whole block (tile_symmetry_elements).
-    tiling?: Vec3
+    // Integer supercell matrix of the rendered structure. Elements repeat at every lattice
+    // translation, so a supercell view draws them across all of it (tile_symmetry_elements).
+    supercell?: Matrix3x3
     show_kinds?: ShowSymmetryKinds
     // Optional result shared with controls; must describe the same elements/cell/selection.
     tiling_result?: ReturnType<typeof tile_symmetry_elements>
@@ -96,15 +95,11 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Everything below clips against the unit cube of `cell`, so the block's own cell vectors
   // plus block-frame elements extend the overlay over every tile
-  const tiling_key = $derived(whole_tile_counts(tiling).join(`,`))
-  const tile_counts = $derived(tiling_key.split(`,`).map(Number) as Vec3)
+  const tiling_key = $derived(supercell.flat().join(`,`))
   const matrix_key = $derived(lattice.flat().join(`,`))
   const cell = $derived.by(() => {
-    void matrix_key
-    return math.scale_lattice_matrix(
-      untrack(() => lattice),
-      tile_counts,
-    )
+    void [matrix_key, tiling_key]
+    return untrack(() => math.dot(supercell, lattice))
   })
   const element_key = (items: SymmetryElement[]) =>
     JSON.stringify(
@@ -133,7 +128,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // Keep a non-reactive snapshot: later proxy mutations are tracked by the value key,
     // never by geometry consumers that would otherwise bypass that gate.
     return untrack(() =>
-      $state.snapshot(tiling_result ?? tile_symmetry_elements(visible_elements, tile_counts)),
+      $state.snapshot(tiling_result ?? tile_symmetry_elements(visible_elements, supercell)),
     )
   })
   const tiled_elements = $derived(resolved_tiling.elements)
