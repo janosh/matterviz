@@ -265,7 +265,9 @@
       }
       structure = opened.data as Crystal // the zone needs a lattice; AnyStructure is wider
       current_filename = opened.filename
-      on_file_load?.({ structure, bz_data: zone, bz_order, ...opened.provenance })
+      const loaded = { structure, bz_order, ...opened.provenance }
+      on_file_load?.({ ...loaded, bz_data: zone })
+      pending_load = default_k_path && !k_path ? loaded : undefined
     },
     report_error: (message, metadata) => {
       error_msg = message
@@ -306,17 +308,19 @@
       (default_k_path && !k_path) ||
       (info_pane_open && controls_config.visible(`info-pane`)),
   )
-  let symmetry = $state<{ data?: MoyoDataset; error?: unknown }>({})
+  // tagged with its structure: derived state reads it before this effect resets it
+  let symmetry = $state.raw<{ data?: MoyoDataset; error?: unknown; of?: Crystal }>({})
   $effect(() => {
     symmetry = {}
-    if (!needs_symmetry || !structure?.lattice) return
+    const of = structure
+    if (!needs_symmetry || !of?.lattice) return
     let stale = false
-    analyze_structure_symmetry(structure, {}).then(
+    analyze_structure_symmetry(of, {}).then(
       (data) => {
-        if (!stale) symmetry = { data }
+        if (!stale) symmetry = { data, of }
       },
       (error: unknown) => {
-        if (!stale) symmetry = { error }
+        if (!stale) symmetry = { error, of }
       },
     )
     return () => {
@@ -352,7 +356,7 @@
   const default_k_path_result = $derived.by((): DefaultKPath => {
     const lattice = structure?.lattice?.matrix
     const { data } = symmetry
-    if (k_path || !default_k_path || !lattice || !(data || `error` in symmetry)) return {}
+    if (k_path || !default_k_path || !lattice || symmetry.of !== structure) return {}
     try {
       if (!data) throw symmetry.error
       const kpath = high_symmetry_kpath(lattice, data)
@@ -364,6 +368,17 @@
   const shown_k_path = $derived(k_path ?? default_k_path_result.data)
   // own derived: a new result without one must not re-derive (and re-report) the zone
   const path_k_lattice = $derived(default_k_path_result.k_lattice)
+
+  // The default path's primitive zone follows the async symmetry analysis, so a load publishes
+  // again once with it
+  let pending_load = $state.raw<BZHandlerData>()
+  $effect(() => {
+    const loaded = pending_load
+    if (!path_k_lattice || !loaded) return
+    pending_load = undefined
+    if (loaded.structure === structure)
+      untrack(() => on_file_load?.({ ...loaded, bz_data: zone }))
+  })
 
   let ibz_error = $state<string | undefined>()
   $effect(() => {

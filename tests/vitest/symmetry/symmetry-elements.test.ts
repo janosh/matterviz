@@ -671,7 +671,6 @@ describe(`tile_symmetry_elements`, () => {
 
   test.each([
     [2, 1, 3],
-    [0.5, 1, 1],
     [4001, 1, 1],
     [1, 1e9, 1e9],
     [Infinity, 1, 1],
@@ -834,6 +833,21 @@ describe(`tile_symmetry_elements`, () => {
     const mirror_a = { ...centre, kind: `mirror`, plane_normal: [1, 0, 0] } as SymmetryElement
     const [plane] = tile_symmetry_elements([mirror_a], sheared).elements
     expect(plane.plane_normal).toEqual([1, -1, 0])
+    // input-cell centres wrap into the supercell; a det-1 shear still changes the basis
+    const off_axis = { ...centre, point: [0.5, 0.25, 0.5] as Vec3 }
+    const wrapped = tile_symmetry_elements([off_axis], sheared).elements.map(
+      ({ point }) => point,
+    )
+    expect(wrapped.toSorted((one, two) => one[0] - two[0])).toEqual([
+      [0.375, 0.875, 0.5],
+      [0.875, 0.375, 0.5],
+    ])
+    const unimodular = math.IDENTITY_3X3.with(0, [1, 1, 0]) as Matrix3x3
+    const [moved] = tile_symmetry_elements(
+      [{ ...centre, point: [0.5, 0.5, 0.5] }],
+      unimodular,
+    ).elements
+    expect(moved.point).toEqual([0.5, 0, 0.5])
   })
 })
 

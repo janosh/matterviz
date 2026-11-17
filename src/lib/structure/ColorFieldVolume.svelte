@@ -1,6 +1,7 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
-  import { IDENTITY_3X3, type Matrix3x3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import type { Matrix3x3 } from '#lib/math.js'
   import { clamp01 } from '#lib/utils.js'
   import {
     BackSide,
@@ -36,7 +37,7 @@
     field,
     opacity = 0.35,
     cutaway,
-    supercell = IDENTITY_3X3,
+    supercell = math.IDENTITY_3X3,
   }: {
     field: AtomColorField
     opacity?: number
@@ -96,6 +97,7 @@
     })
     exit.lessThanEqual(entry).discard()
     const step_length = exit.sub(entry).div(float(steps)).toVar()
+    const input_step = step_length.mul(to_input.mul(direction).length())
     const accumulated = vec4(0).toVar()
     Loop({ start: 0, end: steps, type: `int` }, ({ i: step_idx }) => {
       const distance = entry.add(float(step_idx).add(0.5).mul(step_length))
@@ -103,7 +105,8 @@
       // Grid order is (a * nb + b) * nc + c. Premultiplied colors prevent dark
       // fringes when interpolating against unobserved (transparent) bins.
       const sample = density_texture.sample(to_input.mul(position).zyx).level(float(0)).toVar()
-      const absorption = sample.a.mul(step_length).mul(-3).exp().oneMinus()
+      // absorb over the input-cell distance, as before supercells (a 2x cell is 2x as dense)
+      const absorption = sample.a.mul(input_step).mul(-3).exp().oneMinus()
       const weight = accumulated.a.oneMinus().mul(absorption)
       accumulated.rgb.addAssign(sample.rgb.div(max(sample.a, 1e-6)).mul(weight))
       accumulated.a.addAssign(weight)
@@ -118,14 +121,17 @@
   // The cloud is visual only; atom picking must reach the spheres underneath it.
   mesh.raycast = () => {}
   const visible = $derived(Number.isFinite(opacity) && opacity > 0)
-  // A non-periodic axis never repeats: its row and column of M become the identity's
-  const matrix = $derived(
-    supercell.map((row, row_idx) =>
+  // A non-periodic axis never repeats: its row and column of M become the identity's. An M
+  // mixing periodic and non-periodic axes so that this mask turns singular draws the input cell.
+  const matrix = $derived.by(() => {
+    const { pbc } = field
+    const masked = supercell.map((row, row_idx) =>
       row.map((val, col_idx) =>
-        field.pbc[row_idx] && field.pbc[col_idx] ? val : Number(row_idx === col_idx),
+        pbc[row_idx] && pbc[col_idx] ? val : Number(row_idx === col_idx),
       ),
-    ),
-  )
+    ) as Matrix3x3
+    return math.det_3x3(masked) === 0 ? math.IDENTITY_3X3 : masked
+  })
   // The unit proxy box is the supercell in its own fractional coordinates; this maps them to
   // the input cell's, where the (wrapping) texture lives: f_input = f_super · M, i.e. Mᵀ on
   // column vectors, which is what a column-major fromArray of M's rows reads

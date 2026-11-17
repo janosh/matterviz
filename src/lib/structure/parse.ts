@@ -1015,7 +1015,11 @@ export const parse_cif = (content: string): Crystal => {
   )
   const axis_lengths: Vec3 = [lattice_a, lattice_b, lattice_c]
   // a row's moment as lattice-basis components (μB along a/|a| is 1/|a| of a), its U* as is
-  const inv_metric = math.inverse_3x3(math.dot(lattice_matrix, lattice_columns))
+  // G⁻¹ = L⁻ᵀ L⁻¹ from the lattice inverse (inverting G squares the condition number)
+  const inv_metric = () => {
+    const inverse = math.inverse_3x3(lattice_matrix)
+    return math.dot(math.transpose_3x3(inverse), inverse)
+  }
   const row_data = atoms.map(({ id = ``, u_iso = NaN }) => ({
     moment: moments.get(id)?.map((comp, axis) => comp / axis_lengths[axis]) as
       | Vec3
@@ -1023,7 +1027,7 @@ export const parse_cif = (content: string): Crystal => {
     adp:
       adps.get(id) ??
       (u_iso > 0
-        ? (inv_metric.map((row) => math.scale(row, u_iso)) as math.Matrix3x3)
+        ? (inv_metric().map((row) => math.scale(row, u_iso)) as math.Matrix3x3)
         : undefined),
   }))
   const atom_ids = new Set(atoms.map(({ id }) => id))

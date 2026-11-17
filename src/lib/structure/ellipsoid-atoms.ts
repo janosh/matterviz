@@ -73,6 +73,7 @@ export class EllipsoidAtoms extends Group {
       mesh.setColorAt(slot, color) // allocates instanceColor before the first render
     }
     mesh.count = atoms.length
+    mesh.boundingSphere = null // raycast recomputes it for the moved instances
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   }

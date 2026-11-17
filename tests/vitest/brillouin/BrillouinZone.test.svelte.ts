@@ -507,11 +507,14 @@ test.each([
         return height > 1e-9 * Math.hypot(...normal)
       }),
     ).length
-  const own_k_lattice = reciprocal_lattice(matrix, { two_pi: true })
-  expect(n_outside(compute_brillouin_zone(own_k_lattice, 1))).toBeGreaterThan(0)
+  const own_zone = compute_brillouin_zone(reciprocal_lattice(matrix, { two_pi: true }), 1)
+  expect(n_outside(own_zone)).toBeGreaterThan(0)
   const { children, rendered } = zone_probe()
   const ibz_data = null as ComponentProps<typeof BrillouinZone>[`ibz_data`]
-  const props = $state({ structure, default_k_path: true, children, show_ibz: true, ibz_data })
+  const source = { data: JSON.stringify(structure), filename: `cell.json` }
+  const on_file_load = vi.fn()
+  const ibz = { show_ibz: true, ibz_data, on_file_load }
+  const props = $state({ source, default_k_path: true, children, ...ibz })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   // the point group, carried into the primitive basis, still cuts the 1/48 wedge
   await vi.waitFor(() => {
@@ -519,4 +522,6 @@ test.each([
     const ibz_ratio = ((props.ibz_data?.volume ?? 0) * 48) / (zone?.volume ?? 1)
     expect([zone && n_outside(zone), ibz_ratio]).toEqual([0, expect.closeTo(1, 9)])
   })
+  // a load publishes the input cell's zone, then once more the primitive one it switched to
+  expect(on_file_load.mock.calls.map(([data]) => data.bz_data)).toEqual([own_zone, rendered()])
 })

@@ -7,7 +7,7 @@ import {
   symmetric_eigen_3x3,
   thermal_ellipsoid,
 } from '#lib/structure/thermal-ellipsoids.js'
-import { Color, InstancedMesh } from 'three/webgpu'
+import { Color, InstancedMesh, Raycaster, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vite-plus/test'
 
 const max_abs_diff = (mat_a: Matrix3x3, mat_b: Matrix3x3): number =>
@@ -95,5 +95,10 @@ describe(`thermal ellipsoids`, () => {
     // instance colors are float32: |error| <= 6e-8 on channels <= 1, under closeTo's 5e-7
     const expected = new Color().fromArray(red).lerp(new Color(0x999999), 0.4).toArray()
     expect(faded).toEqual(expected.map((val) => expect.closeTo(val, 6)))
+    // picking follows atoms moved within capacity (no stale cached bounding sphere)
+    const raycaster = new Raycaster(new Vector3(10, 0, 10), new Vector3(0, 0, -1))
+    expect(raycaster.intersectObject(solid)).toEqual([])
+    solid.update([{ ...atoms[0], position: [10, 0, 0] }], 8)
+    expect(raycaster.intersectObject(solid).map(({ instanceId }) => instanceId)).toEqual([0])
   })
 })

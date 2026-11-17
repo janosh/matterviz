@@ -194,10 +194,23 @@ test(`volume cloud spans the supercell's periodic axes, reusing mesh and texture
   })
   expect(texture.image.data).toBe(periodic_texels)
   expect(encode).not.toHaveBeenCalled()
+  // fully periodic, every shear term stays (edges are M's rows, not its columns)
+  flush_set(props, { field: { ...props.field, pbc: [true, true, true] } })
+  expect(edges()).toEqual(sheared.flat())
+  // a rotation of a into non-periodic b would mask to a singular map: draw the input cell
+  flush_set(props, {
+    field,
+    supercell: [
+      [0, 1, 0],
+      [-1, 0, 0],
+      [0, 0, 1],
+    ],
+  })
+  expect(edges()).toEqual(math.IDENTITY_3X3.flat())
   const dispose_geometry = vi.spyOn(mesh.geometry, `dispose`)
   await teardown?.()
   teardown = undefined
-  expect(dispose_texture).toHaveBeenCalledTimes(3)
+  expect(dispose_texture).toHaveBeenCalledTimes(4) // + the pbc changes above
   expect(dispose_geometry).toHaveBeenCalledTimes(1)
 })
 

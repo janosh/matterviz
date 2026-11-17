@@ -721,7 +721,10 @@ function symmetry_tiling(
     unavailable_reason: `Symmetry overlay for tiling ${counts.join(`x`)} ${reason}. Reduce the supercell or hide element kinds.`,
   })
   if (!counts.every(Number.isFinite)) return unavailable(`needs finite repeat counts`)
-  if (!elements.length || (n_tiles === 1 && elements.length <= MAX_TILED_SYM_ELEMENTS))
+  if (
+    !elements.length ||
+    (is_identity(supercell) && elements.length <= MAX_TILED_SYM_ELEMENTS)
+  )
     return { elements, unavailable_reason: null }
   // Below this upper bound, neither the element cap nor the traversal cap can be hit.
   if (!collect_elements && elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS)
@@ -738,7 +741,10 @@ function symmetry_tiling(
   const supercell_t = math.transpose_3x3(supercell)
   const supercell_point = (point: Vec3, offset: Vec3): Vec3 => {
     const whole_cells = math.mul_3x3_vec3(supercell_t, shrink(offset).map(Math.floor) as Vec3)
-    return shrink(math.add(point, math.subtract(offset, whole_cells)))
+    const center = shrink(math.add(point, math.subtract(offset, whole_cells)))
+    // input-cell points wrap into the supercell; explicit outside-cell points stay as given
+    if (!point.every((val) => val >= 0 && val < 1)) return center
+    return center.map((val) => val - Math.floor(val)) as Vec3
   }
   // Directions stay primitive integer vectors in the block basis, as the family clippers need:
   // axis · M⁻¹ scaled by its smallest component to the least integer multiple; plane

@@ -24,6 +24,8 @@
   } from '#lib/plot/core/types.js'
   import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
   import { plot_area_line } from '#lib/plot/core/layout.js'
+  import { measure_text_width } from '#lib/plot/core/tick-layout.js'
+  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
   import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
@@ -52,6 +54,8 @@
   import type { Crystal } from '#lib/structure/index.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+
+  const GAP_LABEL_FONT = { ...DEFAULT_FONT_SPEC, font_size: 10 } // matches .gap-label
 
   let {
     band_structs,
@@ -1064,7 +1068,13 @@
             </circle>
           {/if}
         {/each}
-        {@const gap_label_fits_right = width - bands_x_end >= 70}
+        {@const gap_value = Number(gap_data.gap.toPrecision(4))}
+        {@const gap_kind = gap_data.is_direct ? `direct` : `indirect`}
+        {@const label_px = measure_text_width(
+          `Eg: ${gap_value} eV (${gap_kind})`,
+          GAP_LABEL_FONT,
+        )}
+        {@const gap_label_fits_right = width - bands_x_end >= label_px + 4}
         {@const gap_label_x = gap_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
         <text
           class="gap-label"
@@ -1076,10 +1086,8 @@
           fill="var(--text-color)"
         >
           E<tspan dy="2" font-size="8">g:</tspan>
-          <tspan dy="-2">{Number(gap_data.gap.toPrecision(4))} eV</tspan>
-          <tspan class="gap-kind" opacity="0.8">
-            ({gap_data.is_direct ? `direct` : `indirect`})
-          </tspan>
+          <tspan dy="-2">{gap_value} eV</tspan>
+          <tspan class="gap-kind" opacity="0.8">({gap_kind})</tspan>
         </text>
       {/if}
     {/snippet}

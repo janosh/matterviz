@@ -1190,6 +1190,15 @@ O2   O   0.410  0.140  0.880  1.000`
       }
     })
 
+    // a needle-sheared cell whose Gram matrix is too ill-conditioned to invert still parses
+    // (Uiso uses G⁻¹ = L⁻ᵀ L⁻¹ from the accepted lattice inverse)
+    test(`Uiso in a needle-sheared cell`, () => {
+      const cell = cif_cell(1, `10000.00005`, 1, [90, 90, 0.005729577932])
+      const loop = `${site_loop}\n_atom_site_U_iso_or_equiv\nFe1 Fe 0.1 0.2 0.3 0.02`
+      const { sites } = parse_cif(`data_test\n${cell}\n${loop}`)
+      expect(sites[0].properties.adp_U_cart).toBeDefined()
+    })
+
     // export writes both back (the inverse transforms), so parse -> export -> parse keeps
     // every symmetry image's Cartesian moment and U in an oblique cell
     test(`moments and ADPs round-trip through CIF export`, () => {
