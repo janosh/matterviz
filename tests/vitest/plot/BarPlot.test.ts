@@ -1,3 +1,4 @@
+import { format_num } from 'svelte-widgets/format'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
 import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
@@ -785,6 +786,14 @@ describe(`BarPlot`, () => {
       const series = [{ x: [1], y: [10], y_error }]
       expect(await hovered_text(`.plot-tooltip`, { series, orientation })).toContain(expected)
     }
+    // a time axis formats its value as a date but the error as a span (not a 1970 date)
+    const day = 86_400_000
+    const time_text = await hovered_text(`.plot-tooltip`, {
+      series: [{ x: [1], y: [Date.UTC(2024, 5, 15)], y_error: day }],
+      y_axis: { label: `Count`, format: `%Y` },
+    })
+    expect(time_text).toContain(`2024 ± ${format_num(day)}`)
+    expect(time_text).not.toContain(`1970`)
     const tooltip = createRawSnippet<[BarHandlerProps]>((data) => ({
       render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
     }))

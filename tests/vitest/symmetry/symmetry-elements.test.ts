@@ -853,13 +853,38 @@ describe(`tile_symmetry_elements`, () => {
       [0.875, 0.375, 0.5],
     ])
     // a det-1 shear far from the identity keeps axes exact: a ⟂-free 2-fold along a becomes
-    // M⁻ᵀ·a = (N+1, N, 0), which a tolerance-based ratio search rounded to (1, 1, 0)
-    const big_n = 2_000_000
-    // oxfmt-ignore
-    const far_shear: Matrix3x3 = [[1, -big_n, 0], [-1, big_n + 1, 0], [0, 0, 1]]
+    // M⁻ᵀ·a = (N+1, N, 0), which a float ratio search rounded to (1, 1, 0)
+    const far_shear = (big_n: number): Matrix3x3 => [
+      [1, -big_n, 0],
+      [-1, big_n + 1, 0],
+      [0, 0, 1],
+    ]
     const two_fold = { ...centre, kind: `rotation`, order: 2, label: `2`, axis: [1, 0, 0] }
-    const [far] = tile_symmetry_elements([two_fold as SymmetryElement], far_shear).elements
-    expect(far.axis).toEqual([big_n + 1, big_n, 0])
+    const [far] = tile_symmetry_elements(
+      [two_fold as SymmetryElement],
+      far_shear(100_000),
+    ).elements
+    expect(far.axis).toEqual([100_001, 100_000, 0])
+    // drawing such an axis clips ~(2N+2)·2 translates (one per crossing of the cell), and
+    // [1, -N, N²] (N = 10⁴) clips ~N²: both are refused before rendering, by the preflight too
+    const clip_limit = `exceeds the axis and plane clipping work limit`
+    const wrap_n = 10_000
+    // oxfmt-ignore
+    const wrap_shear: Matrix3x3 = [[1, wrap_n, 0], [0, 1, wrap_n], [0, 0, 1]]
+    for (const supercell of [far_shear(2_000_000), wrap_shear]) {
+      expect(symmetry_tiling_reason([two_fold as SymmetryElement], supercell)).toContain(
+        clip_limit,
+      )
+      expect(tile_symmetry_elements([two_fold as SymmetryElement], supercell)).toMatchObject({
+        elements: [],
+        unavailable_reason: expect.stringContaining(clip_limit),
+      })
+    }
+    // det 1, though its Number products N² and N² - 1 both round to 10000000200000000
+    const det_n = 100_000_001
+    // oxfmt-ignore
+    const det_shear: Matrix3x3 = [[det_n, det_n - 1, 0], [det_n + 1, det_n, 0], [0, 0, 1]]
+    expect(tile_symmetry_elements([centre], det_shear).elements[0].point).toEqual([0, 0, 0])
     // cofactors like N² pass 2^53 and must stay exact: M⁻ᵀ·(1, N, 0) = (1, 0, 0)
     const huge_n = 100_000_001
     // oxfmt-ignore

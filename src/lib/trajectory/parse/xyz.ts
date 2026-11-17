@@ -260,21 +260,23 @@ const comment_scalar = (raw: string): number | boolean | undefined => {
 // matrix as `_JSON [[...], ...]`, while other 9-value arrays stay flat in their listed order
 export const ASE_3X3_KEYS = new Set([`stress`, `virial`])
 
-// A quoted multi-value comment payload as ASE reads it: a vector (3, or 9 flat), a 6-value
-// Voigt stress, an ASE 3x3 key's column-major matrix or a JSON matrix; undefined otherwise
+// A quoted multi-value comment payload as ASE reads it: a flat vector of any length (9 values
+// stay flat), an ASE 3x3 key's column-major matrix, or a JSON vector (ASE's encoding of a
+// 1-vector, which plain `7` would read back as a scalar) or matrix; undefined otherwise
 function comment_signal(raw: string, key: string): number[] | Matrix3x3 | undefined {
   if (raw.startsWith(`_JSON `)) {
     const parsed: unknown = JSON.parse(raw.slice(`_JSON `.length))
-    return is_finite_vec3(parsed) || is_finite_matrix3x3(parsed) ? parsed : undefined
+    const is_vector =
+      Array.isArray(parsed) && parsed.length > 0 && parsed.every(Number.isFinite)
+    return is_vector || is_finite_matrix3x3(parsed) ? parsed : undefined
   }
   const values = raw.split(/[\s,]+/u).map(parse_float_token)
   if (!values.every(Number.isFinite)) return undefined
   if (values.length === 9 && ASE_3X3_KEYS.has(key))
     return [0, 1, 2].map((row) => [values[row], values[row + 3], values[row + 6]]) as Matrix3x3
   // A 6-value stress is Voigt order (ASE's own writer), which ase_stress_metadata expands
-  const fits =
-    values.length === 3 || values.length === 9 || (values.length === 6 && key === `stress`)
-  return fits ? values : undefined
+  if (key === `stress`) return values.length === 6 ? values : undefined
+  return values
 }
 
 // One pass over the comment's pairs yields every view a frame needs: scalars, flags, quoted

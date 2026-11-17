@@ -51,11 +51,12 @@ export function poscar_frame_filename(
 // comment would duplicate or contradict the file.
 const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 
-// A finite flat vector as its values, or a 3x3 matrix as ASE writes one: column-major for its
-// 3x3 keys (stress, virial), JSON for any other; undefined for anything else
+// A finite flat vector as its values (JSON for a 1-vector, which plain text reads back as a
+// scalar, as ASE writes one), or a 3x3 matrix as ASE writes one: column-major for its 3x3 keys
+// (stress, virial), JSON for any other; undefined for anything else
 function extxyz_array_value(key: string, value: unknown): string | undefined {
   if (Array.isArray(value) && value.length > 0 && value.every(Number.isFinite))
-    return value.join(` `)
+    return value.length === 1 ? `_JSON ${JSON.stringify(value)}` : value.join(` `)
   if (!is_finite_matrix3x3(value)) return undefined
   if (!ASE_3X3_KEYS.has(key)) return `_JSON ${JSON.stringify(value)}`
   return [0, 1, 2].flatMap((col) => value.map((row) => row[col])).join(` `)

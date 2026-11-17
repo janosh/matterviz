@@ -262,15 +262,23 @@ function numeric_site_columns(
     return fits ? [{ key, name: key === `momentum` ? `momenta` : key, ncols }] : []
   })
   const has_momenta = columns.some(({ key }) => key === `momentum`)
-  const derived = has_momenta && structure.sites.every(velocity_is_momentum_derived)
+  // the reader divides by the masses the file holds: recorded ones only if written
+  const mass_written = columns.some(({ key }) => key === `mass`)
+  const derived =
+    has_momenta &&
+    structure.sites.every((site) => velocity_is_momentum_derived(site, mass_written))
   return derived ? columns.filter(({ key }) => key !== `velocity`) : columns
 }
 
 // Whether a site's velocity is exactly the one the extXYZ reader derives from its momentum
-const velocity_is_momentum_derived = ({ species, properties }: Site): boolean => {
+// (with the recorded mass if the file holds a mass column, else the standard atomic mass)
+const velocity_is_momentum_derived = (
+  { species, properties }: Site,
+  mass_written: boolean,
+): boolean => {
   const { velocity, momentum, mass } = properties ?? {}
   if (!Array.isArray(velocity) || !Array.isArray(momentum)) return velocity === undefined
-  const recorded = typeof mass === `number` ? mass : undefined
+  const recorded = mass_written && typeof mass === `number` ? mass : undefined
   const atomic_mass = recorded ?? element_by_symbol.get(species[0]?.element)?.atomic_mass
   if (!atomic_mass) return false
   return velocity.every(

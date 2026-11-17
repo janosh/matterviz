@@ -663,6 +663,7 @@ export function clip_plane_family(
 // Bound merged geometry allocation after removing redundant copies.
 export const MAX_TILED_SYM_ELEMENTS = 4000
 const MAX_TILING_VISITS = 1_000_000
+const MAX_CLIP_ATTEMPTS = 1_000_000
 
 // Deduplicate translations along planes/axes, but retain every translated center marker.
 // A plane moves by the integer plane_normal · offset and a line by the offset modulo its axis
@@ -740,16 +741,12 @@ function symmetry_tiling(
     (is_identity(supercell) && elements.length <= MAX_TILED_SYM_ELEMENTS)
   )
     return { elements, unavailable_reason: null }
-  // Below this upper bound, neither the element cap nor the traversal cap can be hit.
-  if (!collect_elements && elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS)
-    return { elements: [], unavailable_reason: null }
   // x · M⁻¹ as integer numerators (of det · M⁻¹) over det, exact like a plain division
   // for a diagonal M; an offset is reduced by the whole supercells it spans, so the
   // supercell holds every image of a center inside the input cell (others stay outside)
-  const det = Math.round(math.det_3x3(supercell))
   // det · M⁻ᵀ is M's cofactor matrix: integer minors, no ill-conditioned float inverse, and
-  // exact in BigInt (Number products of large entries round past 2^53); entries round to
-  // integers like `det` (fractional repeat counts are whole tiles)
+  // exact in BigInt (Number products of large entries round past 2^53), as is det (row 0's
+  // cofactor expansion); entries round to integers (fractional repeat counts are whole tiles)
   const others = (idx: number) => [0, 1, 2].filter((other) => other !== idx)
   const big_cofactors = [0, 1, 2].map((row) => {
     const [m0, m1] = others(row).map((idx) =>
@@ -761,6 +758,12 @@ function symmetry_tiling(
       return (row + col) % 2 ? -minor : minor
     })
   })
+  const det = Number(
+    big_cofactors[0].reduce(
+      (sum, cofactor, col) => sum + cofactor * BigInt(Math.round(supercell[0][col])),
+      0n,
+    ),
+  )
   const numerators = big_cofactors.map((row) => row.map(Number)) as Matrix3x3
   const shrink = (vec: Vec3): Vec3 =>
     math.mul_3x3_vec3(numerators, vec).map((val) => val / det) as Vec3
@@ -788,10 +791,30 @@ function symmetry_tiling(
   }
   const block_normal = (normal: Vec3): Vec3 =>
     math.reduce_miller_indices(math.mul_3x3_vec3(supercell, normal))
+  // Axes and planes are drawn by clipping every family translate that can cross the cell
+  // (clip_axis_family, clip_plane_family: L1 norm + 1 shifts per covector), bounded here
+  // where the block-basis directions are known
+  const shift_count = (covector: Vec3) =>
+    covector.reduce((sum, val) => sum + Math.abs(val), 0) + 1
+  const clip_attempts = ({ axis, plane_normal }: SymmetryElement): number => {
+    if (plane_normal) return shift_count(block_normal(plane_normal))
+    if (!axis) return 0
+    const [, first, second] = math.unimodular_completion(block_axis(axis))
+    return shift_count(first) * shift_count(second)
+  }
+  const attempts = elements.map(clip_attempts)
+  // Below these upper bounds, none of the element, traversal or clipping caps can be hit.
+  if (
+    !collect_elements &&
+    elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS &&
+    attempts.reduce((sum, val) => sum + val, 0) * n_tiles <= MAX_CLIP_ATTEMPTS
+  )
+    return { elements: [], unavailable_reason: null }
   const tiled: SymmetryElement[] = []
   const seen = new Set<string>()
   let visits = 0
-  for (const element of elements) {
+  let clip_work = 0
+  for (const [element_idx, element] of elements.entries()) {
     const { identity, key, changes } = tiled_element_key(element, supercell)
     let offsets: Vec3[] = [[0, 0, 0]]
     // Exact keys only gain distinct values as axes are added, so the cap holds after each axis
@@ -816,6 +839,8 @@ function symmetry_tiling(
       if (seen.size >= MAX_TILED_SYM_ELEMENTS)
         return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
       seen.add(locus)
+      if ((clip_work += attempts[element_idx]) > MAX_CLIP_ATTEMPTS)
+        return unavailable(`exceeds the axis and plane clipping work limit`)
       if (collect_elements)
         tiled.push({
           ...element,

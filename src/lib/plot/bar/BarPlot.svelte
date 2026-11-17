@@ -1146,6 +1146,9 @@
           {@const { x_axis: x_ax, y_axis: y_ax, orient_x, orient_y } = hover_info}
           {#each [[`x`, x_ax, orient_x], [`y`, y_ax, orient_y]] as const as [key, axis, value] (key)}
             {@const fmt = (num: number) => format_value_or_num(num, axis.format)}
+            <!-- an error on a time axis is a span, not a date: plain number in the axis unit -->
+            {@const fmt_err = (num: number) =>
+              format_value_or_num(num, axis.format?.startsWith(`%`) ? undefined : axis.format)}
             <!-- the value axis carries y_error: ± σ, or +upper / −lower when asymmetric -->
             {@const [low, up] = error_getter(
               internal_series[hover_info.series_idx]?.y_error,
@@ -1157,7 +1160,11 @@
                 value={cat_axis === key
                   ? (hover_info.category_label ?? fmt(value))
                   : fmt(value) +
-                    (low === up ? (up ? ` ± ${fmt(up)}` : ``) : ` +${fmt(up)} / −${fmt(low)}`)}
+                    (low === up
+                      ? up
+                        ? ` ± ${fmt_err(up)}`
+                        : ``
+                      : ` +${fmt_err(up)} / −${fmt_err(low)}`)}
               />
             </div>
           {/each}

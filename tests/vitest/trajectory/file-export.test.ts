@@ -124,7 +124,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
   test(`round-trips per-atom vectors and frame scalars through parse and export`, () => {
     const source = [
       `2`,
-      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T`,
+      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T bader="0.1 -0.2 0.3 -0.2" gaps="1 2" lone="_JSON [7]"`,
       `Si 0 0 0 0.1 0.2 0.3 1e-7 2 3 0.25`,
       `O 1 1 1 -0.1 -0.2 -0.3 4 5 6 -0.5`,
     ].join(`\n`)
@@ -143,7 +143,12 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
       n_scf_steps: 7,
       density: 2.33,
       coords_unwrapped: true,
+      // vectors of any length keep their shape (a 1-vector as ASE's `_JSON [7]`)
+      bader: [0.1, -0.2, 0.3, -0.2],
+      gaps: [1, 2],
+      lone: [7],
     })
+    expect(text).toContain(`lone="_JSON [7]"`)
   })
 
   // ASE writes momenta (read back as momentum + derived velocity) and a 9-value stress in
@@ -189,6 +194,25 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
       expect(site.properties?.velocity).toEqual(expected)
     },
   )
+
+  // a mass on only some sites isn't written, so the reader divides by standard masses: the
+  // velocity derived from a recorded mass then differs from what reimport derives
+  test(`keeps a velocity derived from a mass the file will not hold`, () => {
+    const parse_h = (columns: string, row: string) =>
+      parse_exported_frames(
+        `1\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:${columns} pbc="T T T"\nH ${row}`,
+      )[0]
+    const frame = parse_h(`masses:R:1:momenta:R:3`, `0 0 0 2 1 0 0`)
+    // second site: no recorded mass, velocity derived from the standard mass
+    const second = parse_h(`momenta:R:3`, `1 1 1 1 0 0`).structure.sites[0]
+    frame.structure.sites.push(second)
+    const velocity = frame.structure.sites[0].properties?.velocity
+    const exported = trajectory_frame_to_extxyz_str(frame)
+    expect(exported).toContain(`velocity:R:3`)
+    expect(parse_exported_frames(exported)[0].structure.sites[0].properties?.velocity).toEqual(
+      velocity,
+    )
+  })
 })
 
 describe(`serialize_extxyz_frame_range`, () => {
