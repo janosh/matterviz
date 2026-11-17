@@ -250,11 +250,8 @@ it.each([`device`, `cell`] as const)(
     )
     const frame = encode_frame(make_trajectory_frame(0, 0))
     frame.header.metadata = { box_origin: [8, -21, 31] }
-    const lattice = make_lattice([
-      [8, 0, 0],
-      [2, 12, 0],
-      [4, 2, 16],
-    ])
+    // oxfmt-ignore
+    const lattice = make_lattice([[8, 0, 0], [2, 12, 0], [4, 2, 16]])
     frame.structure.lattice = lattice
     lattice.pbc = [true, false, true]
     const grid =

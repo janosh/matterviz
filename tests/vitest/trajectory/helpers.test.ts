@@ -6,6 +6,7 @@ import {
   convert_atomic_numbers,
   create_sampled_frame,
   create_structure,
+  element_from_species_label,
   holds_numbers,
   split_lines,
   TextLines,
@@ -42,16 +43,12 @@ describe(`trajectory helpers`, () => {
   it(`create_structure keeps positions and species, fractionalizes skew cells, rejects non-3D positions`, () => {
     const elements: ElementSymbol[] = [`H`, `He`]
     const structure = create_structure(
-      [
-        [0, 0, 0],
-        [1, 1, 1],
-      ],
+      // oxfmt-ignore
+      [[0, 0, 0], [1, 1, 1]],
       elements,
     )
-    expect(structure.sites.map((site) => site.xyz)).toEqual([
-      [0, 0, 0],
-      [1, 1, 1],
-    ])
+    // oxfmt-ignore
+    expect(structure.sites.map((site) => site.xyz)).toEqual([[0, 0, 0], [1, 1, 1]])
     expect(structure.sites.map((site) => site.species[0].element)).toEqual(elements)
     expect(
       create_sampled_frame(
@@ -69,10 +66,8 @@ describe(`trajectory helpers`, () => {
     })
     expect(() =>
       create_structure(
-        [
-          [0, 0],
-          [1, 2, 3],
-        ],
+        // oxfmt-ignore
+        [[0, 0], [1, 2, 3]],
         elements,
       ),
     ).toThrow(/Invalid position at site 1/)
@@ -80,11 +75,8 @@ describe(`trajectory helpers`, () => {
     const sheared = create_structure(
       [[2, 1, 0]],
       [`H`],
-      [
-        [2, 1, 0],
-        [0, 2, 0],
-        [0, 0, 2],
-      ],
+      // oxfmt-ignore
+      [[2, 1, 0], [0, 2, 0], [0, 0, 2]],
     )
     expect(`lattice` in sheared && sheared.sites[0].abc).toEqual([1, 0, 0])
   })
@@ -112,20 +104,16 @@ describe(`trajectory helpers`, () => {
       [0, 0, 4],
     ]
     const structure = create_structure(
-      [
-        [1, 2, 0],
-        [3, 1, 0],
-      ],
+      // oxfmt-ignore
+      [[1, 2, 0], [3, 1, 0]],
       [`H`, `H`],
       slab,
       undefined,
       undefined,
       (message) => warnings.push(message),
     )
-    expect(structure.sites.map((site) => site.abc)).toEqual([
-      [0.25, 0.25, 0],
-      [0.75, 0.125, 0],
-    ])
+    // oxfmt-ignore
+    expect(structure.sites.map((site) => site.abc)).toEqual([[0.25, 0.25, 0], [0.75, 0.125, 0]])
     expect(warnings).toEqual([
       `Singular lattice [[4,0,0],[8,0,0],[0,0,4]], using axis-length fallback for cart→frac`,
     ])
@@ -156,6 +144,18 @@ describe(`trajectory helpers`, () => {
     { atomic_numbers: new Float64Array(), expected_symbols: [] },
   ])(`converts known atomic numbers to symbols`, ({ atomic_numbers, expected_symbols }) => {
     expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
+  })
+
+  // CIF, CP2K kind and GROMACS species labels name their leading element; two letters win when
+  // they spell one (Co, Sn, Cl), and a third letter means the label names none
+  // oxfmt-ignore
+  it.each([
+    [`O1`, `O`], [`Fe1`, `Fe`], [`Sn1`, `Sn`], [`Cl2`, `Cl`], [`Co1`, `Co`], [`C12`, `C`],
+    [`O_a`, `O`], [`Fe_hs`, `Fe`], [`Fe2+`, `Fe`], [`OW1`, `O`], [`Hw`, `H`], [`ca1`, `Ca`],
+    [`Water`, undefined], [`Type1`, undefined], [`X`, undefined], [`X1`, undefined],
+    [`13C`, undefined], [`_O`, undefined], [``, undefined],
+  ])(`element_from_species_label(%j) is %j`, (label, element) => {
+    expect(element_from_species_label(label)).toBe(element)
   })
 
   it.each([999, 0, -1, 1.5, NaN])(`throws for atomic number %s`, (atomic_number) => {

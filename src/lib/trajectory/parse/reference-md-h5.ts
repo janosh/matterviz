@@ -1,6 +1,10 @@
 import type { FrameChannels } from '../frame'
 import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '../frame'
-import { calc_lattice_params, first_non_increasing_index, is_valid_index } from '#lib/math.js'
+import {
+  compute_lattice_params,
+  first_non_increasing_index,
+  is_valid_index,
+} from '#lib/math.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import { convert_atomic_numbers, values_per_sample } from '#lib/trajectory/helpers.js'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '#lib/trajectory/index.js'
@@ -312,7 +316,7 @@ export const parse_reference_md_h5_file = (
     attribute_value(simulation_group, [`sample_interval_ps`]),
   )
   const ensemble = string_value(attribute_value(simulation_group, [`ensemble`]))
-  const volume = calc_lattice_params(lattice_matrix).volume
+  const volume = compute_lattice_params(lattice_matrix).volume
   if (!(volume > 0)) {
     throw new Error(`${FORMAT} cell volume must be positive, got ${volume}`)
   }

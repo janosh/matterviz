@@ -26,10 +26,8 @@ const make_run = (extras: MemoryRunExtras = {}) =>
   trajectory_from_frames(
     [0, 1].map((step) => {
       const frame = create_trajectory_frame(
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-        ],
+        // oxfmt-ignore
+        [[0, 0, 0], [1, 0, 0]],
         [`Si`, `Si`],
         undefined,
         undefined,

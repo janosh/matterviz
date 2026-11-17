@@ -97,17 +97,101 @@ function read_positions(
   return positions
 }
 
+// The frame marker of each XDATCAR dialect: `Direct configuration= N` (VASP 5.3 on), `Konfig=
+// N` (older builds) or null for a blank line before each frame (older VASP 5, as pymatgen reads)
+const MODERN_MARKER = `Direct configuration=`
+const KONFIG_RE = /^\s*Konfig\s*=/m
+const xdatcar_marker = (head: string): ((line: string) => boolean) | null => {
+  if (head.includes(MODERN_MARKER)) return (line) => line.includes(MODERN_MARKER)
+  return KONFIG_RE.test(head) ? (line) => KONFIG_RE.test(line) : null
+}
+
+// Frames of a blank-line separated XDATCAR, numbered from 1. A variable-cell run repeats the
+// header before a frame: any non-blank line that is no coordinate triple starts one.
+function index_blank_separated_frames(
+  lines: TextLines,
+  warn: WarnFn,
+  line_budget: { max_ions: number; source: string },
+): XdatcarFrameSpec[] {
+  const scanner = new LineScanner()
+  const is_coordinate_line = (line_idx: number): boolean =>
+    lines.scan(scanner, line_idx) >= 3 && holds_numbers(scanner, [0, 1, 2])
+  let cell: XdatcarCell | null = null
+  const frames: XdatcarFrameSpec[] = []
+  for (let line_idx = 0; ;) {
+    const blank_start = line_idx
+    while (line_idx < lines.count && !lines.line(line_idx)?.trim()) line_idx++
+    if (line_idx >= lines.count) break
+    if (!cell || !is_coordinate_line(line_idx)) {
+      // the title line itself may be blank, so also try the header from the line before
+      const starts = line_idx > blank_start ? [line_idx, line_idx - 1] : [line_idx]
+      const attempts = starts.map((start) => parse_xdatcar_header(lines, start))
+      const header = attempts.find(({ result }) => result.ok) ?? attempts[0]
+      if (!header.result.ok)
+        throw new Error(
+          `XDATCAR line ${line_idx + 1} starts neither a frame's coordinates nor a cell header (and the file has no "${MODERN_MARKER}" or "Konfig=" frame markers): ${header.result.error}`,
+        )
+      const { lattice, elements, counts } = header.result.header
+      cell = make_cell(lattice, expand_ion_types(elements, counts, line_budget))
+      line_idx = header.end
+      continue
+    }
+    const step = frames.length + 1
+    const n_ions = cell.elements.length
+    if (line_idx + n_ions > lines.count) {
+      warn(
+        `Dropping truncated final XDATCAR frame ${step} (line ${line_idx + 1}): ${lines.count - line_idx} of ${n_ions} coordinate lines`,
+      )
+      break
+    }
+    frames.push({ line: line_idx, step, cell })
+    line_idx += n_ions
+  }
+  return frames
+}
+
 // Locate every frame by walking frame markers and headers, reading no coordinate line but the
 // last frames'. A frame cut off by the end of the file (missing lines, or a half-written final
 // line) is a writer still appending: it is dropped with a warning, as are the trailing frames
 // of an MD blow-up (`nan`/`inf` from its onset on; the first frame is kept, failing its read).
 // A malformed coordinate line anywhere else (the last frame's too) fails that frame's read.
 function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[] {
-  // title, scale, 3 lattice rows, symbols, counts, one config marker and one ion = 9 lines
-  if (lines.count < 9) throw new Error(`XDATCAR file too short`)
+  // title, scale, 3 lattice rows, symbols, counts and one ion (+ a marker line, if any)
+  if (lines.count < 8) throw new Error(`XDATCAR file too short`)
 
   // One fractional-coordinate line per ion, so no file can hold more ions than it has lines
   const line_budget = { max_ions: lines.count, source: `XDATCAR lines` }
+  const is_marker = xdatcar_marker(lines.head(1 << 20))
+  const frames: XdatcarFrameSpec[] = is_marker
+    ? index_marked_frames(lines, warn, line_budget, is_marker)
+    : index_blank_separated_frames(lines, warn, line_budget)
+  let [n_non_finite, onset] = [0, ``]
+  for (let last = frames.at(-1); last; last = frames.at(-1)) {
+    try {
+      if (read_positions(lines, last)) break
+      warn(
+        `Dropping truncated final XDATCAR frame ${last.step}: partial coordinate line ${lines.count} "${lines.line(lines.count - 1)}"`,
+      )
+    } catch (error) {
+      if (!(error instanceof NonFiniteFrameError) || frames.length === 1) break
+      ;[n_non_finite, onset] = [n_non_finite + 1, error.message]
+    }
+    frames.pop()
+  }
+  if (n_non_finite > 0)
+    warn(`Skipping ${n_non_finite} trailing XDATCAR frame(s) after an MD blow-up: ${onset}`)
+  if (frames.length === 0) throw new Error(`XDATCAR contains no complete frame`)
+  return frames
+}
+
+// Frames of a marker dialect: each frame's coordinate lines follow its marker, after the file
+// header or a variable-cell run's repeated one
+function index_marked_frames(
+  lines: TextLines,
+  warn: WarnFn,
+  line_budget: { max_ions: number; source: string },
+  is_marker: (line: string) => boolean,
+): XdatcarFrameSpec[] {
   let cell: XdatcarCell | null = null
   const frames: XdatcarFrameSpec[] = []
   let line_idx = 0
@@ -117,7 +201,7 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
     // quadratic in the frame count on long MD runs
     let config_idx = line_idx
     while (config_idx < lines.count) {
-      if (lines.line(config_idx)?.includes(`Direct configuration=`)) break
+      if (is_marker(lines.line(config_idx) ?? ``)) break
       config_idx++
     }
     if (config_idx === lines.count) break
@@ -137,7 +221,7 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
       if (!header?.ok) {
         const { result } = attempts[0]
         throw new Error(
-          `XDATCAR lines ${header_idx + 1}-${config_idx} before "Direct configuration=" are ` +
+          `XDATCAR lines ${header_idx + 1}-${config_idx} before frame marker "${lines.line(config_idx)?.trim()}" are ` +
             `not a cell header${result.ok ? `` : `: ${result.error}`}`,
         )
       }
@@ -148,7 +232,7 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
 
     const config_line = lines.line(config_idx) ?? ``
     line_idx = config_idx + 1
-    const step_match = /configuration=\s*(?<step>\d+)/.exec(config_line)
+    const step_match = /(?:configuration|Konfig)\s*=\s*(?<step>\d+)/.exec(config_line)
     const step = step_match ? Math.trunc(Number(step_match[1])) : frames.length + 1
 
     const n_ions = cell.elements.length
@@ -161,22 +245,6 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
     frames.push({ line: line_idx, step, cell })
     line_idx += n_ions
   }
-  let [n_non_finite, onset] = [0, ``]
-  for (let last = frames.at(-1); last; last = frames.at(-1)) {
-    try {
-      if (read_positions(lines, last)) break
-      warn(
-        `Dropping truncated final XDATCAR frame ${last.step}: partial coordinate line ${lines.count} "${lines.line(lines.count - 1)}"`,
-      )
-    } catch (error) {
-      if (!(error instanceof NonFiniteFrameError) || frames.length === 1) break
-      ;[n_non_finite, onset] = [n_non_finite + 1, error.message]
-    }
-    frames.pop()
-  }
-  if (n_non_finite > 0)
-    warn(`Skipping ${n_non_finite} trailing XDATCAR frame(s) after an MD blow-up: ${onset}`)
-  if (frames.length === 0) throw new Error(`XDATCAR contains no complete frame`)
   return frames
 }
 

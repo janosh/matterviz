@@ -9,7 +9,7 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import { calc_force_stats, create_trajectory_frame } from '#lib/trajectory/helpers.js'
+import { compute_force_stats, create_trajectory_frame } from '#lib/trajectory/helpers.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { vasp_run, vasp_stress_metadata } from './shared'
 
@@ -170,7 +170,7 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
     // Per-atom forces go on the sites, only their statistics into the metadata (as every
     // other reader does: a metadata copy doubled them in memory and the data inspector)
     const site_properties = forces?.map((force) => ({ force }))
-    if (forces) Object.assign(metadata, calc_force_stats(forces))
+    if (forces) Object.assign(metadata, compute_force_stats(forces))
     const stress = parse_varray(after_structure, `stress`)
     if (stress?.length === 3)
       Object.assign(metadata, vasp_stress_metadata(stress as Matrix3x3))

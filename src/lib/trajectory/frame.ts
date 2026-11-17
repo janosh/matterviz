@@ -23,7 +23,7 @@ const SITE_FIELDS = new Set([`xyz`, `abc`, `species`, `label`, `properties`])
 // Select from each frame's dense channels; a channel may be absent in individual frames.
 // Omit vectors to read all channels; [] requests coordinates without vector payloads.
 export type FrameChannels = { vectors?: readonly string[] }
-const SPECIES_FIELDS = new Set([`element`, `occu`, `oxidation_state`])
+const SPECIES_FIELDS = new Set([`element`, `occu`])
 const has_exact_fields = (record: object, fields: ReadonlySet<string>): boolean => {
   const keys = Object.keys(record)
   return keys.length === fields.size && keys.every((key) => fields.has(key))
@@ -190,7 +190,6 @@ export const encode_frame = ({ structure, ...header }: TrajectoryFrame): Numeric
       species.length === 1 &&
       Object.keys(species).length === 1 &&
       entry.occu === 1 &&
-      Object.is(entry.oxidation_state, 0) &&
       has_exact_fields(entry, SPECIES_FIELDS) &&
       label === `${entry.element}${idx + 1}` &&
       has_exact_fields(sites[idx], SITE_FIELDS) &&

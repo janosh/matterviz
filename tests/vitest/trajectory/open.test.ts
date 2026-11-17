@@ -192,10 +192,8 @@ describe(`JSON runs`, () => {
       `run.json`,
     )
     expect(run.metadata).toEqual({ note: `x` })
-    expect(run.properties.rows.map((row) => [row.step, row.properties.energy])).toEqual([
-      [5, -1],
-      [6, -2],
-    ])
+    // oxfmt-ignore
+    expect(run.properties.rows.map((row) => [row.step, row.properties.energy])).toEqual([[5, -1], [6, -2]])
   })
 
   it(`trajectory_from_json builds the same run synchronously, with the structure parser's warnings`, () => {

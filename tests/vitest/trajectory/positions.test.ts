@@ -111,12 +111,12 @@ describe(`lag_range`, () => {
     [2, 0.1, 1],
     [1, 1, 1],
   ])(`%d frames at fraction %s give %d lags`, (n_frames, fraction, expected) => {
-    expect(lag_range(`calc_vacf`, n_frames, fraction)).toBe(expected)
+    expect(lag_range(`compute_vacf`, n_frames, fraction)).toBe(expected)
   })
 
   it.each([0, -0.5, 1.5, Number.NaN])(`rejects max_lag_fraction %s`, (fraction) => {
-    expect(() => lag_range(`calc_vacf`, 10, fraction)).toThrow(
-      `calc_vacf: max_lag_fraction must be in (0, 1], got ${fraction}`,
+    expect(() => lag_range(`compute_vacf`, 10, fraction)).toThrow(
+      `compute_vacf: max_lag_fraction must be in (0, 1], got ${fraction}`,
     )
   })
 })
@@ -251,10 +251,8 @@ describe(`numeric position input`, () => {
       const frames = Array.from({ length: 6 }, (_unused, idx) => {
         const frame = make_frame(
           idx * 10,
-          [
-            [(9 + idx) % 10, 1, 2],
-            [2, 3, 4],
-          ],
+          // oxfmt-ignore
+          [[(9 + idx) % 10, 1, 2], [2, 3, 4]],
           {
             elements: [`Si`, `Ge`],
             box_length: 10 + idx / 10,
@@ -322,21 +320,8 @@ describe(`numeric position input`, () => {
       /coords_unwrapped flipped/],
   ] as const)(`preserves rejection of changed %s`, async (_label, mutate, error) => {
     const frames = [0, 1].map((step) => {
-      const frame = encode_frame(
-        make_frame(
-          step,
-          [
-            [1, 2, 3],
-            [3, 4, 5],
-          ],
-          {
-            velocities: [
-              [1, 2, 3],
-              [4, 5, 6],
-            ],
-          },
-        ),
-      )
+      // oxfmt-ignore
+      const frame = encode_frame(make_frame(step, [[1, 2, 3], [3, 4, 5]], { velocities: [[1, 2, 3], [4, 5, 6]] }))
       frame.scalar_columns = { id: new Float64Array([1, 2]) }
       return frame
     })

@@ -87,6 +87,7 @@ export const read_vaspout_dos = (h5_file: h5wasm.File): ElectronicDos | null => 
     return {
       type: `electronic`,
       energies: energy_values,
+      energy_unit: `eV`, // VASP writes the DOS energy axis in eV
       densities,
       ...(spin_down_densities ? { spin_down_densities, spin_polarized: true } : {}),
       ...(efermi !== null ? { efermi } : {}),
@@ -268,7 +269,6 @@ export const read_vaspout_bands = (
         : {}),
       nb_bands: n_bands,
       labels_dict,
-      is_spin_polarized: spin_down_bands !== undefined,
       ...(efermi !== undefined ? { efermi } : {}),
     }
   }

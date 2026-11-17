@@ -10,7 +10,9 @@ import {
   create_plot_row_frame,
   create_trajectory_frame,
   elem_symbol_from_token,
+  element_from_species_label,
   holds_numbers,
+  label_sites,
   TextLines,
 } from '#lib/trajectory/helpers.js'
 import type { AseFrames } from './ase'
@@ -127,6 +129,8 @@ type LammpsColumns = {
 type LammpsFrameRead = {
   header: LammpsFrameHeader
   elements: ElementSymbol[]
+  // the raw `element` token of each atom read off a label (`O1` -> O), else undefined
+  labels: (string | undefined)[]
   ids: number[]
   positions: math.Vec3[]
   site_properties: Record<string, unknown>[]
@@ -151,11 +155,11 @@ const is_ascending = (ids: readonly number[]): boolean => {
 
 // Frames sorted by atom id (when the dump has ids) so every frame lists atoms in one order
 const lammps_frame = (read: LammpsFrameRead, warn: WarnFn): TrajectoryFrame => {
-  const { header, elements, positions, site_properties } = read
+  const { header, elements, positions, site_properties, labels } = read
   const order = atom_order(read)
   const sorted = <Value>(values: Value[]): Value[] =>
     order ? order.map((atom_idx) => values[atom_idx]) : values
-  return create_trajectory_frame(
+  const frame = create_trajectory_frame(
     sorted(positions),
     sorted(elements),
     header.lattice_matrix,
@@ -165,6 +169,8 @@ const lammps_frame = (read: LammpsFrameRead, warn: WarnFn): TrajectoryFrame => {
     sorted(site_properties),
     warn,
   )
+  label_sites(frame, sorted(labels))
+  return frame
 }
 
 // The numeric frame encode_frame makes of lammps_frame's, built from a `columns` read without
@@ -172,8 +178,9 @@ const lammps_frame = (read: LammpsFrameRead, warn: WarnFn): TrajectoryFrame => {
 // instead: a missing value, an element without atomic number, or property keys that do not
 // map one-to-one onto columns.
 const lammps_numeric_frame = (read: LammpsFrameRead, warn: WarnFn): NumericFrame | null => {
-  const { header, elements, columns } = read
-  if (!columns?.dense) return null
+  const { header, elements, columns, labels } = read
+  // labels live on Site records
+  if (!columns?.dense || labels.some(Boolean)) return null
   const keys = [...columns.vector_keys, ...columns.scalar_keys]
   // a record's integer-like keys enumerate first, which would reorder its vector columns
   if (new Set(keys).size !== keys.length || keys.some((key) => /^\d+$|^__proto__$/.test(key)))
@@ -228,6 +235,7 @@ function create_lammps_reader(
   // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
   // showing up as H/He is traceable.
   const guessed_types = new Set<number>()
+  let labels_reported = false
   const reported_guesses = new Set<number>()
   // warns the guesses not yet reported: all of them after an eager parse, new ones per indexed read
   const warn_guesses = (): void => {
@@ -391,6 +399,7 @@ function create_lammps_reader(
     )
 
     const elements: ElementSymbol[] = []
+    const labels: (string | undefined)[] = []
     const ids: number[] = []
     const positions: math.Vec3[] = []
     const site_properties: Record<string, unknown>[] = []
@@ -464,8 +473,21 @@ function create_lammps_reader(
       // Some tools fill `element` with type labels (`Type1`, `2`), and coarse-grained or
       // isotope masses miss every standard atomic weight, so each source may come up empty
       let element_symbol = atom_type === undefined ? undefined : atom_type_mapping?.[atom_type]
-      if (!element_symbol && element_col !== undefined)
-        element_symbol = elem_symbol_from_token(scanner.str(element_col))
+      let label: string | undefined
+      if (!element_symbol && element_col !== undefined) {
+        const token = scanner.str(element_col)
+        element_symbol = elem_symbol_from_token(token)
+        if (!element_symbol) {
+          element_symbol = element_from_species_label(token)
+          if (element_symbol) label = token
+        }
+        if (label && !labels_reported) {
+          labels_reported = true
+          warn(
+            `LAMMPS element column holds labels (first "${token}" at line ${line_number}); read each as its leading element ("${token}" -> ${element_symbol}) and kept it as the site label`,
+          )
+        }
+      }
       // a per-atom mass (`dump custom ... mass`) names elements as a data file's Masses do
       if (!element_symbol && mass_col !== undefined)
         element_symbol = element_for_mass(scanner.num(mass_col)) ?? undefined
@@ -483,6 +505,7 @@ function create_lammps_reader(
         element_symbol = element_from_lammps_type(atom_type)
       }
       elements.push(element_symbol)
+      labels.push(label)
       // the only property column that can fail a frame
       if (id_col !== undefined) {
         const atom_id = scanner.num(id_col)
@@ -576,7 +599,16 @@ function create_lammps_reader(
       ...(time === null ? {} : { time }),
     }
     const header = { timestep, pbc, lattice_matrix, metadata }
-    return { header, elements, ids, positions, site_properties, columns, merge_guesses }
+    return {
+      header,
+      elements,
+      labels,
+      ids,
+      positions,
+      site_properties,
+      columns,
+      merge_guesses,
+    }
   }
 
   // Hands each frame, from the top of the dump, to `on_frame` (a torn final frame is dropped
@@ -664,13 +696,19 @@ function create_lammps_reader(
         `LAMMPS dump has no atom ID column; frames display as written but atom identity cannot be verified across frames, so displacement analyses may be meaningless`,
       )
     }
-    for (let frame_idx = 1; frame_idx < steps.length; frame_idx++) {
-      if (!(steps[frame_idx] > steps[frame_idx - 1])) {
-        throw new Error(
-          `LAMMPS timestep ${steps[frame_idx]} at frame ${display_idx(frame_idx)} must be ` +
-            `greater than ${steps[frame_idx - 1]} at frame ${frame_idx}`,
-        )
-      }
+    // A timestep that goes back starts a new segment (`reset_timestep`, or a restart appending
+    // from an earlier step). Frames keep their raw steps; one warning names the resets.
+    const resets = steps.flatMap((step, frame_idx) =>
+      frame_idx > 0 && step < steps[frame_idx - 1] ? [frame_idx] : [],
+    )
+    if (resets.length > 0) {
+      const describe = (frame_idx: number) =>
+        `${steps[frame_idx - 1]} -> ${steps[frame_idx]} at frame ${display_idx(frame_idx)}`
+      const listed = resets.slice(0, 3).map(describe).join(`, `)
+      const more = resets.length > 3 ? ` and ${resets.length - 3} more` : ``
+      warn(
+        `LAMMPS timestep goes back ${resets.length} time(s) (${listed}${more}), as after reset_timestep or a restart appending to the dump: frames keep their raw steps, so the plot uses frame numbers and analyses need a window inside one segment`,
+      )
     }
     return starts
   }

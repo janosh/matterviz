@@ -150,11 +150,8 @@ describe(`serialize_extxyz_frame_range`, () => {
     const async_resolver = make_async_resolver()
     const text = await serialize_extxyz_frame_range(0, 2, async_resolver, on_progress)
     expect(async_resolver.mock.calls.map(([idx]) => idx)).toEqual([0, 1, 2])
-    expect(on_progress.mock.calls).toEqual([
-      [1, 3],
-      [2, 3],
-      [3, 3],
-    ])
+    // oxfmt-ignore
+    expect(on_progress.mock.calls).toEqual([[1, 3], [2, 3], [3, 3]])
     const reparsed = parse_exported_frames(text)
     expect(reparsed).toHaveLength(3)
     expect(reparsed.map((frame) => frame.step)).toEqual([0, 5, 9])
@@ -276,11 +273,8 @@ describe(`collect_frame_property_rows`, () => {
     const table = await collect_frame_property_rows(0, 2, resolver, trajectory, on_progress)
     expect(table.source).toBe(`properties`)
     // 0-based frame indices (the CSV/JSON writers number from 1); step stays the file's own
-    expect(table.rows.map(({ frame, step }) => [frame, step])).toEqual([
-      [0, 0],
-      [1, 5],
-      [2, 9],
-    ])
+    // oxfmt-ignore
+    expect(table.rows.map(({ frame, step }) => [frame, step])).toEqual([[0, 0], [1, 5], [2, 9]])
     expect(on_progress.mock.calls).toEqual([[3, 3]])
     expect(table.rows[0].properties).toMatchObject({
       energy: -10.5,
@@ -324,11 +318,8 @@ describe(`collect_frame_property_rows`, () => {
     expect(source).toBe(`properties`)
     expect(spy_resolver).not.toHaveBeenCalled()
     expect(on_progress.mock.calls).toEqual([[3, 3]])
-    expect(rows.map(({ frame, step }) => [frame, step])).toEqual([
-      [0, 0],
-      [1, 5],
-      [2, 9],
-    ])
+    // oxfmt-ignore
+    expect(rows.map(({ frame, step }) => [frame, step])).toEqual([[0, 0], [1, 5], [2, 9]])
     expect(rows[2].properties).toEqual({ energy: -11.5, force_max: 0.01 })
     // the property-row shortcut must not skip the resolver path's range check
     await expect(
@@ -541,12 +532,8 @@ describe(`TrajectoryExportPane property export`, () => {
       const number_inputs = document.querySelectorAll<HTMLInputElement>(
         `.settings-section input[type="number"]`,
       )
-      expect([...number_inputs].slice(2).map((input) => input.value)).toEqual([
-        `30`,
-        `1920`,
-        `1080`,
-        `20`,
-      ])
+      // oxfmt-ignore
+      expect([...number_inputs].slice(2).map((input) => input.value)).toEqual([`30`, `1920`, `1080`, `20`])
       expect(doc_query<HTMLButtonElement>(`button[aria-label="Download WebM"]`).disabled).toBe(
         true,
       )

@@ -18,9 +18,9 @@
 import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { create_frac_to_cart, det_3x3, type Vec3 } from '#lib/math.js'
 import type * as h5wasm from 'h5wasm'
-import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import {
-  calc_force_stats,
+  compute_force_stats,
   checked_site_forces,
   create_trajectory_frame,
   expand_ion_types,
@@ -248,10 +248,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     forces: unknown,
     frame_scale: number, // traj_scale for ion-dynamics steps, scale for the final structure
   ) => {
-    const lattice = scale_matrix(
-      matrix3x3_from_rows(lattice_data, `lattice matrix`),
-      frame_scale,
-    )
+    const lattice = scale_matrix(mat3x3_from_rows(lattice_data, `lattice matrix`), frame_scale)
     const frac_to_cart = create_frac_to_cart(lattice)
     const positions = frac_positions.map((frac) => frac_to_cart(frac as Vec3))
     const metadata: Record<string, unknown> = { ...scf_frame_metadata(scf) }
@@ -270,7 +267,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
       `vaspout.h5 forces of ionic step ${step}`,
       warn,
     )
-    if (site_forces) Object.assign(metadata, calc_force_stats(site_forces))
+    if (site_forces) Object.assign(metadata, compute_force_stats(site_forces))
     return create_trajectory_frame(
       positions,
       elements,

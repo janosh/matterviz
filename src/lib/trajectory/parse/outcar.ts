@@ -7,7 +7,7 @@ import { is_finite_vec3_like, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import {
-  calc_force_stats,
+  compute_force_stats,
   create_trajectory_frame,
   expand_ion_types,
   holds_numbers,
@@ -37,6 +37,22 @@ const FRAME_ENERGY_RES: [RegExp, string][] = [
 
 const SEXTET = [0, 1, 2, 3, 4, 5]
 const numbers_of = (line: string): number[] => line.trim().split(/\s+/).map(parse_float_token)
+// Numbers of a line VASP printed in fixed-width F fields with `decimals` decimals. A value
+// filling its field runs into the one before it (`-3.00000123456.78901`), so a token that is
+// not one number is split after each value's decimals; a token that is no such run reads NaN.
+const fixed_width_numbers = (line: string, decimals: number): number[] => {
+  const field = new RegExp(`[-+]?\\d*\\.\\d{${decimals}}`, `g`)
+  return line
+    .trim()
+    .split(/\s+/)
+    .flatMap((token) => {
+      const value = parse_float_token(token)
+      if (Number.isFinite(value)) return [value]
+      const parts = token.match(field) ?? []
+      // every character accounted for, else the token is no run of fixed-width fields
+      return parts.join(``) === token ? parts.map(Number) : [NaN]
+    })
+}
 // The `value` capture group of `pattern` on every line that has one, in file order
 const captures = (lines: string[], pattern: RegExp): string[] =>
   lines.flatMap((line) => pattern.exec(line)?.groups?.value ?? [])
@@ -84,9 +100,11 @@ const parse_species = (
 }
 
 // Direct lattice vectors: three lines of `a_x a_y a_z  b*_x b*_y b*_z`, the first three
-// numbers of each being the real-space vector
+// numbers of each being the real-space vector. Fixed width 3F13.9, so a component of -10 A or
+// below runs into the one before it (`10.000000000-17.320508076`: hexagonal a from 11.6 A on).
 const parse_lattice = (lines: string[], start: number): Matrix3x3 | null => {
-  const rows = [1, 2, 3].map((offset) => numbers_of(lines[start + offset] ?? ``).slice(0, 3))
+  const row = (offset: number) => fixed_width_numbers(lines[start + offset] ?? ``, 9)
+  const rows = [1, 2, 3].map((offset) => row(offset).slice(0, 3))
   return rows.every(is_finite_vec3_like) ? (rows as Matrix3x3) : null
 }
 
@@ -153,15 +171,8 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
     if (kbar) {
       // XX YY ZZ XY YZ ZX in kB, VASP's sign convention (positive = compressive). Fixed
       // width 6F12.5: from -10000 or 100000 kB a value fills its field and runs into the one
-      // before it (`-3.00000123456.78901`), so a token that is not one number is split after
-      // each value's 5 decimals; past 1e6 kB VASP prints asterisks and the stress is dropped
-      const values = (kbar.groups?.values.trim().split(/\s+/) ?? []).flatMap((token) => {
-        const value = parse_float_token(token)
-        if (Number.isFinite(value)) return [value]
-        const parts = token.match(/[-+]?\d*\.\d{5}/g) ?? []
-        // every character accounted for, else the token is no run of F12.5 fields
-        return parts.join(``) === token ? parts.map(Number) : [NaN]
-      })
+      // before it; past 1e6 kB VASP prints asterisks and the stress is dropped
+      const values = fixed_width_numbers(kbar.groups?.values ?? ``, 5)
       const [xx, yy, zz, xy, yz, zx] = values
       if (values.length === 6 && values.every(Number.isFinite)) {
         pending = vasp_stress_metadata([
@@ -217,7 +228,7 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
         break
       }
       line_idx = first_row + n_atoms - 1
-      const metadata: Record<string, unknown> = { ...pending, ...calc_force_stats(forces) }
+      const metadata: Record<string, unknown> = { ...pending, ...compute_force_stats(forces) }
       if (n_scf_steps > 0) metadata.n_scf_steps = n_scf_steps
       pending = {}
       n_scf_steps = 0
