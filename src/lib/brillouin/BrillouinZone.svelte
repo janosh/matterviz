@@ -266,7 +266,7 @@
       structure = opened.data as Crystal // the zone needs a lattice; AnyStructure is wider
       current_filename = opened.filename
       const loaded = { structure, bz_order, ...opened.provenance }
-      on_file_load?.({ ...loaded, bz_data: zone })
+      on_file_load?.({ ...loaded, bz_order, bz_data: zone })
       pending_load = default_k_path && !k_path ? loaded : undefined
     },
     report_error: (message, metadata) => {

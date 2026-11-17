@@ -803,7 +803,9 @@ describe(`tile_symmetry_elements`, () => {
     expect(tile([mirror], [1, 1e9, 1e9]).elements).toHaveLength(1)
     expect(tile([screw], [1, 1, 1e9]).elements).toHaveLength(1)
     const diagonal: SymmetryElement = { ...mirror, axis: [1, 1, 1], plane_normal: [1, 1, 1] }
-    expect(tile([diagonal], [100, 100, 100]).elements).toHaveLength(298)
+    // 298 base-cell levels, but levels 100 apart are one (1 1 1) family of the supercell, and
+    // each family element draws all its in-cell planes
+    expect(tile([diagonal], [100, 100, 100]).elements).toHaveLength(100)
   })
 
   test(`treats a null axis (inversion centre) and fractional counts safely`, () => {
@@ -833,6 +835,14 @@ describe(`tile_symmetry_elements`, () => {
     const mirror_a = { ...centre, kind: `mirror`, plane_normal: [1, 0, 0] } as SymmetryElement
     const [plane] = tile_symmetry_elements([mirror_a], sheared).elements
     expect(plane.plane_normal).toEqual([1, -1, 0])
+    // the 4001 base-cell levels of a mirror ⟂ b are one (1 1 0) family of this supercell
+    const mirror_b = { ...mirror_a, plane_normal: [0, 1, 0] } as SymmetryElement
+    // oxfmt-ignore
+    const long_shear: Matrix3x3 = [[1, 1, 0], [-4000, 1, 0], [0, 0, 1]]
+    expect(tile_symmetry_elements([mirror_b], long_shear)).toMatchObject({
+      elements: [{ plane_normal: [1, 1, 0] }],
+      unavailable_reason: null,
+    })
     // input-cell centres wrap into the supercell; a det-1 shear still changes the basis
     const off_axis = { ...centre, point: [0.5, 0.25, 0.5] as Vec3 }
     const wrapped = tile_symmetry_elements([off_axis], sheared).elements.map(
