@@ -286,7 +286,12 @@ export function parse_xyz_comment_metadata(comment: string): {
       if (values.length === 3 || (values.length === 6 && lower === `stress`)) {
         signals[lower] = values
       } else if (values.length === 9) {
-        signals[lower] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
+        // column-major like ASE's reader and our writer (only Lattice= lists rows)
+        signals[lower] = [0, 1, 2].map((row) => [
+          values[row],
+          values[row + 3],
+          values[row + 6],
+        ])
       }
       continue
     }

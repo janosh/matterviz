@@ -26,6 +26,7 @@ import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, reset_section, set_input } from '../setup'
+import { max_abs_error } from '../numeric-helpers'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
 vi.mock(`svelte-widgets/browser`, async (import_original) => ({
@@ -90,7 +91,8 @@ describe(`poscar_frame_filename`, () => {
 
 describe(`trajectory_frame_to_extxyz_str`, () => {
   // Frame-level fields (step, energy, …) live outside the structure the single-structure
-  // exporter sees; scalars/booleans join the comment, arrays/strings/non-finites do not.
+  // exporter sees; scalars/booleans join the comment, numeric vectors as quoted arrays, while
+  // strings, non-finites and a stress of unknown units (no stress_frobenius) do not.
   test.each([0, 2])(`merges frame scalars into the comment for %i sites`, (site_count) => {
     const lines = trajectory_frame_to_extxyz_str(
       make_frame(5, two_sites.slice(0, site_count), {
@@ -101,6 +103,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
         pressure: Number.POSITIVE_INFINITY,
         bad_energy: Number.NaN,
         stress: [1, 2, 3, 4, 5, 6],
+        dipole: [0.5, -1, 2],
         label: `some string`,
       }),
     ).split(`\n`)
@@ -112,6 +115,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(comment).toContain(`force_max=0.1`)
     expect(comment).toContain(`temperature=300`)
     expect(comment).toContain(`converged=true`)
+    expect(comment).toContain(`dipole="0.5 -1 2"`)
     expect(comment).not.toContain(`stress`)
     expect(comment).not.toContain(`some string`)
     expect(comment).not.toMatch(/NaN|Infinity/)
@@ -140,6 +144,26 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
       density: 2.33,
       coords_unwrapped: true,
     })
+  })
+
+  // ASE writes momenta (read back as momentum + derived velocity) and a 9-value stress in
+  // eV/Å³: export restores both as ASE wrote them, without a stray velocity column
+  test(`re-exports ASE momenta and stress as ASE writes them`, () => {
+    const stress = `0.01 0.002 0 0.002 -0.03 0.004 0 0.004 0.05`
+    const source = [
+      `1`,
+      `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:momenta:R:3 stress="${stress}" pbc="T T T"`,
+      `Cu 0 0 0 1 -2 3`,
+    ].join(`\n`)
+    const comment = trajectory_frame_to_extxyz_str(parse_exported_frames(source)[0]).split(
+      `\n`,
+    )[1]
+    expect(comment).toContain(`Properties=species:S:1:pos:R:3:momenta:R:3 `)
+    const written = /stress="(?<values>[^"]+)"/
+      .exec(comment)
+      ?.groups?.values.split(` `)
+      .map(Number)
+    expect(max_abs_error(written ?? [], stress.split(` `).map(Number))).toBeLessThan(1e-15)
   })
 })
 

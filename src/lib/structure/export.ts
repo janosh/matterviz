@@ -240,42 +240,43 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 ])
 
 // Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
-// site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data
-function numeric_site_columns(structure: AnyStructure): { key: string; ncols: 1 | 3 }[] {
+// site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data.
+// ASE momenta (the extXYZ reader's `momentum`) go back out as `momenta`, which ASE reads as
+// Atoms momenta, without the `velocity` the reader derived from them.
+function numeric_site_columns(
+  structure: AnyStructure,
+): { key: string; name: string; ncols: 1 | 3 }[] {
   const first = structure.sites[0]?.properties ?? {}
-  return Object.keys(first).flatMap((key) => {
+  const columns = Object.keys(first).flatMap((key) => {
     if (XYZ_RESERVED_PROPERTIES.has(key) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return []
-    const ncols = typeof first[key] === `number` ? 1 : 3
+    const ncols: 1 | 3 = typeof first[key] === `number` ? 1 : 3
     const fits = structure.sites.every(({ properties }) => {
       const value = properties?.[key]
       return ncols === 1
         ? typeof value === `number` && Number.isFinite(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
-    return fits ? [{ key, ncols }] : []
+    return fits ? [{ key, name: key === `momentum` ? `momenta` : key, ncols }] : []
   })
+  const has_momenta = columns.some(({ key }) => key === `momentum`)
+  return has_momenta ? columns.filter(({ key }) => key !== `velocity`) : columns
 }
 
 // A written column the extXYZ readers would take for another: they match names
 // case-insensitively and reject a repeat, so `magmom` and `MAGMOM` make the file unreadable
 function xyz_column_clash(structure: AnyStructure): string | undefined {
   const taken = new Set(XYZ_RESERVED_PROPERTIES)
-  for (const { key } of numeric_site_columns(structure)) {
-    if (taken.has(key.toLowerCase()))
+  for (const { key, name } of numeric_site_columns(structure)) {
+    if (taken.has(name.toLowerCase()))
       return `Site property '${key}' clashes with another extXYZ column (names are case-insensitive); rename it`
-    taken.add(key.toLowerCase())
+    taken.add(name.toLowerCase())
   }
   return undefined
 }
 
-// Bare words in an extXYZ comment are read as valueless flags, and an `=` or `"` inside one
-// would be parsed as a key/value pair, silently inventing metadata. A newline is worse still:
-// it splits the comment in two, shifting every atom line and making the count line a lie.
-const sanitize_comment_label = (label: string): string =>
-  label.replaceAll(/["=]/g, ``).replaceAll(/\s+/g, ` `).trim()
-
 // Extended XYZ with a Properties= header so the columns beyond `species x y z` (forces,
-// motion constraints) and the cell survive a round trip
+// motion constraints) and the cell survive a round trip. The comment holds only key=value
+// pairs: readers (ASE) take bare words such as an id or formula for boolean flags.
 export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   const reason = xyz_export_unavailable_reason(structure)
@@ -292,9 +293,6 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   const extra_columns = numeric_site_columns(structure)
 
   const comment_parts: string[] = []
-  if (structure.id) comment_parts.push(sanitize_comment_label(structure.id))
-  const formula = plain_formula(structure)
-  if (formula) comment_parts.push(sanitize_comment_label(formula))
   if (lattice_matrix) {
     const values = lattice_matrix.flat().map((value) => value.toFixed(8))
     comment_parts.push(`Lattice="${values.join(` `)}"`)
@@ -305,7 +303,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // and reads back as one. The whole-atom `move_mask:L:1` cannot express a partial `T F T`:
   // ASE collapses it to "this atom may move" and yields FixAtoms([]), i.e. no constraint.
   if (move_flags) property_cols.push(`move_mask:L:3`)
-  for (const { key, ncols } of extra_columns) property_cols.push(`${key}:R:${ncols}`)
+  for (const { name, ncols } of extra_columns) property_cols.push(`${name}:R:${ncols}`)
   comment_parts.push(`Properties=${property_cols.join(`:`)}`)
   // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
   if (lattice_matrix) {
@@ -325,10 +323,10 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
         : undefined
     if (!coords || !math.is_finite_vec3_like(coords))
       throw new Error(coordinate_error(site_idx))
-    const columns = coords.map((coord) => coord.toFixed(6))
-    if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
+    const columns = coords.map((coord) => coord.toFixed(8))
+    if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(8)))
     columns.push(...flag_columns(move_flags?.[site_idx]))
-    // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
+    // full precision: arbitrary per-atom data, not coordinates on a 1e-8 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
     lines.push(`${site.species[0].element} ${columns.join(` `)}`)

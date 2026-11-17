@@ -1,6 +1,7 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
+import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
@@ -48,18 +49,41 @@ export function poscar_frame_filename(
 // comment would duplicate or contradict the file.
 const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 
+// Finite numbers of a flat vector or 3x3 matrix, in the column-major order ASE reads a 9-value
+// array in; undefined for anything else
+function numeric_values(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const is_matrix =
+    value.length === 3 && value.every((row) => Array.isArray(row) && row.length === 3)
+  const values: unknown[] = is_matrix
+    ? [0, 1, 2].flatMap((col) => value.map((row) => row[col]))
+    : value
+  return values.length > 0 && values.every(Number.isFinite) ? (values as number[]) : undefined
+}
+
 // Serialize one frame as an extXYZ block, preserving the metadata that lives on the frame
 // rather than its structure. Single-structure export reads forces off site properties and
-// knows nothing about energy or step, so both are merged in here.
+// knows nothing about energy or step, so both are merged in here. Vectors go out as quoted
+// arrays; stress as ASE expects it (eV/Å³, tensile positive, 9 values), and only when it is
+// in the readers' shared convention (GPa, compressive positive), which stress_frobenius marks:
+// pymatgen's unitless raw stress is left out rather than mislabelled.
 export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
   const xyz = structure_to_xyz_str(frame.structure)
   const extra = [`step=${frame.step}`]
-  for (const [key, value] of Object.entries(frame.metadata ?? {})) {
+  const metadata = frame.metadata ?? {}
+  for (let [key, value] of Object.entries(metadata)) {
     if (SKIP_METADATA_KEYS.has(key)) continue
+    if (key === `stress`) {
+      if (typeof metadata.stress_frobenius !== `number`) continue
+      value = numeric_values(value)?.map((gpa) => -gpa / EV_PER_A3_TO_GPA)
+    }
+    const name = key.replaceAll(/[^A-Za-z0-9_]/g, `_`)
     // Number.isFinite, not typeof: a NaN or Infinity would emit `energy=NaN` into the comment,
     // which every downstream extXYZ reader parses back as a number that isn't one.
-    if (typeof value === `boolean` || Number.isFinite(value)) {
-      extra.push(`${key.replaceAll(/[^A-Za-z0-9_]/g, `_`)}=${value}`)
+    if (typeof value === `boolean` || Number.isFinite(value)) extra.push(`${name}=${value}`)
+    else {
+      const values = numeric_values(value)
+      if (values) extra.push(`${name}="${values.join(` `)}"`)
     }
   }
   // Only the header changes; keep atom rows intact instead of splitting and joining them all.

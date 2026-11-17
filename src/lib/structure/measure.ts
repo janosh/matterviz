@@ -32,13 +32,14 @@ export const rolls_measured_sites = (mode: MeasureMode): boolean => mode in ORDE
 
 // Calculate minimum image displacement between two points under PBC
 // If lattice_matrix is null/undefined, returns Euclidean displacement.
-// pbc flags disable wrapping along non-periodic axes (e.g. slab vacuum directions).
+// pbc flags disable wrapping along non-periodic axes (e.g. slab vacuum directions). Pass
+// prebuilt converters when calling in a loop.
+export type DisplacementOptions = { converters?: LatticeConverters; pbc?: Pbc }
 export function displacement_pbc(
   from: Vec3,
   target: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
-  converters?: LatticeConverters,
-  pbc?: Pbc,
+  { converters, pbc }: DisplacementOptions = {},
 ): Vec3 {
   if (!lattice_matrix) return subtract(target, from)
   return min_image_displacement(from, target, lattice_matrix, converters, pbc)
@@ -52,8 +53,7 @@ export function pick_displacement(
   from: Vec3,
   target: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
-  converters?: LatticeConverters,
-  pbc?: Pbc,
+  { converters, pbc }: DisplacementOptions = {},
 ): Vec3 {
   const drawn = subtract(target, from)
   if (!lattice_matrix) return drawn
@@ -132,13 +132,10 @@ export function pbc_chain_positions(
   // on pick order
   const chain = positions.slice(0, 1)
   for (let idx = 1; idx < positions.length; idx++) {
-    const step = pick_displacement(
-      positions[idx - 1],
-      positions[idx],
-      lattice_matrix,
+    const step = pick_displacement(positions[idx - 1], positions[idx], lattice_matrix, {
       converters,
       pbc,
-    )
+    })
     chain.push(add(chain[idx - 1], step))
   }
   const offsets = positions.map((position, idx) => subtract(position, chain[idx]))
@@ -194,7 +191,7 @@ export function compute_displacements(
           `list the same atoms in the same order.`,
       )
     }
-    return displacement_pbc(ref_site.xyz, site.xyz, lattice_matrix, converters, pbc)
+    return displacement_pbc(ref_site.xyz, site.xyz, lattice_matrix, { converters, pbc })
   })
   let sum_sq = 0
   let max_sq = 0
@@ -224,10 +221,13 @@ export function dihedral_angle(
   pbc?: Pbc,
 ): number {
   // One converter set for all three bonds instead of three (this runs per label render)
-  const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
-  const bond_12 = pick_displacement(point_1, point_2, lattice_matrix, converters, pbc)
-  const bond_23 = pick_displacement(point_2, point_3, lattice_matrix, converters, pbc)
-  const bond_34 = pick_displacement(point_3, point_4, lattice_matrix, converters, pbc)
+  const opts = {
+    converters: lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined,
+    pbc,
+  }
+  const bond_12 = pick_displacement(point_1, point_2, lattice_matrix, opts)
+  const bond_23 = pick_displacement(point_2, point_3, lattice_matrix, opts)
+  const bond_34 = pick_displacement(point_3, point_4, lattice_matrix, opts)
 
   // Plane normals of the p1-p2-p3 and p2-p3-p4 triangles
   const normal_123 = cross_3d(bond_12, bond_23)

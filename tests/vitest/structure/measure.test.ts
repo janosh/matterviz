@@ -62,10 +62,10 @@ describe(`measure: distances`, () => {
   test(`pbc flags disable wrapping along vacuum axes (slabs)`, () => {
     const lat = cubic(10)
     // Slab with vacuum along z: displacement must NOT wrap across the vacuum gap
-    const disp = displacement_pbc([0, 0, 1], [0, 0, 9], lat, undefined, SLAB_PBC)
+    const disp = displacement_pbc([0, 0, 1], [0, 0, 9], lat, { pbc: SLAB_PBC })
     expect(disp[2]).toBeCloseTo(8, 12)
     // Periodic axes still wrap with mixed pbc
-    const disp_xy = displacement_pbc([1, 1, 1], [9, 9, 9], lat, undefined, SLAB_PBC)
+    const disp_xy = displacement_pbc([1, 1, 1], [9, 9, 9], lat, { pbc: SLAB_PBC })
     expect_vec3_close(disp_xy, [-2, -2, 8], 12)
   })
 
@@ -359,7 +359,7 @@ describe(`measure: overlay endpoints`, () => {
   ] as [string, Vec3, Vec3, Pbc, Vec3][])(
     `pick_displacement for %s`,
     (_desc, from, target, pbc, expected) => {
-      const displacement = pick_displacement(from, target, cubic(10), undefined, pbc)
+      const displacement = pick_displacement(from, target, cubic(10), { pbc })
       expect(displacement).toEqual(expected.map((val) => expect.closeTo(val, 12)))
     },
   )

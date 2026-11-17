@@ -98,17 +98,9 @@ export function get_energy_per_atom(entry: PhaseData): number {
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
-// Whether an entry carries an absolute energy rather than E_form only (no energy, or a 0 eV
-// placeholder next to a nonzero e_form_per_atom: real totals are never exactly 0 eV)
+// Whether an entry carries an absolute energy rather than E_form only
 export const has_absolute_energy = (entry: PhaseData): boolean =>
-  typeof entry.energy_per_atom === `number` ||
-  (typeof entry.energy === `number` &&
-    !(
-      entry.energy === 0 &&
-      typeof entry.e_form_per_atom === `number` &&
-      Number.isFinite(entry.e_form_per_atom) &&
-      entry.e_form_per_atom !== 0
-    ))
+  typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`
 
 // Absolute energy per atom: the entry's own, else E_form + Σ x_e E_e on the references'
 // scale. NaN when the entry has neither or an element lacks a reference.
