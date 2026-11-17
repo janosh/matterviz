@@ -1,13 +1,13 @@
 import * as math from '#lib/math.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import {
-  calculate_all_pair_rdfs,
-  calculate_rdf,
+  compute_all_pair_rdfs,
+  compute_rdf,
   rdf_bin_site_index,
   rdf_bin_sites,
   shell_volume,
-} from '#lib/rdf/calc-rdf.js'
-import { coordination_number } from '#lib/rdf/calc-pdf.js'
+} from '#lib/rdf/compute-rdf.js'
+import { coordination_number } from '#lib/rdf/compute-pdf.js'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
 import { neighbor_query } from '#lib/structure/neighbor-list.js'
@@ -29,7 +29,7 @@ const pd_structure = fixture(`mp-2`)
 const bi2zr2o8_structure = fixture(`Bi2Zr2O8-Fm3m`)
 
 const bin_width = ({ r: radius }: RdfPattern) => radius[1] - radius[0]
-// Every unordered pair of the (alphabetically sorted) elements, in calculate_all_pair_rdfs order
+// Every unordered pair of the (alphabetically sorted) elements, in compute_all_pair_rdfs order
 const sorted_pairs = (...elements: string[]): [string, string][] =>
   elements
     .toSorted()
@@ -65,10 +65,10 @@ const simple_cubic_shells = (a_len: number, cutoff: number): Map<number, number>
 const ROCKSALT_A = 5.6
 const rocksalt = make_rocksalt(ROCKSALT_A)
 
-describe(`calculate_rdf`, () => {
+describe(`compute_rdf`, () => {
   test(`simple cubic: every shell's height and coordination number are exact`, () => {
     const [a_len, cutoff, n_bins] = [4, 15, 150]
-    const pattern = calculate_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), { cutoff, n_bins })
+    const pattern = compute_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), { cutoff, n_bins })
     const density = 1 / a_len ** 3
     const delta_r = bin_width(pattern)
     expect(pattern.r).toHaveLength(n_bins)
@@ -88,12 +88,12 @@ describe(`calculate_rdf`, () => {
   })
 
   // The ideal-gas tail limit (g(r) -> 1 for uncorrelated points) is pinned on the same
-  // calculate_rdf core by calc-pdf.test.ts (`disordered cell`), with a sharper bound.
+  // compute_rdf core by compute-pdf.test.ts (`disordered cell`), with a sharper bound.
 
   test(`rocksalt partials: Na-Cl first shell is 6 at a/2, Na-Na is 12 at a/√2, Cl-Na = Na-Cl`, () => {
     const opts = { cutoff: 6, n_bins: 60 }
     const partial = (center: string, neighbor: string) =>
-      calculate_rdf(rocksalt, { ...opts, center_species: center, neighbor_species: neighbor })
+      compute_rdf(rocksalt, { ...opts, center_species: center, neighbor_species: neighbor })
     const [na_cl, na_na, cl_na] = [
       partial(`Na`, `Cl`),
       partial(`Na`, `Na`),
@@ -130,8 +130,8 @@ describe(`calculate_rdf`, () => {
     [`Lu-Al`, lu_al_structure],
   ])(`full g(r) of %s equals Σ c_a c_b g_ab(r) over the partials`, (_name, structure) => {
     const opts = { cutoff: 7, n_bins: 70 }
-    const full = calculate_rdf(structure, opts)
-    const partials = calculate_all_pair_rdfs(structure, opts)
+    const full = compute_rdf(structure, opts)
+    const partials = compute_all_pair_rdfs(structure, opts)
     const counts: Record<string, number> = {}
     for (const { species } of structure.sites) {
       for (const { element, occu } of species) counts[element] = (counts[element] ?? 0) + occu
@@ -165,22 +165,22 @@ describe(`calculate_rdf`, () => {
                 { element: `Na`, occu: 0.2, oxidation_state: 1 },
                 { element: `Na`, occu: 0.3, oxidation_state: 1 },
                 { element: `K`, occu: 0.5, oxidation_state: 1 },
-                { element: `Ar`, occu: 0, oxidation_state: 0 },
-                { element: `He`, occu: 0, oxidation_state: 0 },
+                { element: `Ar`, occu: 0 },
+                { element: `He`, occu: 0 },
               ],
             }
           : site,
       ),
     }
     const opts = { cutoff: 4, n_bins: 40 }
-    const partials = calculate_all_pair_rdfs(mixed, opts)
+    const partials = compute_all_pair_rdfs(mixed, opts)
     expect(partials.map((partial) => partial.element_pair)).toEqual(
       sorted_pairs(`Na`, `K`, `Ar`, `He`, `Cl`),
     )
     for (const { element_pair, g_r } of partials) {
       const [center_species, neighbor_species] = element_pair ?? []
       expect(g_r).toEqual(
-        calculate_rdf(mixed, { ...opts, center_species, neighbor_species }).g_r,
+        compute_rdf(mixed, { ...opts, center_species, neighbor_species }).g_r,
       )
     }
     const by_pair = Object.fromEntries(
@@ -203,7 +203,7 @@ describe(`calculate_rdf`, () => {
   ])(`%s: pbc %j images only along periodic axes`, (_name, pbc, lattice_pbc, first_shell) => {
     const a_len = 5
     const crystal = make_crystal(a_len, [[`Si`, [0, 0, 0]]], { pbc: lattice_pbc })
-    const pattern = calculate_rdf(crystal, { cutoff: 9, n_bins: 90, pbc })
+    const pattern = compute_rdf(crystal, { cutoff: 9, n_bins: 90, pbc })
     expect(shell_coordination(pattern, 1 / a_len ** 3, 4.5, 5.5)).toBeCloseTo(first_shell, 9)
     if (!first_shell) expect(pattern.g_r).toEqual(Array(90).fill(0))
   })
@@ -211,16 +211,16 @@ describe(`calculate_rdf`, () => {
   test(`distances are binned over the half-open range [0, cutoff)`, () => {
     const one_atom = make_crystal(5, [[`Si`, [0, 0, 0]]])
     // nearest images sit exactly at the cutoff and are excluded...
-    expect(calculate_rdf(one_atom, { cutoff: 5, n_bins: 50 }).g_r).toEqual(Array(50).fill(0))
+    expect(compute_rdf(one_atom, { cutoff: 5, n_bins: 50 }).g_r).toEqual(Array(50).fill(0))
     // ...and a shell exactly on a bin edge lands in the upper bin, as one shell, not split
-    const at_edge = calculate_rdf(one_atom, { cutoff: 6, n_bins: 60 })
+    const at_edge = compute_rdf(one_atom, { cutoff: 6, n_bins: 60 })
     const nonzero = at_edge.g_r.flatMap((val, idx) => (val > 0 ? [idx] : []))
     expect(nonzero).toEqual([50])
     expect(at_edge.r[50]).toBeCloseTo(5.05, 12)
   })
 
   test(`species absent from the structure give an all-zero partial`, () => {
-    const { g_r, element_pair } = calculate_rdf(pd_structure, {
+    const { g_r, element_pair } = compute_rdf(pd_structure, {
       center_species: `Au`,
       neighbor_species: `Au`,
     })
@@ -240,14 +240,14 @@ describe(`calculate_rdf`, () => {
       { element: `Si`, xyz: [5.9, 6.8, 6.6] },
     ])
     const [cutoff, n_bins] = [4.5, 45]
-    const pattern = calculate_rdf(structure, { cutoff, n_bins })
+    const pattern = compute_rdf(structure, { cutoff, n_bins })
     const nearest = math.pbc_dist(structure.sites[0].xyz, structure.sites[1].xyz, lattice)
     expect(nearest).toBeLessThan(2)
     expect(pattern.g_r.findIndex((val) => val > 0)).toBe(
       Math.floor(nearest / (cutoff / n_bins)),
     )
     // exactly one partner at that distance per atom (density of the 2-atom cell is 2/V)
-    const volume = math.calc_lattice_params(lattice).volume
+    const volume = math.compute_lattice_params(lattice).volume
     expect(shell_coordination(pattern, 2 / volume, 0, nearest + 0.1)).toBeCloseTo(1, 9)
   })
 
@@ -263,7 +263,7 @@ describe(`calculate_rdf`, () => {
     [`fractional bins`, { cutoff: 10, n_bins: 2.5 }, /n_bins must be a positive integer/],
     [`1e7 bins`, { cutoff: 10, n_bins: 1e7 }, /n_bins must be a positive integer <= 1000000/],
   ])(`throws on %s`, (_name, opts, pattern) => {
-    expect(() => calculate_rdf(pd_structure, opts)).toThrow(pattern)
+    expect(() => compute_rdf(pd_structure, opts)).toThrow(pattern)
   })
 
   // oxfmt-ignore
@@ -273,13 +273,13 @@ describe(`calculate_rdf`, () => {
       sites: pd_structure.sites,
       ...(matrix && { lattice: { matrix } }),
     } as Crystal
-    for (const calculate of [calculate_rdf, calculate_all_pair_rdfs]) {
+    for (const calculate of [compute_rdf, compute_all_pair_rdfs]) {
       expect(() => calculate(structure)).toThrow(/unit cell/)
     }
   })
 })
 
-describe(`calculate_all_pair_rdfs`, () => {
+describe(`compute_all_pair_rdfs`, () => {
   const five_species = make_crystal(5, [
     [`Si`, [0, 0, 0]],
     [`Na`, [0.2, 0.2, 0.2]],
@@ -305,7 +305,7 @@ describe(`calculate_all_pair_rdfs`, () => {
           ...site,
           species:
             idx === mixed_idx
-              ? [...site.species, { element: `Cl`, occu: 0.3, oxidation_state: 0 }]
+              ? [...site.species, { element: `Cl`, occu: 0.3 }]
               : vacancy && idx === 0
                 ? site.species.map((species) => ({ ...species, occu: 0 }))
                 : site.species,
@@ -314,7 +314,7 @@ describe(`calculate_all_pair_rdfs`, () => {
       sorted_pairs(`Si`, `Na`, `Cl`, `K`, `Al`),
     ]),
   ])(
-    `%s: one pattern per unordered pair, sorted, matching calculate_rdf`,
+    `%s: one pattern per unordered pair, sorted, matching compute_rdf`,
     (_name, structure, pairs) => {
       for (const pbc of [
         [true, true, true],
@@ -322,7 +322,7 @@ describe(`calculate_all_pair_rdfs`, () => {
         [false, false, false],
       ] as Pbc[]) {
         const opts = { cutoff: 8, n_bins: 50, pbc }
-        const patterns = calculate_all_pair_rdfs(structure, opts)
+        const patterns = compute_all_pair_rdfs(structure, opts)
         const { offsets, neighbors, distances } = neighbor_query(structure, {
           cutoff: opts.cutoff,
           pbc,
@@ -331,7 +331,7 @@ describe(`calculate_all_pair_rdfs`, () => {
         expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
         for (const { element_pair, r: radius, g_r } of patterns) {
           const [center_species, neighbor_species] = element_pair ?? []
-          const direct = calculate_rdf(structure, {
+          const direct = compute_rdf(structure, {
             ...opts,
             center_species,
             neighbor_species,
@@ -363,7 +363,7 @@ describe(`calculate_all_pair_rdfs`, () => {
             (product, values) => product * values.reduce((sum, weight) => sum + weight, 0),
             1,
           )
-          const { volume } = math.calc_lattice_params(structure.lattice.matrix)
+          const { volume } = math.compute_lattice_params(structure.lattice.matrix)
           const relative_tolerance = 2 * distances.length * Number.EPSILON
           for (let bin = 0; bin < opts.n_bins; bin++) {
             if (pair_weight > 0)
@@ -392,12 +392,12 @@ describe(`rdf_bin_sites`, () => {
     [`rocksalt partial Cl-Na`, make_rocksalt(), [`Cl`, `Na`]],
   ])(`%s: each bin's pairs are the ones the histogram counted`, (_name, structure, pair) => {
     const [center_species, neighbor_species] = pair ?? []
-    const pattern = calculate_rdf(structure, { ...options, center_species, neighbor_species })
+    const pattern = compute_rdf(structure, { ...options, center_species, neighbor_species })
     const element_of = (idx: number) => structure.sites[idx].species[0].element
     const count = (element: string) =>
       structure.sites.filter((_site, idx) => element_of(idx) === element).length
     const pair_weight = pair ? count(pair[0]) * count(pair[1]) : structure.sites.length ** 2
-    const { volume } = math.calc_lattice_params(structure.lattice.matrix)
+    const { volume } = math.compute_lattice_params(structure.lattice.matrix)
     let [max_err, total_pairs] = [0, 0]
     // the one-search index of every bin finds exactly what each per-bin search does
     const index = rdf_bin_site_index(structure, { ...options, element_pair: pair })

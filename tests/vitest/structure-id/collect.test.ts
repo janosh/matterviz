@@ -1,7 +1,7 @@
 import { encode_frame } from '#lib/trajectory/frame.js'
 import type { Vec3 } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
-import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
 import * as async_compute from '#lib/structure-id/async-compute.svelte.js'
 import {
   collect_structure_id_sweep,
@@ -174,8 +174,8 @@ describe(`collect_structure_id_sweep`, () => {
     `stops when frame %i aborts during %s and forwards the signal`,
     async (abort_at, phase) => {
       const controller = new AbortController()
-      const compute = async_compute.calc_structure_id_async
-      const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
+      const compute = async_compute.compute_structure_id_async
+      const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
       if (phase === `compute`) {
         compute_spy.mockImplementation(async (...args) => {
           const result = await compute(...args)
@@ -243,7 +243,7 @@ describe(`collect_structure_id_sweep`, () => {
     }
     expect(shifted_slab.sites[0].abc[2]).toBeLessThan(0)
 
-    const wrapped = calc_structure_id(
+    const wrapped = compute_structure_id(
       { ...shifted_slab, sites: bulk.sites },
       { skip_csp: true },
     )

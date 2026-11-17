@@ -3,7 +3,7 @@
 // real postMessage path runs; the components then exercise the synchronous fallback.
 import type * as VacfAsyncModule from '#lib/vacf/async-compute.svelte.js'
 import * as collect_module from '#lib/vacf/collect.js'
-import { calc_vacf } from '#lib/vacf/calc-vacf.js'
+import { compute_vacf } from '#lib/vacf/compute-vacf.js'
 import type { VacfInput, VacfOptions, VacfResult } from '#lib/vacf/index.js'
 import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '#lib/vacf/VacfPlot.svelte'
@@ -25,7 +25,7 @@ import { build_vacf_input, circular_motion, orbit_run } from './helpers'
 // Mirrors vacf-worker.ts: a thrown kernel error becomes an error reply instead of escaping
 const input_of = create_input_store<VacfInput>()
 const stub = install_stub_worker<WorkerRequest<VacfInput, VacfOptions>>((message) =>
-  calc_vacf(input_of(message), message.options),
+  compute_vacf(input_of(message), message.options),
 )
 
 let compute_vacf_async: typeof VacfAsyncModule.compute_vacf_async
@@ -55,7 +55,7 @@ describe(`worker code path`, () => {
     `round-trips a %s request (stored=%s, frames=%i) and copies its buffers`,
     async (_label, stored, n_frames) => {
       const input = orbit_input(n_frames, stored)
-      const sync = calc_vacf(input)
+      const sync = compute_vacf(input)
       const result = await compute_vacf_async(input)
       expect(stub.posted).toHaveLength(1)
       expect(result).toEqual(sync)
@@ -68,7 +68,7 @@ describe(`worker code path`, () => {
       if (stored) expect(payload?.velocities).toHaveLength(n_frames * 3)
       // other options on the same input post the options alone: the worker kept the streams
       const options = { max_lag_fraction: 0.3 }
-      expect(await compute_vacf_async(input, options)).toEqual(calc_vacf(input, options))
+      expect(await compute_vacf_async(input, options)).toEqual(compute_vacf(input, options))
       expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
       expect_module_worker(stub.instances, `src/lib/vacf/vacf-worker.ts`)
     },
@@ -94,7 +94,7 @@ describe(`VacfPlot`, () => {
     [`vacf` as const, 1],
     [`vdos` as const, 1],
   ])(`renders panel=%s as %i plot(s)`, async (panel, expected) => {
-    const text = await mount_plot({ result: calc_vacf(orbit_input(80)), panel })
+    const text = await mount_plot({ result: compute_vacf(orbit_input(80)), panel })
     expect(document.querySelectorAll(`.scatter`)).toHaveLength(expected)
     if (panel) return
     for (const snippet of [
@@ -111,7 +111,7 @@ describe(`VacfPlot`, () => {
     // two atoms on the same orbit, one Li and one Si, so both panels list Total, Li and Si
     const { positions, velocities } = circular_motion(40, 0.04, 1)
     const pair = (frames: number[][][]) => frames.map(([atom]) => [atom, atom])
-    const result = calc_vacf(
+    const result = compute_vacf(
       build_vacf_input(pair(positions), {
         velocity_frames: pair(velocities),
         elements: [`Li`, `Si`],
@@ -130,7 +130,7 @@ describe(`VacfPlot`, () => {
 
   it(`keeps VACF and VDOS control panes independent`, async () => {
     await mount_plot({
-      result: calc_vacf(orbit_input(80)),
+      result: compute_vacf(orbit_input(80)),
       vacf_controls_open: true,
       vdos_controls_open: false,
     })
@@ -149,9 +149,9 @@ describe(`VacfPlot`, () => {
 
   it(`replaces stale curves with the error when a compute fails`, async () => {
     const text = await mount_plot({
-      result: calc_vacf(orbit_input(40)),
+      result: compute_vacf(orbit_input(40)),
       input: orbit_input(40),
-      // outside (0, 1], so calc_vacf (and the worker) reject
+      // outside (0, 1], so compute_vacf (and the worker) reject
       vacf_options: { max_lag_fraction: 5 },
     })
     expect(text).toContain(`max_lag_fraction must be in (0, 1]`)
@@ -182,7 +182,7 @@ describe(`VacfPlot`, () => {
       await tick()
       expect(state.loading).toBe(false)
 
-      pending_compute.resolve(calc_vacf(input))
+      pending_compute.resolve(compute_vacf(input))
       await settle()
       expect(state.result).toBeUndefined()
     } finally {
@@ -191,7 +191,7 @@ describe(`VacfPlot`, () => {
   })
 
   // dt, time_unit and the VDOS window only relabel/rescale a finished correlation, so editing
-  // them must not re-run it; the relabelled result is exactly calc_vacf's for the new options
+  // them must not re-run it; the relabelled result is exactly compute_vacf's for the new options
   it.each([true, false])(
     `applies dt and VDOS edits without recomputing (stored=%s)`,
     async (stored) => {
@@ -216,13 +216,13 @@ describe(`VacfPlot`, () => {
       try {
         await settle(6)
         expect(compute).toHaveBeenCalledTimes(1)
-        expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        expect(await edit(edited)).toEqual([compute_vacf(input, edited), undefined, 1])
         // frozen, so the $state it lands in leaves its curves unproxied for the plots
         expect(types.isProxy(state.result?.curves)).toBe(false)
         // an invalid timestep is reported in place of the curves, and correcting it restores
         // them and clears the message, both without recomputing; a lag-range edit recomputes
         expect(await edit({ dt: 2 })).toEqual(invalid)
-        expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        expect(await edit(edited)).toEqual([compute_vacf(input, edited), undefined, 1])
         expect((await edit({ ...edited, max_lag_fraction: 0.3 }))[2]).toBe(2)
       } finally {
         await unmount(component)

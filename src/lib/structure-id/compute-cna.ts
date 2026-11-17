@@ -237,7 +237,7 @@ function classify_adaptive(list: NeighborList, center_idx: number): CnaTypeCode 
 // Per-atom CNA type codes. In `fixed` mode the bond cutoff is the radius `list` was built at:
 // the 12-or-14 neighbor count that drives that branch is read off `list`, so counting neighbors
 // at one cutoff and bonding them at another would classify against a structure nobody asked for.
-export function calc_cna(list: NeighborList, mode: CnaMode): Int8Array {
+export function compute_cna(list: NeighborList, mode: CnaMode): Int8Array {
   const classify = mode === `fixed` ? classify_fixed : classify_adaptive
   const types = new Int8Array(list.n_centers)
   for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {

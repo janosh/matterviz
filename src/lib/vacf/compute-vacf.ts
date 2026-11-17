@@ -49,7 +49,7 @@ export const VACF_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/frame`] as const
 // not resolution — and 4x keeps peak positions within a quarter bin of the continuum value.
 const VDOS_ZERO_PAD_FACTOR = 4
 
-const fail = analysis_fail(`calc_vacf`)
+const fail = analysis_fail(`compute_vacf`)
 
 // Central differences of a flat frame-major position buffer: v(t) = (r(t+1) - r(t-1)) / 2dt.
 // The endpoints have no central difference, so the velocity series is 2 frames shorter and
@@ -99,7 +99,7 @@ type FrameVacf = Omit<
   | 'curves'
 > & { curves: Omit<VacfCurve, 'vdos' | 'peak_frequency'>[] }
 
-export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResult {
+export function compute_vacf(input: VacfInput, options: VacfOptions = {}): VacfResult {
   const {
     positions,
     velocities: stored_velocities,
@@ -113,9 +113,9 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     velocity_source: requested_source = `auto`,
   } = options
 
-  validate_position_stream_layout(input, `calc_vacf`, 1)
+  validate_position_stream_layout(input, `compute_vacf`, 1)
   // Up front so a bad dt/time_unit fails before the correlation; revise_vacf applies them
-  resolve_lag_time_unit(`calc_vacf`, options.dt, options.time_unit, `fs`)
+  resolve_lag_time_unit(`compute_vacf`, options.dt, options.time_unit, `fs`)
   if (!Number.isInteger(max_lags) || max_lags < 2) {
     fail(`max_lags must be an integer >= 2, got ${max_lags}`)
   }
@@ -162,7 +162,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   // === lag grid ===
   // Lag 0 is included: it is the mean squared speed the whole curve normalizes by, and the
   // cosine transform needs the series to start there.
-  const max_lag = Math.min(lag_range(`calc_vacf`, n_frames, max_lag_fraction), max_lags - 1)
+  const max_lag = Math.min(lag_range(`compute_vacf`, n_frames, max_lag_fraction), max_lags - 1)
   const lags = Array.from({ length: max_lag + 1 }, (_unused, lag) => lag)
   const n_origins = lags.map((lag) => n_frames - lag)
 
@@ -213,7 +213,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   return revise_vacf(frame_result, options)
 }
 
-// What calc_vacf returns for new dt / time_unit / VDOS settings, derived from a finished result
+// What compute_vacf returns for new dt / time_unit / VDOS settings, derived from a finished result
 // instead of re-running the correlation (seconds for a 10k-frame x 1k-atom run): the lag grid
 // and origin sums do not depend on them. Only a differentiated VACF carries the timestep, as
 // (Å/time)^2, so it is rescaled by (old dt / new dt)^2; stored velocities keep the file's units.
@@ -222,7 +222,7 @@ export function revise_vacf(
   options: Pick<VacfOptions, 'dt' | 'time_unit' | 'vdos'>,
 ): VacfResult {
   const { dt: delta_time = 1, vdos: vdos_options = {} } = options
-  const time_unit = resolve_lag_time_unit(`calc_vacf`, options.dt, options.time_unit, `fs`)
+  const time_unit = resolve_lag_time_unit(`compute_vacf`, options.dt, options.time_unit, `fs`)
   const { lags, velocity_source } = result
   const differentiated = velocity_source === `central_difference`
   const scale = differentiated ? (result.dt / delta_time) ** 2 : 1

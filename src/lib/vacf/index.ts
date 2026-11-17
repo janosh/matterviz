@@ -1,9 +1,9 @@
 import type { WindowType } from '#lib/fft.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-import type { VACF_FREQUENCY_UNITS } from './calc-vacf'
+import type { VACF_FREQUENCY_UNITS } from './compute-vacf'
 
 export { compute_vacf_async } from './async-compute.svelte'
-export * from './calc-vacf'
+export * from './compute-vacf'
 export * from './collect'
 export { default as TrajectoryVacfPane } from './TrajectoryVacfPane.svelte'
 export { default as VacfPlot } from './VacfPlot.svelte'

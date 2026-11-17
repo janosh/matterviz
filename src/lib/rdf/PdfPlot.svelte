@@ -11,7 +11,7 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { html_to_text, to_error } from 'svelte-widgets/utils'
   import {
-    calculate_all_pair_rdfs,
+    compute_all_pair_rdfs,
     label_structures,
     number_density,
     PDF_DEFAULT_CUTOFF,
@@ -76,7 +76,7 @@
       try {
         // the PDF's own message for a lattice-less or empty structure, before the search
         const rho_0 = number_density(struct)
-        const partial_rdfs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
+        const partial_rdfs = compute_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
         return { struct, label, partial_rdfs, rho_0 }
       } catch (exc) {
         // a formula label is <sub> markup for the legend; the notice is plain text

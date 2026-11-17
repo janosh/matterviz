@@ -6,7 +6,13 @@ import { assemble_crystal } from '#lib/slab/lattice-basis.js'
 import { MAX_SLAB_SITES } from '#lib/slab/types.js'
 import type { Crystal, Site } from '#lib/structure/index.js'
 import { wrap_frac_coord } from '#lib/structure/pbc.js'
-import { det2, match_of_matrices, mul2, surface_frame, unit_cell_match } from './lattice-match'
+import {
+  det_2x2,
+  match_of_matrices,
+  mul2,
+  surface_frame,
+  unit_cell_match,
+} from './lattice-match'
 import type {
   Heterostructure,
   InterfaceOptions,
@@ -23,7 +29,7 @@ import { INTERFACE_DEFAULTS } from './types'
 // cell bound the search box, so no epsilon enters anywhere.
 export function in_plane_supercell(crystal: Crystal, matrix: Matrix2x2): Crystal {
   const [[m00, m01], [m10, m11]] = matrix
-  const det = det2(matrix)
+  const det = det_2x2(matrix)
   if (!matrix.flat().every(Number.isInteger) || det === 0) {
     throw new Error(
       `In-plane supercell matrix must be integer with non-zero determinant, ` +
@@ -117,7 +123,7 @@ function stack_slab(
   // projected (x, y) = (s, t) · B for super-lattice rows B, so (s, t) = (x, y) · adj(B) / det
   const super_basis = mul2(matrix, basis)
   const [[b00, b01], [b10, b11]] = super_basis
-  const det = det2(super_basis)
+  const det = det_2x2(super_basis)
   const [axis_x, axis_y, normal] = axes
   const raw_heights = cell.sites.map(({ xyz }) => math.dot(xyz, normal))
   const coords = cell.sites.map(({ xyz }): Vec2 => {

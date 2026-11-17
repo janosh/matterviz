@@ -1,9 +1,9 @@
 import type { VacfResult } from '#lib/vacf/index.js'
-import { calc_vacf } from '#lib/vacf/calc-vacf.js'
+import { compute_vacf } from '#lib/vacf/compute-vacf.js'
 import { describe, expect, it } from 'vite-plus/test'
 import { build_vacf_input, circular_motion, ideal_gas } from './helpers'
 
-// THz -> cm^-1, the same factor calc-vacf derives from the speed of light
+// THz -> cm^-1, the same factor compute-vacf derives from the speed of light
 const THZ_TO_INVERSE_CM = 1e12 / (299792458 * 100)
 const n_bins = (result: VacfResult) => result.frequencies.length
 
@@ -28,7 +28,7 @@ describe(`VDOS peak position`, () => {
     `puts the %s peak of a 1 fs-sampled orbit at the input frequency`,
     (_label, cycles_per_frame, expected_thz) => {
       // dt = 1 fs, so a frequency of f cycles/frame is f * 1000 THz
-      const result = calc_vacf(orbit(1000, cycles_per_frame), { dt: 1, time_unit: `fs` })
+      const result = compute_vacf(orbit(1000, cycles_per_frame), { dt: 1, time_unit: `fs` })
       expect(result.frequency_unit).toBe(`THz`)
       expect(result.curves[0].peak_frequency).not.toBeNull()
       // Tolerance is tied to the frequency grid, not picked by eye: the VDOS is only
@@ -48,7 +48,7 @@ describe(`VDOS peak position`, () => {
     // frames, at a thousandth of the cost. The old lag_stride would be ceil(499 / 64) = 8,
     // folding 0.3 cycles/frame to 0.05 and reporting 300 THz as 50.
     const cycles_per_frame = 0.3
-    const result = calc_vacf(orbit(1000, cycles_per_frame), {
+    const result = compute_vacf(orbit(1000, cycles_per_frame), {
       dt: 1,
       time_unit: `fs`,
       max_lags: 64,
@@ -71,15 +71,15 @@ describe(`VDOS peak position`, () => {
       [Math.cos((2 * Math.PI * frame_idx) / period), 0, 0],
     ])
     const positions = Array.from({ length: n_frames }, () => [[0, 0, 0]])
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
+    const result = compute_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
     expect(result.curves[0].n_origins).toEqual(result.lags.map((lag) => n_frames - lag))
     expect(result.curves[0].vacf[0]).toBeCloseTo(0.5, 10)
   })
 
   it(`reports the same peak in cm^-1`, () => {
     const options = { dt: 1, time_unit: `fs` } as const
-    const in_thz = calc_vacf(orbit(800, 0.02), options)
-    const in_wavenumbers = calc_vacf(orbit(800, 0.02), {
+    const in_thz = compute_vacf(orbit(800, 0.02), options)
+    const in_wavenumbers = compute_vacf(orbit(800, 0.02), {
       ...options,
       vdos: { frequency_unit: `cm^-1` },
     })
@@ -98,7 +98,7 @@ describe(`VDOS peak position`, () => {
     // cycles per collected frame, so the grid (and Nyquist) are independent of the numerical dt
     [`dt is supplied but the axis asks for frames`, { dt: 2, time_unit: `fs`, vdos: { frequency_unit: `1/frame` } }],
   ] as const)(`reports inverse-frame frequencies when %s`, (_label, options) => {
-    const result = calc_vacf(orbit(600, 0.02), options)
+    const result = compute_vacf(orbit(600, 0.02), options)
     expect(result.frequency_unit).toBe(`1/frame`)
     expect(result.frequency_label).toBe(`Frequency (1/frame)`)
     expect(result.time_unit).toBe(`dt` in options ? `fs` : `frame`)
@@ -110,7 +110,7 @@ describe(`VDOS peak position`, () => {
     // A delta-correlated VACF transforms to a constant, so the tallest bin is barely
     // above the mean rather than towering over it like a vibrational line
     const { positions, velocities } = ideal_gas(400, 200, 271828)
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
+    const result = compute_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
       dt: 1,
       time_unit: `fs`,
     })
@@ -118,7 +118,7 @@ describe(`VDOS peak position`, () => {
     const mean = vdos.reduce((sum, value) => sum + value, 0) / vdos.length
     expect(Math.max(...vdos) / mean).toBeLessThan(3)
     // The orbit fixture, for contrast, concentrates everything in one line
-    const line = calc_vacf(orbit(400, 0.02), { dt: 1, time_unit: `fs` }).curves[0].vdos
+    const line = compute_vacf(orbit(400, 0.02), { dt: 1, time_unit: `fs` }).curves[0].vdos
     const line_mean = line.reduce((sum, value) => sum + value, 0) / line.length
     expect(Math.max(...line) / line_mean).toBeGreaterThan(50)
   })
@@ -126,7 +126,7 @@ describe(`VDOS peak position`, () => {
 
 describe(`windowing`, () => {
   it(`zero-pads the mirrored VACF 4x so the grid is 8 x n_lags bins wide`, () => {
-    const result = calc_vacf(orbit(600, 0.03), { dt: 1, time_unit: `fs` })
+    const result = compute_vacf(orbit(600, 0.03), { dt: 1, time_unit: `fs` })
     // 300 lags (floor(599 / 2) + lag 0) mirrored to 600 and padded 4x -> 2400 -> 4096
     expect(result.lags).toHaveLength(300)
     expect(result.n_fft).toBe(4096)
@@ -139,7 +139,7 @@ describe(`windowing`, () => {
     // than 5 bins from the line, relative to the line itself.
     const input = orbit(301, 0.037)
     const sidelobe_fraction = (window: `none` | `hann` | `gaussian`) => {
-      const result = calc_vacf(input, { dt: 1, time_unit: `fs`, vdos: { window } })
+      const result = compute_vacf(input, { dt: 1, time_unit: `fs`, vdos: { window } })
       expect(result.window).toBe(window)
       const { vdos } = result.curves[0]
       let peak_bin = 0
@@ -177,13 +177,13 @@ describe(`no-dt policy`, () => {
     [`a THz axis for time_unit 'toString'`, { dt: 1, time_unit: `toString`, vdos: { frequency_unit: `THz` } },
       not_convertible(`toString`)],
   ] as const)(`refuses %s`, (_label, options, error) => {
-    expect(() => calc_vacf(orbit(50, 0.1), options)).toThrow(error)
+    expect(() => compute_vacf(orbit(50, 0.1), options)).toThrow(error)
   })
 
   it(`rejects inherited Object keys as THz-convertible time units`, () => {
     // Without Object.hasOwn, TIME_UNIT_TO_THZ['toString'] is a function and would be
     // treated as a conversion factor (NaN frequencies / a bogus THz default).
-    const result = calc_vacf(orbit(80, 0.05), { dt: 1, time_unit: `toString` })
+    const result = compute_vacf(orbit(80, 0.05), { dt: 1, time_unit: `toString` })
     expect(result.frequency_unit).toBe(`1/frame`)
     expect(result.frequencies[1]).toBeGreaterThan(0)
     expect(Number.isFinite(result.frequencies[1])).toBe(true)
@@ -195,7 +195,7 @@ describe(`no-dt policy`, () => {
     [`ps`, 1],
     [`ns`, 0.001],
   ])(`converts a dt in %s to THz`, (time_unit, thz_per_inverse_time) => {
-    const result = calc_vacf(orbit(600, 0.02), { dt: 1, time_unit })
+    const result = compute_vacf(orbit(600, 0.02), { dt: 1, time_unit })
     expect(result.frequency_unit).toBe(`THz`)
     // 0.02 cycles per frame at dt = 1 <unit> is 0.02 / 1 <unit>^-1
     expect_peak_within_bin(result, 0.02 * thz_per_inverse_time)
@@ -204,7 +204,7 @@ describe(`no-dt policy`, () => {
 
 describe(`frequency axis bookkeeping`, () => {
   it(`starts the grid at DC and reaches Nyquist`, () => {
-    const result = calc_vacf(orbit(200, 0.05), { dt: 2, time_unit: `fs` })
+    const result = compute_vacf(orbit(200, 0.05), { dt: 2, time_unit: `fs` })
     expect(result.frequencies[0]).toBe(0)
     expect(result.frequencies).toHaveLength(result.n_fft / 2 + 1)
     // Nyquist for a 2 fs sample interval is 1 / (2 * 2 fs) = 250 THz
