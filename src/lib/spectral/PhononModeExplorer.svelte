@@ -98,24 +98,37 @@
     phonons: PhononModeDataset
     // Animated mode as `{ qpoint_idx, mode_idx }`. Defaults to the first mode with an eigenvector; follows clicks on the dispersion and spectrum.
     selection?: PhononModeSelection
-    spectrum_kind?: SpectrumKind // activity the spectrum shows (Raman needs polarizabilities)
-    amplitude?: number // maximum atomic displacement in Å of the animated mode
+    // Activity the spectrum beside the dispersion shows; Raman needs polarizability data
+    spectrum_kind?: SpectrumKind
+    // Maximum atomic displacement in Å of the animated mode.
+    amplitude?: number
     // Supercell scaling [a, b, c] the mode is animated in; q-points incommensurate with it do not repeat periodically across box faces.
     supercell?: Vec3
-    n_frames?: number // frames per vibration period (integer, at least 2)
-    fps?: number // animation frames per second
-    show_vectors?: boolean // draw each atom's eigenvector as an arrow
-    vector_thickness?: number // multiplier for arrow shaft and head radii
-    vector_color?: string | null // CSS color of the eigenvector arrows, null: by element
-    auto_play?: boolean // start animating as soon as a mode is shown
+    // Frames per vibration period (integer, at least 2).
+    n_frames?: number
+    // Animation frames per second.
+    fps?: number
+    // Draw each atom's eigenvector as an arrow.
+    show_vectors?: boolean
+    // Multiplier for arrow shaft and head radii; null color uses element colors.
+    vector_thickness?: number
+    // CSS color of the eigenvector arrows. null colors each arrow by its element.
+    vector_color?: string | null
+    // Start animating as soon as a mode is shown.
+    auto_play?: boolean
     // Share (0.15 to 0.85) of the viewer taken by the atomic-motion pane. The dispersion and spectrum pane gets the rest.
     pane_ratio?: number
-    // Brillouin zone inset marking the selected and hovered q-points (needs a lattice, >1 q-point)
+    // Brillouin zone in a corner of the atomic-motion pane marking the selected and hovered
+    // q-points on the path; needs a lattice and more than one q-point
     show_bz_inset?: boolean
-    bz_inset_enlarged?: boolean // the inset grown to about half the viewer, labels readable
-    band_coloring?: PhononBandColoring | null // what the mode markers show, null: mode_values
-    mode_values?: ModeValues // per-mode values (e.g. λ_qν) drawn over the dispersion
-    // passed on to the atomic-motion Trajectory viewer (the explorer sets the rest itself)
+    // the inset grown to about half the viewer, big enough to read the path and its labels
+    bz_inset_enlarged?: boolean
+    // What the dispersion's mode markers show (see PhononBandColoring), null: mode_values
+    band_coloring?: PhononBandColoring | null
+    // Per-mode values (e.g. λ_qν) drawn over the dispersion, see Bands
+    mode_values?: ModeValues
+    // passed on to the atomic-motion Trajectory viewer: styling, frame-rate range, step labels
+    // and playback callbacks (the explorer sets the rest itself)
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
       | `class`
