@@ -4,7 +4,7 @@
   import type { Crystal, ElementSymbol } from '#lib'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
-  import { calc_lattice_params, mulberry32, type Matrix3x3 } from '#lib/math.js'
+  import { compute_lattice_params, mulberry32, type Matrix3x3 } from '#lib/math.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { tick } from 'svelte'
   import TestControls from '../TestControls.svelte'
@@ -74,7 +74,7 @@
         idx < 5
           ? {
               sites: elements.map((element, site_idx) => ({
-                species: [{ element, occu: 1, oxidation_state: 0 }],
+                species: [{ element, occu: 1 }],
                 xyz: [site_idx * 2, 0, 0],
                 abc: [site_idx * 0.2, 0, 0],
                 label: element,
@@ -83,7 +83,7 @@
               lattice: {
                 matrix: cube_10,
                 pbc: [true, true, true],
-                ...calc_lattice_params(cube_10),
+                ...compute_lattice_params(cube_10),
               },
             }
           : undefined

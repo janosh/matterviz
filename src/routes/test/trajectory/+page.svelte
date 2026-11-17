@@ -2,7 +2,7 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-  import { calc_lattice_params, type Matrix3x3 } from '#lib/math.js'
+  import { compute_lattice_params, type Matrix3x3 } from '#lib/math.js'
   import { Structure, type Pbc } from '#lib/structure/index.js'
   import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
   import { type ComponentProps, onMount } from 'svelte'
@@ -15,7 +15,7 @@
       [0, edge, 0],
       [0, 0, edge],
     ]
-    return { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+    return { matrix, pbc: [true, true, true] as Pbc, ...compute_lattice_params(matrix) }
   }
 
   const test_trajectory = trajectory_from_frames(
@@ -28,14 +28,14 @@
       structure: {
         sites: [
           {
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            species: [{ element: `H`, occu: 1 }],
             abc: [step / 10, 0, 0],
             xyz: [step / 5, 0, 0],
             label: `H1`,
             properties: {},
           },
           {
-            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            species: [{ element: `O`, occu: 1 }],
             abc: [0.5, 0.5, 0.5],
             xyz: [1, 1, 1],
             label: `O1`,
@@ -59,7 +59,7 @@
     structure: {
       sites: [
         {
-          species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `Fe`, occu: 1 }],
           abc: [0.5, 0.5, 0.5],
           xyz: [edge / 2, edge / 2, edge / 2],
           label: `Fe1`,

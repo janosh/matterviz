@@ -1,7 +1,8 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import type { ElementSymbol, Matrix3x3, Vec3 } from '#lib'
-  import { calc_lattice_params, scale } from '#lib/math.js'
+  import type { ElementSymbol } from '#lib'
+  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import { compute_lattice_params, scale } from '#lib/math.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import { add_alpha, plot_color } from '#lib/colors/index.js'
   import { highlight_site_union } from '#lib/plot/core/structure-input.js'
@@ -39,7 +40,7 @@
       [0, a_len, 0],
       [0, 0, a_len],
     ]
-    return { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+    return { matrix, pbc: [true, true, true] as Pbc, ...compute_lattice_params(matrix) }
   }
 
   const cubic_site = (element: ElementSymbol, abc: Vec3, a_len: number) =>

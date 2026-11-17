@@ -49,6 +49,7 @@ export function predict_demo(structure: AnyStructure) {
         origin: [0, 0, 0],
         periodic: false,
         label: `Predicted density`,
+        units: null, // a dimensionless Gaussian stand-in for a model's prediction
       }),
     ],
   }

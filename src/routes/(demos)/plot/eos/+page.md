@@ -1,6 +1,6 @@
 # Equation of State
 
-`fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points and fitted curve(s) in one go; hover a curve for its fitted parameters. The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to better than 1e-7 (relative) in E<sub>0</sub>/V<sub>0</sub> and 1e-5 in B<sub>0</sub>/B<sub>0</sub>'.
+`fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points and fitted curve(s) in one go; hover a curve for its fitted parameters with their one-sigma standard errors. Each `EosFit` also carries `b0_gpa` and `std_errors` (from the covariance s²·(JᵀJ)⁻¹ at the optimum, as scipy's `curve_fit` reports it; `null` for a 4-point scan, which leaves no residual to estimate the noise from). The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to better than 1e-7 (relative) in E<sub>0</sub>/V<sub>0</sub> and 1e-5 in B<sub>0</sub>/B<sub>0</sub>'.
 
 <div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
 <section>
@@ -12,7 +12,8 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 ```svelte example
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { EOS_KIND_LABELS, EOS_KINDS, EosPlot, toggle_item } from 'matterviz'
+  import { EOS_KIND_LABELS, EOS_KINDS, EosPlot } from 'matterviz'
+  import { toggle_item } from 'matterviz/utils'
   import type { EosFit, EosKind } from 'matterviz'
 
   const volumes = [10.384, 10.738, 11.092, 11.446, 11.8, 12.154, 12.508, 12.862, 13.216]
@@ -64,7 +65,8 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 ```svelte example
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { EosPlot, EV_PER_A3_TO_GPA, eos_pressure } from 'matterviz'
+  import { EosPlot, eos_pressure } from 'matterviz'
+  import { EV_PER_A3_TO_GPA } from 'matterviz/constants'
   import type { EosFit } from 'matterviz'
 
   const volumes = [13.72, 14.83, 16.0, 17.23, 18.52]

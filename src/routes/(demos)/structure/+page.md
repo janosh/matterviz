@@ -7,7 +7,7 @@
   import { structure_files } from '#site/structures.js'
   import { molecule_files } from '#site/molecules.js'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { decode_url_safe_base64 } from '#lib'
+  import { decode_url_safe_base64 } from '#lib/utils.js'
   import { file_param, loaded_fixture, set_file_param } from '#site/state.svelte.js'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
@@ -97,42 +97,42 @@ In **Edit Bonds** mode, **Add** is the safe default: click two atoms to add or r
     camera_position: [0, 0, 12],
     show_site_labels: true,
     show_site_indices: true,
-    bonding_options: { strength_threshold: 10 },
+    bonding_options: { electroneg_ratio: { strength_threshold: 10 } },
   })
 
   const bond_order_playground: Molecule = {
     id: `explicit-bond-order-playground`,
     sites: [
       {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        species: [{ element: `C`, occu: 1 }],
         abc: [-2.4, 0, 0],
         xyz: [-2.4, 0, 0],
         label: `C1`,
         properties: {},
       },
       {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        species: [{ element: `C`, occu: 1 }],
         abc: [-1.2, 0, 0],
         xyz: [-1.2, 0, 0],
         label: `C2`,
         properties: {},
       },
       {
-        species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+        species: [{ element: `O`, occu: 1 }],
         abc: [0, 0, 0],
         xyz: [0, 0, 0],
         label: `O1`,
         properties: {},
       },
       {
-        species: [{ element: `N`, occu: 1, oxidation_state: 0 }],
+        species: [{ element: `N`, occu: 1 }],
         abc: [1.2, 0, 0],
         xyz: [1.2, 0, 0],
         label: `N1`,
         properties: {},
       },
       {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        species: [{ element: `C`, occu: 1 }],
         abc: [-1.2, 1.25, 0],
         xyz: [-1.2, 1.25, 0],
         label: `C3`,
@@ -217,7 +217,8 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
 ```svelte example
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import type { AnyStructure, Vec3 } from 'matterviz'
+  import type { AnyStructure } from 'matterviz'
+  import type { Vec3 } from 'matterviz/math'
   import { Structure } from 'matterviz'
   import { structures } from '#site/structures.js'
 

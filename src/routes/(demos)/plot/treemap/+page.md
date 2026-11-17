@@ -163,7 +163,8 @@ Any node can carry a `pattern` to hatch or texture its cell on top of its color,
 
 ```svelte example
 <script lang="ts">
-  import { spacegroup_sunburst_data, Treemap, type Vec2 } from 'matterviz'
+  import { spacegroup_sunburst_data, Treemap } from 'matterviz'
+  import type { Vec2 } from 'matterviz/math'
 
   let min_fraction = $state(0.02)
 
