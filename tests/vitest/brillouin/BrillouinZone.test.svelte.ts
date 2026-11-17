@@ -531,7 +531,7 @@ test.each([
     [primitive_zone, false],
     [own_zone, true],
   ] as const) {
-    unmount(mounted_component)
+    await unmount(mounted_component)
     analyze_structure_symmetry.mockImplementationOnce(analyze)
     const supplied = $state({
       structure,
