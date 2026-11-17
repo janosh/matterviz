@@ -38,13 +38,11 @@ const sites = (positions: Vec3[], elements: string[] = []): Site[] =>
 describe(`measure: distances`, () => {
   test(`pbc displacement`, () => {
     const lat = cubic(10)
-
-    const vector_1: Vec3 = [0.5, 0.5, 0.5]
-    const vector_2: Vec3 = [9.8, 9.6, 9.5]
-    expect_vec3_close(displacement_pbc(vector_1, vector_2, lat), [-0.7, -0.9, -1.0], 10)
-
-    const pos: Vec3 = [5.0, 5.0, 5.0]
-    expect(displacement_pbc(pos, pos, lat)).toEqual([0, 0, 0])
+    expect_vec3_close(
+      displacement_pbc([0.5, 0.5, 0.5], [9.8, 9.6, 9.5], lat),
+      [-0.7, -0.9, -1],
+    )
+    expect(displacement_pbc([5, 5, 5], [5, 5, 5], lat)).toEqual([0, 0, 0])
     // a full lattice vector apart is the same site
     expect(displacement_pbc([0, 0, 0], [10, 0, 0], lat)).toEqual([0, 0, 0])
     expect_vec3_close(
@@ -86,7 +84,6 @@ describe(`measure: distances`, () => {
     // Half a lattice vector is NOT an equivalent site — guard against always-zero bugs
     const half_a = lattice[0].map((val) => val / 2) as Vec3
     expect(Math.hypot(...displacement_pbc(origin, half_a, lattice))).toBeGreaterThan(0.1)
-
     // Displacement antisymmetry: disp(a,b) = -disp(b,a)
     const pos1: Vec3 = [0.3, 0.7, 1.2]
     const pos2: Vec3 = [2.1, 1.5, 0.8]
@@ -105,7 +102,6 @@ describe(`measure: distances`, () => {
     const pos1: Vec3 = [3.395535765213964, 4.297261971797731, 0.837260400991752]
     const pos2: Vec3 = [1.6425399077772327, -1.0582437501479167, 0.9390064337754569]
     const expected_disp: Vec3 = [-0.3507742293398103, 0.31324394398281463, -0.9022051740668167]
-
     expect(displacement_pbc(pos1, pos2, lattice)).toEqual(
       expected_disp.map((value) => expect.closeTo(value, 12)),
     )
@@ -181,10 +177,7 @@ describe(`measure: angles`, () => {
 
   // interior angle at `vertex` between the two `others` corners of a triangle
   const angle_at = (vertex: Vec3, others: [Vec3, Vec3]): number =>
-    angle_between_vectors(
-      [others[0][0] - vertex[0], others[0][1] - vertex[1], others[0][2] - vertex[2]],
-      [others[1][0] - vertex[0], others[1][1] - vertex[1], others[1][2] - vertex[2]],
-    )
+    angle_between_vectors(subtract(others[0], vertex), subtract(others[1], vertex))
 
   // oxfmt-ignore
   test.each([
@@ -200,18 +193,17 @@ describe(`measure: angles`, () => {
       angle_at(vert_c, [vert_a, vert_b]),
     ]
     expect(angles[0] + angles[1] + angles[2]).toBeCloseTo(180, 8)
-    for (const [idx, expected] of (expected_angles ?? []).entries()) {
+    for (const [idx, expected] of (expected_angles ?? []).entries())
       expect(angles[idx]).toBeCloseTo(expected, 5)
-    }
   })
 
   test.each([0.1, 2, 100])(`angle is independent of vector magnitude (scale %p)`, (scale) => {
     const vector_1: Vec3 = [1, 2, 3]
     const vector_2: Vec3 = [4, 5, 6]
     const base_angle = angle_between_vectors(vector_1, vector_2)
-    const scaled_v1: Vec3 = [vector_1[0] * scale, vector_1[1] * scale, vector_1[2] * scale]
-    const scaled_v2: Vec3 = [vector_2[0] * scale, vector_2[1] * scale, vector_2[2] * scale]
-
+    const [scaled_v1, scaled_v2] = [vector_1, vector_2].map(
+      (vec) => vec.map((val) => val * scale) as Vec3,
+    )
     expect(angle_between_vectors(scaled_v1, vector_2)).toBeCloseTo(base_angle, 10)
     expect(angle_between_vectors(vector_1, scaled_v2)).toBeCloseTo(base_angle, 10)
     expect(angle_between_vectors(scaled_v1, scaled_v2)).toBeCloseTo(base_angle, 10)
@@ -219,11 +211,9 @@ describe(`measure: angles`, () => {
 
   test(`angle edge cases`, () => {
     expect(angle_between_vectors([0, 0, 0], [1, 0, 0])).toBe(0)
-
     // Collinear precision beyond the axis-aligned 0°/180° cases above
     expect(angle_between_vectors([1, 2, 3], [2, 4, 6])).toBeCloseTo(0, 12)
     expect(angle_between_vectors([1, 2, 3], [-2, -4, -6])).toBeCloseTo(180, 12)
-
     const eps = 1e-10
     expect(angle_between_vectors([1, 0, 0], [1, eps, 0])).toBeCloseTo(0, 6)
     expect(angle_between_vectors([1, 0, 0], [-1, eps, 0])).toBeCloseTo(180, 6)
@@ -281,10 +271,8 @@ describe(`measure: dihedral angles`, () => {
     // p3->p4 runs +9.4 A up the vacuum instead of -0.6 A through it, flipping the torsion sign
     const torsion = (pbc: Pbc) =>
       dihedral_angle(point_1, point_2, point_3, point_4, lattice, pbc)
-    expect([torsion(SLAB_PBC), torsion(PBC_ALL)]).toEqual([
-      expect.closeTo(-90, 10),
-      expect.closeTo(90, 10),
-    ])
+    expect(torsion(SLAB_PBC)).toBeCloseTo(-90, 10)
+    expect(torsion(PBC_ALL)).toBeCloseTo(90, 10)
   })
 
   // oxfmt-ignore
@@ -327,10 +315,8 @@ describe(`measure: overlay endpoints`, () => {
     [`a vacuum axis stays unwrapped`, cubic(10), SLAB_PBC],
   ] as [string, Matrix3x3 | null, Pbc | undefined][])(`%s`, (_name, lattice, pbc) => {
     // Only the c axis crosses a boundary here, so both cases must return the input verbatim
-    const points: Vec3[] = [
-      [0.3, 0.3, 0.3],
-      [0.3, 0.3, 9.7],
-    ]
+    // oxfmt-ignore
+    const points: Vec3[] = [[0.3, 0.3, 0.3], [0.3, 0.3, 9.7]]
     // Tolerance, not equality: the chain rebuilds each point as previous + displacement, and
     // a + (b - a) misses b by an ulp for ~15% of values, so exact equality here would hold by
     // luck of these coordinates. The regression this guards — a spurious wrap — is 10 A away.
@@ -345,11 +331,7 @@ describe(`measure: overlay endpoints`, () => {
     expect(drawn[0]).toEqual(corner_chain[0]) // anchored on the first point
     // every drawn segment is the short minimum-image hop, never a near-full-cell traverse
     for (let idx = 1; idx < drawn.length; idx++) {
-      const step = Math.hypot(
-        drawn[idx][0] - drawn[idx - 1][0],
-        drawn[idx][1] - drawn[idx - 1][1],
-        drawn[idx][2] - drawn[idx - 1][2],
-      )
+      const step = Math.hypot(...subtract(drawn[idx], drawn[idx - 1]))
       expect(step).toBeLessThan(2)
       expect(step).toBeCloseTo(
         Math.hypot(...displacement_pbc(corner_chain[idx - 1], corner_chain[idx], lattice)),
@@ -385,17 +367,11 @@ describe(`measure: overlay endpoints`, () => {
   // A triangle whose first pick sits across the cell face from the other two is drawn on the
   // two atoms there, not floated a cell over from them
   test(`chain positions shift onto the most picked atoms`, () => {
-    const picks: Vec3[] = [
-      [9.5, 5, 5],
-      [0.5, 5, 5],
-      [1.5, 6, 5],
-    ]
+    // oxfmt-ignore
+    const picks: Vec3[] = [[9.5, 5, 5], [0.5, 5, 5], [1.5, 6, 5]]
     const drawn = pbc_chain_positions(picks, cubic(10), PBC_ALL)
-    const expected: Vec3[] = [
-      [-0.5, 5, 5],
-      [0.5, 5, 5],
-      [1.5, 6, 5],
-    ]
+    // oxfmt-ignore
+    const expected: Vec3[] = [[-0.5, 5, 5], [0.5, 5, 5], [1.5, 6, 5]]
     expect(drawn).toEqual(expected.map((point) => point.map((val) => expect.closeTo(val, 12))))
   })
 
@@ -419,12 +395,8 @@ describe(`measure: overlay endpoints`, () => {
   )
 
   test(`chain torsion matches dihedral_angle on the raw picks after a wrap`, () => {
-    const picks: Vec3[] = [
-      [2.9, 1.5, 1.5],
-      [0.2, 1.5, 1.5],
-      [0.2, 4.5, 1.5],
-      [1.2, 4.5, 2.5],
-    ]
+    // oxfmt-ignore
+    const picks: Vec3[] = [[2.9, 1.5, 1.5], [0.2, 1.5, 1.5], [0.2, 4.5, 1.5], [1.2, 4.5, 2.5]]
     const [pos_1, pos_2, pos_3, pos_4] = pbc_chain_positions(picks, cubic(3), PBC_ALL)
     const [raw_1, raw_2, raw_3, raw_4] = picks
     const expected = dihedral_angle(raw_1, raw_2, raw_3, raw_4, cubic(3), PBC_ALL)
@@ -435,13 +407,8 @@ describe(`measure: overlay endpoints`, () => {
   // In a one-atom cell every neighbor is the site's own image: a torsion through images
   // measures their drawn geometry instead of collapsing to zero-length bonds
   test(`dihedral through a site's own images`, () => {
-    const chain: Vec3[] = [
-      [0, 0, 0],
-      [2.5, 0, 0],
-      [2.5, 2.5, 0],
-      [2.5, 2.5, 2.5],
-    ]
-    const [point_1, point_2, point_3, point_4] = chain
+    // oxfmt-ignore
+    const [point_1, point_2, point_3, point_4]: Vec3[] = [[0, 0, 0], [2.5, 0, 0], [2.5, 2.5, 0], [2.5, 2.5, 2.5]]
     const torsion = dihedral_angle(point_1, point_2, point_3, point_4, cubic(2.5), PBC_ALL)
     expect(Math.abs(torsion)).toBeCloseTo(90, 10)
     expect(torsion).toBe(dihedral_angle(point_1, point_2, point_3, point_4, null))
@@ -473,9 +440,8 @@ describe(`measure: displacement fields`, () => {
     `displacement field in a %s`,
     (_name, lattice, reference, current, expected, expected_rmsd, expected_max) => {
       const field = compute_displacements(sites(reference), sites(current), lattice, PBC_ALL)
-      for (const [site_idx, expected_vec] of expected.entries()) {
+      for (const [site_idx, expected_vec] of expected.entries())
         expect_vec3_close(field.vectors[site_idx], expected_vec, 12)
-      }
       expect(field.rmsd).toBeCloseTo(expected_rmsd, 12)
       expect(field.max_displacement).toBeCloseTo(expected_max, 12)
     },

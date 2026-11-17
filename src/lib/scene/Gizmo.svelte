@@ -1,9 +1,7 @@
 <script lang="ts">
-  // Orientation gizmo: colored +/- axis handles in a corner of the canvas showing camera
-  // orientation, clickable to fly the camera to that axis. Replaces @threlte/extras' Gizmo,
-  // which delegates to three-viewport-gizmo and its raw GLSL ShaderMaterials — those can't
-  // compile on WebGPU, while the materials below map to node materials automatically.
-  // Like upstream it draws into a corner viewport of the *existing* canvas after the main
+  // Orientation gizmo: colored +/- axis handles in a canvas corner, clickable to fly the
+  // camera to that axis. Replaces @threlte/extras' Gizmo, whose GLSL ShaderMaterials can't
+  // compile on WebGPU. It draws into a corner viewport of the existing canvas after the main
   // render, so it costs no extra canvas and stays out of PNG exports (scene+camera only).
   import type { Vec3 } from '#lib/math.js'
   import { useParent, useTask, useThrelte } from '@threlte/core'
@@ -145,9 +143,8 @@
       const overrides =
         (axis_styles as Partial<Record<GizmoAxisKey, GizmoAxisStyle>>)[handle.axis] ?? {}
       const style = { ...defaults, ...overrides }
-      // Hovering swaps in the hover variant of each field, but a caller's explicit color or
-      // opacity still wins over the default hover — else a custom axis color would flip to
-      // the stock tint on hover. The stem keeps its base color either way.
+      // Hover swaps in each field's hover variant, but a caller's explicit color or opacity
+      // wins over the default hover tint; the stem keeps its base color either way.
       const shown =
         hovered === handle.axis
           ? { ...defaults.hover, ...overrides, ...overrides.hover }
@@ -166,12 +163,8 @@
     invalidate()
   })
 
-  // Lay out against the size the renderer last committed, never Threlte's `size` store: when
-  // a layout change lands mid-resize-phase, Threlte's resize task calls setSize() with the new
-  // size inside the frame, but the store only reaches subscribers in the effect flush after
-  // it. A rect from the stale store then sits past the shrunken attachment, WebGPU rejects
-  // the scissor (seen as SetScissorRect(5, 423, 72, 0) on a 397x247 grid pane) and the whole
-  // frame is dropped. Pointer hits use the same size, matching what is on screen.
+  // Lay out (and hit-test) against the renderer's committed size, not Threlte's `size` store,
+  // which lags a mid-frame setSize(): a stale rect makes WebGPU reject the scissor.
   const committed_size = new THREE.Vector2()
   const current_rect = () => {
     const { x: width, y: height } = renderer.getSize(committed_size)
@@ -304,9 +297,8 @@
   const prev_viewport = new THREE.Vector4()
   const prev_scissor = new THREE.Vector4()
 
-  // Advance animations in the main stage, which runs even when rendering is idle.
-  // Invalidating inside the gated render stage is too late: Threlte clears that flag at
-  // frame end, so fades would only advance when another event (such as atom hover) redraws.
+  // Advance animations in the main stage, which runs while rendering idles: Threlte clears an
+  // invalidation from the gated render stage at frame end, so fades would stall there.
   useTask(
     Symbol(`matterviz-gizmo-update`),
     (delta) => {

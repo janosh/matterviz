@@ -101,17 +101,10 @@
   // (tablet) or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
   let clientWidth = $state(1200)
   let clientHeight = $state(0)
-  const layout = $derived(
-    structure
-      ? clientWidth >= 1200
-        ? `desktop`
-        : clientWidth >= 600
-          ? `tablet`
-          : `phone`
-      : clientWidth >= MIN_SIDE_BY_SIDE_WIDTH
-        ? `side`
-        : `stacked`,
-  )
+  const layout = $derived.by(() => {
+    if (!structure) return clientWidth >= MIN_SIDE_BY_SIDE_WIDTH ? `side` : `stacked`
+    return clientWidth >= 1200 ? `desktop` : clientWidth >= 600 ? `tablet` : `phone`
+  })
   const side_by_side = $derived(layout === `side` || layout === `desktop`)
   let wrapper = $state<HTMLDivElement>()
 

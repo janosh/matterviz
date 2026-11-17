@@ -345,7 +345,7 @@ describe(`make_interface`, () => {
   test(`a rigidly rotated film gives the same interface`, () => {
     // oxfmt-ignore
     const rotation: Matrix3x3 = [[0.36, 0.48, -0.8], [-0.8, 0.6, 0], [0.48, 0.64, 0.6]]
-    const rotate = (vec: Vec3): Vec3 => math.mat3x3_vec3_multiply(rotation, vec)
+    const rotate = (vec: Vec3): Vec3 => math.mul_3x3_vec3(rotation, vec)
     const [vec_a, vec_b, vec_c] = AG_100.lattice.matrix
     const rotated: Crystal = {
       ...AG_100,

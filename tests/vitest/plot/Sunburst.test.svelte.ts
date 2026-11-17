@@ -100,11 +100,12 @@ describe(`Sunburst`, () => {
   })
 
   test.each([
-    [{ data: [] as SunburstNode[] }, 0],
-    [{ data: [{ label: `solo`, value: 1 }] }, 1],
-  ])(`renders without error for empty/degenerate data %#`, async (props, expected) => {
-    const plot = await mount_sized_sunburst(props)
-    expect(n_arcs(plot)).toBe(expected)
+    [`empty data renders no arcs`, { data: [] as SunburstNode[] }, 0],
+    [`a single node renders one arc`, { data: [{ label: `solo`, value: 1 }] }, 1],
+    [`zoom_root_id re-roots the view`, { data: tree, zoom_root_id: `A` }, 2],
+    [`max_depth limits the number of rings`, { data: tree, max_depth: 1 }, 2],
+  ])(`%s`, async (_name, props, expected_arcs) => {
+    expect(n_arcs(await mount_sized_sunburst(props))).toBe(expected_arcs)
   })
 
   // Hover dimming is one evenodd veil path with holes over the hovered subtree and its
@@ -166,14 +167,6 @@ describe(`Sunburst`, () => {
     expect(on_node_click).toHaveBeenCalledOnce()
     expect(on_zoom).not.toHaveBeenCalled()
     expect(n_arcs(plot)).toBe(4)
-  })
-
-  test.each([
-    [`zoom_root_id re-roots the view`, { zoom_root_id: `A` }, 2],
-    [`max_depth limits the number of rings`, { max_depth: 1 }, 2],
-  ] as const)(`%s`, async (_name, props, expected_arcs) => {
-    const plot = await mount_sized_sunburst({ data: tree, ...props })
-    expect(n_arcs(plot)).toBe(expected_arcs)
   })
 
   // props that remove a feature's DOM when switched off
@@ -514,14 +507,6 @@ describe(`Sunburst`, () => {
     await tick()
     expect(document.activeElement?.getAttribute(`data-sunburst-node-idx`)).toBe(`2`)
   })
-
-  test.each([
-    [`L1/L2`, `zoom out to L1`], // names the parent, not the current root
-    [`L1`, `zoom out to full chart`],
-  ])(`center circle aria-label when zoomed to %s is "%s"`, async (zoom_root_id, aria) => {
-    const plot = await mount_sized_sunburst({ data: deep, zoom_root_id })
-    expect(plot.querySelector(`.center-circle`)?.getAttribute(`aria-label`)).toBe(aria)
-  })
 })
 
 describe(`Sunburst label selection`, () => {
@@ -556,13 +541,17 @@ describe(`Sunburst label selection`, () => {
 })
 
 describe(`Sunburst zoom navigation`, () => {
-  test(`breadcrumbs render when zoomed and clicking a crumb re-roots`, async () => {
+  // the center circle's aria-label names the parent it zooms out to, not the current root
+  test(`breadcrumbs render when zoomed, clicking a crumb re-roots and relabels the center`, async () => {
     const plot = await mount_sized_sunburst({ data: deep, zoom_root_id: `L1/L2` })
+    const center_aria = () => plot.querySelector(`.center-circle`)?.getAttribute(`aria-label`)
+    expect(center_aria()).toBe(`zoom out to L1`)
     const crumbs = [...plot.querySelectorAll<HTMLButtonElement>(`.breadcrumbs button`)]
     expect(crumbs.map((btn) => btn.textContent?.trim())).toEqual([`all`, `L1`, `L2`])
     expect(crumbs[2].disabled).toBe(true) // current root
     await fire(crumbs[1]) // jump to L1
     expect(plot.querySelector(`.center-label`)?.textContent).toContain(`L1`)
+    expect(center_aria()).toBe(`zoom out to full chart`)
     await fire(crumbs[0]) // jump back to the root -> breadcrumbs disappear
     expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
   })
@@ -753,20 +742,22 @@ describe(`Sunburst display options`, () => {
     },
   )
 
-  test(`min_fraction prop buckets small arcs into Other`, async () => {
-    const data: SunburstNode[] = [
-      { label: `big`, value: 90 },
-      { label: `t1`, value: 5 },
-      { label: `t2`, value: 5 },
-    ]
-    const plot = await mount_sized_sunburst({ data, min_fraction: 0.07 })
-    expect(n_arcs(plot)).toBe(2) // big + Other
-    // 'Other' by itself cannot say how much it swallowed; the tooltip can.
-    await fire(node_at(plot, 2), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(
-      /Other[\s\S]*10 % of total, 2 grouped/,
-    )
+  // 'Other' by itself cannot say how much it swallowed; the tooltip can, and a screen reader
+  // has no tooltip to fall back on, so the count goes in the aria-label too
+  const three: SunburstNode[] = [90, 5, 5].map((value, idx) => ({ label: `t${idx}`, value }))
+  // oxfmt-ignore
+  test.each([
+    // big + Other
+    [`min_fraction buckets small arcs`, { data: three, min_fraction: 0.07 }, 2, /Other[\s\S]*10 % of total, 2 grouped/, `Other: 10 (2 grouped)`],
+    // job-6 + job-7 + Other
+    [`max_children keeps the largest N arcs per parent`, { data: long_tail, max_children: 2 }, 3, /Other[\s\S]*6 grouped/, `Other: 21 (6 grouped)`],
+  ])(`%s into Other`, async (_name, props, other_idx, tooltip, aria_label) => {
+    const plot = await mount_sized_sunburst(props)
+    expect(n_arcs(plot)).toBe(other_idx) // pre-order: the trailing Other's index is the arc count
+    await fire(node_at(plot, other_idx), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(tooltip)
     expect(plot.querySelector(`.plot-tooltip small`)?.textContent).toBe(`%`)
+    expect(node_at(plot, other_idx).getAttribute(`aria-label`)).toBe(aria_label)
   })
 
   // The layout reads the view root only while bucketing measures against it: otherwise every
@@ -793,15 +784,6 @@ describe(`Sunburst display options`, () => {
       expect(chart_state.layout === before).toBe(keeps_layout)
     })
     cleanup()
-  })
-
-  test(`max_children prop keeps the largest N arcs per parent`, async () => {
-    const plot = await mount_sized_sunburst({ data: long_tail, max_children: 2 })
-    expect(n_arcs(plot)).toBe(3) // job-6 + job-7 + Other
-    await fire(node_at(plot, 3), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(/6 grouped/)
-    // A screen reader has no tooltip to fall back on, so the count goes in the label
-    expect(node_at(plot, 3).getAttribute(`aria-label`)).toMatch(/Other: 21 \(6 grouped\)/)
   })
 })
 

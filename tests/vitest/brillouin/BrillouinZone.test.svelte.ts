@@ -446,3 +446,28 @@ test(`export pane saves the zone geometry as JSON named by its order`, async () 
   ])
   vi.unstubAllGlobals()
 })
+
+// The default high-symmetry path needs symmetry only while no band k_path is given; its
+// failures are a notice over the still-rendered zone, like the IBZ's
+test.each([
+  [`analyzes symmetry and reports a failed default path`, undefined, 1],
+  [
+    `skips the analysis when a band k_path is given`,
+    { points: [], labels: [], branches: [] },
+    0,
+  ],
+])(`default_k_path %s`, async (_desc, k_path, n_calls) => {
+  analyze_structure_symmetry.mockRejectedValue(new Error(`no space group`))
+  const { children, rendered } = zone_probe()
+  mounted_component = mount(BrillouinZone, {
+    target: document.body,
+    props: { structure: cubic, default_k_path: true, k_path, children },
+  })
+  await vi.waitFor(() => expect(rendered()?.order).toBe(1))
+  await tick()
+  expect(analyze_structure_symmetry).toHaveBeenCalledTimes(n_calls)
+  const notice = () => document.body.querySelector(`.k-path-error`)?.textContent
+  if (n_calls)
+    await vi.waitFor(() => expect(notice()).toMatch(/Default k-path failed: no space group/))
+  else expect(notice()).toBeUndefined()
+})

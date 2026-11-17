@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Migration
+
+- Analysis functions use one verb: every `calc_*` / `calculate_*` is now `compute_*` with matching `compute_*_async` (`calc_msd` → `compute_msd`, `calc_vacf` → `compute_vacf`, `calculate_rdf` → `compute_rdf`, `calc_bond_angles` → `compute_bond_angles`, `calculate_e_above_hull` → `compute_e_above_hull`, ...), `CalcRdfsAsync`/`CalcStructureIdAsync` → `Compute*Async`, and `calc-*.ts` files → `compute-*.ts` [#515](https://github.com/janosh/matterviz/pull/515)
+- 3x3 helpers: `matrix_inverse_3x3` → `inverse_3x3`, `transpose_3x3_matrix` → `transpose_3x3`, `mat3x3_vec3_multiply` → `mul_3x3_vec3`, `vec9_to_mat3x3` → `mat3x3_from_flat_row_major`, `det2` → `det_2x2`; `mat3_from_flat_col_major` moves from `matterviz/symmetry` to `matterviz/math` as `mat3x3_from_flat_col_major` [#515](https://github.com/janosh/matterviz/pull/515)
+- The root `matterviz` import no longer re-exports infrastructure (`math`, `utils`, `labels`, `constants`, `settings`, `controls`, `colors`, `theme`, `io`, `scene`, `sanitize`, `url-params`, `fft`, `lineshape`): import those from their subpaths. New subpaths `matterviz/host`, `matterviz/shortcuts` and `matterviz/workers` (`disable_workers`, `check_blob_workers`) [#515](https://github.com/janosh/matterviz/pull/515)
+- `Species.oxidation_state` is optional: absent means undecorated, `0` is a real charge that round-trips (CIF writes `Fe0+`) [#515](https://github.com/janosh/matterviz/pull/515)
+- `bonding_options` on structure scenes and trajectories is keyed by strategy (`{ electroneg_ratio: { ... } }`), and unknown option keys throw [#515](https://github.com/janosh/matterviz/pull/515)
+- Gas thermodynamics: `DEFAULT_ELEMENT_TO_GAS`, `element_to_gas` and `tabulated_reference_shift` are removed and `GasAnalysis` is `{ relevant_gases }`; compound gases (CO, CO2, H2O) enter the hull as `gas:*` entries [#515](https://github.com/janosh/matterviz/pull/515)
+- XRD: named lab anodes (`CuKa`, `MoKa`, ...) emit the Kα1/Kα2 doublet; the centroid `WAVELENGTHS.*Ka` keys are gone (pass a number), `XrdOptions.wavelength` also takes explicit lines [#515](https://github.com/janosh/matterviz/pull/515)
+- Supercells: the session exposes `supercell_matrix` instead of `supercell_tiling`, and `LatticePlanes` prop `tiling` → `supercell` [#515](https://github.com/janosh/matterviz/pull/515)
+- Units: `BandGridData`, `FermiSurfaceData` and `ElectronicDos` require `energy_unit` (`null` when the file states none), `VolumetricData` requires `units`; `ElectronicBandStructure.band_gap` and `is_spin_polarized` are removed [#515](https://github.com/janosh/matterviz/pull/515)
+- `materialize_series_points` throws on series whose `x`/`y` are not arrays or typed arrays instead of skipping them [#515](https://github.com/janosh/matterviz/pull/515)
+
+### 🚀 New Features
+
+- Typed bonding options, VESTA-style `pair_cutoffs` bonding strategy with an editor, general integer supercell matrices, mCIF magnetic moments, ADPs with thermal ellipsoids, Kα1/Kα2 XRD doublets, EOS standard errors, band-gap VBM/CBM and direct/indirect detail, Setyawan–Curtarolo default k-paths (`high_symmetry_kpath`), bar error bars and typed-array plot series [#515](https://github.com/janosh/matterviz/pull/515)
+- LAMMPS dumps with `reset_timestep`, labelled species (`Fe1`, `OW`) in XYZ/LAMMPS and pre-5.3 XDATCAR now open [#515](https://github.com/janosh/matterviz/pull/515)
+
+### 🐛 Bug Fixes
+
+- Compound gases are hull phases at μ(T, p), so carbonates decompose on the hull where the synthesis planner says they do; gas shifts apply without elemental entries; false `d`-glide labels in Fm-3m; arcsinh axes without ticks; `clean_series` misaligned `point_ids`; Savitzky-Golay edges; OUTCAR run-together lattice rows; undecoded ASE `atoms.info` arrays; heatmap keyboard navigation in shadow roots; Tl electronegativity 1.62; unique CIF atom labels [#515](https://github.com/janosh/matterviz/pull/515)
+
 ## [v0.9.0](https://github.com/janosh/matterviz/compare/v0.8.0...v0.9.0)
 
 > 10 November 2026

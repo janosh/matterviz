@@ -30,6 +30,7 @@ const make_input = (
   radius_options: { same_size_atoms: true },
   hidden_centers: null,
   cutaway_sites: undefined,
+  ellipsoid_probability: null,
   appearance: `default`,
   ...overrides,
 })
@@ -50,8 +51,8 @@ describe(`AtomGroupBuilder`, () => {
     const disordered: Site = {
       ...make_site(`Fe`, [0, 0, 0], [0, 2, 0], `FeNi`),
       species: [
-        { element: `Fe`, occu: 0.5, oxidation_state: 0 },
-        { element: `Ni`, occu: 0.5, oxidation_state: 0 },
+        { element: `Fe`, occu: 0.5 },
+        { element: `Ni`, occu: 0.5 },
       ],
     }
     const structure = { sites: [...co_molecule().sites, image, disordered] }
@@ -208,12 +209,55 @@ describe(`AtomGroupBuilder`, () => {
   })
 })
 
+describe(`thermal ellipsoids`, () => {
+  // ADPs from parse_cif: a positive-definite U becomes the 50% ellipsoid in place of the
+  // sphere; a non-positive-definite U (refinement artifact) and a partial site stay spheres
+  const with_adp = (site: Site, adp: number[][]): Site => ({
+    ...site,
+    properties: { adp_U_cart: adp },
+  })
+  const adp_structure = (): AnyStructure => {
+    const [carbon, oxygen] = co_molecule().sites
+    const partial: Site = {
+      ...make_site(`Fe`, [0, 0, 0], [0, 2, 0], `Fe`),
+      species: [{ element: `Fe`, occu: 0.5 }],
+    }
+    // oxfmt-ignore
+    return { sites: [
+      with_adp(carbon, [[0.01, 0, 0], [0, 0.04, 0], [0, 0, 0.09]]),
+      with_adp(oxygen, [[0.01, 0, 0], [0, -0.01, 0], [0, 0, 0.01]]),
+      with_adp(partial, [[0.01, 0, 0], [0, 0.01, 0], [0, 0, 0.01]]),
+    ] }
+  }
+
+  test(`draws sites with a positive-definite ADP as ellipsoids only when enabled`, () => {
+    const groups = new AtomGroupBuilder().build(
+      make_input(adp_structure(), { ellipsoid_probability: 0.5 }),
+    )
+    expect(groups.ellipsoid.map(({ site_idx }) => site_idx)).toEqual([0])
+    expect(groups.base.map(({ site_idx }) => site_idx)).toEqual([1])
+    expect(groups.partial.map(({ site_idx }) => site_idx)).toEqual([2])
+    const [carbon] = groups.ellipsoid
+    expect(groups.first_by_site.get(0)).toBe(carbon)
+    // diagonal U: the transform is diag(c_p √U_ii), the anchor radius the longest diameter
+    const scale = 1.5381722544550522
+    const errors = carbon.ellipsoid.map((row, idx) =>
+      Math.abs(Math.abs(row[idx]) - scale * [0.1, 0.2, 0.3][idx]),
+    )
+    expect(Math.max(...errors)).toBeLessThan(1e-15)
+    expect(Math.abs(carbon.radius - 2 * scale * 0.3)).toBeLessThan(1e-15)
+    // off: spheres only
+    const off = new AtomGroupBuilder().build(make_input(adp_structure()))
+    expect([off.ellipsoid, off.base.map(({ site_idx }) => site_idx)]).toEqual([[], [0, 1]])
+  })
+})
+
 describe(`tooltip_fill`, () => {
   const atom = (species: Site[`species`]): RenderAtom =>
     ({ site_idx: 0, color: `#123456`, species }) as RenderAtom
   const fe = { element: `Fe`, occu: 0.5, oxidation_state: 2 } as const
   const fe3 = { ...fe, oxidation_state: 3 }
-  const ni = { element: `Ni`, occu: 0.5, oxidation_state: 0 } as const
+  const ni = { element: `Ni`, occu: 0.5 } as const
   const none = new Set<string>()
 
   const color_field = {} as AtomColorField

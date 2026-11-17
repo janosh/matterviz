@@ -1,6 +1,6 @@
 <script lang="ts">
   // Time-averaged partial g(r) of an MD run with the coordination shells read off each curve.
-  // Frames are analysed one at a time (see calc-trajectory-rdf.ts), so the shared pane's
+  // Frames are analysed one at a time (see compute-trajectory-rdf.ts), so the shared pane's
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
   import { format_num } from 'svelte-widgets/format'
   import { cell_heights } from '#lib/math.js'
@@ -11,14 +11,14 @@
   import { positive_int, sweep_progress, window_sweep_size } from '#lib/trajectory/analysis.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
-  import type { FrameRdfOptions } from './calc-rdf'
-  import type { TrajectoryRdf } from './calc-trajectory-rdf'
+  import type { FrameRdfOptions } from './compute-rdf'
+  import type { TrajectoryRdf } from './compute-trajectory-rdf'
   import {
     collect_trajectory_rdf,
     DEFAULT_RDF_BINS,
     DEFAULT_RDF_CUTOFF,
     DEFAULT_RDF_MAX_FRAMES,
-  } from './calc-trajectory-rdf'
+  } from './compute-trajectory-rdf'
   import type { RdfEntry } from './index'
   import RdfPlot from './RdfPlot.svelte'
 

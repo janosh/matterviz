@@ -334,7 +334,8 @@ const precompute_axis_interpolation = (
 // capped at max_points. The lattice spans the range and the origin shifts by range_min·lattice,
 // keeping vertices in the source's Cartesian frame.
 export function extract_volume_range(
-  volume: VolumeGrid & Partial<Pick<VolumetricData, `label` | `source` | `source_filename`>>,
+  volume: VolumeGrid &
+    Partial<Pick<VolumetricData, `label` | `units` | `source` | `source_filename`>>,
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
 ): Omit<VolumetricData, `id`> {
@@ -408,13 +409,14 @@ export function extract_volume_range(
   }
 
   const [row_a, row_b, row_c] = volume.lattice
-  const { label, source, source_filename } = volume
+  const { label, units, source, source_filename } = volume
   return {
     values,
     dims: counts,
     order: `z_fastest`,
     data_range: grid_data_range(values),
     label,
+    units: units ?? null, // a bare grid names none
     source,
     source_filename,
     lattice: scale_lattice_matrix(volume.lattice, widths),

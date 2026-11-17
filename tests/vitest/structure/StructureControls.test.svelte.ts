@@ -17,7 +17,7 @@ import {
   DEFAULT_ATOM_COLOR_CONFIG,
   next_atom_color_config,
 } from '#lib/structure/atom-properties.js'
-import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
+import { CNA_TYPE_PROPERTY } from '#lib/structure-id/compute-structure-id.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -124,15 +124,16 @@ const import_settings_file = async (
     )
   })
 }
-// simple_structure with two vector site properties, so the Site vectors section and its
-// per-key scale inputs render
-const vector_structure = {
+// simple_structure with extra properties on every site
+const with_site_props = (properties: Record<string, unknown>): AnyStructure => ({
   ...simple_structure,
   sites: simple_structure.sites.map((site) => ({
     ...site,
-    properties: { ...site.properties, force: [0.1, 0, 0], magmom: [0, 0.2, 0] },
+    properties: { ...site.properties, ...properties },
   })),
-}
+})
+// two vector site properties, so the Site vectors section and its per-key scale inputs render
+const vector_structure = with_site_props({ force: [0.1, 0, 0], magmom: [0, 0.2, 0] })
 
 // three frames of one stationary H atom: enough for the trail-length controls to appear
 const trail_stream = (): TrajectoryPositionStream =>
@@ -509,6 +510,26 @@ describe(`StructureControls schema rows`, () => {
     expect(state.image_atom_completion).toBe(`none`)
   })
 
+  // the thermal-ellipsoid rows only show for a structure with ADPs (CIF _atom_site_aniso_*),
+  // the probability slider only while ellipsoids are on
+  test(`offers thermal ellipsoid rows only for structures with ADPs`, async () => {
+    const row_keys = (root: HTMLElement) =>
+      [...root.querySelectorAll<HTMLElement>(`[data-key]`)].map((row) => row.dataset.key)
+    const plain = await mount_bound_controls(scene_state({ ...DEFAULTS.structure }))
+    expect(row_keys(plain)).not.toContain(`show_thermal_ellipsoids`)
+    const adp_U_cart = [0.01, 0.02, 0.03].map((diag, idx) => [0, 0, 0].with(idx, diag))
+    const state = scene_state({ ...DEFAULTS.structure })
+    const target = await mount_bound_controls(state, {
+      structure: with_site_props({ adp_U_cart }),
+    })
+    expect(row_keys(target)).toContain(`show_thermal_ellipsoids`)
+    expect(row_keys(target)).not.toContain(`ellipsoid_probability`)
+    query(target, `[data-key="show_thermal_ellipsoids"] input[type="checkbox"]`).click()
+    await tick()
+    expect(state.scene_props.show_thermal_ellipsoids).toBe(true)
+    expect(row_keys(target)).toContain(`ellipsoid_probability`)
+  })
+
   test(`per-axis inputs replace one component and leave the others`, async () => {
     const state = scene_state({
       ...DEFAULTS.structure,
@@ -531,6 +552,62 @@ describe(`StructureControls schema rows`, () => {
     await tick()
     expect(state.scene_props.site_label_offset).toEqual([0.1, 0.2, -0.5])
     expect(state.scene_props.rotation).toEqual([0, Math.PI, Math.PI / 2])
+  })
+
+  // The pair_cutoffs strategy's rows edit only its own options, and every edit leaves a valid
+  // cutoff table (the scene's validation would throw on any other)
+  test(`pair cutoff rows add, edit, rename and remove element pairs`, async () => {
+    const state = scene_state({
+      ...DEFAULTS.structure,
+      bonding_options: { electroneg_ratio: { strength_threshold: 0.5 } },
+    })
+    const target = await mount_bound_controls(state) // simple_structure: H2O
+    expect(target.querySelector(`.pair-cutoffs`)).toBeNull()
+    await choose(`bonding_strategy`, `pair_cutoffs`)
+    const add = query(target, `.pair-cutoffs > button`, HTMLButtonElement)
+    const cutoffs = () => ({
+      ...state.scene_props.bonding_options?.pair_cutoffs?.pair_cutoffs,
+    })
+    const change = async (selector: string, value: string) => {
+      const element = query<HTMLInputElement | HTMLSelectElement>(target, selector)
+      element.value = value
+      element.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+    }
+    const bound = (pair: string, end: `min` | `max`) =>
+      `input[aria-label="${pair} ${end} (Å)"]`
+    const second_of = (pair: string) => `select[aria-label="Second element of ${pair}"]`
+
+    // unlike pairs first, then like ones, until every pair has a row
+    for (const _pair of [`H-O`, `H-H`, `O-O`]) add.click()
+    await tick()
+    expect(Object.keys(cutoffs())).toEqual([`H-O`, `H-H`, `O-O`])
+    expect(add.disabled).toBe(true)
+    for (const [min, max] of Object.values<readonly [number, number]>(cutoffs()))
+      expect([min, max > 0]).toEqual([0, true])
+    // the other strategy's options are left alone
+    expect(state.scene_props.bonding_options?.electroneg_ratio).toEqual({
+      strength_threshold: 0.5,
+    })
+
+    // a bound moved past the other one drags it along
+    await change(bound(`H-O`, `min`), `1.5`)
+    await change(bound(`H-O`, `max`), `1.2`)
+    expect(cutoffs()[`H-O`]).toEqual([1.2, 1.2])
+    await change(bound(`H-O`, `min`), `-1`)
+    expect(cutoffs()[`H-O`]).toEqual([0, 1.2])
+
+    // renaming onto a pair another row names is refused, onto a free one keeps the range
+    await change(second_of(`H-H`), `O`)
+    expect(Object.keys(cutoffs())).toEqual([`H-O`, `H-H`, `O-O`])
+    query(target, `button[aria-label="Remove H-O"]`).click()
+    await tick()
+    expect(Object.keys(cutoffs())).toEqual([`H-H`, `O-O`])
+    expect(add.disabled).toBe(false)
+    const { 'H-H': h_h_range, 'O-O': o_o_range } = cutoffs()
+    await change(second_of(`H-H`), `O`)
+    expect(cutoffs()).toEqual({ 'H-O': h_h_range, 'O-O': o_o_range })
+    expect(target.querySelector(`.pair-cutoffs [role="alert"]`)).toBeNull()
   })
 
   // Rotation number inputs clamp to [0, 360] then wrap 360 -> 0; the paired slider shows it
@@ -609,13 +686,11 @@ describe(`StructureControls layout`, () => {
   })
 })
 
-const property_structure = {
-  ...simple_structure,
-  sites: simple_structure.sites.map((site) => ({
-    ...site,
-    properties: { ...site.properties, charge: 0.5, velocity: 2, [CNA_TYPE_PROPERTY]: 1 },
-  })),
-}
+const property_structure = with_site_props({
+  charge: 0.5,
+  velocity: 2,
+  [CNA_TYPE_PROPERTY]: 1,
+})
 const mount_persisted_controls = async (
   atom_color_config: AtomColorConfig = DEFAULT_ATOM_COLOR_CONFIG,
 ) => {
@@ -700,15 +775,10 @@ describe(`StructureControls reactive props`, () => {
   )
 
   // Press and release the controls pane's right resize handle
-  const start_pane_resize = () =>
-    doc_query(`[data-resize-edge="right"]`).dispatchEvent(
-      new PointerEvent(`pointerdown`, {
-        bubbles: true,
-        button: 0,
-        isPrimary: true,
-        pointerId: 1,
-      }),
-    )
+  const start_pane_resize = () => {
+    const init = { bubbles: true, button: 0, isPrimary: true, pointerId: 1 }
+    doc_query(`[data-resize-edge=right]`).dispatchEvent(new PointerEvent(`pointerdown`, init))
+  }
   const end_pane_resize = () =>
     document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
 
@@ -884,9 +954,7 @@ describe(`StructureControls reactive props`, () => {
         [],
       ),
     )
-    const structure = structuredClone(simple_structure)
-    const { properties } = structure.sites[0]
-    structure.sites[0].properties = { ...properties, selective_dynamics: [true, true, true] }
+    const structure = with_site_props({ selective_dynamics: [true, true, true] })
     const target = await mount_bound_controls(state, { structure })
     await choose(`atom_color_mode`, `selective_dynamics`)
     expect(state.atom_color_config.scale_type).toBe(`categorical`)
@@ -1218,17 +1286,10 @@ describe(`StructureControls reactive props`, () => {
   // swatch, scale and reset per category instead of flooding the visibility grid
   test(`groups vector components into one row per category`, async () => {
     const spin_keys = [`spin_l0_norm`, `spin_l1_norm`, `spin_s0_l0_m0`, `spin_s0_l1_m-1`]
-    const structure = {
-      ...simple_structure,
-      sites: simple_structure.sites.map((site) => ({
-        ...site,
-        properties: {
-          ...site.properties,
-          force: [0.1, 0, 0],
-          ...Object.fromEntries(spin_keys.map((key) => [key, [0, 0.1, 0]])),
-        },
-      })),
-    }
+    const structure = with_site_props({
+      force: [0.1, 0, 0],
+      ...Object.fromEntries(spin_keys.map((key) => [key, [0, 0.1, 0]])),
+    })
     const state = scene_state({})
     const target = await mount_bound_controls(state, { structure })
     const row_keys = (prefix: string) =>
@@ -1336,13 +1397,7 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`refreshes site-vector reset snapshots when vector keys change`, async () => {
-    const structure_with_vector = (key: string) => ({
-      ...simple_structure,
-      sites: simple_structure.sites.map((site) => ({
-        ...site,
-        properties: { ...site.properties, [key]: [0.1, 0.2, 0.3] },
-      })),
-    })
+    const structure_with_vector = (key: string) => with_site_props({ [key]: [0.1, 0.2, 0.3] })
     const state = $state({
       structure: structure_with_vector(`force`),
       scene_props: { ...DEFAULTS.structure },
@@ -1363,24 +1418,18 @@ describe(`StructureControls reactive props`, () => {
     expect(state.scene_props.vector_scale).toBe(2)
   })
 
+  // oxfmt-ignore
   test.each<[string, TrajectoryPositionStream | null | undefined, boolean, boolean, boolean]>([
     [`hidden without a stream slot`, undefined, false, false, false],
     [`toggle only while stream is pending`, null, false, true, false],
     [`length controls once a stream arrives`, trail_stream(), true, true, true],
     [`length controls stay gated on the trails toggle`, trail_stream(), false, true, false],
-  ])(
-    `trajectory trails chrome: %s`,
-    async (_desc, stream, show_trails, expect_toggle, expect_length) => {
-      const state = $state({
-        show_trajectory_lines: show_trails,
-        trajectory_position_stream: stream,
-      })
-      const target = await mount_bound_controls(state)
-
-      expect(Boolean(find_label(target, `Show trajectory trails`))).toBe(expect_toggle)
-      expect(target.textContent?.includes(`Trail length`) ?? false).toBe(expect_length)
-    },
-  )
+  ])(`trajectory trails chrome: %s`, async (_desc, stream, show_trails, has_toggle, has_length) => {
+    const state = $state({ show_trajectory_lines: show_trails, trajectory_position_stream: stream })
+    const target = await mount_bound_controls(state)
+    expect(Boolean(find_label(target, `Show trajectory trails`))).toBe(has_toggle)
+    expect(target.textContent?.includes(`Trail length`) ?? false).toBe(has_length)
+  })
 
   test(`explains unavailable multi-view and enables it when space becomes available`, async () => {
     const reason = `Requires at least 600×400 px. Enlarge the viewer or use fullscreen.`

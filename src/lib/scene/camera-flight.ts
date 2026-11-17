@@ -72,9 +72,8 @@ export function create_camera_flight_sampler(
   flight: CameraFlight,
 ): (time: number) => CameraPose {
   validate_camera_flight(flight)
-  // Smooth flights place the camera by its offset from the target in its own (slerped) frame,
-  // so an orbit's offsets are one constant vector and the path is exactly circular at uniform
-  // speed, however few waypoints it has. Cartesian splines cut inside the circle instead.
+  // Smooth flights place the camera by its target offset in its own slerped frame, so an orbit
+  // is exactly circular at uniform speed however few its waypoints (splines cut inside).
   const keyframes = flight.keyframes.map((frame) => ({
     ...copy_pose(frame),
     time: frame.time,
@@ -214,9 +213,8 @@ export function create_camera_flight_controller(
     camera.updateMatrixWorld()
     invalidate()
   }
-  // OrbitControls re-aims at its target with a level `camera.up` on every update, so a view it
-  // can't hold (target off the view axis, rolled) would snap: move the pivot onto the view axis
-  // and level the roll. Held poses (off by ~1e-15 round-off) stay bit-identical.
+  // OrbitControls would snap a view it can't hold (target off the view axis, rolled): move the
+  // pivot onto the view axis and level the roll. Held poses (~1e-15 off) stay bit-identical.
   const HELD_POSE_TOL = 1e-9
   const hand_over = (): void => {
     const to_target = controls.target.clone().sub(camera.position)

@@ -303,9 +303,11 @@ describe(`generate_plot_series`, () => {
     expect([smoothed.x.length, raw_y.length, underlay.x.length]).toEqual([500, 500, 500])
     expect(smoothed.x).toEqual(underlay.x)
     expect(raw_y).toEqual(underlay.y)
-    expect(Math.max(...smoothed.y)).toBeLessThan(20)
-    expect(Math.max(...underlay.y)).toBe(100)
-    expect(raw_y).toEqual(smoothed.x.map((frame_num) => raw_series[0].y[frame_num - 1]))
+    expect(Math.max(...Array.from(smoothed.y))).toBeLessThan(20)
+    expect(Math.max(...Array.from(underlay.y))).toBe(100)
+    expect(raw_y).toEqual(
+      Array.from(smoothed.x, (frame_num) => raw_series[0].y[frame_num - 1]),
+    )
     expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
     expect(underlay.line_style).toEqual({
       stroke: `color-mix(in srgb, #4e79a7 18%, transparent)`,
@@ -319,7 +321,7 @@ describe(`generate_plot_series`, () => {
       throw new Error(`Expected resampled raw trajectory data`)
     }
     expect(resampled.raw_y).toEqual(resampled_underlay.y)
-    expect(Math.max(...resampled_underlay.y)).toBe(100)
+    expect(Math.max(...Array.from(resampled_underlay.y))).toBe(100)
 
     const duplicate_x = {
       x: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
@@ -468,12 +470,8 @@ describe(`summarize_properties`, () => {
     expect(in_steps?.drift).toBeCloseTo(-3, 12)
     // Irregular dump steps: energy falls 1 per step; the frame axis sees (0,-10) (1,-11)
     // (2,-13) (3,-19) while the step axis recovers the exact slope x span
-    const irregular = create_rows([
-      { energy: -10 },
-      { energy: -11 },
-      { energy: -13 },
-      { energy: -19 },
-    ])
+    // oxfmt-ignore
+    const irregular = create_rows([{ energy: -10 }, { energy: -11 }, { energy: -13 }, { energy: -19 }])
     for (const [idx, step] of [0, 1, 3, 9].entries()) irregular[idx].step = step
     const [by_frame, by_step] = [undefined, (row: TrajectoryMetadata) => row.step].map(
       (x_of) => summarize_properties(irregular, x_of)[0].drift,

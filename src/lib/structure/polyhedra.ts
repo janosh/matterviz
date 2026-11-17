@@ -162,11 +162,10 @@ const face_of = (
 const dist_to_face = (face: HullFace, point: Vec3): number =>
   face.nx * point[0] + face.ny * point[1] + face.nz * point[2] - face.offset
 
-// Compute the 3D convex hull of a small point set via quickhull.
-// Returns a degenerate result (faces=[], volume=0) for <4 unique points or
-// collinear/coplanar sets (e.g. square-planar CN=4 coordination draws nothing,
-// matching VESTA behavior). Supports up to 65535 input points (edge keys are
-// packed into 32-bit integers) - far beyond any coordination shell.
+// Compute the 3D convex hull of a small point set via quickhull. Returns a degenerate result
+// (faces=[], volume=0) for <4 unique points or collinear/coplanar sets (e.g. square-planar
+// CN=4 coordination draws nothing, matching VESTA behavior). Supports up to 65535 input points
+// (edge keys are packed into 32-bit integers) - far beyond any coordination shell.
 export function convex_hull_3d(points: readonly Vec3[]): ConvexHullResult {
   // Dedup points within 1e-3 Å (coordination shells are tiny, O(n^2) is fine): split partial
   // sites whose coordinates were rounded apart double a corner, and the sliver faces between
@@ -292,9 +291,7 @@ export function convex_hull_3d(points: readonly Vec3[]): ConvexHullResult {
     best_face?.outside.push(point_idx)
   }
   for (let idx = 0; idx < unique.length; idx++) {
-    if (idx !== pt_0 && idx !== pt_1 && idx !== pt_2 && idx !== pt_3) {
-      assign_point(idx, faces)
-    }
+    if (idx !== pt_0 && idx !== pt_1 && idx !== pt_2 && idx !== pt_3) assign_point(idx, faces)
   }
 
   // Expand hull: repeatedly absorb the farthest outside point. Horizon edges are
@@ -354,12 +351,13 @@ export function convex_hull_3d(points: readonly Vec3[]): ConvexHullResult {
     }
     return new_idx
   }
-  const remapped: [number, number, number][] = []
-  for (const face of faces) {
-    if (!face.deleted) {
-      remapped.push([remap(face.vert_a), remap(face.vert_b), remap(face.vert_c)])
-    }
-  }
+  const remapped = faces
+    .filter((face) => !face.deleted)
+    .map((face): [number, number, number] => [
+      remap(face.vert_a),
+      remap(face.vert_b),
+      remap(face.vert_c),
+    ])
 
   // Volume via signed tetrahedra from the hull centroid (positive with outward winding)
   let [center_x, center_y, center_z] = [0, 0, 0]
@@ -486,17 +484,13 @@ function is_anion_vertex(
 
 // === Top-level polyhedra computation ===
 
-// Detect coordination polyhedra from the rendered bond graph, VESTA-style:
-// vertices are bonded anion-former neighbors by default (nonmetals/metalloids more
-// electronegative than the center), or every bonded neighbor in bonded mode.
-// Rejecting an over-long contact is the bond detector's job, so there is no extra
-// distance trim here. In anion mode, spectator A-site
-// cations (alkali, heavy alkaline-earth) are skipped when framework cations exist,
-// CN > max_neighbors hulls (e.g. CN-12 cuboctahedra) are skipped, and
-// boundary-truncated copies are skipped (pass 3). Corners are displayed atoms for
-// proximity-perceived bonds (boundary shells are completed upstream by
-// bond-completing image atoms - see find_image_atoms in pbc.ts); explicit bonds
-// carrying a cell_shift put the corner at the lattice image the bond points to.
+// Detect coordination polyhedra from the rendered bond graph, VESTA-style: vertices are the
+// bonded anion-formers (nonmetals/metalloids more electronegative than the center), or every
+// bonded neighbor in bonded mode, with no distance trim (that is the bond detector's job).
+// Anion mode skips spectator A-site cations when framework cations exist; CN > max_neighbors
+// hulls (e.g. CN-12 cuboctahedra) and boundary-truncated copies (pass 3) are skipped. Corners
+// are displayed atoms (find_image_atoms in pbc.ts completes boundary shells), or for explicit
+// bonds with a cell_shift the lattice image the bond points to.
 // `skip_hull` centers come back hull-less (faces [], volume 0, all candidate vertices): image
 // completion only asks which interior centers qualify, and their hulls cost ~half its time.
 export function compute_polyhedra(
@@ -660,18 +654,15 @@ export function compute_polyhedra(
     })
   }
 
-  // Pass 2: hide spectator A-site cations when the composition contains a
-  // potential framework cation (a non-spectator element less electronegative than
-  // the structure's most electronegative element, i.e. one that could coordinate
-  // the anions). Composition-based rather than candidate-based so boundary
-  // truncation of framework polyhedra doesn't promote Li/Na/Ba clutter; purely
-  // ionic binaries like NaCl or CaF2 still draw their spectator polyhedra.
+  // Pass 2: hide spectator A-site cations when the composition holds a potential framework
+  // cation (a non-spectator less electronegative than the most electronegative element).
+  // Composition-based, not candidate-based, so truncated framework polyhedra at the boundary
+  // don't promote Li/Na/Ba clutter; ionic binaries like NaCl or CaF2 keep their polyhedra.
   const has_framework = has_framework_potential(unique_elements)
 
-  // Weakly-bound center species (mean bond length well beyond the covalent-radii
-  // sum, e.g. lone-pair Bi3+ with 8 long Bi-O bonds) are hidden when a
-  // strongly-bound framework species exists - mirrors how pyrochlore-type figures
-  // show only the B-site octahedra
+  // Weakly-bound center species (mean bond length well beyond the covalent-radii sum, e.g.
+  // lone-pair Bi3+ with 8 long Bi-O bonds) are hidden when a strongly-bound framework species
+  // exists - mirrors how pyrochlore-type figures show only the B-site octahedra
   const norm_by_species = new Map<ElementSymbol, { sum: number; count: number }>()
   for (const { element, mean_norm_dist } of candidates) {
     if (mean_norm_dist === null) continue
@@ -704,16 +695,14 @@ export function compute_polyhedra(
   // site, which misses sites whose every displayed copy is truncated.
   const max_cn_by_orig = new Map<number, number>()
   for (const { orig_idx, vertex_site_idxs } of visible) {
-    if (vertex_site_idxs.length > (max_cn_by_orig.get(orig_idx) ?? 0)) {
-      max_cn_by_orig.set(orig_idx, vertex_site_idxs.length)
-    }
+    const max_cn = Math.max(max_cn_by_orig.get(orig_idx) ?? 0, vertex_site_idxs.length)
+    max_cn_by_orig.set(orig_idx, max_cn)
   }
 
-  // Pass 4: CN cap (after completeness so capped interior copies don't let
-  // truncated boundary copies of the same site slip through; force-included
-  // elements bypass the cap - an explicit user request beats the clutter
-  // heuristic), then build hulls, deduping identical center positions (base
-  // atom vs PBC image)
+  // Pass 4: CN cap (after completeness so capped interior copies don't let truncated boundary
+  // copies of the same site slip through; force-included elements bypass the cap - an explicit
+  // user request beats the clutter heuristic), then build hulls, deduping identical center
+  // positions (base atom vs PBC image)
   const polyhedra: Polyhedron[] = []
   const seen_positions = new Set<string>()
   for (const { site_idx, orig_idx, element, vertex_site_idxs, vertex_positions } of visible) {
@@ -728,34 +717,25 @@ export function compute_polyhedra(
     if (seen_positions.has(pos_key)) continue
     seen_positions.add(pos_key)
 
-    if (skip_hull?.(site_idx)) {
-      polyhedra.push({
-        center_site_idx: site_idx,
-        center_orig_idx: orig_idx,
-        center_element: element,
-        vertices: vertex_positions,
-        vertex_site_idxs,
-        faces: [],
-        volume: 0,
+    // skipped hulls keep every candidate vertex with no faces
+    const hull = skip_hull?.(site_idx) ? null : convex_hull_3d(vertex_positions)
+    if (hull) {
+      if (hull.faces.length === 0) continue
+      const spans = [0, 1, 2].map((axis) => {
+        const [lower, upper] = array_extent(hull.vertices.map((vert) => vert[axis]))
+        return upper - lower
       })
-      continue
+      if (hull.volume < VOLUME_EPS * array_max(spans) ** 3) continue
     }
-    const hull = convex_hull_3d(vertex_positions)
-    if (hull.faces.length === 0) continue
-    const spans = [0, 1, 2].map((axis) => {
-      const [lower, upper] = array_extent(hull.vertices.map((vert) => vert[axis]))
-      return upper - lower
-    })
-    if (hull.volume < VOLUME_EPS * array_max(spans) ** 3) continue
-
     polyhedra.push({
       center_site_idx: site_idx,
       center_orig_idx: orig_idx,
       center_element: element,
-      vertices: hull.vertices,
-      vertex_site_idxs: hull.input_idxs.map((input_idx) => vertex_site_idxs[input_idx]),
-      faces: hull.faces,
-      volume: hull.volume,
+      vertices: hull?.vertices ?? vertex_positions,
+      vertex_site_idxs:
+        hull?.input_idxs.map((idx) => vertex_site_idxs[idx]) ?? vertex_site_idxs,
+      faces: hull?.faces ?? [],
+      volume: hull?.volume ?? 0,
     })
   }
   return polyhedra

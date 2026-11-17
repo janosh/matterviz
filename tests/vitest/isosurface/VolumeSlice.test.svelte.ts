@@ -170,21 +170,18 @@ describe(`VolumeSlice`, () => {
   test.each([
     [`light`, `white`],
     [`dark`, `black`],
-  ] as const)(
-    `resamples currentColor contours after a %s to %s theme switch`,
-    async (initial_theme, next_theme) => {
-      vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(() => {
-        const theme = document.documentElement.dataset.theme as keyof typeof theme_colors
-        return style_with_color(theme_colors[theme])
-      })
-      document.documentElement.dataset.theme = initial_theme
-      const { context } = await mount_volume_slice({ mode: `contours`, contour_levels: [4] })
-      expect(context.strokeStyle).toBe(theme_colors[initial_theme])
-      document.documentElement.dataset.theme = next_theme
-      await tick() // watch_dark_mode reports via MutationObserver, so not synchronously
-      expect(context.strokeStyle).toBe(theme_colors[next_theme])
-    },
-  )
+  ] as const)(`contours recolor on %s → %s theme`, async (initial_theme, next_theme) => {
+    vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(() => {
+      const theme = document.documentElement.dataset.theme as keyof typeof theme_colors
+      return style_with_color(theme_colors[theme])
+    })
+    document.documentElement.dataset.theme = initial_theme
+    const { context } = await mount_volume_slice({ mode: `contours`, contour_levels: [4] })
+    expect(context.strokeStyle).toBe(theme_colors[initial_theme])
+    document.documentElement.dataset.theme = next_theme
+    await tick() // watch_dark_mode reports via MutationObserver, so not synchronously
+    expect(context.strokeStyle).toBe(theme_colors[next_theme])
+  })
 
   test(`resamples currentColor contours after an inherited style change`, async () => {
     vi.spyOn(globalThis, `getComputedStyle`).mockImplementation((element) => {

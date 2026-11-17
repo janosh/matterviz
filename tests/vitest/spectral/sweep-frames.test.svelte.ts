@@ -46,9 +46,11 @@ function deferred_loader() {
   )
   return { load, calls }
 }
-// The cache under a reactive root, its sweep $state the test can swap or edit in place
-function setup(loader?: SweepFrameLoader, n_frames?: number) {
-  const inputs = $state({ sweep: make_sweep(loader, n_frames) })
+// The cache under a reactive root, its sweep $state the test can swap or edit in place, loaded
+// through a deferred loader unless `lazy` is false
+function setup(n_frames = 3, lazy = true) {
+  const { load, calls } = deferred_loader()
+  const inputs = $state({ sweep: make_sweep(lazy ? load : undefined, n_frames) })
   const on_error = vi.fn()
   let frames: ReturnType<typeof create_sweep_frames> | undefined
   const cleanup = $effect.root(() => {
@@ -57,7 +59,7 @@ function setup(loader?: SweepFrameLoader, n_frames?: number) {
   flushSync() // the cache's abort effect runs, as after a component mounts
   onTestFinished(cleanup)
   if (!frames) throw new Error(`cache not created`)
-  return { frames, inputs, on_error, cleanup }
+  return { frames, inputs, on_error, cleanup, load, calls, series: inputs.sweep.series[0] }
 }
 const settle = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0))
@@ -90,6 +92,7 @@ const loaded_mode_values: ModeValues = {
 }
 const electronic_dos: ElectronicDos = {
   type: `electronic`,
+  energy_unit: `eV`,
   energies: [0, 1],
   densities: [1, 1],
   spin_polarized: false,
@@ -97,8 +100,7 @@ const electronic_dos: ElectronicDos = {
 const ids = (calls: { args: [string, number] }[]) => calls.map(({ args }) => args[1])
 
 test(`without a loader every frame is ready as given and requests do nothing`, () => {
-  const { frames, inputs } = setup()
-  const series = inputs.sweep.series[0]
+  const { frames, series } = setup(3, false)
   frames.request([series, [0]])
   expect(frames.is_ready(series, 0)).toBe(true)
   expect(frames.is_loading(series, 0)).toBe(false)
@@ -106,9 +108,7 @@ test(`without a loader every frame is ready as given and requests do nothing`, (
 })
 
 test(`a requested frame loads once, every record merged key by key over its own, mode values whole`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs } = setup(load)
-  const series = inputs.sweep.series[0]
+  const { frames, load, calls, series } = setup()
   series.frames[1] = {
     value: 50,
     scalars: { volume: 9, tc: 1 },
@@ -157,9 +157,7 @@ test(`a requested frame loads once, every record merged key by key over its own,
 
 // a $state sweep edited in place: the loaded data stays with its frame object
 test(`loaded data follows its frame through inserts, in-place edits show at once`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs } = setup(load)
-  const series = inputs.sweep.series[0]
+  const { frames, calls, series } = setup()
   frames.request([series, [0]])
   calls[0].resolve({ scalars: { tc: 5 } })
   await settle()
@@ -173,9 +171,7 @@ test(`loaded data follows its frame through inserts, in-place edits show at once
 })
 
 test(`a failed load is reported once with its 0-based index, counts as ready, no retry`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load)
-  const series = inputs.sweep.series[0]
+  const { frames, on_error, load, calls, series } = setup()
   frames.request([series, [2]])
   calls[0].reject(new Error(`cluster unreachable`))
   await settle()
@@ -190,9 +186,7 @@ test(`a failed load is reported once with its 0-based index, counts as ready, no
 
 // what the trends plot marks per frame: evicted frames, and reloads of their data, count as loaded
 test(`load states per frame`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs } = setup(load, RECENT_FRAMES + 3)
-  const series = inputs.sweep.series[0]
+  const { frames, calls, series } = setup(RECENT_FRAMES + 3)
   const states = () => series.frames.map((_frame, idx) => frames.load_state(series, idx))
   frames.request([series, [0, 1, 2]])
   flushSync()
@@ -204,7 +198,7 @@ test(`load states per frame`, async () => {
   expect([states()[0], frames.is_ready(series, 0)]).toEqual([`loaded`, false]) // evicted
   frames.request([series, [0]]) // reloading what it had: still marked loaded
   expect([states()[0], frames.is_loading(series, 0)]).toEqual([`loaded`, true])
-  expect(setup().frames.load_state(series, 0)).toBe(`loaded`) // no loader: all given
+  expect(setup(3, false).frames.load_state(series, 0)).toBe(`loaded`) // no loader: all given
 })
 
 // oxfmt-ignore
@@ -214,9 +208,7 @@ test.each([
   [`a frame value`, { value: 3 }, `.value: unknown field`],
   [`no object`, [], `: must be an object`],
 ])(`loaded data with %s fails the frame, naming the field`, async (_desc, data, problem) => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load)
-  const series = inputs.sweep.series[0]
+  const { frames, on_error, calls, series } = setup()
   frames.request([series, [1]])
   calls[0].resolve(data)
   await settle()
@@ -227,9 +219,7 @@ test.each([
 })
 
 test(`a new sweep starts a fresh cache, aborting loads still running for the old one`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load)
-  const old_series = inputs.sweep.series[0]
+  const { frames, inputs, on_error, load, calls, series: old_series } = setup()
   frames.request([old_series, [0, 1, 2]])
   const [, old_1, old_2] = calls
   calls[0].resolve({ label: `old 0` })
@@ -262,8 +252,7 @@ test.each<[string, (load: SweepFrameLoader) => Sweep, boolean, number[]]>([
   [`a series id`, (load) => ({ ...make_sweep(load), series: [{ ...make_sweep(load).series[0], id: `bcc` }] }), false, [0, 1, 0, 1]],
   [`a descriptor`, (load) => ({ ...make_sweep(load), descriptors: [{ ...fermi_dos_spec, key: `n_ef` }] }), false, [0, 1, 0, 1]],
 ])(`a sweep replaced by %s keeps the loaded frames only when equal`, async (_desc, replace, kept, loads) => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load)
+  const { frames, inputs, on_error, load, calls } = setup()
   frames.request([inputs.sweep.series[0], [0, 1]])
   calls[0].resolve({ label: `0` })
   await settle()
@@ -306,13 +295,7 @@ test(`requests from an effect rerun it for a new loader, not as loads start and 
   const next = deferred_loader()
   inputs.sweep.load_frame = next.load
   flushSync()
-  expect([runs, next.calls.map(({ args }) => args)]).toEqual([
-    2,
-    [
-      [`fcc`, 0],
-      [`fcc`, 1],
-    ],
-  ])
+  expect([runs, next.calls.map(({ args }) => args.join(` `))]).toEqual([2, [`fcc 0`, `fcc 1`]])
   expect([calls[0].signal.aborted, calls[1].signal.aborted]).toEqual([false, true])
   calls[1].reject(new DOMException(`aborted`, `AbortError`))
   await settle()
@@ -327,9 +310,7 @@ test.each([
   [`resolves anyway`, (call: { resolve: (data: unknown) => void }) => call.resolve({ label: `late` })],
   [`rejects`, (call: { reject: (error: Error) => void }) => call.reject(new DOMException(`aborted`, `AbortError`))],
 ])(`a load leaving the window is aborted, its result neither cached nor reported when it %s, and loads again`, async (_desc, finish) => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load)
-  const series = inputs.sweep.series[0]
+  const { frames, on_error, load, calls, series } = setup()
   frames.request([series, [0, 1]])
   frames.request([series, [1, 2]]) // frame 0 leaves the window
   expect([ids(calls), calls.map(({ signal }) => signal.aborted)]).toEqual([
@@ -350,9 +331,7 @@ test.each([
 })
 
 test(`frames beyond the window and the recently shown ones keep only their light fields`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs } = setup(load, RECENT_FRAMES + 3)
-  const series = inputs.sweep.series[0]
+  const { frames, calls, series } = setup(RECENT_FRAMES + 3)
   const data = (idx: number) => ({
     label: `frame ${idx}`,
     scalars: { tc: idx },
@@ -397,17 +376,16 @@ test(`frames beyond the window and the recently shown ones keep only their light
 })
 
 test(`one request windows two series: shown frames load first, both stay until dropped`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs } = setup(load)
+  const { frames, inputs, load, calls } = setup()
   inputs.sweep.series.push({ id: `bcc`, frames: [{ value: 25 }, { value: 75 }] })
   const [fcc, bcc] = inputs.sweep.series
   frames.request([fcc, [1, 2, 0]], [bcc, [0, 1]])
-  expect(calls.map(({ args }) => args)).toEqual([
-    [`fcc`, 1],
-    [`bcc`, 0],
-    [`fcc`, 2],
-    [`bcc`, 1],
-    [`fcc`, 0],
+  expect(calls.map(({ args }) => args.join(` `))).toEqual([
+    `fcc 1`,
+    `bcc 0`,
+    `fcc 2`,
+    `bcc 1`,
+    `fcc 0`,
   ])
   for (const call of calls) call.resolve({ label: call.args.join(` `) })
   await settle()
@@ -421,9 +399,7 @@ test(`one request windows two series: shown frames load first, both stay until d
 
 // fill: a background frame through the same cache, after the windows' loads, kept past them
 test(`a background fill waits for the windows, survives their changes and is released after`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs } = setup(load, 6)
-  const series = inputs.sweep.series[0]
+  const { frames, load, calls, series } = setup(6)
   frames.load_background([series, 3]) // no window requested yet: the shown frame must go first
   expect(load).not.toHaveBeenCalled()
   frames.request([series, [0, 1]])
@@ -461,9 +437,7 @@ test(`a background fill waits for the windows, survives their changes and is rel
 })
 
 test(`failures report while their frame shows: prefetched and background ones once shown`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load, 6)
-  const series = inputs.sweep.series[0]
+  const { frames, on_error, load, calls, series } = setup(6)
   const messages = () => on_error.mock.calls.map(([message]) => message)
   const fail = async (call = calls.at(-1)) => {
     call?.reject(new Error(`down`))
@@ -499,9 +473,7 @@ test(`failures report while their frame shows: prefetched and background ones on
 
 // the background frame's load counts as the background's even when a window started it
 test(`a window's load the background takes over reports its failure as the background's`, async () => {
-  const { load, calls } = deferred_loader()
-  const { frames, inputs, on_error } = setup(load, 6)
-  const series = inputs.sweep.series[0]
+  const { frames, on_error, calls, series } = setup(6)
   frames.request([series, [0, 1]])
   frames.load_background([series, 1]) // frame 1 loading for the window already
   frames.request([series, [3]]) // frame 1 leaves the window, its load kept for the background

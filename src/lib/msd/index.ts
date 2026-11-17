@@ -1,5 +1,5 @@
 export { compute_msd_async } from './async-compute.svelte'
-export * from './calc-msd'
+export * from './compute-msd'
 export * from './collect'
 export { default as MsdPlot } from './MsdPlot.svelte'
 export { default as TrajectoryMsdPane } from './TrajectoryMsdPane.svelte'

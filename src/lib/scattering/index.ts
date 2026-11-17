@@ -22,12 +22,12 @@ export type RadiationType = `xray` | `neutron` | `electron`
 // absorbing nuclides with complex b_coh (B, Cd, Sm, Eu, Gd) this is the real part only.
 const NEUTRON_B_COH = NEUTRON_SCATTERING_LENGTHS as Partial<Record<ScatteringSpecies, number>>
 
-// element -> [[a1, b1], [a2, b2], [a3, b3], [a4, b4]], the four-Gaussian fit read by calc-xrd.ts
+// element -> [[a1, b1], [a2, b2], [a3, b3], [a4, b4]], the four-Gaussian fit read by compute-xrd.ts
 const GAUSSIAN_PARAMS = ATOMIC_SCATTERING_PARAMS as Partial<
   Record<ScatteringSpecies, number[][]>
 >
 
-// Prefactor of the X-ray form factor in calc-xrd.ts: f_x(s) = Z − XRAY_GAUSSIAN_PREFACTOR · s² ·
+// Prefactor of the X-ray form factor in compute-xrd.ts: f_x(s) = Z − XRAY_GAUSSIAN_PREFACTOR · s² ·
 // Σ aᵢ·exp(−bᵢ·s²), with s = sin(theta)/lambda = |g|/2 in inverse Angstrom.
 export const XRAY_GAUSSIAN_PREFACTOR = 41.78214
 

@@ -8,7 +8,7 @@ import {
 } from '#lib/constants.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { yield_turn } from '#lib/utils.js'
-import { is_finite_vec3_like, is_pbc, is_valid_index, matrix_inverse_3x3 } from '#lib/math.js'
+import { is_finite_vec3_like, is_pbc, is_valid_index, inverse_3x3 } from '#lib/math.js'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
@@ -207,7 +207,7 @@ function validate_hotspot_grid(grid: HotspotGrid): number {
     throw new Error(
       `Hotspot grid needs a finite origin, invertible cell and three periodic flags`,
     )
-  matrix_inverse_3x3(grid.cell)
+  inverse_3x3(grid.cell)
   return grid.dims[0] * grid.dims[1] * grid.dims[2]
 }
 
@@ -216,7 +216,7 @@ export function hotspot_bin(
   xyz: ArrayLike<number>,
   offset: number,
   grid: HotspotGrid,
-  inverse = matrix_inverse_3x3(grid.cell),
+  inverse = inverse_3x3(grid.cell),
 ): number {
   const coord_x = xyz[offset] - grid.origin[0]
   const coord_y = xyz[offset + 1] - grid.origin[1]
@@ -234,7 +234,7 @@ export function hotspot_bin(
   return index
 }
 
-export async function calculate_hotspots(
+export async function compute_hotspots(
   frame_count: number,
   read_atoms: ReadAtoms,
   request: HotspotRequest,
@@ -517,7 +517,7 @@ async function reduce_hotspots(
         : grid
     if (coordinates === `cell` && !first.cell)
       throw new Error(`Cell-following hotspots require a cell at step ${first.step}`)
-    const inverse = matrix_inverse_3x3(active_grid.cell)
+    const inverse = inverse_3x3(active_grid.cell)
     let batch = first
     for (;;) {
       for (let atom_idx = 0; atom_idx < batch.atomic_numbers.length; atom_idx++) {

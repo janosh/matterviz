@@ -44,37 +44,24 @@
     shortcut_scopes?: readonly ShortcutScope[] // the hull's, listed at the pane's bottom
   } = $props()
 
-  // Show flags true: filter_visible only applies the category filter here
-  const count_visible = (entries: ConvexHullEntry[], shown: boolean): number =>
-    shown ? filter_visible(entries, true, true, entry_category, hidden_categories).length : 0
+  // "visible / total"; show flags true: filter_visible only applies the category filter here
+  const visible_of = (entries: ConvexHullEntry[], shown: boolean): string => {
+    const n_visible = shown
+      ? filter_visible(entries, true, true, entry_category, hidden_categories).length
+      : 0
+    return `${n_visible} / ${entries.length}`
+  }
+  const energy = (value: number): string => `${format_num(value, `.3~f`)} eV/atom`
 
-  let settings_rows = $derived([
-    {
-      label: `Visible stable`,
-      value: `${count_visible(stable_entries, show_stable)} / ${stable_entries.length}`,
-      key: `hull-visible-stable`,
-    },
-    {
-      label: `Visible unstable`,
-      value: `${count_visible(unstable_entries, show_unstable)} / ${unstable_entries.length}`,
-      key: `hull-visible-unstable`,
-    },
-    {
-      label: `Points threshold`,
-      value: `${format_num(max_hull_dist_show_phases, `.3~f`)} eV/atom`,
-      key: `hull-show-threshold`,
-    },
-    {
-      label: `Label threshold`,
-      value: `${format_num(max_hull_dist_show_labels, `.3~f`)} eV/atom`,
-      key: `hull-label-threshold`,
-    },
-    {
-      label: `Entry limit for labels`,
-      value: `${label_threshold} entries`,
-      key: `hull-entry-limit-labels`,
-    },
-  ])
+  let settings_rows = $derived(
+    [
+      [`Visible stable`, visible_of(stable_entries, show_stable), `visible-stable`],
+      [`Visible unstable`, visible_of(unstable_entries, show_unstable), `visible-unstable`],
+      [`Points threshold`, energy(max_hull_dist_show_phases), `show-threshold`],
+      [`Label threshold`, energy(max_hull_dist_show_labels), `label-threshold`],
+      [`Entry limit for labels`, `${label_threshold} entries`, `entry-limit-labels`],
+    ].map(([label, value, key]) => ({ label, value, key: `hull-${key}` })),
+  )
 
   // Pointer gestures only: the pane's shortcuts list covers the keys of the hull's dimension
   const usage_tips = $derived([

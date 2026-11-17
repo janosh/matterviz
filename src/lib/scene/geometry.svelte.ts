@@ -4,9 +4,8 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { BufferAttribute, BufferGeometry, Line2NodeMaterial } from 'three/webgpu'
 
-// Indexed triangle mesh from flat xyz positions and index triples (marching-cubes output,
-// parsed Fermi sheets). The typed arrays are shared with the geometry, not copied; normals
-// are taken when given and computed from the faces otherwise. Null when nothing is drawable.
+// Indexed triangle mesh sharing (not copying) flat xyz positions and index triples, with given
+// or computed normals (marching cubes, Fermi sheets). Null when nothing is drawable.
 export function indexed_mesh_geometry(
   positions: Float32Array,
   indices: Uint32Array,
@@ -76,9 +75,8 @@ export function triangle_subset(
   return new BufferGeometry().setAttribute(`position`, new BufferAttribute(positions, 3))
 }
 
-// Boundary of a set of triangles (`faces`, default all) as flat xyz vertex pairs: the edges
-// used by exactly one of them. Corners weld by position rounded to 1e-4, so triangle soups and
-// vertices reached along different paths (~1e-12 apart) share their edges.
+// Boundary of triangles `faces` (default all) as flat xyz vertex pairs: edges used once.
+// Corners weld at 1e-4, so soups and vertices ~1e-12 apart share their edges.
 export function boundary_edges(
   geometry: BufferGeometry,
   faces?: readonly number[],
@@ -170,9 +168,8 @@ const hash_ints = (first: number, second: number, third: number): number => {
   return hash >>> 0
 }
 
-// Line segments (flat xyz vertex pairs) at a fixed screen width: GPU APIs ignore `linewidth`
-// on basic lines. Opaque, so round caps overlapping at shared corners stay invisible. The
-// caller owns the geometry and material (dispose_on_change).
+// Line segments (flat xyz vertex pairs) at a fixed screen width, which basic lines ignore.
+// Opaque, so overlapping round caps stay invisible; the caller owns geometry and material.
 export const fat_lines = (positions: ArrayLike<number>, color: string): LineSegments2 =>
   new LineSegments2(
     new LineSegmentsGeometry().setPositions(Float32Array.from(positions)),
@@ -196,14 +193,13 @@ export function dispose_on_change(
 // just outside it, so the shell outlines the sphere rather than a bulkier one around it
 export const HOVER_SHELL_SCALE = 1.04
 
-// Material props of a translucent mesh's depth-only pre-pass. One translucent mesh draws its
-// triangles in index order, not back to front, so with depth writes on, a far layer of it shows
-// through a near one only where it happens to draw first (stripes along a marching-cubes or
-// surface grid). Drawing its depth first leaves just the front-most layer to blend. transparent
-// keeps it in the colour pass's sort list; one pass suffices for depth (three otherwise splits a
-// translucent DoubleSide material into back and front draws). Its polygon offset should sit a
-// few units behind its colour pass's, so that pass's front layer passes the depth test whatever
-// the rounding between the two materials' vertex shaders.
+// Material props of a translucent mesh's depth-only pre-pass. A mesh draws its triangles in
+// index order, so with depth writes on its far layers show through near ones only where drawn
+// first (stripes along a surface grid); a depth pre-pass leaves just the front layer to blend.
+// transparent keeps it in the colour pass's sort list; forceSinglePass skips three's
+// back/front split of translucent DoubleSide materials, as depth needs one pass. Its polygon
+// offset sits a few units behind the colour pass's so the front layer passes the depth test
+// whatever the rounding between the two vertex shaders.
 export const depth_prepass_props = (polygon_offset_units: number) => ({
   colorWrite: false,
   transparent: true,

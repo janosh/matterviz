@@ -13,10 +13,12 @@ import type { AnyStructure } from '#lib/structure/index.js'
 import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames, has_multiple_xyz_frames, TextLines } from './helpers'
+import type { NumericFrame } from './frame'
 import type {
   AtomTypeMapping,
   ParseProgress,
   TrajectoryFrame,
+  TrajectoryMetadata,
   TrajectorySource,
 } from './index'
 import { open_hdf5_trajectory } from './parse/hdf5'
@@ -27,7 +29,7 @@ import type { ParsedTrajectory, WarningCollector } from './parse/shared'
 import { collect_parse_warnings, create_warning_collector } from './parse/shared'
 import { read_xdatcar_snapshots } from './parse/vasp'
 import { parse_vasprun_xml } from './parse/vasprun'
-import { parse_xyz_trajectory } from './parse/xyz'
+import { parse_xyz_trajectory, read_xyz_snapshots } from './parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'
 import { hdf5_run } from './runs/hdf5'
 import { indexed_text_run } from './runs/indexed-text'
@@ -169,18 +171,30 @@ const parse_text = (
       `${filename ?? `Text`} (${provenance.source_bytes} bytes) is too long for one JS string; only XYZ/EXTXYZ, LAMMPS dump and XDATCAR trajectories open past ${MAX_STRING_CHARS} bytes`,
     )
   }
+  // Frames a reader already encoded, with their plot rows (no Site records in between)
+  const snapshots_run = (
+    format: string,
+    {
+      snapshots,
+      ...extras
+    }: {
+      snapshots: NumericFrame[]
+      properties: TrajectoryMetadata[]
+      metadata?: Record<string, unknown>
+    },
+  ): TrajectoryRun =>
+    trajectory_from_snapshots(snapshots, {
+      ...extras,
+      provenance: { ...provenance, format },
+      warnings: collector.warnings,
+    })
   if (xyz_hint !== false && has_multiple_xyz_frames(text)) {
-    return index ? indexed(`xyz`) : parsed(parse_xyz_trajectory(text, collector))
+    return index ? indexed(`xyz`) : snapshots_run(`xyz`, read_xyz_snapshots(text, collector))
   }
   const head = typeof text === `string` ? text.slice(0, SNIFF_BYTES) : text.head(SNIFF_BYTES)
   if (FORMAT_PATTERNS.vasp(head, filename)) {
     if (index) return indexed(`xdatcar`)
-    const { snapshots, properties } = read_xdatcar_snapshots(text, collector.warn)
-    return trajectory_from_snapshots(snapshots, {
-      provenance: { ...provenance, format: `xdatcar` },
-      warnings: collector.warnings,
-      properties,
-    })
+    return snapshots_run(`xdatcar`, read_xdatcar_snapshots(text, collector.warn))
   }
   if (FORMAT_PATTERNS.vasprun(head, filename)) {
     return parsed(parse_vasprun_xml(whole(), collector.warn))

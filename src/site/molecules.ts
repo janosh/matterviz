@@ -1,4 +1,5 @@
-import type { FileInfo, Molecule } from '#lib'
+import type { Molecule } from '#lib'
+import type { FileInfo } from '#lib/io/index.js'
 import { fixture_ext, glob_basename, site_file_info } from '#site/imports.js'
 
 const molecules = Object.entries(

@@ -30,11 +30,25 @@ const comb: PhononDos = {
   frequencies: comb_freqs,
   densities: comb_freqs.map((_, idx) => (idx % 10 === 5 && idx > 100 && idx < 900 ? 1 : 0)),
 }
+// the same comb as an electron DOS
+const comb_doses = {
+  total: {
+    type: `electronic`,
+    energy_unit: `eV`,
+    energies: comb_freqs,
+    densities: comb.densities,
+  },
+} as const
 const trapezoid = (xs: readonly number[], ys: readonly number[]) =>
   ys
     .slice(1)
     .reduce((sum, y_val, idx) => sum + ((y_val + ys[idx]) * (xs[idx + 1] - xs[idx])) / 2, 0)
 const area = trapezoid(comb.frequencies, comb.densities)
+const mount_dos = (props: ComponentProps<typeof Dos>): void => {
+  const component = mount(Dos, { target: document.body, props })
+  onTestFinished(() => void unmount(component))
+  flushSync()
+}
 // the drawn curve's peak and area, α²F's or the electron DOS's
 const drawn = (label: string, horizontal = false) => {
   const series: readonly DataSeries[] = plot.props?.series ?? []
@@ -50,21 +64,12 @@ test.each([
   [`total`, undefined, 0.122],
   [`total`, 1, 0.1],
 ])(`a dense %s with sigma %s peaks at %d, its area kept`, (label, sigma, peak) => {
-  const component = mount(Dos, {
-    target: document.body,
-    props: {
-      ...(label === `α²F`
-        ? { doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': comb } }
-        : {
-            doses: {
-              total: { type: `electronic`, energies: comb_freqs, densities: comb.densities },
-            },
-          }),
-      ...(sigma !== undefined && { sigma }),
-    },
+  mount_dos({
+    ...(label === `α²F`
+      ? { doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': comb } }
+      : { doses: comb_doses }),
+    ...(sigma !== undefined && { sigma }),
   })
-  onTestFinished(() => void unmount(component))
-  flushSync()
   const curve = drawn(label)
   expect(curve.peak).toBeCloseTo(peak, 2)
   expect(curve.area).toBeCloseTo(area, 2)
@@ -77,28 +82,12 @@ test.each<[`horizontal` | `vertical`, Partial<ComponentProps<typeof Dos>>, numbe
   [`horizontal`, { x_axis: { range: [20, 30] } }, 0.122], // the density axis: no effect
   [`vertical`, { x_axis: { range: [20, 30] } }, 0.6],
 ])(`a %s DOS reads its width off %o`, (orientation, axes, peak) => {
-  const component = mount(Dos, {
-    target: document.body,
-    props: {
-      doses: {
-        total: { type: `electronic`, energies: comb_freqs, densities: comb.densities },
-      },
-      orientation,
-      ...axes,
-    },
-  })
-  onTestFinished(() => void unmount(component))
-  flushSync()
+  mount_dos({ doses: comb_doses, orientation, ...axes })
   expect(drawn(`total`, orientation === `horizontal`).peak).toBeCloseTo(peak, 2)
 })
 
 test(`a coarse α²F is drawn as given`, () => {
-  const component = mount(Dos, {
-    target: document.body,
-    props: { doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': a2f } },
-  })
-  onTestFinished(() => void unmount(component))
-  flushSync()
+  mount_dos({ doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': a2f } })
   drawn(`α²F`).ys.forEach((value, idx) => expect(value).toBeCloseTo(a2f.densities[idx], 9))
 })
 
@@ -116,9 +105,7 @@ test.each([
       units: `THz`,
       a2f_extent: undefined,
     })
-    const component = mount(Dos, { target: document.body, props })
-    onTestFinished(() => void unmount(component))
-    flushSync()
+    mount_dos(props)
     const read = () => {
       const series: readonly DataSeries[] = plot.props?.series ?? []
       const curve = series.find(({ label }) => label === `α²F`)
@@ -128,24 +115,25 @@ test.each([
     }
     const thz = read()
     expect(thz.curve[`${density_axis}_axis`]).toBe(a2f_axis)
-    expect(Math.max(...thz.curve[density_axis])).toBe(0.3) // not stacked on the two DOS
+    expect(Math.max(...Array.from(thz.curve[density_axis]))).toBe(0.3) // not stacked on the two DOS
     expect(thz.axis).toMatchObject({ label: `α²F(ω)`, range: [0, 0.3] })
     props.units = `meV`
     flushSync()
     const mev = read()
-    expect(Math.max(...mev.curve[density_axis])).toBe(0.3) // dimensionless: no unit factor
+    expect(Math.max(...Array.from(mev.curve[density_axis]))).toBe(0.3) // dimensionless: no unit factor
     expect(mev.axis?.range).toEqual([0, 0.3])
     // the DOS is per meV now (÷ 4.136 meV/THz), on the frequency axis α²F shares
     const freq_axis = density_axis === `y` ? `x` : `y`
-    expect(Math.max(...mev.dos_curve[density_axis])).toBeCloseTo(2 / 4.135667696, 6)
+    expect(Math.max(...Array.from(mev.dos_curve[density_axis]))).toBeCloseTo(
+      2 / 4.135667696,
+      6,
+    )
     expect(mev.curve[freq_axis]).toEqual(mev.dos_curve[freq_axis])
     // its drawn extent goes out, and a given range (a sweep's held one) replaces the data's
     expect(props.a2f_extent).toEqual([0, 0.3])
     props.a2f_range = [0, 1]
     flushSync()
-    expect([read().axis?.range, props.a2f_extent]).toEqual([
-      [0, 1],
-      [0, 0.3],
-    ])
+    expect(read().axis?.range).toEqual([0, 1])
+    expect(props.a2f_extent).toEqual([0, 0.3])
   },
 )

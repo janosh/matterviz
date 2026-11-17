@@ -1,6 +1,5 @@
 // Shared Three.js/Threlte scene boilerplate (cameras, orbit controls, gizmo, lights, renderer
-// creation and binding, STL/OBJ/GLB export) used by BrillouinZoneScene, FermiSurfaceScene,
-// StructureScene, ScatterPlot3DScene, TernaryPrismScene and ChemPotScene3D.
+// creation and binding, STL/OBJ/GLB export) used by every 3D scene
 export * from './bind-renderer.svelte'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export * from './colors'

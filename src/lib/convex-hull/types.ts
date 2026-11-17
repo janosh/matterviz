@@ -35,7 +35,7 @@ export interface PhaseData {
 
   // Temperature-dependent free energies (replaces `energy` at selected T)
   temperatures?: readonly number[] // in Kelvin, use integers for exact matching
-  free_energies?: readonly number[] // G(T) in eV, same length as temperatures
+  free_energies?: readonly number[] // G(T) in eV/atom (not a total like `energy`), same length as temperatures
   // A^3/atom; lets the ternary T-x diagram estimate G(T) with the Bartel 2018 SISSO
   // descriptor when no free_energies are given (also read from structure.lattice.volume)
   volume_per_atom?: number
@@ -49,11 +49,13 @@ export interface PhaseData {
   data?: Record<string, unknown>
   structure?: Record<string, unknown>
 
+  gas?: GasSpecies // only on gas phases apply_gas_corrections adds at mu(T, p)
+
   // Materials Project-specific fields (optional)
   attributes?: Record<string, unknown>
 
-  // Magnetic ordering (optional). Free-form strings (e.g. 'ferromagnetic') are
-  // normalized via MAGNETIC_ORDERING_CATEGORY aliases; unrecognized values are ignored.
+  // Free-form strings ('ferromagnetic') normalize via MAGNETIC_ORDERING_CATEGORY aliases;
+  // unrecognized values are ignored
   magnetic_ordering?: MagneticOrdering | (string & {})
 }
 
@@ -62,10 +64,8 @@ export type PhaseEntriesLoadData = FileLoadData & { entries: PhaseData[]; filena
 
 // === Entry categories (generic categorical classification) ===
 
-// Categorical classification of hull entries, rendered as distinct marker shapes with
-// show/hide filter toggles in the controls pane. Works for any categorical property:
-// magnetic orderings (see MAGNETIC_ORDERING_CATEGORY, the default), electronic classes,
-// crystallinity, defect types, etc.
+// Any categorical entry property (magnetic ordering by default, electronic class,
+// crystallinity, ...) rendered as marker shapes with filter toggles in the controls pane
 export interface EntryCategoryConfig {
   label: string // controls-pane row + tooltip label, e.g. 'Magnetic', 'Electronic', 'Structure'
   // Entry properties holding the category value, checked in order. Each property is
@@ -180,13 +180,11 @@ export interface PhaseStats {
   hull_distance: { max: number; avg: number }
   elements: number
   chemical_system: string
-  // Maximum arity used when computing stats — arity counts beyond this
-  // were zeroed. The UI uses this to decide which arity rows to display.
+  // Largest arity counted (higher counts are zeroed), which picks the arity rows to show
   max_arity: number
 }
 
-// Numeric arity-count fields in PhaseStats (for type-safe indexing).
-// Uses Extract to stay in sync with PhaseStats at compile time.
+// Numeric arity-count fields in PhaseStats, Extract-ed to stay in sync with it
 export type PhaseArityField = Extract<
   keyof PhaseStats,
   `unary` | `binary` | `ternary` | `quaternary` | `quinary_plus`
@@ -230,27 +228,13 @@ export interface GasThermodynamicsProvider {
 
 // Configuration for gas thermodynamics in convex hull calculations
 export interface GasThermodynamicsConfig {
-  // Which gas species to enable (default: none)
-  enabled_gases?: GasSpecies[]
-
-  // Partial pressures for each gas (in bar, default: DEFAULT_GAS_PRESSURES)
-  pressures?: Partial<Record<GasSpecies, number>>
-
-  // Custom thermodynamic data provider (default: built-in data)
-  provider?: GasThermodynamicsProvider
-
-  // Element mapping: which elements are derived from which gases
-  // e.g., { O: 'O2', N: 'N2' } means O comes from O2 gas, N from N2 gas
-  // Default mapping is inferred from gas formula (O2 -> O, N2 -> N, etc.)
-  element_to_gas?: Partial<Record<ElementSymbol, GasSpecies>>
+  enabled_gases?: GasSpecies[] // default: none
+  pressures?: Partial<Record<GasSpecies, number>> // bar, default: DEFAULT_GAS_PRESSURES
+  provider?: GasThermodynamicsProvider // default: built-in data
 }
 
 // Result of analyzing entries for gas-dependent data
 export interface GasAnalysis {
-  // Whether any enabled gas affects the chemical system
-  has_gas_dependent_elements: boolean
-  // Elements that come from gas phases
-  gas_elements: ElementSymbol[]
-  // Gas species that are relevant for this system
+  // Enabled gases made only of the system's elements (empty: the atmosphere changes nothing)
   relevant_gases: GasSpecies[]
 }

@@ -21,9 +21,8 @@ const leading_numbers = (line: string): number[] => {
   return values
 }
 
-// Number following the first header line whose start matches `key` (a regex source including
-// the separator, e.g. `\\*START\\s*=\\s*`), else null. The first of several `keys` that
-// resolves wins.
+// Number after the first header line starting with `key` (a regex source including the
+// separator, e.g. `\\*START\\s*=\\s*`), else null. The first of `keys` that resolves wins.
 const header_number = (lines: string[], keys: string[], flags = ``): number | null => {
   for (const key of keys) {
     const pattern = new RegExp(`^${key}(?<value>[-+.\\deE]+)`, flags)
@@ -61,9 +60,8 @@ function grid_pattern(values: number[], [start, step]: Grid, format: string, mis
 }
 
 // Shared final step: check the two columns line up and normalize y to max = 100 like
-// compute_xrd_pattern does, so a measured scan (raw counts, often 1e4-1e6) dropped onto a
-// computed pattern overlays at the same scale under XrdPlot's shared global-max normalization.
-// No thinning here: every point is kept and the plot decimates for display.
+// compute_xrd_pattern, so a measured scan (raw counts) overlays a computed pattern at the same
+// scale. Every point is kept: the plot decimates for display.
 function finalize(x_values: number[], y_values: number[], format: string): XrdPattern {
   if (x_values.length === 0) throw new Error(`${format}: no intensity data found`)
   if (x_values.length !== y_values.length) {
@@ -91,7 +89,10 @@ export function parse_xy_file(content: string, format = `XY`): XrdPattern {
     if (values.length < 2) continue
     // `10,02\t101` splits into 10, 2, 101: x would be 2θ's integer part, y its decimals, and
     // the x column never reverses, so the direction check below cannot catch it
-    const decimal_comma = trimmed.split(/\s+/).find((token) => /^[-+]?\d+,\d+$/.test(token))
+    // (comma-free rows, i.e. every row of a whitespace-separated scan, skip the token scan)
+    const decimal_comma = trimmed.includes(`,`)
+      ? trimmed.split(/\s+/).find((token) => /^[-+]?\d+,\d+$/.test(token))
+      : undefined
     if (decimal_comma && /\s/.test(trimmed)) {
       throw new Error(
         `${format}: '${decimal_comma}' in row '${trimmed}' uses a decimal comma; use a decimal point`,

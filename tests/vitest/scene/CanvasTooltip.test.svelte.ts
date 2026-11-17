@@ -13,9 +13,8 @@ vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
 
 const px = (length: string) => Number(length.replace(/px$/, ``))
 
-// A PlotTooltip at the projected 3D anchor, right of and below it by the anchor's on-screen
-// radius, so the hovered object stays visible; hidden while the anchor is behind the camera.
-// Its clip box is measured once per showing, not again on every move of the anchor.
+// A PlotTooltip offset from the projected anchor by its on-screen radius, hidden behind the
+// camera, its clip box measured once per showing, not per anchor move
 test.each<[string, Vec3, number]>([
   [`point anchor`, [0, 0, 0], 0],
   [`sphere anchor`, [0, 0, 0], 1],

@@ -2,7 +2,7 @@
 // the projection of their q-points onto the band path and the markers Bands draws there
 import { is_plain_object } from 'svelte-widgets/utils'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { is_finite_vec3, matrix_inverse_3x3 } from '#lib/math.js'
+import { is_finite_vec3, inverse_3x3 } from '#lib/math.js'
 import { branch_x, plotted_branches } from './helpers'
 import type { BaseBandStructure, ModeValues } from './types'
 
@@ -70,7 +70,7 @@ interface PathSegment {
 }
 
 // The plotted path as segments in x order
-function path_segments(
+export function path_segments(
   band_struct: BaseBandStructure,
   x_positions: Record<string, Vec2>,
 ): PathSegment[] {
@@ -193,7 +193,7 @@ function segment_candidates(
   recip_lattice: Matrix3x3,
   tolerance: number,
 ): Map<number, number[]> {
-  const inverse = matrix_inverse_3x3(recip_lattice)
+  const inverse = inverse_3x3(recip_lattice)
   // slack (relative, and 1e-9 absolute, far past an image's rounding across a cell edge) so a
   // box edge rounded inward never drops a point the exact test keeps
   const reach = [0, 1, 2].map(

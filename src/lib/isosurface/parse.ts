@@ -229,7 +229,7 @@ const volumetric_crystal = (sites: Site[], matrix: Matrix3x3, periodic: boolean)
   lattice: {
     matrix,
     pbc: [periodic, periodic, periodic],
-    ...math.calc_lattice_params(matrix),
+    ...math.compute_lattice_params(matrix),
   },
 })
 
@@ -255,6 +255,13 @@ export const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string
     // noncollinear: the scalar potential plus the B-field-like B1..B3 in the SAXIS basis
     4: [`local potential`, ...[1, 2, 3].map((idx) => `magnetic potential (B${idx})`)],
   },
+}
+
+// Units per kind: densities once divided by V_cell, LOCPOT as written, ELF dimensionless
+const VASP_KIND_UNITS: Record<VaspVolumetricKind, string> = {
+  density: `e/A^3`,
+  elfcar: ``,
+  locpot: `eV`,
 }
 
 const ELFCAR_NAME_REGEX = filename_token_regex([`elfcar`])
@@ -394,6 +401,7 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
       origin: [0, 0, 0],
       periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
       label: labels[block_idx],
+      units: VASP_KIND_UNITS[kind],
     }),
   )
   return { structure, volumes }
@@ -401,10 +409,14 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
 
 // === Gaussian .cube Parser ===
 
-// Parse a Gaussian .cube file: atomic structure plus one volumetric grid
+// Parse a Gaussian .cube file: atomic structure plus one volumetric grid. Values keep the
+// atomic units every common writer uses (e/Bohr^3 density, Ha potential, Bohr^-3/2 orbital):
+// the header names no quantity, so they are labelled `a.u.` (`Bohr^-3/2` under an orbital
+// header) rather than guessed from a free-text title and mis-scaled. `density: true` declares a
+// density and converts it to e/A^3, CHGCAR's unit, so the two compare at one isovalue.
 export function parse_cube(
   content: string,
-  options: { periodic?: boolean } = {},
+  options: { periodic?: boolean; density?: boolean } = {},
 ): VolumetricFileData {
   // Quick line count check: need at least 7 lines (2 title + 1 header + 3 voxel + 1 atom)
   let line_count = 0
@@ -538,6 +550,9 @@ export function parse_cube(
     }
   }
   const values_per_point = Math.max(n_values, orbital_ids.length)
+  if (options.density && has_orbital_header) {
+    throw new Error(`.cube declares orbital data (negative atom count), not a density`)
+  }
 
   // Multi-field cubes (several MOs) interleave their fields per grid point
   const n_points = checked_grid_points(n_grid, content.length - pos, `.cube`, values_per_point)
@@ -548,6 +563,10 @@ export function parse_cube(
       `.cube (${n_grid.join(`×`)}): expected ${data.length} data values, got ${count} — file truncated?`,
     )
   }
+  // e/Bohr^3 -> e/A^3: divide by the Bohr volume in A^3
+  if (options.density)
+    data.forEach((value, idx) => (data[idx] = value / BOHR_TO_ANGSTROM ** 3))
+  const units = options.density ? `e/A^3` : has_orbital_header ? `Bohr^-3/2` : `a.u.`
 
   // Volume ids must be unique, so repeated MO numbers (alpha and beta) fall back to positions
   const named_orbitals =
@@ -567,6 +586,7 @@ export function parse_cube(
       origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
       periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
       label,
+      units,
     })
   })
   return { structure, volumes }

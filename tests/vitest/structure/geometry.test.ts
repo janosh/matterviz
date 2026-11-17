@@ -86,10 +86,8 @@ const scale_and_offset_matrix = (
   radius_scale: number,
 ): void => {
   const matrix_offset = instance_idx * 16
-  for (const component_idx of RADIAL_MATRIX_COMPONENTS) {
+  for (const component_idx of RADIAL_MATRIX_COMPONENTS)
     matrix_buffer[matrix_offset + component_idx] *= radius_scale
-  }
-
   const right_x = matrix_buffer[matrix_offset]
   const right_z = matrix_buffer[matrix_offset + 2]
   const right_length = Math.hypot(right_x, right_z) || 1
@@ -109,13 +107,12 @@ function write_reference_bonds(
     write_bond_transform(matrix_buffer, instance_idx, pos_1, pos_2, bond_thickness)
     const instance_count = instance_count_for_order(bond_order)
     const source_offset = instance_idx * 16
-    for (let copy_idx = 1; copy_idx < instance_count; copy_idx++) {
+    for (let copy_idx = 1; copy_idx < instance_count; copy_idx++)
       matrix_buffer.copyWithin(
         (instance_idx + copy_idx) * 16,
         source_offset,
         source_offset + 16,
       )
-    }
 
     if (bond_order === 2) {
       scale_and_offset_matrix(matrix_buffer, instance_idx, -gap / 2, 0.65)
@@ -176,12 +173,8 @@ test.each([
   [[0, 3, 4], 2, -0.1],
 ] as [Vec3, number, number][])(
   `arrow shaft and head meet for vector $0`,
-  (vector, scale, arrow_head_length) => {
-    const { head_center, head_length, shaft_length } = arrow_axis_geometry(
-      vector,
-      scale,
-      arrow_head_length,
-    )
+  (vector, scale, head) => {
+    const { head_center, head_length, shaft_length } = arrow_axis_geometry(vector, scale, head)
     expect(head_center - head_length * 0.5).toBe(shaft_length)
   },
 )

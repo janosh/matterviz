@@ -185,12 +185,10 @@
   let shown_kind = $derived<SpectrumKind>(active_spectrum?.has_raman ? spectrum_kind : `ir`)
   let has_plot = $derived(Boolean(band_structure || active_spectrum))
   let modes_open = $derived(!has_plot)
-  // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
-  // survives mode and amplitude changes, the displacement pattern survives amplitude changes,
-  // and frames are synthesised on read
-  // Snapshot only the unit cell: the whole dataset's eigenvectors take seconds to snapshot.
-  // The viewer's live polyhedra settings pick the corner copies, so editing them in its
-  // controls rebuilds the supercell. Keyed by value: a host prop change hands a new object.
+  // Three stages so each control redoes only its own work: the supercell (tiling + bonding,
+  // snapshotting only the unit cell, not seconds of eigenvectors) survives mode and amplitude
+  // changes, the pattern survives amplitude changes, frames are synthesised on read. The
+  // viewer's live polyhedra settings (keyed by value) pick the corner copies.
   let live_scene_props = $state<StructureSettings>()
   const keep_polyhedra = same_while_equal<ResolvedPolyhedraOptions>()
   let polyhedra = $derived(keep_polyhedra(polyhedra_options_from(live_scene_props ?? {})))
@@ -209,12 +207,10 @@
   })
   // exported videos are named after the file, mode and q-point
   let filename_stem = $derived(
-    phonons.filename
-      ? strip_compression_extensions(phonons.filename, { lowercase: false }).replace(
-          /\.[^.]*$/,
-          ``,
-        ) || undefined
-      : undefined,
+    strip_compression_extensions(phonons.filename ?? ``, { lowercase: false }).replace(
+      /\.[^.]*$/,
+      ``,
+    ) || undefined,
   )
   let trajectory_result = $derived.by(() => {
     const pattern = pattern_result.value
@@ -347,12 +343,11 @@
   })
 
   const set_selection = (next: PhononModeSelection): void => {
-    if (!mode_data.qpoints[next.qpoint_idx]?.modes[next.mode_idx]?.eigenvector) {
-      report_error(
-        `Mode ${next.mode_idx + 1} at q-point ${next.qpoint_idx + 1} has no eigenvector`,
+    const { qpoint_idx, mode_idx } = next
+    if (!mode_data.qpoints[qpoint_idx]?.modes[mode_idx]?.eigenvector)
+      return report_error(
+        `Mode ${mode_idx + 1} at q-point ${qpoint_idx + 1} has no eigenvector`,
       )
-      return
-    }
     selection = next
     error_msg = undefined
   }
@@ -370,10 +365,8 @@
   // path snaps to the nearest one along it that can animate this band
   const select_on_path = (qpoint_idx: number, band_idx: number): void => {
     const snapped_idx = nearest_qpoint_with_eigenvector(mode_data, qpoint_idx, band_idx)
-    if (snapped_idx === -1) {
-      report_error(`Band ${band_idx + 1} has no eigenvector at any q-point`)
-      return
-    }
+    if (snapped_idx === -1)
+      return report_error(`Band ${band_idx + 1} has no eigenvector at any q-point`)
     set_selection({ qpoint_idx: snapped_idx, mode_idx: band_idx })
   }
   // Wired to both the markers and the plot background: markers are a few px wide, so a near
@@ -452,10 +445,8 @@
       ? selected_qpoint_idx
       : (spectrum_qpoint_indices[0] ?? -1)
     if (qpoint_idx === -1) {
-      report_error(
-        `Spectrum q-point [${active_spectrum.q_position.join(`, `)}] is absent from mode data`,
-      )
-      return
+      const q_text = active_spectrum.q_position.join(`, `)
+      return report_error(`Spectrum q-point [${q_text}] is absent from mode data`)
     }
     set_selection({ qpoint_idx, mode_idx })
   }
@@ -527,6 +518,19 @@ under its open panes -->
   </div>
 {/snippet}
 
+{#snippet step_button(direction: 1 | -1)}
+  {@const label = direction === 1 ? `Next mode` : `Previous mode`}
+  <button
+    type="button"
+    class="step-mode"
+    aria-label={label}
+    {...shortcut_attrs(`phonon_mode`, `${label} with an eigenvector`)}
+    disabled={!selection ||
+      animatable_mode_indices.at(direction === 1 ? -1 : 0) === selection.mode_idx}
+    onclick={() => step_mode(direction)}>{direction === 1 ? `›` : `‹`}</button
+  >
+{/snippet}
+
 {#snippet phonon_settings()}
   <ToolbarMenu label="Phonon settings">
     {#snippet button()}<Icon icon={Settings} />{/snippet}
@@ -552,14 +556,7 @@ under its open panes -->
       {/if}
       <div class="mode-control">
         Mode
-        <button
-          type="button"
-          class="step-mode"
-          aria-label="Previous mode"
-          {...shortcut_attrs(`phonon_mode`, `Previous mode with an eigenvector`)}
-          disabled={!selection || animatable_mode_indices[0] === selection.mode_idx}
-          onclick={() => step_mode(-1)}>‹</button
-        >
+        {@render step_button(-1)}
         <select
           aria-label="Mode"
           value={selection?.mode_idx ?? 0}
@@ -573,14 +570,7 @@ under its open panes -->
             >
           {/each}
         </select>
-        <button
-          type="button"
-          class="step-mode"
-          aria-label="Next mode"
-          {...shortcut_attrs(`phonon_mode`, `Next mode with an eigenvector`)}
-          disabled={!selection || animatable_mode_indices.at(-1) === selection.mode_idx}
-          onclick={() => step_mode(1)}>›</button
-        >
+        {@render step_button(1)}
       </div>
       {#if band_structure}
         <label
@@ -876,8 +866,7 @@ under its open panes -->
 </div>
 
 <style>
-  /* fullscreen: the panes reach the screen's edges; only the title row keeps a gutter, and
-     the rule under the panes (separating them from page content) has nothing to separate */
+  /* fullscreen: panes reach the screen edges, only the title row keeps a gutter, no rule */
   .phonon-mode-explorer:fullscreen {
     box-sizing: border-box;
     background: var(--page-bg, var(--surface-bg, Canvas));
@@ -889,8 +878,7 @@ under its open panes -->
     }
   }
   .phonon-mode-explorer {
-    /* own stacking context: the pane divider and viewer overlays (z-index up to 4) must
-       not paint over page content such as a dropdown opened above the explorer */
+    /* own stacking context: divider and overlays (z-index <= 4) stay under page dropdowns */
     isolation: isolate;
     display: flex;
     flex-direction: column;
@@ -1043,16 +1031,14 @@ under its open panes -->
     :global(.phonon-modes-toggle) {
       opacity: 0;
       pointer-events: none;
+      @media (hover: none) {
+        opacity: 1;
+        pointer-events: auto;
+      }
     }
     :global(.structure:is(:hover, :focus-within)) & :global(.phonon-modes-toggle) {
       opacity: 1;
       pointer-events: auto;
-    }
-    @media (hover: none) {
-      :global(.phonon-modes-toggle) {
-        opacity: 1;
-        pointer-events: auto;
-      }
     }
   }
   .panes.structure_only {
@@ -1125,9 +1111,8 @@ under its open panes -->
       }
     }
   }
-  /* Stack the panes on phones and portrait tablets. A landscape phone (e.g. 844×390) keeps
-     them side by side: stacking there would put ~940px of panes into a 390px-tall viewport,
-     so the structure and the plot could never be on screen together. */
+  /* Stack the panes on phones and portrait tablets. A landscape phone (e.g. 844×390) keeps them
+     side by side: ~940px of stacked panes could never show structure and plot together. */
   @media (max-width: 699px), (max-width: 900px) and (orientation: portrait) {
     .phonon-mode-explorer {
       min-height: 940px;

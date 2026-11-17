@@ -199,9 +199,9 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   })
   const target = mount_in_test(TrajectorySpectroscopyPane, pane_props)
   await tick()
-  expect(target.textContent).toContain(`dipole`)
-  expect(target.textContent).toContain(`polarization`)
-  expect(target.textContent).toContain(`polarizability`)
+  for (const key of [`dipole`, `polarization`, `polarizability`]) {
+    expect(target.textContent).toContain(key)
+  }
   expect(labeled_select(target, `Preprocessing`).value).toBe(`body_fixed`)
   const ir_select = labeled_select(target, `IR response`)
   const kind_select = labeled_select(target, `IR signal type`)
@@ -235,10 +235,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   expect(inline_target.querySelectorAll(`.spectroscopy-details-toggle`)).toHaveLength(1)
   const settings_pane = inline_target.querySelector(`.plot-controls-pane`)
   expect(settings_pane?.classList).not.toContain(`pane-open`)
-  const settings_toggle =
-    inline_target.querySelector<HTMLButtonElement>(`.plot-controls-toggle`)
-  if (!settings_toggle) throw new Error(`missing spectroscopy settings toggle`)
-  settings_toggle.click()
+  query<HTMLButtonElement>(inline_target, `.plot-controls-toggle`).click()
   await tick()
   expect(settings_pane?.classList).toContain(`pane-open`)
   expect(settings_headings()).toHaveLength(1)

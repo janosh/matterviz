@@ -168,16 +168,8 @@
   })
 
   // Group header cells look up their members here instead of re-filtering series_data per cell
-  const items_by_group = $derived.by(() => {
-    const groups = new Map<string, LegendItem[]>()
-    for (const item of series_data) {
-      if (item.legend_group == null) continue
-      const members = groups.get(item.legend_group)
-      if (members) members.push(item)
-      else groups.set(item.legend_group, [item])
-    }
-    return groups
-  })
+  // (ungrouped items land under an undefined key no header looks up)
+  const items_by_group = $derived(Map.groupBy(series_data, (item) => item.legend_group))
 
   const group_indices = (items: readonly LegendItem[]): number[] =>
     items.map(({ series_idx }) => series_idx)

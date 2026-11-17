@@ -37,7 +37,6 @@ vi.mock(`matterviz`, async () => {
     ...Object.fromEntries(stubs),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
-    check_blob_workers,
     set_moyo_wasm_source,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
     trajectory_from_json: (value: unknown) => {
@@ -49,6 +48,7 @@ vi.mock(`matterviz`, async () => {
     normalize_dos: spectral_doc,
   }
 })
+vi.mock(`matterviz/workers`, () => ({ check_blob_workers }))
 vi.stubGlobal(`SCOPED_APP_CSS`, ``) // vite.config.ts defines it as the scoped app.css
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 const { stop_theme } = vi.hoisted(() => ({ stop_theme: vi.fn() }))

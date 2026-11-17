@@ -10,7 +10,6 @@ import type { EnergySourceMode } from './model'
 import { apply_formation_energies, build_hull_model, compute_energy_mode_info } from './model'
 import type {
   EntryCategoryConfig,
-  GasAnalysis,
   GasSpecies,
   GasThermodynamicsConfig,
   PhaseData,
@@ -42,30 +41,22 @@ interface HullDataPipelineInputs {
   hide_labels: () => void
 }
 
-const NO_GAS_ANALYSIS: GasAnalysis = Object.freeze({
-  has_gas_dependent_elements: false,
-  gas_elements: [],
-  relevant_gases: [],
-})
-
 // Merge gas_pressures into gas_config.pressures and apply chemical-potential corrections when
-// the system contains gas-derived elements; otherwise entries pass through untouched.
+// the system contains gas-derived elements (merged_config, for the gas controls, is then set);
+// otherwise entries pass through untouched.
 function get_gas_corrected_entries(
   entries: PhaseData[],
   gas_config: GasThermodynamicsConfig | undefined,
   gas_pressures: Partial<Record<string, number>>,
   temperature: number,
-): { entries: PhaseData[]; analysis: GasAnalysis; merged_config?: GasThermodynamicsConfig } {
-  if (!gas_config?.enabled_gases?.length) return { entries, analysis: NO_GAS_ANALYSIS }
+): { entries: PhaseData[]; merged_config?: GasThermodynamicsConfig } {
+  if (!gas_config?.enabled_gases?.length) return { entries }
   const merged_config = {
     ...gas_config,
     pressures: { ...gas_config.pressures, ...gas_pressures },
   }
-  const analysis = analyze_gas_data(entries, merged_config)
-  const corrected = analysis.has_gas_dependent_elements
-    ? apply_gas_corrections(entries, merged_config, temperature)
-    : entries
-  return { entries: corrected, analysis, merged_config }
+  if (!analyze_gas_data(entries, merged_config).relevant_gases.length) return { entries }
+  return { entries: apply_gas_corrections(entries, merged_config, temperature), merged_config }
 }
 
 export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
@@ -157,7 +148,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between
-  const max_hull_dist_in_data = $derived(helpers.calc_max_hull_dist_in_data(model.entries))
+  const max_hull_dist_in_data = $derived(helpers.compute_max_hull_dist_in_data(model.entries))
   const auto_default_threshold = $derived(
     helpers.compute_auto_hull_dist_threshold(
       model.entries.length,
@@ -243,10 +234,8 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     get available_temperatures() {
       return temp_analysis.available_temperatures
     },
-    get gas_analysis() {
-      return gas_result.analysis
-    },
-    get merged_gas_config() {
+    // Gas config for the pressure controls, set only when a relevant gas is present
+    get gas_config() {
       return gas_result.merged_config
     },
     get energy_info() {

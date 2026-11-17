@@ -82,9 +82,7 @@ describe(`ConvexHullTooltip`, () => {
       `element name for $composition with entry_id=$entry_id`,
       ({ composition, entry_id, expect_name }) => {
         mount_tooltip({ entry: mock_entry({ composition, entry_id }) })
-        const text = document.body.textContent ?? ``
-        if (expect_name) expect(text).toContain(`Iron`)
-        else expect(text).not.toContain(`Iron`)
+        expect(document.body.textContent?.includes(`Iron`)).toBe(expect_name)
       },
     )
   })
@@ -121,28 +119,19 @@ describe(`ConvexHullTooltip`, () => {
   })
 
   describe(`fractional composition`, () => {
-    // subscripted plain decimals (never unicode fractions) for binary+ entries
+    // subscripted plain decimals (never unicode fractions) for binary+ entries, none for
+    // unary ones; zero-amount elements are dropped
     test.each([
       { composition: { Fe: 1, O: 2 }, matches: [/Fe<sub>0\.33<\/sub>/, /O<sub>0\.67<\/sub>/] },
       { composition: { Li: 1, Fe: 1 }, matches: [/Li<sub>0\.5<\/sub>/, /Fe<sub>0\.5<\/sub>/] },
+      { composition: { Fe: 1, O: 2, Li: 0 }, matches: [/Fe<sub>0\.33<\/sub>/] },
+      { composition: { Fe: 1 }, matches: [] },
     ])(`displays $composition with subscripts`, ({ composition, matches }) => {
       mount_tooltip({ entry: mock_entry({ composition }) })
       const html = document.body.innerHTML
-      expect(html).toContain(`Fractional:`)
+      expect(html.includes(`Fractional:`)).toBe(matches.length > 0)
       for (const pattern of matches) expect(html).toMatch(pattern)
-      expect(html).not.toMatch(/[½⅓⅔]/)
-    })
-
-    test(`hides fractional for unary entries`, () => {
-      mount_tooltip({ entry: mock_entry({ composition: { Fe: 1 } }) })
-      expect(document.body.textContent).not.toContain(`Fractional:`)
-    })
-
-    test(`filters out zero-amount elements`, () => {
-      mount_tooltip({ entry: mock_entry({ composition: { Fe: 1, O: 2, Li: 0 } }) })
-      const fractional = (document.body.textContent ?? ``).split(`Fractional:`)[1] ?? ``
-      expect(fractional).toContain(`Fe`)
-      expect(fractional).not.toContain(`Li`)
+      expect(html).not.toMatch(/[½⅓⅔]|Li<sub>0<\/sub>/)
     })
   })
 
@@ -166,12 +155,8 @@ describe(`ConvexHullTooltip`, () => {
       for (const part of shown) expect(text).toContain(part)
       for (const part of hidden) expect(text).not.toContain(part)
       if (stats.higher) {
-        expect(
-          document.querySelector(`[title="${stats.higher} higher in energy"]`),
-        ).not.toBeNull()
-        expect(
-          document.querySelector(`[title="${stats.lower} lower in energy"]`),
-        ).not.toBeNull()
+        for (const title of [`${stats.higher} higher`, `${stats.lower} lower`])
+          expect(document.querySelector(`[title="${title} in energy"]`)).not.toBeNull()
       }
     })
 

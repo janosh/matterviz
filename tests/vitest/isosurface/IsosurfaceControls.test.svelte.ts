@@ -137,68 +137,59 @@ describe(`IsosurfaceControls`, () => {
     { show_negative: false, n_layers: 1 },
     { show_negative: true, n_layers: 1 },
     { show_negative: false, n_layers: 2 },
-  ])(
-    `negative lobe controls render and toggle $n_layers layers from $show_negative`,
-    ({ show_negative, n_layers }) => {
-      const props = mount_layers(
-        Array.from({ length: n_layers }, () => make_layer(`0`, { show_negative })),
-        { volumes: [make_volume()] },
-      )
-      const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
-      if (!checkbox) throw new Error(`Neg. lobe checkbox not found`)
-      expect(checkbox.checked).toBe(show_negative)
-      // every colour input is named: one per surface, plus one per negative lobe
-      const named_colors = `input[aria-label="Surface color"], input[aria-label="Negative lobe color"]`
-      expect(document.querySelectorAll(named_colors)).toHaveLength(
-        n_layers * (show_negative ? 2 : 1),
-      )
-      checkbox.checked = !show_negative
-      checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
-      flushSync()
-      expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual(
-        Array(n_layers).fill(!show_negative),
-      )
-      expect(document.querySelectorAll(named_colors)).toHaveLength(
-        n_layers * (show_negative ? 1 : 2),
-      )
-    },
-  )
+  ])(`negative lobe toggles $n_layers layers`, ({ show_negative, n_layers }) => {
+    const props = mount_layers(
+      Array.from({ length: n_layers }, () => make_layer(`0`, { show_negative })),
+      { volumes: [make_volume()] },
+    )
+    const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
+    if (!checkbox) throw new Error(`Neg. lobe checkbox not found`)
+    expect(checkbox.checked).toBe(show_negative)
+    // every colour input is named: one per surface, plus one per negative lobe
+    const named_colors = `input[aria-label="Surface color"], input[aria-label="Negative lobe color"]`
+    expect(document.querySelectorAll(named_colors)).toHaveLength(
+      n_layers * (show_negative ? 2 : 1),
+    )
+    checkbox.checked = !show_negative
+    checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual(
+      Array(n_layers).fill(!show_negative),
+    )
+    expect(document.querySelectorAll(named_colors)).toHaveLength(
+      n_layers * (show_negative ? 1 : 2),
+    )
+  })
 
-  test.each([`Wireframe`, `Halo`])(
-    `%s edits notify a raw caller and preserve layers`,
-    (label) => {
-      const initial = { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer()] }
-      const props = mount_controls({ settings: initial })
-      const input = find_label(label)?.querySelector<HTMLInputElement>(`input`)
-      if (!input) throw new Error(`${label} input not found`)
-      if (label === `Wireframe`) input.click()
-      else set_input(input, `0.25`)
-      flushSync()
-      expect(props.settings).not.toBe(initial)
-      expect(props.settings.layers).toBe(initial.layers)
-      expect(props.settings[label === `Wireframe` ? `wireframe` : `halo`]).toBe(
-        label === `Wireframe` ? true : 0.25,
-      )
-    },
-  )
+  test.each([`Wireframe`, `Halo`])(`%s edits notify a raw caller, keep layers`, (label) => {
+    const initial = { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer()] }
+    const props = mount_controls({ settings: initial })
+    const input = find_label(label)?.querySelector<HTMLInputElement>(`input`)
+    if (!input) throw new Error(`${label} input not found`)
+    if (label === `Wireframe`) input.click()
+    else set_input(input, `0.25`)
+    flushSync()
+    expect(props.settings).not.toBe(initial)
+    expect(props.settings.layers).toBe(initial.layers)
+    expect(props.settings[label === `Wireframe` ? `wireframe` : `halo`]).toBe(
+      label === `Wireframe` ? true : 0.25,
+    )
+  })
 
   // Reset mirrors a fresh file load (auto_isosurface_settings): one auto layer on volume 0,
   // further volumes stay available as colour sources or for manually added surfaces
-  test.each([`initial`, `layer edit`, `new volume`])(
-    `reset restores auto settings after %s`,
-    async (scenario) => {
-      const volumes = two_volumes()
-      const settings = auto_isosurface_settings(volumes[0])
-      if (scenario === `initial`) settings.layers[0].opacity = 0.2
-      const props = mount_controls({ volumes, settings })
-      if (scenario === `new volume`) props.volumes = [make_volume({ id: `new` })]
-      else if (scenario === `layer edit`)
-        props.settings = { ...props.settings, layers: [make_layer(`0`, { opacity: 0.2 })] }
-      flushSync()
-      await reset_section(`isosurface`)
-      expect(props.settings).toEqual(auto_isosurface_settings(props.volumes[0]))
-    },
-  )
+  test.each([`initial`, `layer edit`, `new volume`])(`reset after %s`, async (scenario) => {
+    const volumes = two_volumes()
+    const settings = auto_isosurface_settings(volumes[0])
+    if (scenario === `initial`) settings.layers[0].opacity = 0.2
+    const props = mount_controls({ volumes, settings })
+    if (scenario === `new volume`) props.volumes = [make_volume({ id: `new` })]
+    else if (scenario === `layer edit`)
+      props.settings = { ...props.settings, layers: [make_layer(`0`, { opacity: 0.2 })] }
+    flushSync()
+    await reset_section(`isosurface`)
+    expect(props.settings).toEqual(auto_isosurface_settings(props.volumes[0]))
+  })
 
   test(`cross-section reset restores the first volume and authored nondefault settings`, async () => {
     const props = $state({
@@ -450,6 +441,20 @@ describe(`IsosurfaceControls multi-volume`, () => {
         ...document.querySelectorAll<HTMLInputElement>(`input[aria-label^="Color range "]`),
       ].every((input) => input.value === ``),
     ).toBe(true)
+  })
+
+  // the isovalue reads in the volume's own unit; a dimensionless or unit-less volume shows none
+  test.each([
+    [`e/A^3`, `Isovalue (e/A^3)`],
+    [`a.u.`, `Isovalue (a.u.)`],
+    [``, `Isovalue`],
+    [null, `Isovalue`],
+  ])(`isovalue label for units %j reads %s`, (units, expected) => {
+    mount_layers([make_layer(`0`)], { volumes: [make_volume({ units })] })
+    const label = find_label(`Isovalue`)
+    expect(label?.querySelector(`span`)?.textContent?.replaceAll(/\s+/g, ` `).trim()).toBe(
+      expected,
+    )
   })
 
   test(`display range inputs materialize, update, and reset; hidden when non-periodic`, () => {

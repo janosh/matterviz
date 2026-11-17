@@ -12,7 +12,12 @@ import {
   structure_to_poscar_str,
   structure_to_xyz_str,
 } from '#lib/structure/export.js'
-import { parse_cif, parse_poscar, parse_xyz } from '#lib/structure/parse.js'
+import {
+  parse_cif,
+  parse_poscar,
+  parse_structure_file,
+  parse_xyz,
+} from '#lib/structure/parse.js'
 import { make_site as make_lib_site } from '#lib/structure/site.js'
 import { assert, describe, expect, it } from 'vite-plus/test'
 import { complex_structure, simple_structure } from '../test-fixtures'
@@ -64,13 +69,24 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Round-trip exporters`, () => {
-    // pymatgen reads any oxidation_state key as a decorated Species (Fe0+)
-    it(`drops only undecorated species oxidation states, never site properties`, () => {
+    // pymatgen reads any oxidation_state key as a decorated Species, so an undecorated
+    // species writes none while a zero charge (Fe0+) keeps its key; site properties stay
+    it(`writes oxidation states as stored: absent stays absent, 0 stays 0`, () => {
       const site = { ...make_site(`Fe`), properties: { oxidation_state: 0 } }
-      site.species.push({ element: `Co`, occu: 1, oxidation_state: 2 })
-      const [exported] = JSON.parse(structure_to_json_str({ sites: [site] })).sites
-      expect(exported.species).toEqual([{ element: `Fe`, occu: 1 }, site.species[1]])
+      site.species.push(
+        { element: `Co`, occu: 1, oxidation_state: 2 },
+        { element: `Ni`, occu: 1 },
+      )
+      const json = structure_to_json_str({ sites: [site] })
+      const [exported] = JSON.parse(json).sites
+      expect(exported.species).toStrictEqual([
+        { element: `Fe`, occu: 1 },
+        ...site.species.slice(1),
+      ])
       expect(exported.properties).toEqual({ oxidation_state: 0 })
+      expect(parse_structure_file(json, `test.json`).sites[0].species).toStrictEqual(
+        site.species,
+      )
     })
 
     // Everything past `species x y z` used to vanish on export: no Properties= line was
@@ -166,15 +182,15 @@ describe(`Export functionality`, () => {
           lattice: {
             matrix: lattice_matrix,
             pbc: [true, true, true],
-            ...math.calc_lattice_params(lattice_matrix),
+            ...math.compute_lattice_params(lattice_matrix),
           },
         }
 
         const lines = structure_to_xyz_str(structure_with_abc).split(`\n`)
         expect(lines[0]).toBe(`1`)
 
-        const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
-        const expected = math.mat3x3_vec3_multiply(lattice_T, abc)
+        const lattice_T = math.transpose_3x3(lattice_matrix)
+        const expected = math.mul_3x3_vec3(lattice_T, abc)
         expect(lines[2]).toBe(`C ${expected.map((coord) => coord.toFixed(6)).join(` `)}`)
       },
     )
@@ -276,10 +292,10 @@ describe(`Export functionality`, () => {
     // read it as Fe), so every format refuses such a site, as JSON does
     // oxfmt-ignore
     it.each([
-      [[{ element: undefined, occu: 1, oxidation_state: 0 }], `a species with no element`],
+      [[{ element: undefined, occu: 1 }], `a species with no element`],
       [[], `no species`],
       // a mixed site whose later species lacks an element (CIF would write `undefined`)
-      [[{ element: `Fe`, occu: 0.5, oxidation_state: 0 }, { element: undefined, occu: 0.5, oxidation_state: 0 }], `a species with no element`],
+      [[{ element: `Fe`, occu: 0.5 }, { element: undefined, occu: 0.5 }], `a species with no element`],
     ])(
       `refuses a site with species %j in every format`,
       (species, problem) => {
@@ -508,6 +524,34 @@ describe(`Export functionality`, () => {
       expect([site.label, site.species[0].element]).toEqual([label, `Fe`])
     })
 
+    // _atom_site_label must be unique: repeats take the smallest `_k` suffix no input label
+    // uses, and a disordered site's species rows (`${label}_k`) skip taken labels too
+    // oxfmt-ignore
+    it.each([
+      [`already unique`, [[`Fe1`], [`O1`], [`O2`]], [`Fe1`, `O1`, `O2`]],
+      [`repeats`, [[`Na`], [`Na`], [`Na`], [`Cl`]], [`Na`, `Na_1`, `Na_2`, `Cl`]],
+      [`suffix taken by a later site`, [[`Na`], [`Na`], [`Na_1`]], [`Na`, `Na_2`, `Na_1`]],
+      [`empty labels fall back to element + index`, [[``], [``]], [`Na1`, `Na2`]],
+      [`species rows skip site labels`, [[`M`, true], [`M_1`]], [`M`, `M_1_1`, `M_1`]],
+    ] as [string, [string, boolean?][], string[]][])(`writes unique CIF labels: %s`, (_name, site_specs, expected) => {
+      const sites = site_specs.map(([label, disordered], idx) => {
+        const site = make_site(`Na`, [0.1 * idx, 0.2, 0.3], [0.5 * idx, 1, 1.5], label)
+        // a Na/Cu site writes a second, suffixed species row
+        if (disordered)
+          site.species = [{ element: `Na`, occu: 0.5 }, { element: `Cu`, occu: 0.5 }]
+        return site
+      })
+      const cif = structure_to_cif_str({ sites, lattice: diag_lattice(5) })
+      const row_labels = cif
+        .split(`\n`)
+        .filter((line) => /^\S+ (?:Na|Cu) [\d.]+ /.test(line))
+        .map((line) => line.split(` `)[0])
+      expect(row_labels).toEqual(expected)
+      // parse_cif names each site after its first row
+      const reparsed = parse_cif(cif).sites.map((site) => site.label)
+      expect(reparsed).toEqual(expected.filter((label) => label !== `M_1_1`))
+    })
+
     // a line break in the id pushed the scale factor down a line, so the export did not parse
     it(`writes a multi-line id as a one-line POSCAR title`, () => {
       const sites = [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5])]
@@ -534,10 +578,7 @@ describe(`Export functionality`, () => {
         const [vec_h, vec_f, vec_cl] = others.map((abc) => {
           const delta = math.subtract(abc, carbon)
           const min_image = delta.map((coord) => coord - Math.round(coord)) as Vec3
-          return math.mat3x3_vec3_multiply(
-            math.transpose_3x3_matrix(lattice.matrix),
-            min_image,
-          )
+          return math.mul_3x3_vec3(math.transpose_3x3(lattice.matrix), min_image)
         })
         return math.dot(vec_h, math.cross_3d(vec_f, vec_cl))
       }
@@ -558,8 +599,8 @@ describe(`Export functionality`, () => {
         sites: [
           {
             species: [
-              { element: `Cu`, occu: 0.7, oxidation_state: 0 },
-              { element: `Au`, occu: 0.3, oxidation_state: 0 },
+              { element: `Cu`, occu: 0.7 },
+              { element: `Au`, occu: 0.3 },
             ],
             abc: [0.25, 0.25, 0.25],
             xyz: [2.5, 2.5, 2.5],
@@ -572,9 +613,7 @@ describe(`Export functionality`, () => {
       const cu = (occu: number | undefined) =>
         ({
           ...disordered,
-          sites: [
-            { ...site, species: [{ element: `Cu` as const, occu, oxidation_state: 0 }] },
-          ],
+          sites: [{ ...site, species: [{ element: `Cu` as const, occu }] }],
         }) as AnyStructure
       // species differing only in oxidation state are one element
       const mixed_valence: AnyStructure = {
@@ -652,7 +691,7 @@ describe(`Export functionality`, () => {
         expect(cif).toContain(`\n_chemical_formula_sum Fe\n`)
         const [mv_site] = mixed_valence.sites
         const [fe2, fe3] = mv_site.species
-        const species = [fe2, { ...fe3, oxidation_state: 0 }]
+        const species = [fe2, { element: fe3.element, occu: fe3.occu }]
         const partly = { ...mixed_valence, sites: [{ ...mv_site, species }] }
         for (const struct of [disordered, partly])
           expect(structure_to_cif_str(struct)).not.toContain(`_atom_type_symbol`)
@@ -663,7 +702,7 @@ describe(`Export functionality`, () => {
         const ox_states = parse_cif(partly_cif).sites[0].species.map(
           (spec) => spec.oxidation_state,
         )
-        expect(ox_states).toEqual([2, 0])
+        expect(ox_states).toEqual([2, undefined])
         expect(structure_to_cif_str(disordered)).toContain(
           `_chemical_formula_sum 'Cu0.7 Au0.3'`,
         )
@@ -672,7 +711,7 @@ describe(`Export functionality`, () => {
 
     const occu_site = (occu: number | undefined) => ({
       ...make_site(`H`),
-      species: [{ element: `H` as const, occu, oxidation_state: 0 }],
+      species: [{ element: `H` as const, occu }],
     })
     // oxfmt-ignore
     it.each([

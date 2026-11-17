@@ -10,7 +10,6 @@ import type { Crystal } from '#lib/structure/index.js'
 import { wrap_frac_coord, wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import type { SymmetryDataset } from './analyze'
-import { mat3_from_flat_col_major } from './symmetry-elements'
 
 export type WyckoffPos = {
   wyckoff: string
@@ -35,17 +34,16 @@ const position_key = (pos: Vec3) =>
 // Mapper from input-cell to standardized-cell fractional coordinates. moyo's (std_linear P,
 // std_origin_shift p) follow the ITA convention for the transformation from the input cell
 // to the standardized cell: x_std = P⁻¹ (x_input − p). Null when P is absent (a dataset
-// without standardization); a singular P is a moyo bug and throws from matrix_inverse_3x3.
+// without standardization); a singular P is a moyo bug and throws from inverse_3x3.
 function frac_coord_mapper(
   linear_flat: readonly number[] | undefined,
   origin_shift: readonly number[] | undefined,
 ): { to_std: (pos: Vec3) => Vec3; linear: Matrix3x3 } | null {
   if (linear_flat?.length !== 9) return null
-  const linear = mat3_from_flat_col_major(linear_flat)
-  const linear_inv = math.matrix_inverse_3x3(linear)
+  const linear = math.mat3x3_from_flat_col_major(linear_flat)
+  const linear_inv = math.inverse_3x3(linear)
   const shift = (origin_shift ?? [0, 0, 0]) as Vec3
-  const to_std = (pos: Vec3): Vec3 =>
-    math.mat3x3_vec3_multiply(linear_inv, math.subtract(pos, shift))
+  const to_std = (pos: Vec3): Vec3 => math.mul_3x3_vec3(linear_inv, math.subtract(pos, shift))
   return { to_std, linear }
 }
 
@@ -201,7 +199,7 @@ export function apply_symmetry_operations(
   return operations
     .map(({ rotation, translation }) => {
       // new_pos = W·position + t, with W decoded from moyo's COLUMN-major flat 9-array
-      const rotated = math.mat3x3_vec3_multiply(mat3_from_flat_col_major(rotation), position)
+      const rotated = math.mul_3x3_vec3(math.mat3x3_from_flat_col_major(rotation), position)
       return wrap_to_unit_cell(rotated.map((val, dim) => val + translation[dim]) as Vec3)
     })
     .filter((pos) => {
@@ -251,7 +249,7 @@ function candidate_display_frames(
     if (basis?.length !== 9 || !mapper) continue
     // basis is row-major (each row a lattice vector); same reshape as moyo_cell_to_structure
     frames.push({
-      lattice: math.vec9_to_mat3x3([...basis]),
+      lattice: math.mat3x3_from_flat_row_major([...basis]),
       map_equiv: mapper.to_std,
       input_translation_check: mapper.linear,
     })
@@ -322,7 +320,7 @@ export function map_wyckoff_to_all_atoms(
     if (Math.abs(math.det_3x3(frame.lattice)) < 1e-12) return null
     const scaling = math.dot(
       displayed_structure.lattice.matrix,
-      math.matrix_inverse_3x3(frame.lattice),
+      math.inverse_3x3(frame.lattice),
     )
     const is_integer_scaling = scaling.every((row) =>
       row.every((val) => Math.abs(val - Math.round(val)) < tolerance),
@@ -330,9 +328,9 @@ export function map_wyckoff_to_all_atoms(
     if (!is_integer_scaling || Math.abs(math.det_3x3(scaling)) < 0.99) return null
 
     // Displayed site coords expressed in frame-F fractional coordinates: x_F = x_disp·S
-    const scaling_transpose = math.transpose_3x3_matrix(scaling)
+    const scaling_transpose = math.transpose_3x3(scaling)
     const displayed_frame_coords = displayed_structure.sites.map((site) =>
-      math.mat3x3_vec3_multiply(scaling_transpose, site.abc),
+      math.mul_3x3_vec3(scaling_transpose, site.abc),
     )
     const displayed_elements = displayed_structure.sites.map(
       (site) => site.species[0]?.element,
@@ -354,7 +352,7 @@ export function map_wyckoff_to_all_atoms(
     const direct_query = position_index(frame.lattice, displayed_frame_coords)
     const check = frame.input_translation_check
     // P·x_F are input-lattice fractional coordinates
-    const to_input = (pos: Vec3) => (check ? math.mat3x3_vec3_multiply(check, pos) : pos)
+    const to_input = (pos: Vec3) => (check ? math.mul_3x3_vec3(check, pos) : pos)
     const check_query =
       check &&
       position_index(orig_structure.lattice.matrix, displayed_frame_coords.map(to_input))

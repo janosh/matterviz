@@ -110,7 +110,6 @@
       >
     } = $props()
 
-  let [width, height] = $state([0, 0])
   let center_el: SVGCircleElement | null = $state(null)
   const uid = $props.id()
 
@@ -133,8 +132,6 @@
     }),
     label_text: () => (show_labels ? label_text : null),
     value_format: () => value_format,
-    width: () => width,
-    height: () => height,
     padding: () => padding,
     color_values: () => color_values,
     color_scale: () => color_scale,
@@ -159,14 +156,11 @@
       project_arcs(chart_state.arcs, view_target, screen_geom, { group_gap }).visible.map(
         arc_center,
       ),
-    // Icicle: focus the new root's first child (pre-order node_idx + 1) since the clicked
-    // arc collapses to zero height, dropping focus to <body>. Polar: the center button.
+    // Icicle: the clicked arc collapses to zero height, dropping focus to <body>, so focus
+    // the new root's first child. Polar: the center button.
     focus_after_zoom: () => {
       if (shape === `sunburst`) center_el?.focus()
-      else
-        chart_state.focus_node(
-          chart_state.zoom_root ? chart_state.zoom_root.node_idx + 1 : roving_idx,
-        )
+      else chart_state.focus_zoom_child(roving_idx)
     },
   })
 
@@ -245,37 +239,30 @@
   let batch_paints = $derived(!arc_content && visible_nodes.length > 100)
   let paint_batches = $derived.by(() => {
     if (!batch_paints) return []
-    const batches = new Map<string, { fill: string; opacity: number; arcs: ScreenArc[] }>()
-    for (const screen of projection.visible) {
-      const { node_idx } = screen.arc
-      const info = chart_state.node_infos[node_idx]
-      const fill = info.pattern?.url ?? info.fill
-      const { opacity } = chart_state.node_dim(node_idx)
-      const key = `${opacity}:${fill}`
-      let batch = batches.get(key)
-      if (!batch) {
-        batch = { fill, opacity, arcs: [] }
-        batches.set(key, batch)
+    const batches = Map.groupBy(projection.visible, ({ arc }) => {
+      const { fill, opacity } = chart_state.node_paint(arc.node_idx)
+      return `${opacity}:${fill}`
+    })
+    return [...batches].map(([key, screens]) => {
+      const arcs: ScreenArc[] = []
+      for (const screen of screens) {
+        const previous = arcs.at(-1)
+        if (
+          pad_angle === 0 &&
+          previous?.a1 === screen.a0 &&
+          previous.r0 === screen.r0 &&
+          previous.r1 === screen.r1
+        ) {
+          // Merge continuous runs into one sector (borders are painted separately)
+          previous.a1 = screen.a1
+        } else arcs.push({ ...screen })
       }
-      const previous = batch.arcs.at(-1)
-      if (
-        pad_angle === 0 &&
-        previous?.a1 === screen.a0 &&
-        previous.r0 === screen.r0 &&
-        previous.r1 === screen.r1
-      ) {
-        // Merge continuous runs into one sector (borders are painted separately)
-        previous.a1 = screen.a1
-      } else {
-        batch.arcs.push({ ...screen })
+      return {
+        key,
+        ...chart_state.node_paint(screens[0].arc.node_idx),
+        path: arcs.map(screen_path).join(``),
       }
-    }
-    return [...batches].map(([key, { fill, opacity, arcs }]) => ({
-      key,
-      fill,
-      opacity,
-      path: arcs.map(screen_path).join(``),
-    }))
+    })
   })
 
   // Hover dimming as one path with holes for the hovered subtree and its ancestors
@@ -352,8 +339,8 @@
   css_prefix="sunburst"
   css_var_fallbacks={{ flex: `1 1 auto` }}
   bind:wrapper={chart_state.wrapper}
-  bind:width
-  bind:height
+  bind:width={chart_state.width}
+  bind:height={chart_state.height}
   bind:fullscreen
   export_sources={chart_state.export_sources}
   {...rest}
@@ -408,14 +395,14 @@
               {@render arc_content(screen_arcs[arc.node_idx])}
             {:else}
               {@const info = chart_state.node_infos[arc.node_idx]}
-              {@const opacity = chart_state.node_dim(arc.node_idx).opacity}
+              {@const { fill, opacity } = chart_state.node_paint(arc.node_idx)}
               <!-- a per-node boolean: a moved tab stop re-runs two nodes' attributes, not all -->
               {@const tab_stop = arc.node_idx === roving_idx}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <path
                 d={arc_paths[visible_idx]}
                 data-sunburst-node-idx={arc.node_idx}
-                fill={batch_paints ? `transparent` : (info.pattern?.url ?? info.fill)}
+                fill={batch_paints ? `transparent` : fill}
                 fill-opacity={opacity}
                 role={info.clickable ? `button` : undefined}
                 tabindex={tab_stop ? 0 : -1}

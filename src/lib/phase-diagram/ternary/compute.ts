@@ -8,6 +8,12 @@ import {
 } from '#lib/composition/format.js'
 import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
+import {
+  GAS_STOICHIOMETRY,
+  is_elemental_gas,
+  is_gas_composition,
+  relevant_gases,
+} from '#lib/convex-hull/gas-thermodynamics.js'
 import { is_unary_entry } from '#lib/convex-hull/helpers.js'
 import {
   compute_lower_hull_nd,
@@ -108,6 +114,26 @@ export function prepare_diagram(
       energy: 0,
       entry_id: `synthetic-element:${element}`,
       reduced_formula: element,
+    })
+  }
+  // Compound gases of the system join as phases at mu(T, p) (build_free_energy_model) and
+  // replace the entries of their formula, which stay listed but never build the hull
+  const compound_gases = relevant_gases(
+    elements,
+    options.free_energy?.gas_config?.enabled_gases ?? [],
+  ).filter((gas) => !is_elemental_gas(gas))
+  for (const entry of normalized) {
+    if (compound_gases.some((gas) => is_gas_composition(entry.composition, gas)))
+      entry.exclude_from_hull = true
+  }
+  for (const gas of compound_gases) {
+    normalized.push({
+      composition: { ...GAS_STOICHIOMETRY[gas] },
+      energy: 0, // unused: a gas phase's energy is mu(T, p)
+      gas,
+      entry_id: `gas:${gas}`,
+      reduced_formula: gas,
+      name: `${gas} gas`,
     })
   }
   const model = build_free_energy_model(normalized, elements, options.free_energy)

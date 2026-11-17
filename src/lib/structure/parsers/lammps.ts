@@ -1,6 +1,5 @@
-// LAMMPS data files (.lmp/.data) and single-frame text dumps (.dump).
-// Text dumps reuse the trajectory reader in #lib/trajectory/parse/lammps rather than
-// duplicating its ITEM: section, triclinic-box and column-preference handling.
+// LAMMPS data files (.lmp/.data) and single-frame text dumps (.dump), which reuse the
+// trajectory reader in #lib/trajectory/parse/lammps (ITEM: sections, triclinic boxes, columns).
 import type { ElementSymbol } from '#lib/element/index.js'
 // `#lib/element/data.js`, not the index: the index re-exports Svelte components, which the
 // parse worker bundle (no svelte plugin) cannot compile
@@ -27,6 +26,7 @@ import {
 import type { RawBond } from './shared'
 
 const strip_comment = (line: string): string => line.split(`#`)[0]
+const row_fields = (line: string): string[] => strip_comment(line).trim().split(/\s+/)
 const comment_of = (line: string): string => line.split(`#`).slice(1).join(`#`).trim()
 
 // Section headers are a bare capitalized keyword (`Masses`, `Atoms # full`, `Bond Coeffs`);
@@ -183,7 +183,7 @@ export const parse_lammps_data = (content: string): Crystal => {
   // Masses map atom types to elements; without them types fall back to atomic number
   const element_by_type = new Map<number, ElementSymbol>()
   for (const row of sections.get(`Masses`)?.rows ?? []) {
-    const tokens = strip_comment(row).trim().split(/\s+/)
+    const tokens = row_fields(row)
     const atom_type = Number(tokens[0])
     const mass = Number(tokens[1])
     if (!Number.isInteger(atom_type) || !Number.isFinite(mass)) continue
@@ -201,23 +201,18 @@ export const parse_lammps_data = (content: string): Crystal => {
 
   const num_atom_types = header_value(`atom types`)
   const declared_style = atoms_section.style.toLowerCase()
-  const atom_rows = atoms_section.rows.map((row) => strip_comment(row).trim().split(/\s+/))
+  const atom_rows = atoms_section.rows.map(row_fields)
   if (declared_style && !(declared_style in ATOM_STYLE_COLUMNS))
     throw new Error(
-      `Unsupported LAMMPS atom style '${declared_style}'. Supported: ${Object.keys(
-        ATOM_STYLE_COLUMNS,
-      ).join(`, `)}`,
+      `Unsupported LAMMPS atom style '${declared_style}'. Supported: ${Object.keys(ATOM_STYLE_COLUMNS).join(`, `)}`,
     )
   const style =
     declared_style ||
     infer_atom_style(atom_rows, Number.isFinite(num_atom_types) ? num_atom_types : Infinity)
-  if (!declared_style) {
+  if (!declared_style)
     parse_warn(
-      `LAMMPS data: Atoms section has no style comment, assuming '${style}' from its ${
-        atom_rows[0].length
-      } columns`,
+      `LAMMPS data: Atoms section has no style comment, assuming '${style}' from its ${atom_rows[0].length} columns`,
     )
-  }
   const { type_col, coord_col } = ATOM_STYLE_COLUMNS[style]
 
   const sites: Site[] = []
@@ -226,16 +221,12 @@ export const parse_lammps_data = (content: string): Crystal => {
     const row_suffix = `for style '${style}': '${atoms_section.rows[row_idx].trim()}'`
     if (tokens.length < coord_col + 3)
       throw new Error(
-        `LAMMPS Atoms row ${row_idx + 1} has ${tokens.length} columns, need at least ${
-          coord_col + 3
-        } ${row_suffix}`,
+        `LAMMPS Atoms row ${row_idx + 1} has ${tokens.length} columns, need at least ${coord_col + 3} ${row_suffix}`,
       )
     const atom_type = Number(tokens[type_col])
     if (!Number.isInteger(atom_type) || atom_type < 1)
       throw new Error(
-        `LAMMPS Atoms row ${row_idx + 1} has a non-integer atom type '${
-          tokens[type_col]
-        }' in column ${type_col + 1} ${row_suffix}`,
+        `LAMMPS Atoms row ${row_idx + 1} has a non-integer atom type '${tokens[type_col]}' in column ${type_col + 1} ${row_suffix}`,
       )
     const element = element_by_type.get(atom_type) ?? element_from_lammps_type(atom_type)
     if (!element_by_type.has(atom_type)) {
@@ -273,16 +264,14 @@ export const parse_lammps_data = (content: string): Crystal => {
 
   const raw_bonds: RawBond[] = []
   for (const row of sections.get(`Bonds`)?.rows ?? []) {
-    // bond_id bond_type atom_1 atom_2
     const expected = `LAMMPS Bonds row (need 'id type atom_1 atom_2')`
     const tokens = row_tokens(strip_comment(row), 4, expected)
     raw_bonds.push({ atom_id_1: Number(tokens[2]), atom_id_2: Number(tokens[3]), order: 1 })
   }
-  if (raw_bonds.length > 0) {
+  if (raw_bonds.length > 0)
     parse_warn(
       `LAMMPS data: bond types are force-field types, not bond orders, so all ${raw_bonds.length} bonds are recorded as single`,
     )
-  }
   const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `LAMMPS Bonds`)
 
   return { ...parsed_result(sites, bonds), lattice: make_lattice(lattice_matrix) }
@@ -307,11 +296,10 @@ export const parse_lammps_dump = (content: string): AnyStructure => {
     throw new Error(
       `LAMMPS dump has no 'ITEM: TIMESTEP' section (binary dumps must be converted to text first)`,
     )
-  if (frame_starts.length > 1) {
+  if (frame_starts.length > 1)
     parse_warn(
       `LAMMPS dump contains more than one frame; parsed the first as a structure — open it as a trajectory to see the rest`,
     )
-  }
 
   // The trajectory reader's warnings (unknown columns, dropped atoms) are this parser's
   // warnings too. It has already translated absolute dump coordinates from the LAMMPS box

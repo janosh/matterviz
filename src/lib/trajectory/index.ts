@@ -8,7 +8,11 @@ import type { TrajectoryRun } from './run'
 import type { NumericFrame } from './frame'
 
 export * from './analysis'
-export * from './positions'
+export {
+  group_atoms_by_element,
+  unwrap_flat_positions,
+  unwrapped_positions_of,
+} from './positions'
 export * from './hotspots'
 export * from './movie'
 export {
@@ -20,7 +24,17 @@ export {
   trajectory_from_json,
   VaspoutElectronicOnlyError,
 } from './open'
-export * from './run'
+export {
+  is_loaded_signal,
+  is_signal_descriptor,
+  summarize_run,
+  sync_run,
+  TrajectoryProperties,
+  type SyncRunSource,
+  type TrajectoryProvenance,
+  type TrajectoryRun,
+  type TrajectoryRunSummary,
+} from './run'
 export {
   encode_frame,
   materialize_frame,

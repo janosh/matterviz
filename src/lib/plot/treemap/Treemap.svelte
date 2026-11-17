@@ -109,7 +109,6 @@
       cell_content?: Snippet<[{ arc: PositionedArc<Metadata>; rect: Rect }]>
     } = $props()
 
-  let [width, height] = $state([0, 0])
   const uid = $props.id()
 
   // Tree semantics, zoom/hover/legend state and keyboard plumbing are shared with
@@ -129,8 +128,6 @@
     }),
     label_text: () => (show_labels ? label_text : null),
     value_format: () => value_format,
-    width: () => width,
-    height: () => height,
     padding: () => padding,
     color_values: () => color_values,
     color_scale: () => color_scale,
@@ -147,26 +144,11 @@
     on_node_click: (payload) => on_node_click?.(payload),
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),
-    visible: (idx) => idx_visible(idx),
+    visible: (idx) => cell_visible(idx),
     node_center: (idx) => (rects[idx] ? rect_center(rects[idx]) : null),
-    // Place against the settled tiling (stable during zoom tweens), with the same
-    // visibility rule as rendering so hidden cells don't repel the legend
-    legend_points: () =>
-      chart_state.arcs.flatMap((arc, idx) =>
-        cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : [],
-      ),
-    // Keyboard zoom unmounts the focused cell: focus the new root's first child
-    // (pre-order node_idx + 1), or the root itself for full-viewport leaf zooms
-    focus_after_zoom: () => {
-      const { zoom_root } = chart_state
-      chart_state.focus_node(
-        zoom_root
-          ? zoom_root.is_leaf
-            ? zoom_root.node_idx
-            : zoom_root.node_idx + 1
-          : roving_idx,
-      )
-    },
+    legend_points: () => settled_idxs.map((idx) => rect_center(target_rects[idx])),
+    // Keyboard zoom unmounts the focused cell (leaf zooms keep it, full-viewport)
+    focus_after_zoom: () => chart_state.focus_zoom_child(roving_idx),
   })
 
   // Re-tile the zoom root's subtree to the full plot area (plotly behavior): projecting one
@@ -231,28 +213,25 @@
   let depth_cutoff = $derived(
     max_depth > 0 ? (chart_state.zoom_root?.depth ?? 0) + max_depth : Infinity,
   )
-  // Shared by rendering and legend placement. The zoom root is shown by the breadcrumbs,
-  // not a cell, unless it's a leaf (rendered full-viewport instead of a blank chart).
-  // Nodes outside the zoomed subtree hold zero rects.
-  const cell_visible = (arc: PositionedArc<Metadata>, rect: Rect): boolean =>
-    arc.depth > 0 &&
-    (arc.node_idx !== zoom_idx || arc.is_leaf) &&
-    arc.depth <= depth_cutoff &&
-    rect.width > 0.5 &&
-    rect.height > 0.5
-  const idx_visible = (idx: number): boolean => {
-    const [arc, rect] = [chart_state.arcs[idx], rects[idx]]
-    return Boolean(arc && rect && cell_visible(arc, rect))
+  // Whether cell idx shows in a tiling (default: rendered). The zoom root is shown by the
+  // breadcrumbs, not a cell, unless it's a leaf (rendered full-viewport instead of a blank
+  // chart). Nodes outside the zoomed subtree hold zero rects.
+  const cell_visible = (idx: number, cells: readonly Rect[] = rects): boolean => {
+    const [arc, rect] = [chart_state.arcs[idx], cells[idx]]
+    return (
+      Boolean(arc && rect) &&
+      arc.depth > 0 &&
+      (arc.node_idx !== zoom_idx || arc.is_leaf) &&
+      arc.depth <= depth_cutoff &&
+      rect.width > 0.5 &&
+      rect.height > 0.5
+    )
   }
-  // Indices of cells to render: arcs/rects/node_infos are index-aligned, so no N wrapper
-  // objects get rebuilt per tween frame
-  let visible_idxs = $derived.by(() => {
-    const idxs: number[] = []
-    for (let idx = 0; idx < chart_state.arcs.length; idx++) {
-      if (idx_visible(idx)) idxs.push(idx)
-    }
-    return idxs
-  })
+  // Indices of cells visible in a tiling: arcs/rects/node_infos are index-aligned, so no N
+  // wrapper objects get rebuilt per tween frame
+  const visible_in = (cells: readonly Rect[]): number[] =>
+    chart_state.arcs.flatMap((_, idx) => (cell_visible(idx, cells) ? [idx] : []))
+  let visible_idxs = $derived(visible_in(rects))
 
   // Every visible cell is focusable so arrow keys reach tooltips and leaf zooms keep focus
   let roving_idx = $derived(chart_state.roving_idx(visible_idxs[0] ?? null))
@@ -333,25 +312,21 @@
   // Defs and visible text share these placements to avoid duplicate fitting per frame
   let label_placements = $derived(new Map(visible_idxs.map((idx) => [idx, place_label(idx)])))
 
+  // Cells visible in the settled tiling: stable during zoom tweens, with the same rule as
+  // rendering so hidden cells neither repel the legend nor tint the chrome
+  let settled_idxs = $derived(visible_in(target_rects))
   // The chrome floats over the cells, so its icons take the color of the top-most cell
   // (parents paint first, so the last hit) under the top-right corner. Probes the settled
-  // tiling, visibility included: tweened rects re-ran this ~24x per zoom and flickered the
-  // icons (a cell still collapsed in the tween's start frame was skipped).
+  // tiling: tweened rects re-ran this ~24x per zoom and flickered the icons (a cell still
+  // collapsed in the tween's start frame was skipped).
   let chrome_color = $derived.by(() => {
-    const probe = { x: chart_state.inner_width - 1, y: 1 }
-    let label_fill: string | undefined
-    for (const [idx, arc] of chart_state.arcs.entries()) {
-      const rect = target_rects[idx]
-      if (
-        rect &&
-        cell_visible(arc, rect) &&
-        probe.x >= rect.x &&
-        probe.x <= rect.x + rect.width &&
-        probe.y >= rect.y &&
-        probe.y <= rect.y + rect.height
-      )
-        label_fill = chart_state.node_infos[idx]?.label_fill
-    }
+    const [probe_x, probe_y] = [chart_state.inner_width - 1, 1]
+    const hit_idx = settled_idxs.findLast((idx) => {
+      const { x, y, width, height } = target_rects[idx]
+      return probe_x >= x && probe_x <= x + width && probe_y >= y && probe_y <= y + height
+    })
+    const label_fill =
+      hit_idx === undefined ? undefined : chart_state.node_infos[hit_idx]?.label_fill
     // label_fill already accounts for pattern backdrops and translucent fills
     return label_fill === `currentColor` ? undefined : label_fill
   })
@@ -364,8 +339,8 @@
   {chrome_color}
   css_var_fallbacks={{ flex: `1 1 auto`, bg: `transparent` }}
   bind:wrapper={chart_state.wrapper}
-  bind:width
-  bind:height
+  bind:width={chart_state.width}
+  bind:height={chart_state.height}
   bind:fullscreen
   export_sources={chart_state.export_sources}
   {...rest}
@@ -424,7 +399,7 @@
               {@render cell_content({ arc: chart_state.arcs[idx], rect })}
             {:else}
               {@const info = chart_state.node_infos[idx]}
-              {@const opacity = chart_state.node_dim(idx).opacity}
+              {@const { fill, opacity } = chart_state.node_paint(idx)}
               <!-- a per-node boolean: a moved tab stop re-runs two nodes' attributes, not all -->
               {@const tab_stop = idx === roving_idx}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
@@ -434,7 +409,7 @@
                 width={rect.width}
                 height={rect.height}
                 data-treemap-node-idx={idx}
-                fill={info.pattern?.url ?? info.fill}
+                {fill}
                 fill-opacity={opacity}
                 role={cells_clickable ? `button` : undefined}
                 tabindex={tab_stop ? 0 : -1}

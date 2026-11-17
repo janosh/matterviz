@@ -110,15 +110,18 @@ describe(`package.json exports`, () => {
     `./file-viewer/host-transfer`,
     `./file-viewer/parse-in-worker`,
     `./file-viewer/webview`,
+    `./host`,
     `./isosurface/parse-vaspwave`,
     `./optimade`,
     `./sanitize`,
     `./settings`,
+    `./shortcuts`,
     `./structure/export`,
     `./structure/measure`,
     `./theme/embedded`,
     `./trajectory/parse`,
     `./url-params`,
+    `./workers`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
   })

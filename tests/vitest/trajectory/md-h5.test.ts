@@ -231,11 +231,8 @@ describe(`MD HDF5`, () => {
     expect(numeric.topology).toEqual({ kind: `fixed-order`, revision: 0 })
     expect(frame.structure.sites[0].properties.id).toBe(0)
     expect(frame.metadata?.time).toBe(1151)
-    expect(`lattice` in frame.structure && frame.structure.lattice.pbc).toEqual([
-      true,
-      false,
-      true,
-    ])
+    // oxfmt-ignore
+    expect(`lattice` in frame.structure && frame.structure.lattice.pbc).toEqual([true, false, true])
   })
 
   it(`retains ordinary earliest-format HDF5 reads with SWMR read access`, async () => {
@@ -275,12 +272,8 @@ describe(`MD HDF5`, () => {
       coords_unwrapped: true,
     })
     expect(`lattice` in frame.structure && frame.structure.lattice.matrix).toEqual(cell)
-    expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual([
-      `Si`,
-      `Ge`,
-      `Si`,
-      `Ge`,
-    ])
+    // oxfmt-ignore
+    expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual([`Si`, `Ge`, `Si`, `Ge`])
     expect(frame.structure.sites[1].xyz).toEqual([2.03, 2.04, 2.05])
     expect(frame.structure.sites[1].properties).toMatchObject({
       id: 1,
@@ -459,10 +452,8 @@ describe(`MD HDF5`, () => {
         .toSorted(),
     )
     if (atoms > 2000)
-      expect(atomic_reads[0].ranges).toEqual([
-        [0, 1],
-        [0, atoms, sample_stride],
-      ])
+      // oxfmt-ignore
+      expect(atomic_reads[0].ranges).toEqual([[0, 1], [0, atoms, sample_stride]])
     slices.length = 0
     await source.lazy.read_atoms({
       frame_idx: 2,

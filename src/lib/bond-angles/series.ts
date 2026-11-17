@@ -1,6 +1,6 @@
 import { plot_color } from '#lib/colors/index.js'
 import type { BarSeries } from '#lib/plot/core/types.js'
-import type { BondAngleData } from './calc-bond-angles'
+import type { BondAngleData } from './compute-bond-angles'
 import type { BondAngleNormalizeMode, BondAngleSplitMode } from './index'
 
 // All fields optional so the type stays mutually assignable with Record<string, unknown>,

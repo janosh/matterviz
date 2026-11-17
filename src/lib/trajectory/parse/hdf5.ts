@@ -10,7 +10,7 @@ import {
   type ReadAtoms,
 } from '../atom-batches'
 import {
-  calc_lattice_params,
+  compute_lattice_params,
   first_non_increasing_index,
   is_valid_index,
   partition_point,
@@ -441,7 +441,7 @@ const parse_torch_sim_datasets = (
   // lattice instead of being rejected as torn writes or inverted as singular matrices.
   const cell_required = pbc_values ? pbc_values.some(Boolean) : true
   const lattice_or_none = (matrix: Matrix3x3, context: string): Matrix3x3 | undefined => {
-    if (calc_lattice_params(matrix).volume > 0) return matrix
+    if (compute_lattice_params(matrix).volume > 0) return matrix
     if (cell_required) throw new Error(`HDF5 ${context} cell volume must be positive`)
     return undefined
   }
@@ -537,7 +537,7 @@ const parse_torch_sim_datasets = (
           // a zero cell is a torn write only where a cell is needed at all
           if (cell_chunk && cell_required) {
             const matrix = lattice_from_values(cell_chunk, local_idx * 9)
-            if (!(calc_lattice_params(matrix).volume > 0))
+            if (!(compute_lattice_params(matrix).volume > 0))
               throw new Error(`cell volume is zero`)
           }
         } catch (error) {
@@ -780,7 +780,7 @@ const parse_torch_sim_datasets = (
             : static_lattice
           return {
             ...(sampled_energy && { energy: sampled_energy[sample_idx] }),
-            ...(lattice && { volume: calc_lattice_params(lattice).volume }),
+            ...(lattice && { volume: compute_lattice_params(lattice).volume }),
           }
         })
       },

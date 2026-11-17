@@ -21,7 +21,7 @@ const circle = (count: number, radius: number, z = 0): Vec3[] =>
 
 function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
   const sites = elements.map((element, idx) => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
+    species: [{ element, occu: 1 }],
     xyz: coords[idx],
     abc: [0, 0, 0],
     label: `${element}${idx}`,
@@ -150,11 +150,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
 
 describe(`aromaticity`, () => {
   // h_counts[idx] hydrogens on heavy atom idx, appended after the heavy atoms
-  const with_hydrogens = (
-    heavy: ElementSymbol[],
-    heavy_edges: Vec2[],
-    h_counts: number[],
-  ): { elements: ElementSymbol[]; edges: Vec2[] } => {
+  const with_hydrogens = (heavy: ElementSymbol[], heavy_edges: Vec2[], h_counts: number[]) => {
     const elements = [...heavy]
     const edges = [...heavy_edges]
     for (const [atom_idx, count] of h_counts.entries()) {
@@ -204,13 +200,10 @@ describe(`aromaticity`, () => {
     const rng = make_rng(7)
     const n_atoms = molecule.elements.length
     for (let shuffle_idx = 0; shuffle_idx < 40; shuffle_idx++) {
-      const new_idx = Array.from({ length: n_atoms }, (_, idx) => idx).toSorted(
-        () => rng() - 0.5,
-      )
+      const new_idx = [...Array(n_atoms).keys()].toSorted(() => rng() - 0.5)
       const elements: ElementSymbol[] = Array(n_atoms)
-      for (const [old_idx, element] of molecule.elements.entries()) {
+      for (const [old_idx, element] of molecule.elements.entries())
         elements[new_idx[old_idx]] = element
-      }
       const edges = molecule.edges
         .map(([idx_1, idx_2]): Vec2 => [new_idx[idx_1], new_idx[idx_2]])
         .toSorted(() => rng() - 0.5)
@@ -236,10 +229,7 @@ describe(`aromaticity`, () => {
       molecules.flatMap(() => benzene.elements),
       molecules.flatMap((mol_idx) => circle(12, 2, mol_idx * 4)),
       molecules.flatMap((mol_idx) =>
-        benzene.edges.map(([idx_1, idx_2]): Vec2 => [
-          idx_1 + mol_idx * 12,
-          idx_2 + mol_idx * 12,
-        ]),
+        benzene.edges.map((edge) => edge.map((idx) => idx + mol_idx * 12) as Vec2),
       ),
     )
     const result = perceive_bond_orders(sites, bonds, { max_atoms: 12 })
@@ -248,11 +238,16 @@ describe(`aromaticity`, () => {
 
   // 6-ring of `ring_elements` (1.54 A bonds) with substituent_counts[idx] substituents on ring
   // atom idx, placed 1 A radially outward and 0.9 A above (first) or below (second) the plane
-  const make_saturated_six_ring = (
-    ring_elements: ElementSymbol[],
-    substituent: ElementSymbol,
-    substituent_counts: number[],
-  ) => {
+  type SixRing = {
+    ring_elements: ElementSymbol[]
+    substituent: ElementSymbol
+    substituent_counts: number[]
+  }
+  const make_saturated_six_ring = ({
+    ring_elements,
+    substituent,
+    substituent_counts,
+  }: SixRing) => {
     const ring_coords = circle(6, 1.54)
     const substituent_coords = ring_coords.flatMap(([coord_x, coord_y], ring_idx) =>
       Array.from({ length: substituent_counts[ring_idx] }, (_, sub_idx): Vec3 => [
@@ -274,36 +269,20 @@ describe(`aromaticity`, () => {
 
   const c5 = carbons(5)
   // oxfmt-ignore
-  test.each<{
-    description: string
-    ring_elements: ElementSymbol[]
-    substituent: ElementSymbol
-    substituent_counts: number[]
-    has_double_bond: boolean
-  }>([
+  test.each<SixRing & { description: string; has_double_bond: boolean }>([
     { description: `planar saturated cyclohexane with explicit H substituents`, ring_elements: carbons(6), substituent: `H`, substituent_counts: [2, 2, 2, 2, 2, 2], has_double_bond: false },
     { description: `planar saturated cyclohexane with explicit Cl substituents`, ring_elements: carbons(6), substituent: `Cl`, substituent_counts: [2, 2, 2, 2, 2, 2], has_double_bond: false },
     { description: `planar saturated piperidine`, ring_elements: [`N`, ...c5], substituent: `H`, substituent_counts: [1, 2, 2, 2, 2, 2], has_double_bond: false },
     { description: `partially conjugated six-membered heterocycle`, ring_elements: [`N`, ...c5], substituent: `H`, substituent_counts: [1, 1, 1, 1, 1, 2], has_double_bond: true },
-  ])(
-    `$description is not aromatic`,
-    ({ ring_elements, substituent, substituent_counts, has_double_bond }) => {
-      const { sites, bonds } = make_saturated_six_ring(
-        ring_elements,
-        substituent,
-        substituent_counts,
-      )
-
-      const ring_bonds = perceive_bond_orders(sites, bonds, { total_charge: 0 }).filter(
-        ({ site_idx_1, site_idx_2 }) => site_idx_1 < 6 && site_idx_2 < 6,
-      )
-
-      if (has_double_bond) {
-        expect(ring_bonds.some((bond) => bond.bond_order === 2)).toBe(true)
-      } else expect(ring_bonds.every((bond) => bond.bond_order === 1)).toBe(true)
-      expect(ring_bonds.every((bond) => bond.aromatic_ring === undefined)).toBe(true)
-    },
-  )
+  ])(`$description is not aromatic`, (six_ring) => {
+    const { sites, bonds } = make_saturated_six_ring(six_ring)
+    const ring_bonds = perceive_bond_orders(sites, bonds, { total_charge: 0 }).filter(
+      ({ site_idx_1, site_idx_2 }) => site_idx_1 < 6 && site_idx_2 < 6,
+    )
+    if (six_ring.has_double_bond) expect(ring_bonds.some((bond) => bond.bond_order === 2)).toBe(true)
+    else expect(ring_bonds.every((bond) => bond.bond_order === 1)).toBe(true)
+    expect(ring_bonds.every((bond) => bond.aromatic_ring === undefined)).toBe(true)
+  })
 
   // Hückel 4n+2: only benzene's ring bonds are flagged aromatic
   test.each([
@@ -311,12 +290,8 @@ describe(`aromaticity`, () => {
     { n_atoms: 6, radius: 1.39, name: `benzene`, aromatic: true },
     { n_atoms: 8, radius: 1.8, name: `cyclooctatetraene`, aromatic: false },
   ])(`$name ring bonds are aromatic: $aromatic`, ({ n_atoms, radius, aromatic }) => {
-    const { sites, bonds } = make_input(
-      carbons(n_atoms),
-      circle(n_atoms, radius),
-      ring(0, n_atoms),
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    const input = make_input(carbons(n_atoms), circle(n_atoms, radius), ring(0, n_atoms))
+    const result = perceive_bond_orders(input.sites, input.bonds, { total_charge: 0 })
     expect(result.every((bond) => (bond.bond_order === `aromatic`) === aromatic)).toBe(true)
     expect(result.every((bond) => (bond.aromatic_ring !== undefined) === aromatic)).toBe(true)
   })

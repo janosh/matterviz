@@ -223,6 +223,10 @@ function generate_positive_arcsinh_ticks(
   }
 
   const result = dedupe_sort(ticks)
+  // A view inside one decade (zoomed to [518, 663] or [24467, 36156]) holds at most one
+  // 1-2-5 multiple, leaving the axis bare: arcsinh is smooth there, so use linear nice ticks
+  if (result.length < Math.min(2, count))
+    return dedupe_sort(d3_ticks(min, max, count).filter(in_range))
   // Respect `count` by dropping near-zero ticks first: they crowd together in arcsinh space,
   // while the largest-magnitude ones anchor the range extent
   return result.length > count ? result.slice(-count) : result
@@ -396,10 +400,12 @@ export type RunningExtent = {
 
 export const empty_extent = (): RunningExtent => ({ n_finite: 0 })
 
-// Fold values into acc without concatenating series or allocating point objects
+// Fold values into acc without concatenating series or allocating point objects. With
+// `weights` (index-aligned), values whose weight is non-finite are skipped, as binning drops them.
 export function accumulate_extent(
   acc: RunningExtent,
   values: ArrayLike<number | null | undefined>,
+  weights?: ArrayLike<number>,
 ): RunningExtent {
   let min_positive = acc.min_positive ?? Infinity
   // indexed, not for-of: typed and other array-likes (dense series) carry no iterator type
@@ -407,6 +413,7 @@ export function accumulate_extent(
   for (let idx = 0; idx < length; idx++) {
     const val = values[idx]
     if (typeof val !== `number` || !Number.isFinite(val)) continue
+    if (weights && !Number.isFinite(weights[idx])) continue
     acc.n_finite++
     if (acc.min === undefined || val < acc.min) acc.min = val
     if (acc.max === undefined || val > acc.max) acc.max = val

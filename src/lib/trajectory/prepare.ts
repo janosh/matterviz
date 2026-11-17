@@ -11,13 +11,18 @@ import { compute_display_metrics, prepare_vector_geometry } from '#lib/structure
 import { numeric_sites, type DisplayMetrics } from '#lib/structure/site.js'
 import type { PolyhedraOptions, Polyhedron } from '#lib/structure/polyhedra.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
-import { BondSearch, compute_bonds, type BondingStrategy } from '#lib/structure/bonding.js'
+import {
+  BondSearch,
+  compute_bonds,
+  type BondingOptions,
+  type BondingStrategy,
+} from '#lib/structure/bonding.js'
 import type { NumericFrame, FrameChannels } from './frame'
 import { FrameView, frame_transfers, wrap_frame_coordinates } from './frame'
 
 export type FramePreparation = {
   bonding_strategy: BondingStrategy
-  bonding_options: Record<string, unknown>
+  bonding_options: BondingOptions
   auto_bond_order?: boolean
   channels?: FrameChannels
   bonds?: boolean

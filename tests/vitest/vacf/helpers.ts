@@ -54,7 +54,7 @@ export function circular_motion(
 }
 
 // In-memory run of the circular orbit, with the analytic velocities stored per site unless
-// `with_velocities` is false (so calc_vacf has to differentiate the positions)
+// `with_velocities` is false (so compute_vacf has to differentiate the positions)
 export const orbit_run = (
   n_frames: number,
   frequency: number,

@@ -10,7 +10,7 @@ import type {
   HotspotProgress,
 } from '#lib/trajectory/hotspots.js'
 import {
-  calculate_hotspots,
+  compute_hotspots,
   hotspot_bin,
   hotspot_values,
   hotspot_mean,
@@ -116,7 +116,7 @@ describe(`spatial kinetic hotspots`, () => {
     `previews the selected frame and streams isolated partial maps with %s motion`,
     async (motion) => {
       const options = { ...velocity_options, motion, frame_stride: 2, batch_size: 3 }
-      const expected = await calculate_hotspots(3, source(8, [0, 2, 5]), options)
+      const expected = await compute_hotspots(3, source(8, [0, 2, 5]), options)
       const read = vi.fn(source(8, [0, 2, 5]))
       const previews: HotspotResult[] = []
       const partials: HotspotResult[] = []
@@ -124,7 +124,7 @@ describe(`spatial kinetic hotspots`, () => {
       let clock = 0
       const timer = vi.spyOn(performance, `now`).mockImplementation(() => (clock += 300))
       onTestFinished(() => timer.mockRestore())
-      const result = await calculate_hotspots(3, read, {
+      const result = await compute_hotspots(3, read, {
         ...options,
         preview_frame: 1,
         on_preview: (preview) => {
@@ -161,7 +161,7 @@ describe(`spatial kinetic hotspots`, () => {
     const read = vi.fn(source())
     const controller = new AbortController()
     await expect(
-      calculate_hotspots(3, read, {
+      compute_hotspots(3, read, {
         ...velocity_options,
         preview_frame: 2,
         signal: controller.signal,
@@ -172,7 +172,7 @@ describe(`spatial kinetic hotspots`, () => {
   })
 
   it.each([1, 3, 8])(`preserves energies across batch size %s`, async (batch_size) => {
-    const result = await calculate_hotspots(3, source(), { ...velocity_options, batch_size })
+    const result = await compute_hotspots(3, source(), { ...velocity_options, batch_size })
     expect(Array.from(result.population)).toEqual([8, 8])
     expect(Array.from(result.energy)).toEqual([8 * 28 * conversion, 8 * 28 * conversion * 4])
     expect(hotspot_mean(result, `energy`)).toBe(28 * conversion * 2.5)
@@ -184,8 +184,8 @@ describe(`spatial kinetic hotspots`, () => {
     `removes %s without subtracting large raw energies`,
     async (motion) => {
       const options = { ...velocity_options, motion }
-      const expected = await calculate_hotspots(3, source(8), options)
-      const actual = await calculate_hotspots(3, source(8, [0, 1, 2], 2 ** 30), options)
+      const expected = await compute_hotspots(3, source(8), options)
+      const actual = await compute_hotspots(3, source(8, [0, 1, 2], 2 ** 30), options)
       const errors = actual.energy.map((value, idx) => Math.abs(value - expected.energy[idx]))
       const max_abs = Math.max(...errors)
       const max_rel = Math.max(...errors.map((value, idx) => value / expected.energy[idx]))
@@ -211,7 +211,7 @@ describe(`spatial kinetic hotspots`, () => {
       expect(result.population).toEqual(new Float64Array(2))
       expect(hotspot_values(result, `energy`).every(Number.isNaN)).toBe(true)
     })
-    const result = await calculate_hotspots(3, read, {
+    const result = await compute_hotspots(3, read, {
       ...energy_options,
       selection_key: `mobile`,
       preview_frame: 1,
@@ -224,7 +224,7 @@ describe(`spatial kinetic hotspots`, () => {
     expect(hotspot_mean(result, `energy`)).toBe(2.2)
     expect(Array.from(result.occupied_frames)).toEqual([2, 2])
     await expect(
-      calculate_hotspots(3, read, { ...result.options, start_frame: 1, end_frame: 2 }),
+      compute_hotspots(3, read, { ...result.options, start_frame: 1, end_frame: 2 }),
     ).rejects.toThrow(`No selected atoms lie inside the hotspot grid`)
   })
 
@@ -248,7 +248,7 @@ describe(`spatial kinetic hotspots`, () => {
       cell: grid.cell,
       pbc: grid.pbc,
     })
-    const result = await calculate_hotspots(1, read, { ...velocity_options, motion: `local` })
+    const result = await compute_hotspots(1, read, { ...velocity_options, motion: `local` })
     // The populated bin has residuals [-0.5, 0.5, -0.5, 0.5], with squared sum 1.
     expect(result.energy[0]).toBe(0)
     expect(Math.abs(result.energy[1] - conversion)).toBeLessThanOrEqual(
@@ -257,7 +257,7 @@ describe(`spatial kinetic hotspots`, () => {
   })
 
   it(`masks underpopulated cells and converts explicit degrees of freedom`, async () => {
-    const result = await calculate_hotspots(1, source(), {
+    const result = await compute_hotspots(1, source(), {
       ...velocity_options,
       dof_per_atom: 2,
     })
@@ -284,7 +284,7 @@ describe(`spatial kinetic hotspots`, () => {
     [{ ...velocity_options, selection_key: `mobile` }, /Missing or invalid selection/],
   ] as const)(`rejects invalid options %j`, async (options, message) => {
     await expect(
-      calculate_hotspots(3, source(), { grid, ...options } as HotspotRequest),
+      compute_hotspots(3, source(), { grid, ...options } as HotspotRequest),
     ).rejects.toThrow(message)
   })
 
@@ -304,7 +304,7 @@ describe(`spatial kinetic hotspots`, () => {
 
   it.each([100_000, 1_000_000])(`processes %s atoms with bounded batches`, async (n_atoms) => {
     const read = vi.fn(source(n_atoms))
-    const result = await calculate_hotspots(3, read, velocity_options)
+    const result = await compute_hotspots(3, read, velocity_options)
     expect(result.population[0] + result.population[1]).toBe(n_atoms * 2)
     expect(read.mock.calls.every(([options]) => (options.count ?? 0) <= 65_536)).toBe(true)
     expect(result.reserved_buffer_bytes).toBeLessThan(32 * 1024 ** 2)
@@ -315,7 +315,7 @@ describe(`spatial kinetic hotspots`, () => {
     const controller = new AbortController()
     const read = vi.fn(source(100_000))
     await expect(
-      calculate_hotspots(3, read, {
+      compute_hotspots(3, read, {
         ...velocity_options,
         signal: controller.signal,
         on_progress: () => controller.abort(),
@@ -334,7 +334,7 @@ describe(`spatial kinetic hotspots`, () => {
         return batch
       }
       await expect(
-        calculate_hotspots(3, read, { ...velocity_options, selection_key: `mobile` }),
+        compute_hotspots(3, read, { ...velocity_options, selection_key: `mobile` }),
       ).rejects.toThrow(`Invalid coordinates or atom count at frame 1, atom 1`)
     },
   )
@@ -345,7 +345,7 @@ describe(`spatial kinetic hotspots`, () => {
       velocities: new Float64Array(24).fill(1e200),
     })
     await expect(
-      calculate_hotspots(1, read, { grid, velocity_unit: `m/s`, mass_unit: `kg` }),
+      compute_hotspots(1, read, { grid, velocity_unit: `m/s`, mass_unit: `kg` }),
     ).rejects.toThrow(`accumulation overflow at frame 1, bin 1;`)
   })
 
@@ -361,8 +361,8 @@ describe(`spatial kinetic hotspots`, () => {
       origin: [0, 0, 0],
       pbc: [true, false, false],
     })
-    const fixed = await calculate_hotspots(2, read, energy_options)
-    const following = await calculate_hotspots(2, read, {
+    const fixed = await compute_hotspots(2, read, energy_options)
+    const following = await compute_hotspots(2, read, {
       ...energy_options,
       coordinates: `cell`,
     })
@@ -377,10 +377,8 @@ describe(`spatial kinetic hotspots`, () => {
     async (async_error) => {
       const frames = [0, 1, 2].map((step) => {
         const frame = create_trajectory_frame(
-          [
-            [0.5, 0.5, 0.5],
-            [1.5, 0.5, 0.5],
-          ],
+          // oxfmt-ignore
+          [[0.5, 0.5, 0.5], [1.5, 0.5, 0.5]],
           [`Si`, `Si`],
           grid.cell,
           grid.pbc,
@@ -530,7 +528,7 @@ describe(`spatial kinetic hotspots`, () => {
     })
     const periodic = { ...grid, pbc: [true, false, false] } as const
     await expect(
-      calculate_hotspots(2, read, { ...velocity_options, grid: periodic }),
+      compute_hotspots(2, read, { ...velocity_options, grid: periodic }),
     ).rejects.toThrow(`unchanged cell`)
   })
 
@@ -593,9 +591,9 @@ describe(`spatial kinetic hotspots`, () => {
       energies: new Float64Array(8).fill(1),
     })
     const options = { ...energy_options, energy_reference: `COM removed` }
-    const unknown = await calculate_hotspots(1, read, options)
+    const unknown = await compute_hotspots(1, read, options)
     expect(hotspot_mean(unknown, `temperature`)).toBeNaN()
-    const declared = await calculate_hotspots(1, read, { ...options, dof_per_atom: 1.5 })
+    const declared = await compute_hotspots(1, read, { ...options, dof_per_atom: 1.5 })
     const expected = 2 / (1.5 * BOLTZMANN_EV_PER_K)
     // Reference divides by kB*DOF; reducer divides by DOF then multiplies by 2/kB.
     expect(Math.abs(hotspot_mean(declared, `temperature`) - expected)).toBeLessThanOrEqual(

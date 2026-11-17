@@ -7,6 +7,7 @@
   import { format_num } from 'svelte-widgets/format'
   import { SHORTCUTS } from '#lib/shortcuts.js'
   import { numeric_sites, snapshot_topologies } from './site'
+  import { site_adp } from './thermal-ellipsoids'
   import { element_from_atomic_number } from '#lib/element/helpers.js'
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
   import { resolve_cell_vectors, type StructureSettings } from './settings'
@@ -71,7 +72,8 @@
   } from '#lib/structure/atom-properties.js'
   import type { DisplacementSummary } from '#lib/structure/measure.js'
   import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
-  import { get_majority_element } from '#lib/structure/bonding.js'
+  import { get_majority_element, read_pair_cutoffs } from '#lib/structure/bonding.js'
+  import { element_by_symbol } from '#lib/element/data.js'
   import { is_valid_supercell_input } from '#lib/structure/supercell.js'
   import {
     has_lattice_matrix,
@@ -149,8 +151,7 @@
     trajectory_lines_result?: TrajectoryLinesStats | null
     show_trajectory_lines?: boolean
     // Whether a host run's own trail (e.g. a relaxation's) shows; null without one. Its toggle
-    // shows or hides that run's trail, never the saved trail setting, and the stride, length,
-    // color and boundary options, which do nothing for it, stay hidden.
+    // never touches the saved trail setting, and the trail options that don't apply stay hidden.
     host_trail_shown?: boolean | null
     on_reset_camera?: () => void // undefined while camera at home (hides button)
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
@@ -341,11 +342,10 @@
   }
 
   // === Schema-driven rows ===
-  // Every uniform control is a Row: the schema entry's value type picks the widget (enum →
-  // select, boolean → checkbox, number → slider + number input, string → color swatch).
-  // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere (a
-  // top-level bindable such as show_image_atoms). `pair` adds a dependent color swatch beside
-  // the primary control. The paired setting's key identifies both controls for reset and description.
+  // Every uniform control is a Row whose schema value type picks the widget (enum → select,
+  // boolean → checkbox, number → slider + input, string → color swatch). Rows edit
+  // scene_props[key] unless `get`/`set` point elsewhere (e.g. show_image_atoms). `pair` adds a
+  // color swatch whose key names both controls for reset and description.
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
   type Row = {
     key: StructureSettingKey
@@ -430,9 +430,15 @@
       set: (value) => (image_atom_completion = value as ImageAtomCompletion),
     },
   ]
-  const atom_rows = [
+  const atom_rows: Row[] = [
     row(`atom_radius`, `Radius (Å)`, 0.05),
     row(`same_size_atoms`, `Same size`),
+    // only offered for structures carrying anisotropic displacement parameters (CIF)
+    { ...row(`show_thermal_ellipsoids`, `Thermal ellipsoids`), when: () => has_adps },
+    {
+      ...row(`ellipsoid_probability`, `Ellipsoid probability`, 0.05),
+      when: () => has_adps && Boolean(scene_value(`show_thermal_ellipsoids`)),
+    },
   ]
   const bond_rows: Row[] = [
     row(`bonding_strategy`, `Strategy`),
@@ -530,13 +536,14 @@
     background_color: SETTINGS_CONFIG.background_color,
     background_opacity: SETTINGS_CONFIG.background_opacity,
     atom_color_property_key: `Per-atom property mapped onto the selected color scale`,
+    bonding_options: `Bond length range [min, max] in Å per element pair (VESTA-style), both ends inclusive. Pairs not listed never bond.`,
     cell_type: `Transform the displayed structure to its original, conventional, or primitive cell`,
     multi_view: `Show synchronized structure views from multiple directions`,
     polyhedra_centers: `Elements used as centers when constructing coordination polyhedra`,
     polyhedra_color: `Color mode and optional uniform color for coordination polyhedra`,
     site_label_bg_hex: `Background color behind atom labels`,
     site_label_bg_opacity: `Opacity of the background behind atom labels`,
-    supercell_scaling: `Repeat the unit cell along each lattice direction. Examples: "2x2x2", "3x1x2", or "2"`,
+    supercell_scaling: `Repeat the unit cell along each lattice direction ("2x2x2", "3x1x2", "2"), or give a supercell matrix as 9 integers row by row, new lattice = M · lattice ("1 1 0, -1 1 0, 0 0 1")`,
     trajectory_line_elements: `Atomic species whose trajectory trails are displayed`,
     zone_axis: `Point the camera along a crystallographic direction or plane normal`,
   }
@@ -546,10 +553,9 @@
     return typeof metadata === `string` ? metadata : metadata.description
   }
   const setting_attachment_key = createAttachmentKey()
-  // Spread onto a row to tag it for per-row reset/search AND give it its description as a
-  // tooltip. Spread (not an attachment) so `data-key` is a real attribute from the first
-  // render, which is when SettingsSection's row enhancer takes its inventory. `tip` is only for
-  // the handful of rows whose advice depends on the structure (no lattice, no symmetry yet).
+  // Tags a row for per-row reset/search and gives it its description as a tooltip. A spread,
+  // so `data-key` exists on first render, when SettingsSection inventories rows. `tip`: advice
+  // that depends on the structure (no lattice, no symmetry yet).
   const setting_row = (key: SettingKey, tip?: string) => {
     const description = tip ?? description_for(key)
     return {
@@ -563,28 +569,26 @@
     }
   }
 
-  // A section's rows drive both its "changed" indicator and its reset, so a new setting can't
-  // be registered in one and forgotten in the other: plain rows reset scene_props[key] directly,
-  // rows with accessors or pairs reset through them. `extra_keys` covers bespoke controls
-  // (rotation sliders, label offset) that still live on scene_props; `accessors` the pseudo-keys
-  // whose rows drive several settings at once. Row and section resets share the same reference;
-  // a section copies its changed fields in one batch. "Reset all" under Preferences restores defaults.
+  // A section's rows drive both its "changed" indicator and its reset, so no setting is in one
+  // but not the other: plain rows reset scene_props[key], others through their accessors.
+  // `extra_keys`: bespoke controls on scene_props (rotation, label offset); `accessors`: pseudo-
+  // keys driving several settings. Row and section resets share one reference snapshot.
   type Accessor = { get: () => unknown; set: (value: unknown) => void }
-  const local = <T>(get: () => T, set: (value: T) => void): Accessor => ({
+  const local = <T>({ get, set }: { get: () => T; set: (value: T) => void }): Accessor => ({
     get,
     set: (value) => set(value as T),
   })
   // Mode and property resets restore the selected field and its saved scale type together. A
   // custom mode comes back with its own color_fn: no other mode switch can supply one.
-  const atom_coloring = local(
-    () => ({
+  const atom_coloring = local({
+    get: () => ({
       mode: atom_color_config.mode,
       property_key:
         `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
       color_fn: `color_fn` in atom_color_config ? atom_color_config.color_fn : undefined,
       scale_type: atom_color_config.scale_type,
     }),
-    ({ color_fn, ...coloring }) => {
+    set: ({ color_fn, ...coloring }) => {
       if (coloring.mode === `custom` && color_fn) {
         const { color_scale } = atom_color_config
         atom_color_config = {
@@ -595,14 +599,14 @@
         }
       } else set_atom_coloring(coloring)
     },
-  )
+  })
   // One row driving two scene props (a mode plus its color, say). Sharing a key means the row's
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
   const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
-    local(
-      () => own_fields(scene_props, [left, right]),
-      (reference) => restore_fields(scene_props, [left, right], reference),
-    )
+    local({
+      get: () => own_fields(scene_props, [left, right]),
+      set: (reference) => restore_fields(scene_props, [left, right], reference),
+    })
   const section_baselines = new Map<
     string,
     {
@@ -622,7 +626,7 @@
       if (current.pair) {
         accessors[current.pair.key] = scene_pair(current.key, current.pair.key)
       } else if (current.get && current.set) {
-        accessors[current.key] = local(current.get, current.set)
+        accessors[current.key] = { get: current.get, set: current.set }
       } else keys.push(current.key)
     }
     const read_values = () => {
@@ -692,9 +696,8 @@
     structure && `lattice` in structure ? structure.lattice.matrix : null,
   )
 
-  // Resolved eagerly rather than on click so a degenerate cell (or, in hkl mode, any
-  // singular one) disables the button and explains why, instead of throwing out of the
-  // handler. Derived, so the message clears itself as soon as the indices or mode change.
+  // Resolved eagerly, not on click, so a degenerate (or in hkl mode singular) cell disables the
+  // button and says why instead of throwing; the message clears when indices or mode change.
   let zone_axis = $derived.by(() => {
     // Molecules have no crystallographic directions; the button's own title already says so
     if (!lattice_matrix) return { direction: null, error: `` }
@@ -719,9 +722,8 @@
     if (zone_axis.direction) fly_to_request = zone_axis.direction
   }
 
-  // Unique majority elements in the structure, for polyhedra center toggles.
-  // Majority (not all) species so the list matches what compute_polyhedra can
-  // actually use as centers - minority occupancies of disordered sites never are.
+  // Unique majority elements, for polyhedra center toggles: compute_polyhedra never uses
+  // minority occupancies of disordered sites as centers.
   let previous_elements: { topology: object; elements: ElementSymbol[] } | undefined
   let structure_elements = $derived.by(() => {
     const topology = structure && snapshot_topologies.get(structure)
@@ -743,11 +745,68 @@
     return sorted
   })
 
-  // An element counts as an enabled polyhedra center if it isn't excluded and is
-  // either force-included or currently rendered. Using configured intent (not just
-  // the transient render state) keeps the checkbox reversible: a force-included
-  // element that the CN/geometry filters can't render still shows checked, so the
-  // user can toggle it back off.
+  // === Pair cutoffs: per-pair bond length ranges of the pair_cutoffs strategy ===
+  const pair_cutoffs = $derived(scene_props.bonding_options?.pair_cutoffs?.pair_cutoffs ?? {})
+  const set_pair_cutoffs = (entries: [string, readonly [number, number]][]): void => {
+    const by_strategy = scene_props.bonding_options ?? {}
+    const options = { ...by_strategy.pair_cutoffs, pair_cutoffs: Object.fromEntries(entries) }
+    update_scene({ bonding_options: { ...by_strategy, pair_cutoffs: options } })
+  }
+  const cutoff_elements = (key: string): [string, string] => {
+    const [elem_a = ``, elem_b = ``] = key.split(`-`).map((part) => part.trim())
+    return [elem_a, elem_b]
+  }
+  // a pair in canonical (sorted) order, as read_pair_cutoffs compares them
+  const sorted_pair = (elements: string[]): string => elements.toSorted().join(`-`)
+  // A rename onto a pair another row names is refused: read_pair_cutoffs rejects duplicates,
+  // and the scene would stop bonding over it
+  function rename_cutoff_pair(key: string, elements: string[]) {
+    const renamed = sorted_pair(elements)
+    const entries = Object.entries(pair_cutoffs)
+    const taken = entries.some(
+      ([other]) => other !== key && sorted_pair(cutoff_elements(other)) === renamed,
+    )
+    if (!taken)
+      set_pair_cutoffs(
+        entries.map(([other, range]) => [other === key ? renamed : other, range]),
+      )
+  }
+  // An edited bound keeps the range valid (0 <= min <= max, max > 0) by moving the other one,
+  // since the scene's validation rejects any other range; a blank or non-numeric entry is no edit
+  function set_cutoff_bound(key: string, bound: `min` | `max`, value: number) {
+    const range = pair_cutoffs[key]
+    if (!range || !Number.isFinite(value)) return
+    const next: [number, number] =
+      bound === `min`
+        ? [Math.max(0, value), Math.max(range[1], value)]
+        : [Math.min(range[0], Math.max(0, value)), Math.max(value, 0.01)]
+    set_pair_cutoffs(Object.entries({ ...pair_cutoffs, [key]: next }))
+  }
+  // The first element pair of the structure no row names yet, unlike pairs first
+  const next_cutoff_pair = $derived.by(() => {
+    const named = new Set(
+      Object.keys(pair_cutoffs).map((key) => sorted_pair(cutoff_elements(key))),
+    )
+    const free = structure_elements
+      .flatMap((elem_a, idx) =>
+        structure_elements.slice(idx).map((elem_b) => [elem_a, elem_b]),
+      )
+      .filter((pair) => !named.has(pair.join(`-`)))
+    return free.find(([elem_a, elem_b]) => elem_a !== elem_b) ?? free[0]
+  })
+  // New rows start at [0, 1.15x the covalent radii sum] (1 Å per unknown radius)
+  function add_cutoff_pair(pair: ElementSymbol[]) {
+    const radii_sum = pair.reduce(
+      (sum, element) => sum + (element_by_symbol.get(element)?.covalent_radius ?? 1),
+      0,
+    )
+    const range = [0, Math.round(115 * radii_sum) / 100] as const
+    set_pair_cutoffs([...Object.entries(pair_cutoffs), [pair.join(`-`), range]])
+  }
+
+  // An enabled polyhedra center is not excluded and is force-included or rendered. Configured
+  // intent keeps the checkbox reversible: a force-included element the CN/geometry filters
+  // can't render still shows checked, so the user can toggle it back off.
   const is_polyhedra_center_enabled = (element: string): boolean => {
     const excluded = scene_props.polyhedra_excluded_elements ?? []
     const included = scene_props.polyhedra_included_elements ?? []
@@ -757,9 +816,8 @@
     )
   }
 
-  // Toggle an element as polyhedra center. Enabled elements get excluded; disabled
-  // ones get force-included (which also bypasses the automatic hiding of spectator
-  // cations like Li/Na/Ba).
+  // Enabled centers get excluded; disabled ones force-included (which also bypasses the
+  // automatic hiding of spectator cations like Li/Na/Ba).
   function toggle_polyhedra_element(element: string) {
     const excluded = scene_props.polyhedra_excluded_elements ?? []
     const included = scene_props.polyhedra_included_elements ?? []
@@ -819,10 +877,8 @@
       : { hex_color, opacity: 1 }
   }
 
-  // Derived from scene_props rather than mirrored into local state: the two label colors are
-  // CSS strings the scene owns, and only the hex behind a fully transparent background has
-  // nowhere in that string to live.
-  // seeded once from the mount-time color, then owned here
+  // Label colors are CSS strings the scene owns, derived not mirrored: only the hex behind a
+  // fully transparent background lives here, seeded once from the mount-time color.
   let site_label_bg_hex = $state(
     untrack(() => parse_label_bg_color(scene_props.site_label_bg_color, `#000000`).hex_color),
   )
@@ -886,10 +942,10 @@
         const initial_present = Object.hasOwn(scene_props, `vector_configs`)
         return [
           `${prefix}:${category}`,
-          local(
-            () =>
+          local({
+            get: () =>
               keys.map((key) => own_fields(scene_props.vector_configs?.[key] ?? {}, fields)),
-            (references) => {
+            set: (references) => {
               const configs = { ...scene_props.vector_configs }
               for (const [key_idx, key] of keys.entries()) {
                 const initial_config = initial?.[key]
@@ -905,7 +961,7 @@
               else if (initial_present) update_scene({ vector_configs: initial })
               else Reflect.deleteProperty(scene_props, `vector_configs`)
             },
-          ),
+          }),
         ]
       }),
     )
@@ -918,6 +974,7 @@
   // Cell styling/tiling needs a lattice; image atoms and cell reduction need periodicity.
   let has_lattice = $derived(has_lattice_matrix(structure))
   let periodic = $derived(has_usable_lattice(structure) && is_periodic(structure))
+  let has_adps = $derived(Boolean(structure?.sites?.some((site) => site_adp(site))))
 
   // Applied on Enter/blur: per keystroke, the `3` of `3x1x1` started a 27-tile build
   let supercell_draft = $derived(supercell_scaling)
@@ -936,9 +993,8 @@
     })
   }
 
-  // Which top-level groups start expanded. Appearance is what people came for; camera and
-  // scene are set-once topics, so they stay folded until asked for. Conditional groups open
-  // when present — they only render at all because the data made them relevant.
+  // Appearance starts open; camera and scene are set-once topics, so stay folded. Conditional
+  // groups open when present, since they only render when the data makes them relevant.
   let open_groups = $state({ appearance: true, camera: false, scene: false })
   let has_overlays = $derived(
     Boolean(displacement_summary) || trajectory_position_stream !== undefined,
@@ -959,15 +1015,15 @@
       vector_accessors(`vector_config`, [`visible`, `color`]),
     ),
     atoms: scene_section(`Atoms`, atom_rows, {
-      color_scheme: local(
-        () => color_scheme,
-        (value) => (color_scheme = value),
-      ),
+      color_scheme: local({ get: () => color_scheme, set: (value) => (color_scheme = value) }),
       atom_color_mode: atom_coloring,
-      atom_color_scale: local(() => atom_color_config.color_scale, set_atom_color_scale),
+      atom_color_scale: local({
+        get: () => atom_color_config.color_scale,
+        set: set_atom_color_scale,
+      }),
       atom_color_property_key: atom_coloring,
     }),
-    bonds: scene_section(`Bonds`, bond_rows),
+    bonds: scene_section(`Bonds`, bond_rows, {}, [`bonding_options`]),
     polyhedra: scene_section(`Polyhedra`, polyhedra_rows, {
       polyhedra_centers: scene_pair(
         `polyhedra_excluded_elements`,
@@ -978,11 +1034,10 @@
       `Labels`,
       label_rows,
       {
-        // One CSS string drives two controls, so each half gets its own key: keying both
-        // rows off site_label_bg_color would offer a reset on the swatch for an edit the
-        // user made with the opacity slider.
-        site_label_bg_hex: local(get_label_bg_hex, set_label_bg_hex),
-        site_label_bg_opacity: local(get_label_bg_opacity, set_label_bg_opacity),
+        // One CSS string, two controls, a key each: else an opacity edit would offer a reset
+        // on the swatch
+        site_label_bg_hex: local({ get: get_label_bg_hex, set: set_label_bg_hex }),
+        site_label_bg_opacity: local({ get: get_label_bg_opacity, set: set_label_bg_opacity }),
       },
       [`site_label_offset`],
     ),
@@ -993,38 +1048,30 @@
       [`vector_color_scale`],
     ),
     cell: scene_section(`Cell`, cell_rows, {
-      supercell_scaling: local(
-        () => supercell_scaling,
-        (value) => (supercell_scaling = value),
-      ),
+      supercell_scaling: local({
+        get: () => supercell_scaling,
+        set: (value) => (supercell_scaling = value),
+      }),
       ...(periodic && {
-        cell_type: local(
-          () => cell_type,
-          (value) => (cell_type = value),
-        ),
+        cell_type: local({ get: () => cell_type, set: (value) => (cell_type = value) }),
       }),
     }),
     view: scene_section(
       `View`,
       view_rows,
-      {
-        multi_view: local(
-          () => multi_view,
-          (value) => (multi_view = value),
-        ),
-      },
+      { multi_view: local({ get: () => multi_view, set: (value) => (multi_view = value) }) },
       [`rotation`],
     ),
     pointer: scene_section(`Pointer sensitivity`, pointer_rows),
     background: scene_section(`Background`, [], {
-      background_color: local(
-        () => background_color,
-        (value) => (background_color = value),
-      ),
-      background_opacity: local(
-        () => background_opacity,
-        (value) => (background_opacity = value),
-      ),
+      background_color: local({
+        get: () => background_color,
+        set: (value) => (background_color = value),
+      }),
+      background_opacity: local({
+        get: () => background_opacity,
+        set: (value) => (background_opacity = value),
+      }),
     }),
     lighting: scene_section(`Lighting`, lighting_rows),
     displacement: scene_section(`Displacement Overlay`, displacement_rows),
@@ -1309,6 +1356,65 @@
       {#if scene_value(`show_bonds`) !== `never`}
         <SettingsSection title="Bonds" layout="grid" {...sections.bonds}>
           {@render setting_rows(bond_rows)}
+          {#if scene_value(`bonding_strategy`) === `pair_cutoffs`}
+            {@const problem = read_pair_cutoffs(pair_cutoffs)}
+            <div class="setting" {...setting_row(`bonding_options`)}>
+              <span>Pairs (Å)</span>
+              <div class="pair-cutoffs">
+                {#each Object.entries(pair_cutoffs) as [key, [min, max]] (key)}
+                  {@const [elem_a, elem_b] = cutoff_elements(key)}
+                  {@const choices = [...new Set([...structure_elements, elem_a, elem_b])]}
+                  <div>
+                    {#each [elem_a, elem_b] as element, end (end)}
+                      <select
+                        aria-label="{end ? `Second` : `First`} element of {key}"
+                        value={element}
+                        onchange={(event) =>
+                          rename_cutoff_pair(
+                            key,
+                            [elem_a, elem_b].with(end, event.currentTarget.value),
+                          )}
+                      >
+                        {#each choices as choice (choice)}
+                          <option value={choice}>{choice}</option>
+                        {/each}
+                      </select>
+                    {/each}
+                    {#each [[`min`, min], [`max`, max]] as const as [bound, value] (bound)}
+                      <input
+                        type="number"
+                        aria-label="{key} {bound} (Å)"
+                        min="0"
+                        step="0.05"
+                        {value}
+                        onchange={(event) =>
+                          set_cutoff_bound(key, bound, event.currentTarget.valueAsNumber)}
+                      />
+                    {/each}
+                    <button
+                      type="button"
+                      aria-label="Remove {key}"
+                      onclick={() =>
+                        set_pair_cutoffs(
+                          Object.entries(pair_cutoffs).filter(([other]) => other !== key),
+                        )}>×</button
+                    >
+                  </div>
+                {/each}
+                <button
+                  type="button"
+                  disabled={!next_cutoff_pair}
+                  onclick={() => next_cutoff_pair && add_cutoff_pair(next_cutoff_pair)}
+                  title={next_cutoff_pair
+                    ? `Add ${next_cutoff_pair.join(`-`)}`
+                    : `Every element pair has a row`}>Add pair</button
+                >
+                {#if typeof problem === `string`}
+                  <span class="setting-hint" role="alert">{problem}</span>
+                {/if}
+              </div>
+            </div>
+          {/if}
         </SettingsSection>
       {/if}
 
@@ -1805,6 +1911,22 @@
     > label:has(> span:first-child) {
       flex-direction: row-reverse;
       justify-content: flex-end;
+    }
+  }
+  .pair-cutoffs {
+    display: grid;
+    gap: 3pt;
+    min-width: 0;
+    justify-items: start;
+    > div {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(3.5em, auto)) repeat(2, minmax(0, 4.5em)) auto;
+      gap: 3pt;
+      align-items: center;
+      width: 100%;
+      > input {
+        min-width: 0;
+      }
     }
   }
   .chip-row {

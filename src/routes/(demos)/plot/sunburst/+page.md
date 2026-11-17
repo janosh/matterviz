@@ -343,7 +343,8 @@ Ids follow the `"system/number"` pattern. Hovering a grouped slice reports how m
 
 ```svelte example
 <script lang="ts">
-  import { spacegroup_sunburst_data, Sunburst, type Vec2 } from 'matterviz'
+  import { spacegroup_sunburst_data, Sunburst } from 'matterviz'
+  import type { Vec2 } from 'matterviz/math'
 
   let min_fraction = $state(0.02)
   let max_children = $state(0)

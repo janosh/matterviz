@@ -126,6 +126,10 @@
       "types": "./dist/heatmap-matrix/index.d.ts",
       "default": "./dist/heatmap-matrix/index.js"
     },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    },
     "./interface": {
       "types": "./dist/interface/index.d.ts",
       "default": "./dist/interface/index.js"
@@ -210,6 +214,10 @@
       "types": "./dist/settings.d.ts",
       "default": "./dist/settings.js"
     },
+    "./shortcuts": {
+      "types": "./dist/shortcuts.d.ts",
+      "default": "./dist/shortcuts.js"
+    },
     "./slab": {
       "types": "./dist/slab/index.d.ts",
       "default": "./dist/slab/index.js"
@@ -281,6 +289,10 @@
     "./vacf": {
       "types": "./dist/vacf/index.d.ts",
       "default": "./dist/vacf/index.js"
+    },
+    "./workers": {
+      "types": "./dist/workers.d.ts",
+      "default": "./dist/workers.js"
     },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",

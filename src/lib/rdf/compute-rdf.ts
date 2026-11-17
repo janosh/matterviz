@@ -1,7 +1,7 @@
 // Radial distribution function g(r) of a periodic structure: pair distances (periodic images
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
-import { calc_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
+import { compute_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { visit_neighbor_distances } from '#lib/structure/neighbor-list.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
@@ -38,7 +38,7 @@ function prepare_rdf(structure: AnyStructure, options: RdfOptions) {
   if (!has_usable_lattice(structure)) {
     throw new Error(`RDF calculation: ${lattice_unavailable_reason(structure, true)}`)
   }
-  const { volume } = calc_lattice_params(structure.lattice.matrix)
+  const { volume } = compute_lattice_params(structure.lattice.matrix)
   const bin_size = cutoff / n_bins
   // Exclude zero distances and the exact cutoff. Periodic self images remain included
   // (they are the whole signal of a 1-atom cell).
@@ -83,7 +83,7 @@ function normalize_histogram(
 
 // g(r) of one structure: the full RDF, or the partial g_ab(r) with center_species a and
 // neighbor_species b (either may be omitted to leave that end unfiltered).
-export function calculate_rdf(structure: AnyStructure, options: RdfOptions = {}): RdfPattern {
+export function compute_rdf(structure: AnyStructure, options: RdfOptions = {}): RdfPattern {
   const { center_species, neighbor_species } = options
   const prepared = prepare_rdf(structure, options)
   const center_weights = species_weights(structure.sites, center_species)
@@ -204,22 +204,22 @@ export function rdf_bin_site_index(
 // One structure's curves as RdfPlot draws them and the RDF workers compute them: the partial
 // g_ab(r) of every element pair, or the single all-atom g(r) with `mode: 'full'`
 export type RdfsOptions = PairRdfOptions & { mode?: `element_pairs` | `full` }
-export const calculate_rdfs = (
+export const compute_rdfs = (
   structure: AnyStructure,
   { mode, ...options }: RdfsOptions = {},
 ): RdfPattern[] =>
   mode === `full`
-    ? [calculate_rdf(structure, options)]
-    : calculate_all_pair_rdfs(structure, options)
+    ? [compute_rdf(structure, options)]
+    : compute_all_pair_rdfs(structure, options)
 
-// What the trajectory RDF worker computes per MD frame (calculate_all_pair_rdfs)
+// What the trajectory RDF worker computes per MD frame (compute_all_pair_rdfs)
 export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>
 
 export type PairRdfOptions = Omit<RdfOptions, `center_species` | `neighbor_species`>
 
 // Partial g_ab(r) for every unordered element pair, elements sorted alphabetically. Mixed
 // occupancy sites contribute to every element they carry. Each pattern shares one `r` array.
-export function calculate_all_pair_rdfs(
+export function compute_all_pair_rdfs(
   structure: AnyStructure,
   options: PairRdfOptions = {},
 ): RdfPattern[] {

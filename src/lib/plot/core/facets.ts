@@ -146,39 +146,30 @@ export function assign_facet_panels<Datum>(
   const occupied: boolean[][] = []
   const positioned_panels: PositionedFacetPanel<Datum>[] = []
 
-  const is_occupied = (row_idx: number, column_idx: number): boolean =>
-    occupied[row_idx]?.[column_idx] ?? false
+  // Grid cells a row_span x column_span panel covers when anchored at (row_idx, column_idx)
+  const span_cells = (
+    row_idx: number,
+    column_idx: number,
+    row_span: number,
+    column_span: number,
+  ): Vec2[] =>
+    Array.from({ length: row_span * column_span }, (_, cell_idx) => [
+      row_idx + Math.floor(cell_idx / column_span),
+      column_idx + (cell_idx % column_span),
+    ])
 
+  // Placement scans start at row/column >= 0, so only the far edges need bounds checks
   const fits = (
     row_idx: number,
     column_idx: number,
     row_span: number,
     column_span: number,
-  ): boolean => {
-    if (column_idx < 0 || column_idx + column_span > columns || row_idx < 0) return false
-    if (rows !== undefined && row_idx + row_span > rows) return false
-    for (let offset_row = 0; offset_row < row_span; offset_row++) {
-      for (let offset_column = 0; offset_column < column_span; offset_column++) {
-        if (is_occupied(row_idx + offset_row, column_idx + offset_column)) return false
-      }
-    }
-    return true
-  }
-
-  const occupy = (
-    row_idx: number,
-    column_idx: number,
-    row_span: number,
-    column_span: number,
-  ): void => {
-    for (let offset_row = 0; offset_row < row_span; offset_row++) {
-      occupied[row_idx + offset_row] ??= []
-      const occupied_row = occupied[row_idx + offset_row]
-      for (let offset_column = 0; offset_column < column_span; offset_column++) {
-        occupied_row[column_idx + offset_column] = true
-      }
-    }
-  }
+  ): boolean =>
+    column_idx + column_span <= columns &&
+    (rows === undefined || row_idx + row_span <= rows) &&
+    span_cells(row_idx, column_idx, row_span, column_span).every(
+      ([cell_row, cell_column]) => !occupied[cell_row]?.[cell_column],
+    )
 
   for (const [panel_idx, panel] of panels.entries()) {
     const row_span = panel.row_span ?? 1
@@ -228,7 +219,14 @@ export function assign_facet_panels<Datum>(
       )
     }
 
-    occupy(position.row, position.column, row_span, column_span)
+    for (const [cell_row, cell_column] of span_cells(
+      position.row,
+      position.column,
+      row_span,
+      column_span,
+    )) {
+      ;(occupied[cell_row] ??= [])[cell_column] = true
+    }
     positioned_panels.push({
       key: panel.key,
       data: panel.data,
@@ -441,6 +439,12 @@ export function compute_facet_geometry<Datum>(
     )
   }
 
+  // Right-side band starting `x` px in, spanning the panel grid's height
+  const side_band = (band: FacetSharedBand, x: number, band_width: number) => ({
+    band,
+    rect: { x, y: panel_grid.y, width: band_width, height: panel_grid.height },
+  })
+  const bands_x = panel_grid.width + shared_band_gap
   const resolved: ResolvedFacetGridGeometry = {
     panel_grid,
     panels: [],
@@ -450,30 +454,13 @@ export function compute_facet_geometry<Datum>(
         rect: { x: 0, y: 0, width, height: title_height },
       },
     }),
-    ...(has_legend && {
-      legend: {
-        band: `legend`,
-        rect: {
-          x: panel_grid.width + shared_band_gap,
-          y: panel_grid.y,
-          width: legend_width,
-          height: panel_grid.height,
-        },
-      },
-    }),
+    ...(has_legend && { legend: side_band(`legend`, bands_x, legend_width) }),
     ...(has_color_bar && {
-      color_bar: {
-        band: `color_bar`,
-        rect: {
-          x:
-            panel_grid.width +
-            shared_band_gap +
-            (has_legend ? legend_width + shared_band_gap : 0),
-          y: panel_grid.y,
-          width: color_bar_width,
-          height: panel_grid.height,
-        },
-      },
+      color_bar: side_band(
+        `color_bar`,
+        bands_x + (has_legend ? legend_width + shared_band_gap : 0),
+        color_bar_width,
+      ),
     }),
   }
   if (layout.panels.length === 0) return resolved

@@ -25,11 +25,8 @@ import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 // fcc primitive cell (a = 4 Å) with one atom: nearest neighbours at a/√2
-const FCC: Matrix3x3 = [
-  [0, 2, 2],
-  [2, 0, 2],
-  [2, 2, 0],
-]
+// oxfmt-ignore
+const FCC: Matrix3x3 = [[0, 2, 2], [2, 0, 2], [2, 2, 0]]
 const lone_cu = (lattice: Matrix3x3, pbc?: Pbc) =>
   make_crystal(lattice, [[`Cu`, [0, 0, 0]]], { pbc })
 const cu = lone_cu(FCC)
@@ -40,7 +37,14 @@ const nacl = make_crystal(4, [
   [`Cl`, [0.5, 0, 0]], [`Cl`, [0, 0.5, 0]], [`Cl`, [0, 0, 0.5]], [`Cl`, [0.5, 0.5, 0.5]],
 ])
 const dos = (energies: number[], densities: number[], extra: Partial<ElectronicDos> = {}) =>
-  ({ type: `electronic`, energies, densities, efermi: 1, ...extra }) satisfies ElectronicDos
+  ({
+    type: `electronic`,
+    energy_unit: `eV`,
+    energies,
+    densities,
+    efermi: 1,
+    ...extra,
+  }) satisfies ElectronicDos
 // two bands on a 2³ grid: band 0 spans 0..2 (crosses E_F = 1), band 1 lies at 3..4
 const band = (values: number[]): BandGridData[`energies`][number][number] => ({
   values: Float64Array.from(values),
@@ -52,6 +56,7 @@ const grid: BandGridData = {
   k_grid: [2, 2, 2],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 1,
+  energy_unit: `eV`,
   n_bands: 2,
   n_spins: 1,
   periodic: true,
@@ -106,6 +111,7 @@ describe(`validate_sweep`, () => {
 })
 
 describe(`computed descriptors`, () => {
+  const phonon_total = { type: `phonon` as const, frequencies: [0, 2], densities: [1, 1] }
   test(`volume per atom is the cell volume over the site count`, () => {
     expect(volume_per_atom(cu)).toBeCloseTo(16, 12) // fcc primitive cell: a³/4
     expect(volume_per_atom(nacl)).toBeCloseTo(8, 12) // 64 Å³ / 8 sites
@@ -145,9 +151,7 @@ describe(`computed descriptors`, () => {
   test(`dos_at_energy adds both spins (spin down stored either sign) and skips phonons`, () => {
     const up_down = dos([0, 1], [1, 1], { spin_down_densities: [-0.5, -0.5] })
     expect(dos_at_energy(up_down, 0.5)).toBe(1.5)
-    expect(
-      dos_at_energy({ type: `phonon`, frequencies: [0, 1], densities: [1, 1] }, 0.5),
-    ).toBeUndefined()
+    expect(dos_at_energy(phonon_total, 0.5)).toBeUndefined()
   })
 
   test(`E_F comes from the band grid first, then the DOS, then the band structure`, () => {
@@ -174,6 +178,7 @@ describe(`computed descriptors`, () => {
       ],
       k_lattice: IDENTITY_MATRIX3,
       fermi_energy: 0,
+      energy_unit: `eV` as const,
       reciprocal_cell: `wigner_seitz` as const,
       metadata: { n_bands: 2, n_surfaces: 3 },
     }
@@ -183,13 +188,7 @@ describe(`computed descriptors`, () => {
 
   // the frame's grid puts E_F at 1; the dos() helper's DOS default to efermi 1 too
   const fermi_dos: DescriptorSpec = { key: `n_ef`, label: `N(E_F)`, compute: `fermi_dos` }
-  const h_share: DescriptorSpec = {
-    key: `h`,
-    label: `H`,
-    compute: `fermi_dos_share`,
-    element: `H`,
-  }
-  const phonon_total = { type: `phonon` as const, frequencies: [0, 2], densities: [1, 1] }
+  const h_share = { key: `h`, label: `H`, compute: `fermi_dos_share`, element: `H` } as const
   const total = dos([0, 2], [2, 4])
   // oxfmt-ignore
   test.each<[string, Record<string, DosData>, DescriptorSpec, number | undefined]>([
@@ -235,9 +234,8 @@ test(`format_axis_value prefers the frame's label`, () => {
   const axis = { key: `pressure`, label: `Pressure`, unit: `GPa` }
   expect(format_axis_value(axis, { value: 150 })).toBe(`150 GPa`)
   expect(format_axis_value({ ...axis, unit: undefined }, { value: 3 })).toBe(`3`)
-  expect(format_axis_value(axis, { value: 150, label: `150 GPa (151.3 relaxed)` })).toBe(
-    `150 GPa (151.3 relaxed)`,
-  )
+  const label = `150 GPa (151.3 relaxed)`
+  expect(format_axis_value(axis, { value: 150, label })).toBe(label)
 })
 
 // the nearest frame of a series at 0, 50, 120: ties go to the lower frame
@@ -271,17 +269,13 @@ const lines_sweep = sweep_of([], {
     ...[`n_ef`, `wlog`, `w2`].map((key) => ({ key, label: key })),
   ],
 })
+// oxfmt-ignore
 test.each<[string, Sweep, string | undefined, string[] | string]>([
   [`no key`, lines_sweep, undefined, [`tc`, `w2`, `wlog`]],
   [`an overlay`, lines_sweep, `wlog`, [`wlog`]],
   [`a plain descriptor`, lines_sweep, `n_ef`, [`n_ef`]],
   [`no descriptors`, { ...lines_sweep, descriptors: undefined }, undefined, []],
-  [
-    `an unknown key`,
-    lines_sweep,
-    `tc_typo`,
-    `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef, wlog, w2)`,
-  ],
+  [`an unknown key`, lines_sweep, `tc_typo`, `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef, wlog, w2)`],
 ])(`descriptor_lines with %s`, (_desc, sweep, key, expected) => {
   const keys = () => descriptor_lines(sweep, key).map((spec) => spec.key)
   if (typeof expected === `string`) expect(keys).toThrow(expected)
@@ -295,6 +289,13 @@ describe(`normalize_sweep`, () => {
       { species: [{ element: `Cu`, occu: 1 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `Cu` },
     ],
   }
+  // JSON writes NaN (no value) as null
+  const mode_values = (values: (number | null)[][]) => ({
+    label: `λ_qν`,
+    qpoints: [[0, 0, 0]],
+    frequencies: [[0, 3]],
+    values,
+  })
   test(`parses JSON frames like single files and keeps scalars, status and descriptors`, () => {
     const sweep = normalize_sweep({
       axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
@@ -311,13 +312,7 @@ describe(`normalize_sweep`, () => {
               status: { unstable: true, note: `imaginary modes` },
               phonon: {
                 a2f: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } },
-                // JSON writes NaN (no value) as null
-                mode_values: {
-                  label: `λ_qν`,
-                  qpoints: [[0, 0, 0]],
-                  frequencies: [[0, 3]],
-                  values: [[null, 0.4]],
-                },
+                mode_values: mode_values([[null, 0.4]]),
               },
             },
             { value: 100, band_data: grid }, // typed grids pass through
@@ -337,12 +332,7 @@ describe(`normalize_sweep`, () => {
     expect(third.band_data).toBe(grid)
     expect(second.phonon).toEqual({
       a2f: { 'α²F': { type: `phonon`, frequencies: [0, 1], densities: [0, 0.5] } },
-      mode_values: {
-        label: `λ_qν`,
-        qpoints: [[0, 0, 0]],
-        frequencies: [[0, 3]],
-        values: [[NaN, 0.4]],
-      },
+      mode_values: mode_values([[NaN, 0.4]]),
     })
     expect(sweep.descriptors).toEqual([
       { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 20 },

@@ -1,4 +1,5 @@
-import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '#lib'
+import type { BondOrder, BondPair, ElementSymbol } from '#lib'
+import type { Vec3 } from '#lib/math.js'
 import type { AnyStructure, Crystal, StructureBond } from '#lib/structure/index.js'
 import type { BondEditState } from '#lib/structure/bonding.js'
 import { element_by_symbol } from '#lib/element/data.js'
@@ -12,7 +13,7 @@ import {
   materialize_frame,
   wrap_frame_coordinates,
 } from '#lib/trajectory/frame.js'
-import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import { compute_coordination_nums } from '#lib/coordination/compute-coordination.js'
 import * as math from '#lib/math.js'
 import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
 import { make_supercell } from '#lib/structure/supercell.js'
@@ -72,6 +73,12 @@ const md_frame = (
   pbc?: Pbc,
 ) => create_numeric_md_frame(positions, numbers, lattice, pbc, 0, {}, [])
 const NO_PBC: Pbc = [false, false, false]
+// Spies on a numeric structure's site columns, to assert that no Site object gets built
+const spy_site_reads = (structure: AnyStructure) => {
+  const sites = numeric_sites.get(structure)
+  if (!sites) throw new Error(`Missing numeric sites`)
+  return [vi.spyOn(sites, `materialize`), vi.spyOn(sites, `get`)]
+}
 const xyz_array = (structure: AnyStructure) =>
   Float64Array.from(structure.sites.flatMap(({ xyz }) => xyz))
 
@@ -85,44 +92,88 @@ const bonds_per_site = (bonds: BondPair[], n_sites: number): number[] => {
   return counts
 }
 
+// atoms on a line along x (at y = z = `offset`) of a cubic cell, one per element at the
+// matching x coordinate
+const x_chain = (elements: ElementSymbol[], x_coords: number[], lattice = 10, offset = 0) =>
+  make_struct(
+    elements.map((element, idx) => ({ element, xyz: [x_coords[idx], offset, offset] })),
+    lattice,
+  )
+
 // Fe-O bonded at 2 A, C 2 A further along x
-const make_fe_o_c = () =>
-  make_struct([
-    { xyz: [0, 0, 0], element: `Fe` },
-    { xyz: [2, 0, 0], element: `O` },
-    { xyz: [4, 0, 0], element: `C` },
-  ])
+const make_fe_o_c = () => x_chain([`Fe`, `O`, `C`], [0, 2, 4])
+
+// idx-th point of a grid filled x-fastest with n_x * n_y points per z layer
+const grid_point = (idx: number, n_x: number, n_y: number, spacing: number): Vec3 =>
+  math.scale<Vec3>(
+    [idx % n_x, Math.floor(idx / n_x) % n_y, Math.floor(idx / (n_x * n_y))],
+    spacing,
+  )
 
 // 4600 H atoms (10.6M pairs) on a 17 x 17 x 16 grid
 const hydrogen_grid = (spacing: number): [string, Vec3][] =>
-  Array.from({ length: 4600 }, (_, idx) => [
-    `H`,
-    math.scale<Vec3>([idx % 17, Math.floor(idx / 17) % 17, Math.floor(idx / 289)], spacing),
-  ])
+  Array.from({ length: 4600 }, (_, idx) => [`H`, grid_point(idx, 17, 17, spacing)])
+
+const unknown_option = (strategy: string, key: string, allowed: string[]) =>
+  `Unknown ${strategy} bonding option '${key}', expected one of ${allowed.join(`, `)}`
+
+const bond_key_of = (bond: BondPair): string =>
+  bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+
+type Contact = { center: number; partner: number; shift: Vec3; dist: number; delta: Vec3 }
+// Every (center, partner, integer image) within `cutoff` by direct enumeration of up to
+// `reach` images per periodic axis; a molecule's zero lattice vectors are never applied
+const brute_force = (
+  structure: AnyStructure,
+  cutoff: number,
+  pbc: readonly boolean[],
+  reach = 3,
+): Map<string, Contact> => {
+  const [vec_a, vec_b, vec_c] =
+    `lattice` in structure
+      ? structure.lattice.matrix
+      : Array.from({ length: 3 }, (): Vec3 => [0, 0, 0])
+  const range = (axis: number) =>
+    pbc[axis] ? Array.from({ length: 2 * reach + 1 }, (_, idx) => idx - reach) : [0]
+  const shifts = range(0).flatMap((shift_a) =>
+    range(1).flatMap((shift_b) =>
+      range(2).map((shift_c): Vec3 => [shift_a, shift_b, shift_c]),
+    ),
+  )
+  const found = new Map<string, Contact>()
+  for (const [center, site_a] of structure.sites.entries()) {
+    for (const [partner, site_b] of structure.sites.entries()) {
+      for (const shift of shifts) {
+        if (center === partner && shift.every((val) => val === 0)) continue
+        const delta = [0, 1, 2].map(
+          (axis) =>
+            site_b.xyz[axis] +
+            shift[0] * vec_a[axis] +
+            shift[1] * vec_b[axis] +
+            shift[2] * vec_c[axis] -
+            site_a.xyz[axis],
+        ) as Vec3
+        const dist = Math.hypot(...delta)
+        if (dist <= cutoff)
+          found.set(`${center}|${partner}|${shift}`, { center, partner, shift, dist, delta })
+      }
+    }
+  }
+  return found
+}
 
 describe(`Bonding Algorithms`, () => {
-  test(`electroneg_ratio returns valid BondPair format`, () => {
-    const structure = make_fe_o_c()
-    const bonds = bonding.electroneg_ratio(structure)
-    // Fe-O at 2.0 A (covalent sum 1.98) bonds; O-C at 2.0 A is 1.4x its covalent sum and Fe-C
-    // at 4.0 A is far out of range
-    expect(bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2])).toEqual([[0, 1]])
-    expect(bonds[0].bond_length).toBeCloseTo(2, 12)
-    // positions correspond to their site indices
-    expect(bonds[0].pos_1).toEqual(structure.sites[0].xyz)
-    expect(bonds[0].pos_2).toEqual(structure.sites[1].xyz)
+  // Fe-O at 2.0 A (covalent sum 1.98) bonds (length and positions: see the Fe-O row of the
+  // Electronegativity-Based Bonding table); O-C at 2.0 A beside it is 1.4x its covalent sum
+  // and Fe-C at 4.0 A is far out of range
+  test(`electroneg_ratio bonds Fe-O but neither longer pair of Fe-O-C`, () => {
+    expect(bonding.electroneg_ratio(make_fe_o_c()).map(bond_key_of)).toEqual([`0-1`])
   })
 
-  test(`electroneg_ratio generates unique bonds`, () => {
-    const bonds = bonding.electroneg_ratio(make_random_structure(50))
-    const bond_keys = bonds.map((bond) =>
-      bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2),
-    )
-    expect(new Set(bond_keys).size).toBe(bonds.length)
+  // duplicate-free bonds: see the spatial grid coverage tests
+  test(`electroneg_ratio keeps the lower site index first`, () => {
     // Cross-bin discovery must keep the lower site index, regardless of spatial order.
-    const chain = make_struct(
-      [7.5, 0, 5, 2.5].map((coord) => ({ element: `Cu`, xyz: [coord, 0, 0] })),
-    )
+    const chain = x_chain([`Cu`, `Cu`, `Cu`, `Cu`], [7.5, 0, 5, 2.5])
     const chain_bonds = bonding
       .electroneg_ratio(chain)
       .map(({ site_idx_1, site_idx_2, bond_length }) => [site_idx_1, site_idx_2, bond_length])
@@ -134,41 +185,32 @@ describe(`Bonding Algorithms`, () => {
     expect(bonding.electroneg_ratio(make_struct([]))).toHaveLength(0)
     expect(bonding.electroneg_ratio(make_struct([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
     // unknown element symbols have no radius data and are skipped rather than thrown on
-    expect(
-      bonding.electroneg_ratio(
-        make_struct([
-          // @ts-expect-error unknown element symbol
-          { xyz: [0, 0, 0], element: `Xx` },
-          // @ts-expect-error unknown element symbol
-          { xyz: [1, 0, 0], element: `Yy` },
-          // co-located: the min_bond_dist floor also covers pairs that cannot bond
-          { xyz: [1, 0, 0], element: `C` },
-        ]),
-      ),
-    ).toEqual([])
+    const unknown_elements = make_struct([
+      // @ts-expect-error unknown element symbol
+      { xyz: [0, 0, 0], element: `Xx` },
+      // @ts-expect-error unknown element symbol
+      { xyz: [1, 0, 0], element: `Yy` },
+      // co-located: the min_bond_dist floor also covers pairs that cannot bond
+      { xyz: [1, 0, 0], element: `C` },
+    ])
+    expect(bonding.electroneg_ratio(unknown_elements)).toEqual([])
   })
 })
 
 describe(`Explicit Bond Metadata`, () => {
-  test.each(Object.entries(bonding.BONDING_STRATEGIES))(
-    `%s maps structure.properties.bonds onto computed and missing bonds`,
-    (_name, strategy) => {
-      const structure = make_struct([
-        { xyz: [0, 0, 0], element: `C` },
-        { xyz: [1.4, 0, 0], element: `C` },
-        { xyz: [5, 0, 0], element: `O` },
-      ])
-      structure.properties = { bonds: [edge(0, 1, 2), edge(2, 0, 3)] }
-      const metadata = bonding.get_explicit_bond_metadata(structure)
-      expect(metadata).toEqual([edge(0, 1, 2), edge(0, 2, 3)])
+  const strategies = Object.entries(bonding.BONDING_STRATEGIES)
+  test.each(strategies)(`%s adds and orders declared bonds`, (_name, strategy) => {
+    const structure = x_chain([`C`, `C`, `O`], [0, 1.4, 5])
+    structure.properties = { bonds: [edge(0, 1, 2), edge(2, 0, 3)] }
+    const metadata = bonding.get_explicit_bond_metadata(structure)
+    expect(metadata).toEqual([edge(0, 1, 2), edge(0, 2, 3)])
 
-      const bonds = strategy(structure)
-      expect(find_bond(bonds, 0, 1)?.bond_order).toBe(2)
-      const explicit_only_bond = find_bond(bonds, 0, 2)
-      expect(explicit_only_bond).toMatchObject({ site_idx_1: 0, site_idx_2: 2, bond_order: 3 })
-      expect(explicit_only_bond?.bond_length).toBeCloseTo(5)
-    },
-  )
+    const bonds = strategy(structure)
+    expect(find_bond(bonds, 0, 1)?.bond_order).toBe(2)
+    const explicit_only_bond = find_bond(bonds, 0, 2)
+    expect(explicit_only_bond).toMatchObject({ site_idx_1: 0, site_idx_2: 2, bond_order: 3 })
+    expect(explicit_only_bond?.bond_length).toBeCloseTo(5)
+  })
 
   const invalid = (idx: number, reason: string) =>
     `Ignoring invalid explicit bond at index ${idx}: ${reason}`
@@ -196,9 +238,7 @@ describe(`Explicit Bond Metadata`, () => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
     onTestFinished(() => warn_spy.mockRestore())
     const atoms: [ElementSymbol, Vec3][] = [[`C`, [0, 0, 0]], [`C`, [1.4, 0, 0]]]
-    const structure = molecule
-      ? make_molecule(atoms)
-      : make_struct(atoms.map(([element, xyz]) => ({ element, xyz })))
+    const structure = molecule ? make_molecule(atoms) : x_chain([`C`, `C`], [0, 1.4])
     structure.properties = { bonds: bonds as StructureBond[] }
     expect(bonding.get_explicit_bond_metadata(structure)).toEqual(expected)
     expect(warn_spy.mock.calls.map(([message]) => message)).toEqual(warnings)
@@ -211,53 +251,32 @@ describe(`Explicit Bond Metadata`, () => {
   })
 
   const calculated_bonds = (bond_order?: BondOrder) => [
-    {
-      site_idx_1: 0,
-      site_idx_2: 1,
-      ...(bond_order === undefined ? {} : { bond_order }),
-    },
+    { site_idx_1: 0, site_idx_2: 1, ...(bond_order === undefined ? {} : { bond_order }) },
   ]
 
   const bond_0_1 = (order: BondOrder) => [edge(0, 1, order)]
 
   // oxfmt-ignore
   test.each<{
-    desc: string
-    base: StructureBond[]
-    added: StructureBond[]
-    removed: StructureBond[]
-    overrides: StructureBond[]
-    expected: StructureBond[]
-    visible?: boolean
+    desc: string; base: StructureBond[]; added: StructureBond[]; removed: StructureBond[]
+    overrides: StructureBond[]; expected: StructureBond[]; visible?: boolean
   }>([
     { desc: `lets overrides win over additions`, base: [], added: bond_0_1(1), removed: [], overrides: bond_0_1(3), expected: bond_0_1(3) },
     { desc: `lets removals win over stale additions and overrides`, base: bond_0_1(1), added: bond_0_1(1), removed: [edge(1, 0, 1)], overrides: bond_0_1(3), expected: [], visible: false },
     { desc: `normalizes reversed bond records`, base: [], added: [edge(3, 1, 2)], removed: [], overrides: [], expected: [edge(1, 3, 2)] },
   ])(`merge_bond_edits $desc`, ({ base, added, removed, overrides, expected, visible }) => {
     expect(bonding.merge_bond_edits(base, added, removed, overrides)).toEqual(expected)
-    if (visible !== undefined) {
-      expect(
-        bonding.has_visible_bond(
-          { added_bonds: added, removed_bonds: removed, bond_order_overrides: overrides },
-          base[0],
-          [],
-        ),
-      ).toBe(visible)
-    }
+    if (visible === undefined) return
+    const state = { added_bonds: added, removed_bonds: removed, bond_order_overrides: overrides }
+    expect(bonding.has_visible_bond(state, base[0], [])).toBe(visible)
   })
 
   // Each edit runs against a calculated 0-1 bond (order 1 unless calc_order says otherwise);
   // reversed targets check the helpers normalize site order. Expected state is a subset.
+  // oxfmt-ignore
   type EditCase = [
-    desc: string,
-    op: `add` | `delete` | `order`,
-    before: Partial<BondEditState>,
-    target: [number, number],
-    order: BondOrder,
-    calc_order: BondOrder | undefined,
-    action: string,
-    changed: boolean,
-    after: Partial<BondEditState>,
+    desc: string, op: `add` | `delete` | `order`, before: Partial<BondEditState>, target: [number, number],
+    order: BondOrder, calc_order: BondOrder | undefined, action: string, changed: boolean, after: Partial<BondEditState>,
   ]
   // oxfmt-ignore
   test.each<EditCase>([
@@ -305,43 +324,31 @@ describe(`Explicit Bond Metadata`, () => {
       { site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] as Vec3 },
       { site_idx_1: 0, site_idx_2: 1, cell_shift: [0, 1, 0] as Vec3 },
     ]
-    const result = bonding.delete_bond(
+    const reversed_target = { site_idx_1: 1, site_idx_2: 0, cell_shift: [-1, 0, 0] as Vec3 }
+    const { state } = bonding.delete_bond(
       empty_bond_edit_state(),
-      { site_idx_1: 1, site_idx_2: 0, cell_shift: [-1, 0, 0] },
+      reversed_target,
       shifted_bonds,
     )
-    expect(result.state.removed_bonds).toEqual([edge(0, 1, 1, [1, 0, 0])])
-    expect(
-      bonding.has_visible_bond(
-        result.state,
-        { site_idx_1: 0, site_idx_2: 1, cell_shift: [0, 1, 0] },
-        shifted_bonds,
-      ),
-    ).toBe(true)
+    expect(state.removed_bonds).toEqual([edge(0, 1, 1, [1, 0, 0])])
+    // the other periodic copy of the same site pair stays visible
+    expect(bonding.has_visible_bond(state, shifted_bonds[1], shifted_bonds)).toBe(true)
   })
 
   test(`canonicalizes image-atom bond edit targets to original sites with cell shifts`, () => {
     // O on the low-x face gets a face copy at x=10.05 beside C
-    const structure = make_crystal(10, [
-      [`C`, [0.95, 0.5, 0.5]],
-      [`O`, [0.005, 0.5, 0.5]],
-    ])
+    const structure = x_chain([`C`, `O`], [9.5, 0.05], 10, 5)
     const structure_with_images = get_pbc_image_sites(structure, image_options())
     const image_site_idx = structure_with_images.sites.findIndex(
       (site) => site.provenance?.image_of === 1 && site.abc[0] > 1,
     )
 
     expect(image_site_idx).toBeGreaterThan(1)
-    for (const [site_idx_1, site_idx_2] of [
-      [0, image_site_idx],
-      [image_site_idx, 0],
-    ]) {
+    for (const reversed of [false, true]) {
+      const [site_idx_1, site_idx_2] = reversed ? [image_site_idx, 0] : [0, image_site_idx]
       const target = { site_idx_1, site_idx_2 }
-      expect(bonding.canonicalize_bond_target(target, structure_with_images.sites)).toEqual({
-        site_idx_1: 0,
-        site_idx_2: 1,
-        cell_shift: [1, 0, 0],
-      })
+      const canonical = bonding.canonicalize_bond_target(target, structure_with_images.sites)
+      expect(canonical).toEqual({ site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] })
     }
   })
 
@@ -349,10 +356,7 @@ describe(`Explicit Bond Metadata`, () => {
   // draws each to its image: the +1 image of O sits at x=10.5, 1 A from C at x=9.5 (not the
   // 9 A in-cell distance)
   test(`parses explicit crystal bonds with cell shifts and draws them to their images`, () => {
-    const structure = make_crystal(10, [
-      [`C`, [0.95, 0.5, 0.5]],
-      [`O`, [0.05, 0.5, 0.5]],
-    ])
+    const structure = x_chain([`C`, `O`], [9.5, 0.5], 10, 5)
     const declared = [edge(0, 1, 2, [1, 0, 0]), edge(0, 1, 3, [-1, 0, 0])]
     structure.properties = { bonds: declared }
     expect(bonding.get_explicit_bond_metadata(structure)).toEqual(declared)
@@ -382,10 +386,7 @@ describe(`Explicit Bond Metadata`, () => {
   // With image atoms shown, the perceived bond ends on the O image: O is a corner of Si's
   // polyhedron, so its copy across the face is drawn (Si's copy beside O is not)
   test(`explicit periodic bonds tag the bonds drawn to PBC image atoms`, () => {
-    const structure = make_crystal(10, [
-      [`Si`, [0.9, 0.5, 0.5]],
-      [`O`, [0.06, 0.5, 0.5]],
-    ])
+    const structure = x_chain([`Si`, `O`], [9, 0.6], 10, 5)
     structure.properties = { bonds: [edge(0, 1, 2, [1, 0, 0])] }
     const imaged = get_pbc_image_sites(structure, image_options())
     const bonds = bonding.electroneg_ratio(imaged)
@@ -397,18 +398,6 @@ describe(`Explicit Bond Metadata`, () => {
 })
 
 describe(`explicit_only strategy`, () => {
-  // All 3 pairs are within covalent bonding range, so electroneg_ratio perceives bonds
-  // between them regardless of what the structure declares
-  const make_bonded_triangle = (bonds?: StructureBond[]): Crystal => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.4, 0, 0], element: `C` },
-      { xyz: [0, 1.2, 0], element: `O` },
-    ])
-    if (bonds) structure.properties = { bonds }
-    return structure
-  }
-
   // oxfmt-ignore
   test.each<[string, StructureBond[] | undefined, [number, number, BondOrder][]]>([
     [`no bonds property`, undefined, []],
@@ -417,21 +406,25 @@ describe(`explicit_only strategy`, () => {
     // reversed indices are normalized to ascending order, declaration order is kept
     [`declared bonds of mixed order`, [edge(2, 0), edge(0, 1, `aromatic`)], [[0, 2, 1], [0, 1, `aromatic`]]],
   ])(`returns exactly the bonds for %s`, (_desc, declared, expected) => {
-    const structure = make_bonded_triangle(declared)
+    // All 3 pairs are within covalent bonding range, so electroneg_ratio perceives bonds
+    // between them regardless of what the structure declares
+    const structure = make_struct([
+      { xyz: [0, 0, 0], element: `C` },
+      { xyz: [1.4, 0, 0], element: `C` },
+      { xyz: [0, 1.2, 0], element: `O` },
+    ])
+    if (declared) structure.properties = { bonds: declared }
     const bonds = bonding.explicit_only(structure)
     // no silent fallback to proximity perception (which would mask a missing or unparsed bond
     // block in PDB/MOL/MOL2/SDF): the undeclared C-O pair is perceived but never returned
     expect(find_bond(bonding.electroneg_ratio(structure), 0, 2)).toBeDefined()
 
-    expect(bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order])).toEqual(
-      expected,
-    )
-    for (const bond of bonds) {
-      expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
-      expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
-      expect(bond.bond_length).toBeCloseTo(
-        Math.hypot(...bond.pos_2.map((coord, idx) => coord - bond.pos_1[idx])),
-      )
+    const { sites } = structure
+    const triples = bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order])
+    expect(triples).toEqual(expected)
+    for (const { site_idx_1, site_idx_2, pos_1, pos_2, bond_length } of bonds) {
+      expect([pos_1, pos_2]).toEqual([site_idx_1, site_idx_2].map((idx) => sites[idx].xyz))
+      expect(bond_length).toBeCloseTo(math.euclidean_dist(pos_1, pos_2))
     }
   })
 })
@@ -440,32 +433,31 @@ describe(`Molecular Bonding Analysis`, () => {
   // Lower strength threshold to ensure all bond types (incl. C-C) are captured
   const loose_opts = { max_distance_ratio: 2, strength_threshold: 0.2 }
 
-  test.each([
+  test.each<[string, Crystal, number, number, number, typeof loose_opts | undefined]>([
     [`water`, test_molecules.water, 2, 0.8, 1.2, undefined],
     [`methane`, test_molecules.methane, 4, 0.9, 1.3, undefined],
     [`ethanol`, test_molecules.ethanol, 6, 0.8, 2.0, loose_opts],
-  ] as [string, Crystal, number, number, number, typeof loose_opts | undefined][])(
-    `%s has expected bonds`,
-    (_name, molecule, expected_bonds, min_dist, max_dist, options) => {
-      const bonds = bonding.electroneg_ratio(molecule, options)
-      expect(bonds.length).toBeGreaterThanOrEqual(expected_bonds)
-      for (const bond of bonds) {
-        expect(bond.bond_length).toBeGreaterThan(min_dist)
-        expect(bond.bond_length).toBeLessThan(max_dist)
-      }
-    },
-  )
+  ])(`%s has expected bonds`, (_name, molecule, n_bonds, min_dist, max_dist, options) => {
+    const bonds = bonding.electroneg_ratio(molecule, options)
+    expect(bonds.length).toBeGreaterThanOrEqual(n_bonds)
+    for (const bond of bonds) {
+      expect(bond.bond_length).toBeGreaterThan(min_dist)
+      expect(bond.bond_length).toBeLessThan(max_dist)
+    }
+  })
 
   test(`benzene has aromatic C-C bonds`, () => {
-    const bonds = bonding.electroneg_ratio(test_molecules.benzene, loose_opts)
-    expect(bonds.length).toBeGreaterThanOrEqual(6)
-    const cc_bonds = bonds.filter((bond) => {
-      const elem_1 = test_molecules.benzene.sites[bond.site_idx_1].species[0].element
-      const elem_2 = test_molecules.benzene.sites[bond.site_idx_2].species[0].element
-      return (
-        elem_1 === `C` && elem_2 === `C` && bond.bond_length > 1.3 && bond.bond_length < 1.6
+    const { benzene } = test_molecules
+    const is_carbon = (idx: number) => benzene.sites[idx].species[0].element === `C`
+    const cc_bonds = bonding
+      .electroneg_ratio(benzene, loose_opts)
+      .filter(
+        ({ site_idx_1, site_idx_2, bond_length }) =>
+          is_carbon(site_idx_1) &&
+          is_carbon(site_idx_2) &&
+          bond_length > 1.3 &&
+          bond_length < 1.6,
       )
-    })
     expect(cc_bonds.length).toBeGreaterThanOrEqual(6)
   })
 })
@@ -497,15 +489,12 @@ const hcp = (element: ElementSymbol) => sites_at(element, [[1 / 3, 2 / 3, 0.25],
 // Expand Wyckoff representatives through the 8 operations of Pnma (No. 62), deduping
 // the special positions (4a, 4c) that fewer ops map to distinct sites
 const pnma = (element: ElementSymbol, [coord_x, coord_y, coord_z]: Vec3) => {
+  // oxfmt-ignore
   const images: Vec3[] = [
-    [coord_x, coord_y, coord_z],
-    [-coord_x + 0.5, -coord_y, coord_z + 0.5],
-    [-coord_x, coord_y + 0.5, -coord_z],
-    [coord_x + 0.5, -coord_y + 0.5, -coord_z + 0.5],
-    [-coord_x, -coord_y, -coord_z],
-    [coord_x + 0.5, coord_y, -coord_z + 0.5],
-    [coord_x, -coord_y + 0.5, coord_z],
-    [-coord_x + 0.5, coord_y + 0.5, coord_z + 0.5],
+    [coord_x, coord_y, coord_z], [-coord_x + 0.5, -coord_y, coord_z + 0.5],
+    [-coord_x, coord_y + 0.5, -coord_z], [coord_x + 0.5, -coord_y + 0.5, -coord_z + 0.5],
+    [-coord_x, -coord_y, -coord_z], [coord_x + 0.5, coord_y, -coord_z + 0.5],
+    [coord_x, -coord_y + 0.5, coord_z], [-coord_x + 0.5, coord_y + 0.5, coord_z + 0.5],
   ]
   const unique = new Map<string, Vec3>()
   for (const image of images) {
@@ -564,13 +553,11 @@ const cn_benchmark: [string, number | math.Matrix3x3, SimpleSite[], Record<strin
   [`CsCl`, 4.119, [[`Cs`, [0, 0, 0]], [`Cl`, [0.5, 0.5, 0.5]]], { Cs: 8, Cl: 8 }],
   // Sr 12 / Ti 6 only hold if Sr-Ti does NOT bond; O sees 2 Ti and 4 Sr.
   [`SrTiO3 perovskite`, 3.905, [[`Sr`, [0.5, 0.5, 0.5]], [`Ti`, [0, 0, 0]], ...sites_at(`O`, [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]])], { Sr: 12, Ti: 6, O: 6 }],
-  // TiC and Ti2O are the pair that pins cation_cation_penalty's anion-shell gate. Both are
-  // Ti plus a nonmetal, and in both the Ti-Ti contact is SHORTER than Ti-nonmetal once
-  // normalized by covalent radii (0.956 vs 0.915, and 0.919 vs 0.923), so no
-  // distance-based rule separates them. What separates them is saturation: TiC's Ti has a
-  // complete octahedral C shell and its Ti-Ti at 3.06 A is a genuine second shell, while
-  // Ti2O's Ti has only 3 O and the hcp Ti framework at 2.95 A IS the structure. Applying
-  // the penalty unconditionally took Ti2O from CN 15 to 3 and erased that framework.
+  // TiC and Ti2O pin cation_cation_penalty's anion-shell gate. In both, Ti-Ti is SHORTER than
+  // Ti-nonmetal once normalized by covalent radii (0.956 vs 0.915, 0.919 vs 0.923), so no
+  // distance rule separates them; saturation does: TiC's Ti has a full octahedral C shell and
+  // its Ti-Ti at 3.06 A is a second shell, while Ti2O's Ti has only 3 O and its hcp Ti
+  // framework at 2.95 A IS the structure (an unconditional penalty took Ti2O from CN 15 to 3).
   [`TiC rocksalt`, 4.33, [...fcc(`Ti`), ...fcc(`C`, [[0.5, 0, 0]])], { Ti: 6, C: 6 }],
   // 12 Ti + 3 O around each Ti
   [`Ti2O suboxide`, hexagonal(2.9587, 4.7852), [...hcp(`Ti`), [`O`, [0, 0, 0]]], { Ti: 15, O: 6 }],
@@ -589,44 +576,39 @@ describe(`coordination number benchmark`, () => {
     // the infinite crystal's bond graph: every site has its full shell across the faces
     const periodic_bonds = bonding.electroneg_ratio(base, { pbc: base.lattice.pbc })
     const counts = bonds_per_site(periodic_bonds, base.sites.length)
-    const actual: Record<string, number[]> = {}
-    for (let idx = 0; idx < base.sites.length; idx++) {
-      const element = bonding.get_majority_element(base.sites[idx]) ?? `?`
-      ;(actual[element] ??= []).push(counts[idx])
-    }
-    for (const [element, cns] of Object.entries(actual)) {
-      if (!(element in expected)) continue
+    const elements = base.sites.map((site) => bonding.get_majority_element(site))
+    for (const [element, cn] of Object.entries(expected)) {
       // every atom of that element must hit the textbook CN, boundary copies included
-      expect(cns, element).toEqual(cns.map(() => expected[element]))
+      const cns = counts.filter((_, idx) => elements[idx] === element)
+      expect(cns, element).toEqual(cns.map(() => cn))
     }
   })
 })
 
 describe(`Electronegativity-Based Bonding`, () => {
-  test.each([
+  test.each<[ElementSymbol, ElementSymbol, number, number, number]>([
     [`Na`, `Cl`, 2.3, 2.5, 1], // ionic
     [`C`, `C`, 1.5, 2.5, 1], // covalent, same species
     [`C`, `O`, 1.5, 2.5, 1], // covalent, heteronuclear
     [`Na`, `Cl`, 10, 5, 0], // inside max_distance_ratio but far too weak
-  ] as [ElementSymbol, ElementSymbol, number, number, number][])(
-    `%s-%s at %s A with max_distance_ratio %s forms %s bonds`,
-    (elem_1, elem_2, dist, max_distance_ratio, n_bonds) => {
-      const structure = make_struct([
-        { xyz: [0, 0, 0], element: elem_1 },
-        { xyz: [dist, 0, 0], element: elem_2 },
-      ])
-      const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio })
-      expect(bonds).toHaveLength(n_bonds)
-      for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(dist, 1)
-    },
-  )
+    [`Fe`, `O`, 2, 2, 1], // 1.01x the covalent sum 1.98, at the default ratio
+  ])(`%s-%s at %s A (ratio %s): %s bonds`, (elem_1, elem_2, dist, max_ratio, n_bonds) => {
+    const structure = x_chain([elem_1, elem_2], [0, dist])
+    const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: max_ratio })
+    expect(bonds).toHaveLength(n_bonds)
+    for (const bond of bonds) {
+      expect(bond.bond_length).toBeCloseTo(dist, 12)
+      // positions correspond to their site indices
+      expect([bond.pos_1, bond.pos_2]).toEqual([0, 1].map((idx) => structure.sites[idx].xyz))
+    }
+  })
 
   test(`parameter sensitivity`, () => {
-    const structure = make_struct([
+    const fe_pair: { xyz: Vec3; element: ElementSymbol }[] = [
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2.5, 0, 0], element: `Fe` },
-      { xyz: [1.25, 2.2, 0], element: `O` },
-    ])
+    ]
+    const structure = make_struct([...fe_pair, { xyz: [1.25, 2.2, 0], element: `O` }])
     // One bridging O leaves both Fe far short of an anion shell, so the cation gate stays
     // out of the way and the Fe-Fe contact is kept alongside the two Fe-O bonds
     expect(bonding.electroneg_ratio(structure)).toHaveLength(3)
@@ -637,36 +619,223 @@ describe(`Electronegativity-Based Bonding`, () => {
     const o_shell: Vec3[] = [
       [1.25, 1.7, 0], [1.25, -1.7, 0], [1.25, 0, 1.7], [1.25, 0, -1.7], [-1.9, 0, 0], [4.4, 0, 0],
     ]
-    const saturated = make_struct([
-      { xyz: [0, 0, 0], element: `Fe` },
-      { xyz: [2.5, 0, 0], element: `Fe` },
-      ...o_shell.map((xyz) => ({ xyz, element: `O` as const })),
-    ])
-    const fe_fe = (bonds: BondPair[]) =>
-      bonds.filter((bond) => bond.site_idx_1 === 0 && bond.site_idx_2 === 1)
-    expect(fe_fe(bonding.electroneg_ratio(saturated))).toHaveLength(0)
+    const o_sites = o_shell.map((xyz) => ({ xyz, element: `O` as const }))
+    const saturated = make_struct([...fe_pair, ...o_sites])
+    expect(find_bond(bonding.electroneg_ratio(saturated), 0, 1)).toBeUndefined()
     // lifting the gate brings it back, confirming that is what removed it
-    expect(
-      fe_fe(bonding.electroneg_ratio(saturated, { cation_cation_penalty: 1 })),
-    ).toHaveLength(1)
+    const ungated = bonding.electroneg_ratio(saturated, { cation_cation_penalty: 1 })
+    expect(find_bond(ungated, 0, 1)).toBeDefined()
 
     // with no anion present the gate is inert and metal_metal_penalty governs again
-    const metal_only = make_struct([
-      { xyz: [0, 0, 0], element: `Fe` },
-      { xyz: [2.5, 0, 0], element: `Fe` },
-    ])
+    const metal_only = make_struct(fe_pair)
     expect(bonding.electroneg_ratio(metal_only, { metal_metal_penalty: 0.8 })).toHaveLength(1)
     expect(bonding.electroneg_ratio(metal_only, { metal_metal_penalty: 0.1 })).toHaveLength(0)
   })
 })
 
-test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
-  // Regression: image atoms used to get fewer bonds than their originals because
-  // closest-neighbor penalties were applied in processing order — an image inherited
-  // its original's `closest` distance and penalized bonds the original had accepted.
+describe(`pair_cutoffs strategy`, () => {
+  const cutoffs: Record<string, [number, number]> = {
+    'Si-O': [1.2, 2.4],
+    'O-O': [0.5, 3.1],
+    'Si-Si': [2.5, 4.2], // reaches past the shortest cell height of some cells
+  }
+  // Every in-range contact, each pair once (get_bond_key canonicalizes the direction and a
+  // self-image's shift sign)
+  const brute_force_bonds = (structure: Crystal, pbc: Pbc): Map<string, number> => {
+    const heights = math.cell_heights(structure.lattice.matrix)
+    const reach = Math.max(...heights.map((height) => Math.ceil(4.2 / height) + 1))
+    const element_of = (idx: number) => structure.sites[idx].species[0].element
+    const found = new Map<string, number>()
+    for (const { center, partner, shift, dist } of brute_force(
+      structure,
+      4.2,
+      pbc,
+      reach,
+    ).values()) {
+      const pair = [center, partner].map(element_of)
+      const range = cutoffs[pair.join(`-`)] ?? cutoffs[pair.toReversed().join(`-`)]
+      if (range && dist >= range[0] && dist <= range[1])
+        found.set(bonding.get_bond_key(center, partner, shift), dist)
+    }
+    return found
+  }
+  const rng = make_rng(17)
+  // a sheared cell, so a cubic-only image search would miss contacts
+  const random_crystal = (n_sites: number, elements: ElementSymbol[]): Crystal =>
+    make_crystal(
+      [
+        [4 + 2 * rng(), 0, 0],
+        [1.5 * rng() - 0.75, 4 + 2 * rng(), 0],
+        [1.5 * rng() - 0.75, 1.5 * rng() - 0.75, 4 + 2 * rng()],
+      ],
+      Array.from({ length: n_sites }, (_, idx) => ({
+        element: elements[idx % elements.length],
+        abc: [rng(), rng(), rng()] as Vec3,
+      })),
+    )
 
-  // Two copies of identical local geometry (a Na with a "Long" 3.0 A and a "Short" 2.0 A Cl
-  // neighbor): sites 0-2 are originals, 3-5 are images (image_of 0,1,2) placed 100 A away.
+  test.each([
+    [`fully periodic`, [true, true, true]],
+    [`a slab`, [true, true, false]],
+    [`finite`, [false, false, false]],
+  ] as [string, Pbc][])(`matches brute-force image enumeration (%s)`, (_label, pbc) => {
+    for (let trial = 0; trial < 12; trial++) {
+      const structure = random_crystal(2 + trial, [`Si`, `O`, `O`])
+      const expected = brute_force_bonds(structure, pbc)
+      const options = { pair_cutoffs: cutoffs, pbc }
+      const bonds = bonding.compute_bonds(structure, `pair_cutoffs`, options)
+      const actual = new Map(bonds.map((bond) => [bond_key_of(bond), bond.bond_length]))
+      expect(actual.size, `trial ${trial}: one bond per contact`).toBe(bonds.length)
+      expect([...actual.keys()].toSorted(), `trial ${trial}`).toEqual(
+        [...expected.keys()].toSorted(),
+      )
+      for (const [key, dist] of expected) expect(actual.get(key)).toBeCloseTo(dist, 10)
+    }
+  })
+
+  test(`either element order names a pair; unlisted pairs and absent elements never bond`, () => {
+    const structure = random_crystal(10, [`Si`, `O`])
+    const pbc: Pbc = [true, true, true]
+    const keys = (pair_cutoffs: Record<string, [number, number]>) =>
+      bonding
+        .compute_bonds(structure, `pair_cutoffs`, { pair_cutoffs, pbc })
+        .map(bond_key_of)
+        .toSorted()
+    expect(keys({ 'O-Si': [0, 3] })).toEqual(keys({ 'Si-O': [0, 3] }))
+    expect(keys({ 'Si-O': [0, 3] }).length).toBeGreaterThan(0)
+    // no Na in the structure, no Si-Si row: nothing to bond
+    expect(keys({ 'Na-Cl': [0, 5], 'O-O': [0, 0.01] })).toEqual([])
+    expect(keys({})).toEqual([])
+  })
+
+  const not_pair = (pair: string) => `'${pair}' is not an element pair like 'Si-O'`
+  const bad_range = `'Si-O' must be [min, max] in Å`
+  // oxfmt-ignore
+  test.each([
+    [`a non-element pair`, { 'Si-Xx': [0, 2] }, not_pair(`Si-Xx`)],
+    [`a missing separator`, { SiO: [0, 2] }, not_pair(`SiO`)],
+    [`three elements`, { 'Si-O-H': [0, 2] }, not_pair(`Si-O-H`)],
+    [`a pair named twice`, { 'Si-O': [0, 2], 'O-Si': [0, 3] }, `'Si-O' and 'O-Si' name the same pair`],
+    [`min above max`, { 'Si-O': [2, 1] }, bad_range],
+    [`a negative min`, { 'Si-O': [-1, 2] }, bad_range],
+    [`a zero max`, { 'Si-O': [0, 0] }, bad_range],
+    [`one bound`, { 'Si-O': [2] }, bad_range],
+    [`a string bound`, { 'Si-O': [0, `2`] }, bad_range],
+    [`a list instead of a map`, [[`Si`, `O`, 0, 2]], `expected an object mapping 'A-B' element pairs`],
+  ])(`rejects %s`, (_label, pair_cutoffs, problem) => {
+    const options = { pair_cutoffs } as unknown as bonding.BondingOptions<`pair_cutoffs`>
+    const run = () => bonding.compute_bonds(random_crystal(2, [`Si`, `O`]), `pair_cutoffs`, options)
+    expect(run).toThrow(`Invalid pair_cutoffs bonding option pair_cutoffs: ${problem}`)
+  })
+
+  test(`takes only its own options`, () => {
+    const options = { pair_cutoffs: {}, strength_threshold: 1 } as bonding.BondingOptions
+    const run = () =>
+      bonding.compute_bonds(random_crystal(2, [`Si`, `O`]), `pair_cutoffs`, options)
+    expect(run).toThrow(
+      unknown_option(`pair_cutoffs`, `strength_threshold`, [`pbc`, `pair_cutoffs`]),
+    )
+  })
+})
+
+describe(`bonding options`, () => {
+  const nacl = () => x_chain([`Na`, `Cl`], [0, 2.8])
+  // every electroneg_ratio tuning knob at its default
+  // oxfmt-ignore
+  const defaults = {
+    electronegativity_threshold: 1.7, max_distance_ratio: 2, min_bond_dist: 0.4, metal_metal_penalty: 0.7,
+    cation_cation_penalty: 0, metal_nonmetal_bonus: 1.5, similar_electronegativity_bonus: 1.2, strength_threshold: 0.3,
+  }
+  const electroneg_keys = [`pbc`, ...Object.keys(defaults)]
+  // Options cross the type boundary untyped (settings, workers, hosts): only the runtime
+  // check stands between a misspelled key and a silently ignored setting
+  type Untyped = Record<string, unknown>
+  const untyped = (options: Untyped) => options as bonding.BondingOptions
+  const search = new bonding.BondSearch()
+  const entry_points = {
+    get_bond_data: (opts: Untyped) =>
+      bonding.get_bond_data(nacl(), `electroneg_ratio`, untyped(opts)),
+    compute_bonds: (opts: Untyped) =>
+      bonding.compute_bonds(nacl(), `electroneg_ratio`, untyped(opts)),
+    electroneg_ratio: (opts: Untyped) => bonding.electroneg_ratio(nacl(), untyped(opts)),
+    'BondSearch.compute_columns': (opts: Untyped) =>
+      search.compute_columns(nacl(), untyped(opts)),
+    compute_coordination_nums: (opts: Untyped) =>
+      compute_coordination_nums(nacl(), { bonding_options: untyped(opts) }),
+  }
+
+  test.each(
+    Object.keys(entry_points).flatMap((entry) =>
+      [`max_distnce_ratio`, `strenght_threshold`, `strategy`].map((key) => [entry, key]),
+    ),
+  )(`%s throws on the misspelled or misplaced option %s`, (entry, key) => {
+    const run = entry_points[entry as keyof typeof entry_points]
+    expect(() => run({ [key]: 0.5 })).toThrow(
+      unknown_option(`electroneg_ratio`, key, electroneg_keys),
+    )
+  })
+
+  test(`typos are rejected at compile time too`, () => {
+    const typo = () =>
+      bonding.compute_bonds(nacl(), `electroneg_ratio`, {
+        // @ts-expect-error misspelled option
+        strenght_threshold: 9,
+      })
+    expect(typo).toThrow(`option 'strenght_threshold'`) // full message checked above
+    const misplaced = () =>
+      bonding.get_bond_data(nacl(), `explicit_only`, {
+        // @ts-expect-error electroneg_ratio tuning means nothing to explicit_only
+        strength_threshold: 9,
+      })
+    expect(misplaced).toThrow(unknown_option(`explicit_only`, `strength_threshold`, [`pbc`]))
+  })
+
+  // oxfmt-ignore
+  test.each([
+    [`a numeric string`, { strength_threshold: `0.3` }, `strength_threshold: expected a finite number, got "0.3"`],
+    [`NaN`, { max_distance_ratio: NaN }, `max_distance_ratio: expected a finite number`],
+    [`Infinity`, { min_bond_dist: Infinity }, `min_bond_dist: expected a finite number`],
+    [`a 2-axis pbc`, { pbc: [true, true] }, `pbc: expected three booleans [a, b, c], got [true,true]`],
+  ])(`electroneg_ratio rejects %s`, (_label, options, detail) => {
+    expect(() => bonding.compute_bonds(nacl(), `electroneg_ratio`, untyped(options))).toThrow(
+      `Invalid electroneg_ratio bonding option ${detail}`,
+    )
+  })
+
+  test.each([
+    [`no options`, {}, 1],
+    [`an unset option`, { strength_threshold: undefined }, 1],
+    [`pbc`, { pbc: [false, false, false] }, 1],
+    [`every tuning knob at its default`, defaults, 1],
+    [`a threshold no bond clears`, { strength_threshold: 99 }, 0],
+    [`a distance ratio below the contact`, { max_distance_ratio: 0.5 }, 0],
+  ])(`electroneg_ratio accepts %s`, (_label, options, n_bonds) => {
+    const bonds = bonding.compute_bonds(nacl(), `electroneg_ratio`, untyped(options))
+    expect(bonds).toHaveLength(n_bonds)
+  })
+
+  const explicit_options = [{}, { pbc: [true, true, true] as Pbc }, { pbc: undefined }]
+  test.each(explicit_options)(`explicit_only accepts %j and reads its bonds`, (options) => {
+    const structure = nacl()
+    structure.properties = { bonds: [edge(0, 1)] }
+    const bonds = bonding.compute_bonds(structure, `explicit_only`, options)
+    expect(bonds.map(bond_key_of)).toEqual([`0-1`])
+  })
+
+  test.each([
+    [`electroneg_ratio`, { strength_threshold: 99 }],
+    [`explicit_only`, {}],
+  ] as const)(`strategy_bonding_options picks the %s entry`, (strategy, expected) => {
+    const by_strategy = { electroneg_ratio: { strength_threshold: 99 } }
+    expect(bonding.strategy_bonding_options(by_strategy, strategy)).toEqual(expected)
+    expect(bonding.strategy_bonding_options(undefined, strategy)).toEqual({})
+  })
+})
+
+// Regression: closest-neighbor penalties applied in processing order gave images fewer bonds
+// than their originals. Two copies of a Na with a Long (3.0 A) and a Short (2.0 A) Cl
+// neighbor: sites 0-2 are originals, 3-5 their images placed 100 A away.
+test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   const structure = make_crystal(1000, [
     { element: `Na`, xyz: [0, 0, 0], properties: { orig_site_idx: 0 } },
     { element: `Cl`, xyz: [3, 0, 0], properties: { orig_site_idx: 1 } }, // Long (3.0 A)
@@ -678,9 +847,8 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   for (let idx = 3; idx < structure.sites.length; idx++)
     structure.sites[idx].provenance = { image_of: idx - 3 }
 
-  // Threshold tuned so the Long-bond penalty (applied once closest=2.0 is known) drops it below
-  // threshold. Pre-fix the original kept 2 bonds (it saw Long before Short set closest) while the
-  // image kept 1; the fix gathers all closest distances before penalizing, so both bond the same.
+  // Threshold tuned so the Long-bond penalty (once closest=2.0 is known) drops it. Pre-fix
+  // the original saw Long before Short set closest and kept 2 bonds, the image only 1.
   const bonds = bonding.electroneg_ratio(structure, { strength_threshold: 0.6 })
   const counts = bonds_per_site(bonds, structure.sites.length)
   expect(counts[3]).toBe(counts[0]) // image (idx 3) bonds identically to original (idx 0)
@@ -700,11 +868,8 @@ test(`bonding logic treats original and image atoms consistently`, () => {
   )
   expect(c1_img_idx).toBeGreaterThan(2)
 
-  const bonds = bonding.electroneg_ratio(with_images, {
-    min_bond_dist: 0.1,
-    max_distance_ratio: 5.0,
-    strength_threshold: 0.0001,
-  })
+  const options = { min_bond_dist: 0.1, max_distance_ratio: 5.0, strength_threshold: 0.0001 }
+  const bonds = bonding.electroneg_ratio(with_images, options)
   const counts = bonds_per_site(bonds, with_images.sites.length)
   expect(counts[c1_img_idx]).toBe(counts[0])
   const h_img_idx = with_images.sites.findIndex(
@@ -718,26 +883,24 @@ test(`bonding logic treats original and image atoms consistently`, () => {
 // (1.02 vs 0.92), so a raw-distance penalty would drop C-C. Na-Na (2.0 A, weak metal-metal)
 // is rejected by the threshold and must not set the "closest" distance that drops Na-Cl.
 // oxfmt-ignore
-test.each([
+test.each<[string, ElementSymbol[], Vec3[], { strength_threshold?: number }, boolean]>([
   [`keeps a longer C-C beside a shorter C-H`, [`C`, `H`, `C`], [[0, 0, 0], [1.09, 0, 0], [0, 1.4, 0]], {}, true],
   [`ignores a rejected weak Na-Na contact`, [`Na`, `Na`, `Cl`], [[0, 0, 0], [2, 0, 0], [0, 3, 0]], { strength_threshold: 0.4 }, false],
-] as [string, ElementSymbol[], Vec3[], { strength_threshold?: number }, boolean][])(
-  `electroneg_ratio closest-neighbor penalty %s`,
-  (_desc, elements, coords, options, keeps_0_1) => {
-    const structure = make_struct(elements.map((element, idx) => ({ element, xyz: coords[idx] })))
-    const bonds = bonding.electroneg_ratio(structure, options)
-    expect(Boolean(find_bond(bonds, 0, 1))).toBe(keeps_0_1)
-    expect(find_bond(bonds, 0, 2)).toBeDefined()
-  },
-)
+])(`electroneg_ratio closest-neighbor penalty %s`, (_desc, elements, coords, options, keeps_0_1) => {
+  const structure = make_struct(elements.map((element, idx) => ({ element, xyz: coords[idx] })))
+  const bonds = bonding.electroneg_ratio(structure, options)
+  expect(Boolean(find_bond(bonds, 0, 1))).toBe(keeps_0_1)
+  expect(find_bond(bonds, 0, 2)).toBeDefined()
+})
 
 describe(`remap_bonds_after_deletion`, () => {
   const shifted = (idx_1: number, idx_2: number) => edge(idx_1, idx_2, 2, [1, 0, 0])
   test.each([
     [`decrements indices past deleted site`, [edge(1, 2)], [0], [edge(0, 1)]],
     [`drops bonds touching deleted sites`, [edge(0, 2)], [2], []],
+    // only the 3-4 bond survives, shifted down by 2
     [
-      `mixed drop and shift`, // only the 3-4 bond survives, shifted down by 2
+      `mixed drop and shift`,
       [edge(0, 1), edge(1, 3), edge(3, 4), edge(2, 4)],
       [1, 2],
       [edge(1, 2)],
@@ -786,64 +949,53 @@ describe(`compute_bonds memo`, () => {
       expect(actual.length).toBeGreaterThan(100)
     }
   })
-  test.each([false, true])(
-    `rebuilds after cumulative diagonal motion exceeds the skin (numeric: %s)`,
-    (numeric) => {
-      const search = new bonding.BondSearch()
-      // Si-Si reaches 3.33 A; 3.9 A lies beyond it plus the 0.5 A skin
-      const separation = 3.9 / Math.sqrt(3)
-      for (const displacement of [0, 0.05, 0.1, 0.2]) {
-        const source = make_struct([
-          { element: `Si`, xyz: [displacement, displacement, displacement] },
-          { element: `Si`, xyz: Array(3).fill(separation - displacement) as Vec3 },
-        ])
-        const frame = md_frame(xyz_array(source), Uint8Array.of(14, 14), undefined, NO_PBC)
-        const structure = numeric ? new FrameView().update(frame).structure : source
-        const actual = search.compute_columns(structure)
-        const expected = pack_bonds(bonding.electroneg_ratio(structure))
-        expect(actual).toEqual(expected)
-        // The initial pair lies beyond the candidate skin. Both atoms approach by
-        // 0.2 A on each axis: below skin/2 per axis, but above it in total distance.
-        expect(actual.lengths).toHaveLength(displacement === 0.2 ? 1 : 0)
-        // two reuses paid for the list, so the rebuild keeps its skin
-        expect(Reflect.get(search, `candidates`)).toBeDefined()
-      }
-    },
-  )
-  test.each([`Si`, `Ge`, `C`, `O`, `Fe`] as const)(
-    `homogeneous %s keeps the complete chemistry result`,
-    (element) => {
-      const source = make_random_structure(100, 9)
-      for (const [idx, site] of source.sites.entries()) {
-        site.species = [{ element, occu: 1, oxidation_state: 0 }]
-        site.xyz = site.xyz.map((coord) => coord / 2) as Vec3
-        if (idx % 7 === 0) site.provenance = { unit_cell_idx: 0 }
-      }
-      // A disconnected second element forces the full role calculation, without changing
-      // any original contact. Compare several reach/strength boundaries, not just a lattice.
-      const mixed = structuredClone(source)
-      mixed.sites.push(
-        make_struct([{ element: element === `Fe` ? `O` : `Fe`, xyz: [1e6, 1e6, 1e6] }])
-          .sites[0],
-      )
-      for (const strength_threshold of [0, 0.1, 0.3, 0.8, 1.2]) {
-        const actual = sort_bonds(bonding.electroneg_ratio(source, { strength_threshold }))
-        const expected = sort_bonds(bonding.electroneg_ratio(mixed, { strength_threshold }))
-        expect(actual).toEqual(expected)
-      }
-    },
-  )
+  test.each([false, true])(`skin rebuild on diagonal drift (numeric: %s)`, (numeric) => {
+    const search = new bonding.BondSearch()
+    // Si-Si reaches 3.33 A; 3.9 A lies beyond it plus the 0.5 A skin
+    const separation = 3.9 / Math.sqrt(3)
+    for (const displacement of [0, 0.05, 0.1, 0.2]) {
+      const source = make_struct([
+        { element: `Si`, xyz: [displacement, displacement, displacement] },
+        { element: `Si`, xyz: Array(3).fill(separation - displacement) as Vec3 },
+      ])
+      const frame = md_frame(xyz_array(source), Uint8Array.of(14, 14), undefined, NO_PBC)
+      const structure = numeric ? new FrameView().update(frame).structure : source
+      const actual = search.compute_columns(structure)
+      const expected = pack_bonds(bonding.electroneg_ratio(structure))
+      expect(actual).toEqual(expected)
+      // The initial pair lies beyond the candidate skin. Both atoms approach by
+      // 0.2 A on each axis: below skin/2 per axis, but above it in total distance.
+      expect(actual.lengths).toHaveLength(displacement === 0.2 ? 1 : 0)
+      // two reuses paid for the list, so the rebuild keeps its skin
+      expect(Reflect.get(search, `candidates`)).toBeDefined()
+    }
+  })
+  const homogeneous_elements = [`Si`, `Ge`, `C`, `O`, `Fe`] as const
+  test.each(homogeneous_elements)(`homogeneous %s keeps full chemistry result`, (element) => {
+    const source = make_random_structure(100, 9)
+    for (const [idx, site] of source.sites.entries()) {
+      site.species = [{ element, occu: 1 }]
+      site.xyz = site.xyz.map((coord) => coord / 2) as Vec3
+      if (idx % 7 === 0) site.provenance = { unit_cell_idx: 0 }
+    }
+    // A disconnected second element forces the full role calculation, without changing
+    // any original contact. Compare several reach/strength boundaries, not just a lattice.
+    const mixed = structuredClone(source)
+    const other = element === `Fe` ? `O` : `Fe`
+    mixed.sites.push(...make_struct([{ element: other, xyz: [1e6, 1e6, 1e6] }]).sites)
+    for (const strength_threshold of [0, 0.1, 0.3, 0.8, 1.2]) {
+      const actual = sort_bonds(bonding.electroneg_ratio(source, { strength_threshold }))
+      const expected = sort_bonds(bonding.electroneg_ratio(mixed, { strength_threshold }))
+      expect(actual).toEqual(expected)
+    }
+  })
   // oxfmt-ignore
   test.each([
     [[40, 0, 0], [0, 40, 0], [0, 0, 40]],
     [[40, 0, 0], [8, 40, 0], [3, 4, 40]],
   ])(`keeps finite bonds exact across wrapping in cell %j`, (...matrix) => {
     const search = new bonding.BondSearch()
-    const source = make_crystal(40, [
-      { element: `Si`, xyz: [39.9, 0, 0] },
-      { element: `Si`, xyz: [1.8, 0, 0] },
-      { element: `Si`, xyz: [4, 0, 0] },
-    ])
+    const source = x_chain([`Si`, `Si`, `Si`], [39.9, 1.8, 4], 40)
     source.lattice.matrix = matrix as math.Matrix3x3
     for (const position of [39.9, 0.1, 0.2, 0.3, 39.8, 0.4, 1, 2, 3]) {
       const structure = structuredClone(source)
@@ -865,50 +1017,43 @@ describe(`compute_bonds memo`, () => {
       expect(search.compute_columns(changed_cell)).toEqual(expected)
     }
   })
-  test.each([7, 42, 123])(
-    `reuses geometric candidates without losing bonds (seed %i)`,
-    (seed) => {
-      const search = new bonding.BondSearch()
-      const source = make_random_structure(200, seed)
-      const rand = make_rng(seed)
-      for (let frame_idx = 0; frame_idx < 16; frame_idx++) {
-        const structure = structuredClone(source)
-        for (const site of structure.sites) {
-          for (let axis = 0; axis < 3; axis++)
-            site.xyz[axis] += ((rand() - 0.5) * frame_idx) / 10
-        }
-        if (frame_idx === 5) structure.sites[0].species[0].element = `Si`
-        if (frame_idx === 8) structure.sites.pop()
-        const options =
-          frame_idx === 10
-            ? { max_distance_ratio: 1.1 }
-            : frame_idx === 12
-              ? { pbc: [true, true, true] as [boolean, boolean, boolean] }
-              : {}
-        const expected = sort_bonds(bonding.electroneg_ratio(structure, options))
-        const columns = search.compute_columns(structure, options)
-        if (frame_idx === 0) {
-          expect(Reflect.get(search, `candidates`)).toEqual({
-            offsets: expect.any(Int32Array),
-            neighbors: expect.any(Int32Array),
-            distances: expect.any(Float64Array),
-          })
-          const allocate = vi.spyOn(globalThis, `Int32Array`)
-          try {
-            expect(search.compute_columns(structure, options)).toEqual(columns)
-            expect(allocate.mock.calls.map((args) => Reflect.get(args, 0))).not.toContain(
-              Math.max(256, structure.sites.length * 4),
-            )
-          } finally {
-            allocate.mockRestore()
-          }
-        }
-        const actual = sort_bonds(new BondFrame(structure, columns).materialize())
-        expect(actual).toEqual(expected)
+  test.each([7, 42, 123])(`reuses candidates without losing bonds (seed %i)`, (seed) => {
+    const search = new bonding.BondSearch()
+    const source = make_random_structure(200, seed)
+    const rand = make_rng(seed)
+    // new options in frames 10 and 12 must invalidate the reused candidates
+    const frame_options: Record<number, bonding.BondingOptions> = {
+      10: { max_distance_ratio: 1.1 },
+      12: { pbc: [true, true, true] },
+    }
+    for (let frame_idx = 0; frame_idx < 16; frame_idx++) {
+      const structure = structuredClone(source)
+      for (const site of structure.sites) {
+        for (let axis = 0; axis < 3; axis++)
+          site.xyz[axis] += ((rand() - 0.5) * frame_idx) / 10
       }
-      expect(search.compute_columns({ sites: [] })).toEqual(pack_bonds([]))
-    },
-  )
+      if (frame_idx === 5) structure.sites[0].species[0].element = `Si`
+      if (frame_idx === 8) structure.sites.pop()
+      const options = frame_options[frame_idx] ?? {}
+      const expected = sort_bonds(bonding.electroneg_ratio(structure, options))
+      const columns = search.compute_columns(structure, options)
+      if (frame_idx === 0) {
+        expect(Reflect.get(search, `candidates`)).toEqual({
+          offsets: expect.any(Int32Array),
+          neighbors: expect.any(Int32Array),
+          distances: expect.any(Float64Array),
+        })
+        const allocate = vi.spyOn(globalThis, `Int32Array`)
+        onTestFinished(() => allocate.mockRestore())
+        expect(search.compute_columns(structure, options)).toEqual(columns)
+        const allocated = allocate.mock.calls.map((args) => Reflect.get(args, 0))
+        expect(allocated).not.toContain(Math.max(256, structure.sites.length * 4))
+      }
+      const actual = sort_bonds(new BondFrame(structure, columns).materialize())
+      expect(actual).toEqual(expected)
+    }
+    expect(search.compute_columns({ sites: [] })).toEqual(pack_bonds([]))
+  })
 
   test.each(
     [false, true].flatMap((periodic) =>
@@ -924,22 +1069,18 @@ describe(`compute_bonds memo`, () => {
         { element: `Fe`, xyz: [0.1, 2, 0] },
       ])
       source.sites[2].properties.orig_unit_cell_idx = 0
-      source.properties = {
-        bonds: [
-          { site_idx_1: 0, site_idx_2: 1, order: 2 },
-          { site_idx_1: 0, site_idx_2: 2, order: 1.5 },
-          { site_idx_1: 1, site_idx_2: 3, order: 3 },
-          { site_idx_1: 0, site_idx_2: 2, order: `aromatic`, cell_shift: [-1, 0, 0] },
-          { site_idx_1: 0, site_idx_2: 0, order: 1, cell_shift: [1, 0, 0] },
-        ],
-      }
+      // oxfmt-ignore
+      const bonds = [
+        edge(0, 1, 2), edge(0, 2, 1.5), edge(1, 3, 3), edge(0, 2, `aromatic`, [-1, 0, 0]), edge(0, 0, 1, [1, 0, 0]),
+      ]
+      source.properties = { bonds }
       const { matrix, pbc } = source.lattice
       const frame = md_frame(xyz_array(source), Uint8Array.of(14, 8, 14, 26), matrix, pbc)
       frame.scalar_columns = { orig_unit_cell_idx: Float64Array.of(0, 1, 0, 3) }
       frame.structure.properties = source.properties
       const structure = numeric ? new FrameView().update(frame).structure : source
       const search = new bonding.BondSearch()
-      const options = { pbc: [periodic, periodic, periodic] as [boolean, boolean, boolean] }
+      const options = { pbc: [periodic, periodic, periodic] as Pbc }
       const first = search.compute_columns(structure, options)
       const retained = structuredClone(first)
       for (const strength_threshold of [0, 0.3, 0.8, 2]) {
@@ -953,48 +1094,42 @@ describe(`compute_bonds memo`, () => {
     },
   )
 
-  test.each([`none`, `unit`, `image`, `both`, `short`])(
-    `bonds numeric snapshots without materializing sites (%s source provenance properties)`,
-    (provenance) => {
-      const view = new FrameView()
-      const search = new bonding.BondSearch()
-      const reference_search = new bonding.BondSearch()
-      for (let step = 0; step < 4; step++) {
-        const frame = create_numeric_md_frame(
-          Float64Array.of(0.1 + step / 100, 0, 0, 1.8, 0, 0, 3.9, 0, 0, 0.1, 2, 0, 2, 2, 0),
-          Uint8Array.of(14, 8, 14, 26, 6),
-          cubic_matrix(30),
-          [true, true, true],
-          step,
-          {},
-          [`force`, `velocity`],
-        )
-        frame.scalar_columns = { charge: Float64Array.of(0, 0.5, 1, -1, 2) }
-        if (provenance === `unit` || provenance === `both` || provenance === `short`)
-          frame.scalar_columns.orig_unit_cell_idx =
-            provenance === `short`
-              ? Float64Array.of(step % 2, NaN)
-              : Float64Array.of(step % 2, 0.5, NaN, Infinity, -1)
-        if (provenance === `image` || provenance === `both` || provenance === `short`)
-          frame.scalar_columns.orig_site_idx = Float64Array.of(0, step % 2, 0, 1, 1)
-        const reference = materialize_frame(wrap_frame_coordinates(frame)).structure
-        const { structure } = view.update(frame)
-        const sites = numeric_sites.get(structure)
-        if (!sites) throw new Error(`Missing numeric sites`)
-        const materialize = vi.spyOn(sites, `materialize`)
-        const get = vi.spyOn(sites, `get`)
-        const actual = search.compute_columns(structure)
-        const expected = reference_search.compute_columns(reference)
-        expect(actual).toEqual(expected) // exact: toEqual tells -0 from 0 and 1-ulp changes
-        expect(materialize).not.toHaveBeenCalled()
-        expect(get).not.toHaveBeenCalled()
-      }
-      const invalid = md_frame(Float64Array.of(0, 0, 0), Uint8Array.of(0))
-      expect(() => search.compute_columns(view.update(invalid).structure)).toThrow(
-        `Invalid atomic number 0 at site 1`,
+  const modes = [`none`, `unit`, `image`, `both`, `short`]
+  test.each(modes)(`bonds unmaterialized numeric frames (%s provenance)`, (provenance) => {
+    const view = new FrameView()
+    const search = new bonding.BondSearch()
+    const reference_search = new bonding.BondSearch()
+    for (let step = 0; step < 4; step++) {
+      const frame = create_numeric_md_frame(
+        Float64Array.of(0.1 + step / 100, 0, 0, 1.8, 0, 0, 3.9, 0, 0, 0.1, 2, 0, 2, 2, 0),
+        Uint8Array.of(14, 8, 14, 26, 6),
+        cubic_matrix(30),
+        [true, true, true],
+        step,
+        {},
+        [`force`, `velocity`],
       )
-    },
-  )
+      frame.scalar_columns = { charge: Float64Array.of(0, 0.5, 1, -1, 2) }
+      if (provenance === `unit` || provenance === `both` || provenance === `short`)
+        frame.scalar_columns.orig_unit_cell_idx =
+          provenance === `short`
+            ? Float64Array.of(step % 2, NaN)
+            : Float64Array.of(step % 2, 0.5, NaN, Infinity, -1)
+      if (provenance === `image` || provenance === `both` || provenance === `short`)
+        frame.scalar_columns.orig_site_idx = Float64Array.of(0, step % 2, 0, 1, 1)
+      const reference = materialize_frame(wrap_frame_coordinates(frame)).structure
+      const { structure } = view.update(frame)
+      const site_reads = spy_site_reads(structure)
+      const actual = search.compute_columns(structure)
+      const expected = reference_search.compute_columns(reference)
+      expect(actual).toEqual(expected) // exact: toEqual tells -0 from 0 and 1-ulp changes
+      for (const spy of site_reads) expect(spy).not.toHaveBeenCalled()
+    }
+    const invalid = md_frame(Float64Array.of(0, 0, 0), Uint8Array.of(0))
+    expect(() => search.compute_columns(view.update(invalid).structure)).toThrow(
+      `Invalid atomic number 0 at site 1`,
+    )
+  })
 
   // Thermal jitter around fcc sites (atoms cross the periodic faces): slow frames reuse the
   // skinned list, fast ones make it fail before paying off and switch to plain searches,
@@ -1007,18 +1142,14 @@ describe(`compute_bonds memo`, () => {
     const rand = make_rng(11)
     const gauss = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand())
     const sigmas = [0.01, 0.01, 0.01, 0.01, 0.3, 0.3, 0.3, 0.01, 0.01, 0.01, 0.01]
+    const { matrix } = copper.lattice
     const skinned = sigmas.map((sigma) => {
+      const positions = Float64Array.from(sites, (coord) => coord + sigma * gauss())
+      const numbers = new Uint8Array(sites.length / 3).fill(29)
       const frame = wrap_frame_coordinates(
-        md_frame(
-          Float64Array.from(sites, (coord) => coord + sigma * gauss()),
-          new Uint8Array(sites.length / 3).fill(29),
-          copper.lattice.matrix,
-          [true, true, true],
-        ),
+        md_frame(positions, numbers, matrix, [true, true, true]),
       )
-      const structure = numeric
-        ? view.update(frame).structure
-        : materialize_frame(frame).structure
+      const structure = (numeric ? view.update(frame) : materialize_frame(frame)).structure
       const actual = new BondFrame(structure, search.compute_columns(structure)).materialize()
       expect(sort_bonds(actual)).toEqual(sort_bonds(bonding.electroneg_ratio(structure)))
       expect(actual.length).toBeGreaterThan(sites.length / 3)
@@ -1052,7 +1183,7 @@ describe(`compute_bonds memo`, () => {
     expect(() =>
       bonding.compute_bonds(structure, strategy as bonding.BondingStrategy),
     ).toThrow(
-      `Unknown bonding strategy '${strategy}', expected one of electroneg_ratio, explicit_only`,
+      `Unknown bonding strategy '${strategy}', expected one of electroneg_ratio, pair_cutoffs, explicit_only`,
     )
   })
 
@@ -1090,10 +1221,10 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
       expect(pos_1).toBe(rocksalt.sites[site_idx_1].xyz)
       // pos_2 = partner + cell_shift . lattice, and |pos_2 - pos_1| is the bond length
       const shift = cell_shift ?? [0, 0, 0]
-      const expected_pos_2 = rocksalt.sites[site_idx_2].xyz.map(
-        (coord, axis) => coord + shift[axis] * 5.64,
+      const partner = rocksalt.sites[site_idx_2].xyz
+      const pos_errs = pos_2.map((coord, axis) =>
+        Math.abs(coord - (partner[axis] + shift[axis] * 5.64)),
       )
-      const pos_errs = pos_2.map((coord, axis) => Math.abs(coord - expected_pos_2[axis]))
       expect(Math.max(...pos_errs)).toBeLessThan(1e-12)
       const len_errs = [bond_length - 2.82, math.euclidean_dist(pos_1, pos_2) - bond_length]
       max_len_err = Math.max(max_len_err, ...len_errs.map(Math.abs))
@@ -1120,8 +1251,7 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
     expect(bonding.electroneg_ratio(simple_cubic, { pbc: slab_pbc })).toHaveLength(2)
   })
 
-  test(`pbc bonds of a 2x2x2 supercell match the unit cell's per-site count`, () => {
-    // the unit cell's 6 per site is asserted in the first test of this block
+  test(`pbc bonds of a 2x2x2 supercell match the unit cell's 6 per site`, () => {
     const supercell = make_supercell(rocksalt, [2, 2, 2])
     const bonds = bonding.electroneg_ratio(supercell, { pbc: supercell.lattice.pbc })
     expect(bonds_per_site(bonds, 64)).toEqual(Array(64).fill(6))
@@ -1129,62 +1259,46 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
 })
 
 describe(`spatial grid coverage`, () => {
-  // Deterministic grid of atoms at bonding distance so repeated runs are comparable
-  const make_deterministic_structure = (n_atoms: number): Crystal => {
+  // C/N/O grid 1.5 A apart (covalent bonding range), so repeated runs are comparable
+  const make_grid = (n_atoms: number): Crystal => {
     const per_edge = Math.ceil(Math.cbrt(n_atoms))
-    const spacing = 1.5 // Å, within covalent bonding range for C/N/O
     return make_crystal(
-      per_edge * spacing + 1,
+      per_edge * 1.5 + 1,
       Array.from({ length: n_atoms }, (_, idx) => ({
         element: ([`C`, `N`, `O`] as const)[idx % 3],
-        xyz: [
-          (idx % per_edge) * spacing,
-          (Math.floor(idx / per_edge) % per_edge) * spacing,
-          Math.floor(idx / (per_edge * per_edge)) * spacing,
-        ] as Vec3,
+        xyz: grid_point(idx, per_edge, per_edge, 1.5),
       })),
     )
   }
 
+  // Interleaving two structures then recomputing the first would surface any state leaking
+  // between calls through module-level scratch
   test(`bonds are stable and duplicate-free across repeated + interleaved calls`, () => {
-    // Interleaving two structures then recomputing the first would surface any state
-    // leaking between calls through module-level scratch.
-    const struct_a = make_deterministic_structure(80)
-    const struct_b = make_deterministic_structure(120)
-    const bond_key = (bond: BondPair) => `${bond.site_idx_1}-${bond.site_idx_2}`
-
-    const first_a = bonding.electroneg_ratio(struct_a)
-    const first_b = bonding.electroneg_ratio(struct_b)
-    const second_a = bonding.electroneg_ratio(struct_a)
-
+    const struct_a = make_grid(80)
+    const random = make_random_structure(50)
+    const [first_a, first_b, second_a] = [struct_a, random, struct_a].map((struct) =>
+      bonding.electroneg_ratio(struct).map(bond_key_of),
+    )
     expect(first_a.length).toBeGreaterThan(0)
-    expect(second_a.map(bond_key)).toEqual(first_a.map(bond_key))
-    expect(new Set(first_a.map(bond_key)).size).toBe(first_a.length)
-    expect(new Set(first_b.map(bond_key)).size).toBe(first_b.length)
+    expect(second_a).toEqual(first_a)
+    for (const keys of [first_a, first_b]) expect(new Set(keys).size).toBe(keys.length)
   })
 
-  // neighbor_query's sweep visits only the 13 "forward" neighbor bins of each center,
-  // relying on the other 13 pairs being found from the opposite end — a wrong offset set
-  // would silently drop bonds in whole directions. The bin is one C-C reach wide (the
-  // covalent sum 1.52 A times max_distance_ratio 2), so partners 1.62 A away along each
-  // axis land in neighboring bins, and strength_threshold 0 keeps the distance model from
-  // dropping the diagonals.
+  // neighbor_query sweeps only the 13 "forward" neighbor bins of each center, finding the other
+  // 13 from the opposite end: a wrong offset set silently drops whole directions. A bin is one
+  // C-C reach wide (1.52 A covalent sum x max_distance_ratio 2), so partners 1.62 A away per
+  // axis land in neighboring bins; strength_threshold 0 keeps the diagonals.
   test(`grid scan finds partners in the own cell and all 26 neighbors`, () => {
     const center = (2 * 0.76 * 2) / 2
     const offset = center + 0.1
-    const partner_sites = [-1, 0, 1].flatMap((delta_x) =>
-      [-1, 0, 1].flatMap((delta_y) =>
-        [-1, 0, 1]
-          .filter((delta_z) => delta_x || delta_y || delta_z)
-          .map((delta_z) => ({
-            element: `C` as const,
-            xyz: [delta_x, delta_y, delta_z].map((delta) => center + delta * offset) as Vec3,
-          })),
-      ),
-    )
+    // 3x3x3 block of C, minus its middle, around the center atom
+    const partner_xyzs = Array.from(
+      { length: 27 },
+      (_, idx) => grid_point(idx, 3, 3, 1).map((step) => center + (step - 1) * offset) as Vec3,
+    ).filter((_, idx) => idx !== 13)
     const structure = make_crystal(500, [
       { element: `C`, xyz: [center, center, center] },
-      ...partner_sites,
+      ...partner_xyzs.map((xyz) => ({ element: `C` as const, xyz })),
       // 27th partner stays inside the center's own cell, which the scan reaches by a
       // different route (index filter rather than a neighbor offset)
       { element: `C`, xyz: [center + 1, center, center] },
@@ -1195,69 +1309,55 @@ describe(`spatial grid coverage`, () => {
       })),
     ])
 
-    const partners = bonding
-      .electroneg_ratio(structure, { strength_threshold: 0 })
-      .filter((bond) => bond.site_idx_1 === 0 || bond.site_idx_2 === 0)
-      .map((bond) => (bond.site_idx_1 === 0 ? bond.site_idx_2 : bond.site_idx_1))
-    expect(partners.toSorted((left, right) => left - right)).toEqual(
-      Array.from({ length: 27 }, (_, idx) => idx + 1),
-    )
+    // site 0 is the lowest index, so it is site_idx_1 of each of its bonds
+    const bonds = bonding.electroneg_ratio(structure, { strength_threshold: 0 })
+    const partners = bonds
+      .filter((bond) => bond.site_idx_1 === 0)
+      .map((bond) => bond.site_idx_2)
+    const expected = Array.from({ length: 27 }, (_, idx) => idx + 1)
+    expect(partners.toSorted((left, right) => left - right)).toEqual(expected)
   })
 })
 
 describe(`neighbor_query`, () => {
-  // Reference: every (center, partner, integer image) over a generous ±3 image range on the
-  // periodic axes, keyed so both lists can be compared as sets
-  const brute_force = (structure: AnyStructure, cutoff: number, pbc: readonly boolean[]) => {
-    // a molecule has no periodic axis, so its zero lattice vectors are never applied
-    const [vec_a, vec_b, vec_c] =
-      `lattice` in structure
-        ? structure.lattice.matrix
-        : Array.from({ length: 3 }, (): Vec3 => [0, 0, 0])
-    const range = (axis: number) => (pbc[axis] ? [-3, -2, -1, 0, 1, 2, 3] : [0])
+  // [center, slot] of every listed contact, center-major
+  const slots = (list: neighbor_list.NeighborList) =>
+    Array.from({ length: list.n_centers }, (_, center) =>
+      Array.from(
+        { length: list.offsets[center + 1] - list.offsets[center] },
+        (_slot, rank) => [center, list.offsets[center] + rank] as const,
+      ),
+    ).flat()
+  // contacts keyed like brute_force's, so both lists compare as sets
+  const as_map = (list: neighbor_list.NeighborList) => {
     const found = new Map<string, { dist: number; delta: Vec3 }>()
-    for (const [center, site_a] of structure.sites.entries()) {
-      for (const [partner, site_b] of structure.sites.entries()) {
-        for (const shift_a of range(0)) {
-          for (const shift_b of range(1)) {
-            for (const shift_c of range(2)) {
-              if (center === partner && shift_a === 0 && shift_b === 0 && shift_c === 0)
-                continue
-              const delta = [0, 1, 2].map(
-                (axis_x) =>
-                  site_b.xyz[axis_x] +
-                  shift_a * vec_a[axis_x] +
-                  shift_b * vec_b[axis_x] +
-                  shift_c * vec_c[axis_x] -
-                  site_a.xyz[axis_x],
-              ) as Vec3
-              const dist = Math.hypot(...delta)
-              if (dist <= cutoff)
-                found.set(`${center}|${partner}|${shift_a},${shift_b},${shift_c}`, {
-                  dist,
-                  delta,
-                })
-            }
-          }
-        }
-      }
+    for (const [center, slot] of slots(list)) {
+      const key = `${center}|${list.neighbors[slot]}|${list.images.subarray(slot * 3, slot * 3 + 3)}`
+      expect(found.has(key)).toBe(false) // each (partner, image) listed once per center
+      found.set(key, {
+        dist: list.distances[slot],
+        delta: Array.from(list.deltas.subarray(slot * 3, slot * 3 + 3)) as Vec3,
+      })
     }
     return found
   }
-  const as_map = (list: neighbor_list.NeighborList) => {
-    const found = new Map<string, { dist: number; delta: Vec3 }>()
-    for (let center = 0; center < list.n_centers; center++) {
-      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
-        const image = Array.from(list.images.subarray(slot * 3, slot * 3 + 3))
-        const key = `${center}|${list.neighbors[slot]}|${image.join(`,`)}`
-        expect(found.has(key)).toBe(false) // each (partner, image) listed once per center
-        found.set(key, {
-          dist: list.distances[slot],
-          delta: Array.from(list.deltas.subarray(slot * 3, slot * 3 + 3)) as Vec3,
-        })
-      }
-    }
-    return found
+  type QueryOptions = Parameters<typeof neighbor_list.visit_neighbor_distances>[1]
+  // every streamed [center, neighbor, distance] in visit order
+  const stream = (structure: AnyStructure, options: QueryOptions) => {
+    const contacts: number[][] = []
+    neighbor_list.visit_neighbor_distances(structure, options, (...contact) =>
+      contacts.push(contact),
+    )
+    return contacts
+  }
+  // distances streamed from site 1 to site 2 and back
+  const stream_pair = (structure: Crystal, options: QueryOptions) => {
+    const visits: number[][] = [[], []]
+    neighbor_list.visit_neighbor_distances(structure, options, (center, neighbor, dist) => {
+      if (center === 1 && neighbor === 2) visits[0].push(dist)
+      if (center === 2 && neighbor === 1) visits[1].push(dist)
+    })
+    return visits
   }
   // Skewed triclinic cell (angles far from 90°) with sites deliberately outside [0, 1)
   // oxfmt-ignore
@@ -1293,25 +1393,17 @@ describe(`neighbor_query`, () => {
   ] as const)(`matches brute force over ±3 images: %s`, (_label, structure, pbc, cutoff) => {
     const list = neighbor_list.neighbor_query(structure, { cutoff, pbc })
     // pbc off keeps source positions; the query supplies its own PBC
-    const frame = md_frame(
-      xyz_array(structure),
-      new Uint8Array(structure.sites.length).fill(14),
-      structure.lattice.matrix,
-      NO_PBC,
-    )
+    const silicon = new Uint8Array(structure.sites.length).fill(14)
+    const frame = md_frame(xyz_array(structure), silicon, structure.lattice.matrix, NO_PBC)
     const numeric = new FrameView().update(frame).structure
-    const columns = numeric_sites.get(numeric)
-    if (!columns) throw new Error(`Missing numeric sites`)
-    const materialize = vi.spyOn(columns, `materialize`)
-    const get = vi.spyOn(columns, `get`)
+    const site_reads = spy_site_reads(numeric)
     const original = frame.coordinates.slice()
-    for (const sorted of [false, true]) {
-      const expected = sorted
-        ? list
-        : neighbor_list.neighbor_query(structure, { cutoff, pbc, sorted })
-      const actual = neighbor_list.neighbor_query(numeric, { cutoff, pbc, sorted })
-      expect(actual).toEqual(expected)
-    }
+    expect(neighbor_list.neighbor_query(numeric, { cutoff, pbc })).toEqual(list)
+    const unsorted_options = { cutoff, pbc, sorted: false }
+    const unsorted = neighbor_list.neighbor_query(structure, unsorted_options)
+    expect(neighbor_list.neighbor_query(numeric, unsorted_options)).toEqual(unsorted)
+    // sorted: false keeps the same per-center contacts, only their slot order may differ
+    expect(as_map(unsorted)).toEqual(as_map(list))
     const actual = as_map(list)
     const expected = brute_force(structure, cutoff, pbc)
     expect([...actual.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
@@ -1321,39 +1413,26 @@ describe(`neighbor_query`, () => {
       const got = actual.get(key)
       if (!got) throw new Error(`missing ${key}`)
       max_dist_err = Math.max(max_dist_err, Math.abs(got.dist - dist))
-      for (let axis_x = 0; axis_x < 3; axis_x++) {
-        max_delta_err = Math.max(max_delta_err, Math.abs(got.delta[axis_x] - delta[axis_x]))
-      }
+      max_delta_err = Math.max(max_delta_err, math.euclidean_dist(got.delta, delta))
     }
     // wrapped-then-shifted vs direct arithmetic: a few ulps of ~10 A coordinates
     expect(max_dist_err).toBeLessThan(1e-11)
     expect(max_delta_err).toBeLessThan(1e-11)
     // per-center blocks are sorted ascending
-    for (let center = 0; center < list.n_centers; center++) {
-      for (let slot = list.offsets[center] + 1; slot < list.offsets[center + 1]; slot++) {
+    for (const [center, slot] of slots(list))
+      if (slot > list.offsets[center])
         expect(list.distances[slot]).toBeGreaterThanOrEqual(list.distances[slot - 1])
-      }
-    }
     expect(list.offsets[list.n_centers]).toBe(list.neighbors.length)
     expect(list.offsets[list.n_centers]).toBe(expected.size)
-    const streamed: [number, number, number][] = []
-    neighbor_list.visit_neighbor_distances(structure, { cutoff, pbc }, (center, neighbor, dist) => {
-      streamed.push([center, neighbor, dist])
-    })
-    const numeric_streamed: typeof streamed = []
-    neighbor_list.visit_neighbor_distances(numeric, { cutoff, pbc }, (center, neighbor, dist) => {
-      numeric_streamed.push([center, neighbor, dist])
-    })
-    expect(numeric_streamed).toEqual(streamed)
-    expect(materialize).not.toHaveBeenCalled()
-    expect(get).not.toHaveBeenCalled()
+    const streamed = stream(structure, { cutoff, pbc })
+    expect(stream(numeric, { cutoff, pbc })).toEqual(streamed)
+    for (const spy of site_reads) expect(spy).not.toHaveBeenCalled()
     expect(frame.coordinates).toStrictEqual(original)
-    const listed: typeof streamed = []
-    for (let center = 0; center < list.n_centers; center++) {
-      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
-        listed.push([center, list.neighbors[slot], list.distances[slot]])
-      }
-    }
+    const listed = slots(list).map(([center, slot]) => [
+      center,
+      list.neighbors[slot],
+      list.distances[slot],
+    ])
     const by_neighbor = (first: number[], second: number[]) =>
       first[0] - second[0] || first[1] - second[1] || first[2] - second[2]
     expect(streamed.toSorted(by_neighbor)).toEqual(listed.toSorted(by_neighbor))
@@ -1365,6 +1444,7 @@ describe(`neighbor_query`, () => {
       10,
       positions.map((xyz) => ({ element: `Si`, xyz })),
     )
+  // 12 x 12 points per x layer, 0.2 A apart
   const grid_positions = (count: number, origin = 0): Vec3[] =>
     Array.from({ length: count }, (_, idx): Vec3 => [
       origin + Math.floor(idx / 144) * 0.2,
@@ -1372,63 +1452,44 @@ describe(`neighbor_query`, () => {
       origin + (idx % 12) * 0.2,
     ])
 
-  const stream_distance_error = (
-    structure: Crystal,
-    cutoff: number,
-    expected: Map<number, number>,
-  ) => {
+  // Max |streamed - expected| distance among Si sites at `positions`, after checking that
+  // streaming visits exactly the expected contacts (keyed center * n_sites + neighbor), by
+  // default the listed ones
+  const stream_error = (positions: Vec3[], cutoff: number, given?: Map<number, number>) => {
+    const structure = si_cloud(positions)
+    const options = { cutoff, pbc: NO_PBC }
+    const list = neighbor_list.neighbor_query(structure, options)
+    const expected = given ?? new Map<number, number>()
+    if (!given) {
+      for (const [center, slot] of slots(list))
+        expected.set(center * positions.length + list.neighbors[slot], list.distances[slot])
+      expect(expected.size).toBe(list.neighbors.length)
+    }
     let max_error = 0
-    neighbor_list.visit_neighbor_distances(
-      structure,
-      { cutoff, pbc: [false, false, false] },
-      (center, neighbor, distance) => {
-        const key = center * structure.sites.length + neighbor
-        const reference = expected.get(key)
-        if (reference === undefined)
-          throw new Error(`Unexpected contact ${center}, ${neighbor}`)
-        max_error = Math.max(max_error, Math.abs(reference - distance))
-        expected.delete(key)
-      },
-    )
+    neighbor_list.visit_neighbor_distances(structure, options, (center, neighbor, dist) => {
+      const key = center * positions.length + neighbor
+      const reference = expected.get(key)
+      if (reference === undefined) throw new Error(`Unexpected contact ${center}, ${neighbor}`)
+      max_error = Math.max(max_error, Math.abs(reference - dist))
+      expected.delete(key)
+    })
     expect(expected.size).toBe(0)
     return max_error
   }
 
-  const stream_list_error = (positions: Vec3[], cutoff: number) => {
-    const structure = si_cloud(positions)
-    const options = { cutoff, pbc: NO_PBC }
-    const list = neighbor_list.neighbor_query(structure, options)
-    const expected = new Map<number, number>()
-    for (let center = 0; center < positions.length; center++) {
-      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
-        expected.set(center * positions.length + list.neighbors[slot], list.distances[slot])
-      }
-    }
-    expect(expected.size).toBe(list.neighbors.length)
-    return stream_distance_error(structure, cutoff, expected)
-  }
-
-  test.each([
-    [1999, false],
-    [2000, false],
-    [2047, true],
-    [2048, true],
-  ] as const)(
-    `dense streaming across grid-size/density gates: %i sites`,
-    (count, density_gate) => {
-      const positions = density_gate
-        ? Array.from({ length: count }, (_, idx): Vec3 =>
-            // 4³ original bins: 2047/64 < 32, 2048/64 === 32 cloud points per bin.
-            [
-              (Math.floor(idx / 256) * 1.5) / 7,
-              ((Math.floor(idx / 16) % 16) * 1.5) / 15,
-              ((idx % 16) * 1.5) / 15,
-            ],
-          )
-        : grid_positions(count)
-      expect(stream_list_error(positions, density_gate ? 0.5 : 1)).toBe(0)
-    },
-  )
+  test.each([1999, 2000, 2047, 2048])(`dense streaming across gates: %i sites`, (count) => {
+    // past 2000 sites, the density gate: 4³ original bins hold 2047/64 < 32, 2048/64 === 32
+    // cloud points each
+    const density_gate = count > 2000
+    const positions = density_gate
+      ? Array.from({ length: count }, (_, idx): Vec3 => [
+          (Math.floor(idx / 256) * 1.5) / 7,
+          ((Math.floor(idx / 16) % 16) * 1.5) / 15,
+          ((idx % 16) * 1.5) / 15,
+        ])
+      : grid_positions(count)
+    expect(stream_error(positions, density_gate ? 0.5 : 1)).toBe(0)
+  })
 
   const next_float = (value: number, direction: number): number => {
     const view = new DataView(new ArrayBuffer(8))
@@ -1447,29 +1508,23 @@ describe(`neighbor_query`, () => {
         const delta_x = structure.sites[2].xyz[0] - structure.sites[1].xyz[0]
         const dist_sq = delta_x * delta_x
         const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
-        const visits: number[][] = [[], []]
-        neighbor_list.visit_neighbor_distances(
-          structure,
-          { cutoff: 1, pbc: [false, false, false] },
-          (center, neighbor, distance) => {
-            if (center === 1 && neighbor === 2) visits[0].push(distance)
-            if (center === 2 && neighbor === 1) visits[1].push(distance)
-          },
-        )
         // .5 - 1 ULP and 1.5 have rounded distance 1, but unpadded half bins 0 and 3.
-        expect(visits).toEqual([expected, expected])
+        expect(stream_pair(structure, { cutoff: 1, pbc: NO_PBC })).toEqual([
+          expected,
+          expected,
+        ])
       }
     }
   })
 
-  test.each(
-    Array.from({ length: 8 }, (_, mask) =>
-      [0, 1, 2].map(
-        (axis) =>
-          [[Boolean(mask & 1), Boolean(mask & 2), Boolean(mask & 4)] as const, axis] as const,
-      ),
-    ).flat(),
-  )(`small cutoff boundaries with pbc %j along axis %i`, (pbc, axis) => {
+  const pbc_masks = Array.from({ length: 8 }, (_, mask): Pbc => [
+    Boolean(mask & 1),
+    Boolean(mask & 2),
+    Boolean(mask & 4),
+  ])
+  const with_axes = <T>(values: T[]) =>
+    values.flatMap((value) => [0, 1, 2].map((axis) => [value, axis] as const))
+  test.each(with_axes(pbc_masks))(`small cutoff boundaries, pbc %j, axis %i`, (pbc, axis) => {
     const options = { cutoff: 1, pbc }
     for (const origin of [0, -7, 17]) {
       for (const boundary of [0.5, 1]) {
@@ -1487,25 +1542,17 @@ describe(`neighbor_query`, () => {
             )
             const dist_sq = (second - first) ** 2
             const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
-            const visits: number[][] = [[], []]
-            neighbor_list.visit_neighbor_distances(
-              structure,
-              options,
-              (center, neighbor, dist) => {
-                if (center === 1 && neighbor === 2) visits[0].push(dist)
-                if (center === 2 && neighbor === 1) visits[1].push(dist)
-              },
-            )
-            expect(visits).toEqual([expected, expected])
+            expect(stream_pair(structure, options)).toEqual([expected, expected])
             for (const sorted of [true, false]) {
               const list = neighbor_list.neighbor_query(structure, { ...options, sorted })
-              for (const center of [1, 2]) {
-                const start = list.offsets[center]
-                const distances = [
-                  ...list.distances.subarray(start, list.offsets[center + 1]),
-                ].filter((_distance, idx) => list.neighbors[start + idx] === 3 - center)
-                expect(distances).toEqual(expected)
-              }
+              const listed = [1, 2].map((from) =>
+                slots(list)
+                  .filter(
+                    ([center, slot]) => center === from && list.neighbors[slot] === 3 - from,
+                  )
+                  .map(([, slot]) => list.distances[slot]),
+              )
+              expect(listed).toEqual([expected, expected])
             }
           }
         }
@@ -1520,7 +1567,7 @@ describe(`neighbor_query`, () => {
       { element: `Si`, xyz: [1, 1 - Number.EPSILON / 2, 0] },
       { element: `Si`, xyz: [1, 2, 0] },
     ])
-    const options = { cutoff: 1, pbc: [false, false, false] as const }
+    const options = { cutoff: 1, pbc: NO_PBC }
     for (const sorted of [true, false]) {
       const list = neighbor_list.neighbor_query(structure, { ...options, sorted })
       expect([...list.offsets]).toEqual([0, 0, 2, 4, 6])
@@ -1528,11 +1575,7 @@ describe(`neighbor_query`, () => {
       expect([...list.neighbors]).toEqual([3, 2, 1, 3, 1, 2])
       expect([...list.distances]).toEqual([Number.EPSILON / 2, 1, 1, 1, Number.EPSILON / 2, 1])
     }
-    const streamed: number[][] = []
-    neighbor_list.visit_neighbor_distances(structure, options, (...contact) =>
-      streamed.push(contact),
-    )
-    expect(streamed).toEqual([
+    expect(stream(structure, options)).toEqual([
       [2, 3, 1],
       [3, 2, 1],
       [1, 3, Number.EPSILON / 2],
@@ -1542,38 +1585,31 @@ describe(`neighbor_query`, () => {
     ])
   })
 
-  test.each([3, 2000].flatMap((count) => [0, 1, 2].map((axis) => [count, axis] as const)))(
-    `rounded whole-bin cutoff contacts with %i sites along axis %i`,
-    (count, axis) => {
-      const positions = grid_positions(count)
-      positions[1] = [0, 0, 0]
-      positions[2] = [0, 0, 0]
-      positions[1][axis] = 1 - Number.EPSILON / 2
-      positions[2][axis] = 2
-      const structure = si_cloud(positions)
-      const expected = new Map<number, number>()
-      for (let center = 0; center < positions.length; center++) {
-        for (let neighbor = center + 1; neighbor < positions.length; neighbor++) {
-          const delta_x = positions[neighbor][0] - positions[center][0]
-          const delta_y = positions[neighbor][1] - positions[center][1]
-          const delta_z = positions[neighbor][2] - positions[center][2]
-          const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
-          if (dist_sq > 1) continue
-          expected.set(center * positions.length + neighbor, Math.sqrt(dist_sq))
-          expected.set(neighbor * positions.length + center, Math.sqrt(dist_sq))
-        }
+  test.each(with_axes([3, 2000]))(`whole-bin rounding: %i sites, axis %i`, (count, axis) => {
+    const positions = grid_positions(count)
+    positions[1] = [0, 0, 0]
+    positions[2] = [0, 0, 0]
+    positions[1][axis] = 1 - Number.EPSILON / 2
+    positions[2][axis] = 2
+    const expected = new Map<number, number>()
+    for (let center = 0; center < positions.length; center++) {
+      for (let neighbor = center + 1; neighbor < positions.length; neighbor++) {
+        const delta = math.subtract(positions[neighbor], positions[center])
+        const dist_sq = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]
+        if (dist_sq > 1) continue
+        expected.set(center * positions.length + neighbor, Math.sqrt(dist_sq))
+        expected.set(neighbor * positions.length + center, Math.sqrt(dist_sq))
       }
-      // Rounded subtraction gives distance 1; unpadded whole bins 0 and 2 miss this pair.
-      expect(expected.get(positions.length + 2)).toBe(1)
-      expect(stream_distance_error(structure, 1, expected)).toBe(0)
-      expect(stream_list_error(positions, 1)).toBe(0)
-    },
-  )
+    }
+    // Rounded subtraction gives distance 1; unpadded whole bins 0 and 2 miss this pair.
+    expect(expected.get(positions.length + 2)).toBe(1)
+    expect(stream_error(positions, 1, expected)).toBe(0)
+    expect(stream_error(positions, 1)).toBe(0)
+  })
 
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
     const simple_cubic = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
     const list = neighbor_list.neighbor_query(simple_cubic, { cutoff: 3.01 })
-    expect(list.neighbors).toHaveLength(6)
     expect(Array.from(list.neighbors)).toEqual([0, 0, 0, 0, 0, 0])
     expect(Array.from(list.distances).every((dist) => Math.abs(dist - 3) < 1e-12)).toBe(true)
     const fcc_cu = make_crystal(3.6, fcc(`Cu`))
@@ -1582,47 +1618,25 @@ describe(`neighbor_query`, () => {
     const nn_dist = 3.6 / Math.SQRT2
     for (const dist of knn.distances) expect(Math.abs(dist - nn_dist)).toBeLessThan(1e-12)
     // distances = |deltas| and deltas = partner + image·L - center
-    for (let slot = 0; slot < knn.distances.length; slot++) {
-      const center = knn.offsets.findLastIndex((offset) => offset <= slot)
+    for (const [center, slot] of slots(knn)) {
       const partner = fcc_cu.sites[knn.neighbors[slot]].xyz
       const img = knn.images.subarray(slot * 3, slot * 3 + 3)
-      for (let axis_x = 0; axis_x < 3; axis_x++) {
-        const expected = partner[axis_x] + img[axis_x] * 3.6 - fcc_cu.sites[center].xyz[axis_x]
-        expect(knn.deltas[slot * 3 + axis_x]).toBeCloseTo(expected, 12)
-      }
-      expect(Math.hypot(...knn.deltas.subarray(slot * 3, slot * 3 + 3))).toBeCloseTo(
-        knn.distances[slot],
-        12,
-      )
+      const delta = knn.deltas.subarray(slot * 3, slot * 3 + 3)
+      const center_xyz = fcc_cu.sites[center].xyz
+      const expected = partner.map((coord, axis) => coord + img[axis] * 3.6 - center_xyz[axis])
+      for (const [axis, coord] of expected.entries())
+        expect(delta[axis]).toBeCloseTo(coord, 12)
+      expect(Math.hypot(...delta)).toBeCloseTo(knn.distances[slot], 12)
     }
   })
 
   // the k-search radius cap used to be four cell heights whatever the periodicity, so a chain
   // periodic along one axis stopped at 8 of its 14 nearest images (±1..±4 cells)
+  const sqrt_2 = Array<number>(4).fill(Math.SQRT2)
+  // oxfmt-ignore
   test.each([
-    [
-      [true, false, false],
-      [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7],
-    ],
-    [
-      [true, true, false],
-      [
-        1,
-        1,
-        1,
-        1,
-        Math.SQRT2,
-        Math.SQRT2,
-        Math.SQRT2,
-        Math.SQRT2,
-        2,
-        2,
-        2,
-        2,
-        Math.sqrt(5),
-        Math.sqrt(5),
-      ],
-    ],
+    [[true, false, false], [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7]],
+    [[true, true, false], [1, 1, 1, 1, ...sqrt_2, 2, 2, 2, 2, Math.sqrt(5), Math.sqrt(5)]],
   ] as const)(`k=14 reaches every nearest image with pbc=%j`, (pbc, expected) => {
     const lattice = make_crystal(1, [{ element: `Fe`, abc: [0, 0, 0] }], { pbc: [...pbc] })
     const knn = neighbor_list.neighbor_query(lattice, { k: 14 })
@@ -1664,16 +1678,13 @@ describe(`neighbor_query`, () => {
       [`O`, [2.4347959638802195, 4.836360971011535, 4.090214663192215]],
       [`O`, [5.182636053845052, -0.16486257602122423, 0.654857615062942]],
     ])
-    expect(Array.from(neighbor_list.neighbor_query(corners, { k: 1 }).offsets)).toEqual([
-      0, 1, 2,
-    ])
+    const corners_knn = neighbor_list.neighbor_query(corners, { k: 1 })
+    expect(Array.from(corners_knn.offsets)).toEqual([0, 1, 2])
     const list = neighbor_list.neighbor_query(water, { cutoff: 1.2 })
     expect(list.offsets[3]).toBeGreaterThanOrEqual(4) // two O-H contacts, both ends
-    for (let center = 0; center < 3; center++) {
-      for (let slot = list.offsets[center] + 1; slot < list.offsets[center + 1]; slot++) {
+    for (const [center, slot] of slots(list))
+      if (slot > list.offsets[center])
         expect(list.distances[slot]).toBeGreaterThanOrEqual(list.distances[slot - 1])
-      }
-    }
   })
 
   test.each([
@@ -1684,11 +1695,9 @@ describe(`neighbor_query`, () => {
     [{ k: 1.5 }, /k must be a positive integer/],
   ])(`rejects %j`, (options, message) => {
     expect(() => neighbor_list.neighbor_query(triclinic, options)).toThrow(message)
-    if (`cutoff` in options) {
-      expect(() =>
-        neighbor_list.visit_neighbor_distances(triclinic, options, () => {}),
-      ).toThrow(message)
-    }
+    if (!(`cutoff` in options)) return
+    const visit = () => neighbor_list.visit_neighbor_distances(triclinic, options, () => {})
+    expect(visit).toThrow(message)
   })
 
   test(`rejects a degenerate lattice and absurd cutoffs, not in-band bond perception`, () => {
@@ -1696,9 +1705,8 @@ describe(`neighbor_query`, () => {
     const flat = make_crystal([[3, 0, 0], [0, 3, 0], [3, 3, 0]], [{ element: `C`, abc: [0, 0, 0] }])
     expect(() => neighbor_list.neighbor_query(flat, { cutoff: 2 })).toThrow(/degenerate/)
     // no periodic axis: the lattice is never used, so a singular one is fine
-    expect(
-      neighbor_list.neighbor_query(flat, { cutoff: 2, pbc: NO_PBC }).neighbors,
-    ).toHaveLength(0)
+    const flat_finite = neighbor_list.neighbor_query(flat, { cutoff: 2, pbc: NO_PBC })
+    expect(flat_finite.neighbors).toHaveLength(0)
     // 40 cells of images along every axis: 81^3 * 200 = 106M positions
     const big = make_random_structure(200)
     expect(() => neighbor_list.neighbor_query(big, { cutoff: 400 })).toThrow(
@@ -1713,9 +1721,8 @@ describe(`neighbor_query`, () => {
     // BondSearch's skin-widened band keeps every pair of a grid inside 0.2 A (the plain band
     // drops them all under min_bond_dist): refused the same way, no silent plain fallback
     const blob = make_molecule(hydrogen_grid(0.012))
-    expect(() => new bonding.BondSearch().compute_columns(blob)).toThrow(
-      /more than 10,000,000/,
-    )
+    const search_blob = () => new bonding.BondSearch().compute_columns(blob)
+    expect(search_blob).toThrow(/more than 10,000,000/)
     // Streaming has no pair storage to exhaust, so this cloud can be processed in full.
     let n_visits = 0
     neighbor_list.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
@@ -1723,11 +1730,8 @@ describe(`neighbor_query`, () => {
     // Cs-Cs reaches 39 A under these options, putting all 10.6M grid pairs inside the longest
     // reach, but only ~60k H-H pairs lie in their own band: bond perception stores just those
     const options = { metal_metal_penalty: 1e100, max_distance_ratio: 100 }
-    const mixed = make_molecule([
-      ...hydrogen_grid(0.5),
-      [`Cs`, [40, 0, 0]],
-      [`Cs`, [45, 0, 0]],
-    ])
+    const cesium = [40, 45].map((x_coord): [string, Vec3] => [`Cs`, [x_coord, 0, 0]])
+    const mixed = make_molecule([...hydrogen_grid(0.5), ...cesium])
     const bonds = sort_bonds(bonding.electroneg_ratio(mixed, options))
     const hydrogen_bonds = sort_bonds(bonding.electroneg_ratio(dense, options))
     expect(hydrogen_bonds.length).toBeGreaterThan(4600 * 2)
@@ -1775,18 +1779,17 @@ describe(`neighbor_query`, () => {
       atoms.map(([element, xyz]) => [element, math.add(xyz, offset)]),
     )
     const found = as_map(neighbor_list.neighbor_query(water, { cutoff: 1 }))
-    const expected = brute_force(water, 1, [false, false, false])
+    const expected = brute_force(water, 1, NO_PBC)
     expect(expected.size).toBe(6) // two O-H per water, both directions
     expect([...found.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
     for (const [key, { dist }] of expected) expect(found.get(key)?.dist).toBeCloseTo(dist, 12)
   })
 
-  // One ejected atom (an MD blow-up frame) stretches the bounding box along one axis. A
-  // cube-root widening of a cubic bin left that axis with ~span/bin bins (5e7 bins at 1e11 A,
-  // tens of GB at 1e14 A); a cubic bin widened until the grid fits put the whole cluster into
-  // one bin, so the sweep went O(n^2) (50k atoms: 0.1 -> 4 s). Only the stretched axis may
-  // widen; the cluster must stay spread over the other two. The memory blow-up surfaces here
-  // as an allocation failure; the O(n^2) one is timed in perf-baselines.test.ts.
+  // One ejected atom (an MD blow-up frame) stretches the bounding box along one axis. Cube-root
+  // widening of a cubic bin left ~span/bin bins on it (5e7 at 1e11 A, tens of GB at 1e14 A);
+  // widening a cubic bin until the grid fits put the cluster in one bin, an O(n^2) sweep (timed
+  // in perf-baselines.test.ts; the memory one fails allocation here). Only the stretched axis may
+  // widen.
   test.each([
     [1e6, 10],
     [1e11, 10],
@@ -1794,11 +1797,9 @@ describe(`neighbor_query`, () => {
     [1e9, 34],
   ])(`a flyaway atom at %s A keeps the grid bounded (%s^3 cluster)`, (far, n_side) => {
     const n_cluster = n_side ** 3
-    const xyzs: Vec3[] = Array.from({ length: n_cluster }, (_, idx) => [
-      (idx % n_side) * 1.1,
-      (Math.floor(idx / n_side) % n_side) * 1.1,
-      Math.floor(idx / n_side ** 2) * 1.1,
-    ])
+    const xyzs = Array.from({ length: n_cluster }, (_, idx) =>
+      grid_point(idx, n_side, n_side, 1.1),
+    )
     xyzs.push([far, 0, 0])
     const cloud = make_molecule(xyzs.map((xyz) => [`C`, xyz]))
     const list = neighbor_list.neighbor_query(cloud, { cutoff: 1.2 })
@@ -1810,19 +1811,8 @@ describe(`neighbor_query`, () => {
     ).toBe(0)
   })
 
-  test(`sorted: false preserves slot discovery order and the same contacts`, () => {
-    const sorted = neighbor_list.neighbor_query(triclinic, { cutoff: 5.5 })
-    const unsorted = neighbor_list.neighbor_query(triclinic, { cutoff: 5.5, sorted: false })
-    expect(Array.from(unsorted.offsets)).toEqual(Array.from(sorted.offsets))
-    const keys = (list: neighbor_list.NeighborList, center: number) =>
-      Array.from({ length: list.offsets[center + 1] - list.offsets[center] }, (_, rank) => {
-        const slot = list.offsets[center] + rank
-        const image = Array.from(list.images.subarray(slot * 3, slot * 3 + 3))
-        return `${list.neighbors[slot]}|${image.join(`,`)}|${list.distances[slot]}`
-      })
-    for (let center = 0; center < sorted.n_centers; center++) {
-      expect(keys(unsorted, center).toSorted()).toEqual(keys(sorted, center).toSorted())
-    }
+  // the same contacts as sorted: covered by the brute-force comparison above
+  test(`sorted: false preserves slot discovery order`, () => {
     // Bin-major traversal is reserved for streamed histograms. Materialized contacts keep
     // their slot order because bond consumers deduplicate geometric vertices in that order.
     const interleaved = make_crystal(
@@ -1859,27 +1849,24 @@ describe(`neighbor_query`, () => {
   test.each([
     [`missing`, undefined],
     [`non-boolean`, [1, 0, 1]],
-  ])(
-    `a crystal with %s lattice.pbc is malformed input, not a finite cluster`,
-    (_desc, pbc) => {
-      // pbc is required on LatticeType; hand-built props can omit it, and the analyses used to
-      // fall through to a finite bonding pass that under-counted every coordination number
-      const crystal = make_crystal(4, [{ element: `Na`, abc: [0, 0, 0] }])
-      const lattice = { ...crystal.lattice, pbc } as unknown as typeof crystal.lattice
-      const malformed = { ...crystal, lattice }
-      expect(() => neighbor_list.neighbor_query(malformed, { cutoff: 3 })).toThrow(
-        /lattice\.pbc/,
-      )
-      expect(() => calc_coordination_nums(malformed)).toThrow(/lattice\.pbc/)
-      // BondSearch's finite path reads lattice.pbc for its periodic candidate superset
-      expect(() => new bonding.BondSearch().compute_columns(malformed)).toThrow(/lattice\.pbc/)
-      // an explicit override still works on the same object
-      expect(
-        neighbor_list.neighbor_query(malformed, { cutoff: 3, pbc: [true, true, true] })
-          .n_centers,
-      ).toBe(1)
-    },
-  )
+  ])(`%s lattice.pbc is malformed input, not a finite cluster`, (_desc, pbc) => {
+    // pbc is required on LatticeType; hand-built props can omit it, and the analyses used to
+    // fall through to a finite bonding pass that under-counted every coordination number
+    const crystal = make_crystal(4, [{ element: `Na`, abc: [0, 0, 0] }])
+    const lattice = { ...crystal.lattice, pbc } as unknown as typeof crystal.lattice
+    const malformed = { ...crystal, lattice }
+    expect(() => neighbor_list.neighbor_query(malformed, { cutoff: 3 })).toThrow(
+      /lattice\.pbc/,
+    )
+    expect(() => compute_coordination_nums(malformed)).toThrow(/lattice\.pbc/)
+    // BondSearch's finite path reads lattice.pbc for its periodic candidate superset
+    expect(() => new bonding.BondSearch().compute_columns(malformed)).toThrow(/lattice\.pbc/)
+    // an explicit override still works on the same object
+    expect(
+      neighbor_list.neighbor_query(malformed, { cutoff: 3, pbc: [true, true, true] })
+        .n_centers,
+    ).toBe(1)
+  })
 })
 
 describe(`bond_neighbor_summary`, () => {

@@ -13,9 +13,8 @@ import type {
   LabelPlacementWeights,
 } from '#lib/plot/core/types.js'
 
-// Defaults the scatter plots merge under a user's label_placement_config. 1000 anneal sweeps per
-// label halve the solve of 2000 for a slightly looser fit (labels a little further from their
-// markers); callers wanting the tightest layout pass sa_iterations: 2000.
+// Defaults merged under a user's label_placement_config. 1000 anneal sweeps per label halve the
+// solve of 2000 for a slightly looser fit; pass sa_iterations: 2000 for the tightest layout.
 export const LABEL_PLACEMENT_DEFAULTS = {
   sa_iterations: 1000,
   max_labels: 300,
@@ -26,8 +25,7 @@ export const LABEL_PLACEMENT_DEFAULTS = {
 // such labels as drawn (the text-metrics default is 12px)
 export const POINT_LABEL_FONT_SIZE = `10px`
 
-// Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
-// below the cold defaults (1000, 1): the layout is good, so the pass only nudges what moved.
+// Anneal budget and start temperature for a warm re-solve: it only nudges what moved
 const WARM_SA_ITERATIONS = 12
 const WARM_START_TEMP = 0.05
 
@@ -45,7 +43,6 @@ interface PlotBounds {
   max_y: number
 }
 
-// Both appear in compute_delta_energy's signature, so callers (and its tests) need them.
 export interface AnchorInfo {
   x: number
   y: number
@@ -70,12 +67,7 @@ export interface LabelSize {
   height: number
 }
 
-interface LeaderLineSegment {
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-}
+type LeaderLineSegment = Record<`x1` | `y1` | `x2` | `y2`, number>
 
 interface LeaderLineOptions {
   point: Point2D
@@ -263,15 +255,11 @@ export function generate_candidates(
   ]
 }
 
-// Two grids over the anchors' extent: anchors never move, so they are bucketed once and queried
-// grown by the widest marker radius; each label is bucketed by every cell its rect-plus-anchor
-// box covers and re-bucketed when an accepted move changes those cells. A query box therefore
-// reaches only what can overlap it, where growing every query by the furthest any label had
-// strayed from its anchor scanned ~38 candidates per step to find ~4 (300 labels). Hits go
-// into a bitset rather than a list purely to keep candidates in ascending index order: the sums
-// in compute_delta_energy must stay float-identical to the unpruned scan. Requires
-// labels[idx].anchor_idx === idx, which the SA loop below guarantees.
-// Exported only so the equivalence test can score a move the same way the solver does.
+// Two grids over the anchors' extent: anchors are bucketed once (queries grow by the widest
+// marker radius), labels by every cell their rect-plus-anchor box covers, re-bucketed when an
+// accepted move changes those cells. Hits go through a bitset to keep candidates in ascending
+// index order, so compute_delta_energy's sums stay float-identical to the unpruned scan.
+// Requires labels[idx].anchor_idx === idx. Exported for the equivalence test.
 type NeighborIndex = ReturnType<typeof create_neighbor_index>
 
 export function create_neighbor_index(anchors: AnchorInfo[]) {
@@ -431,10 +419,8 @@ export function compute_delta_energy(
     weights.bounds *
     (rect_out_of_bounds_area(new_state, bounds) - rect_out_of_bounds_area(old_state, bounds))
 
-  // Every term below is confined to the box spanned by the two rectangles and the anchor
-  // (the latter for the leader lines), so anything disjoint from it contributes exactly zero
-  // and four comparisons can reject it before the geometry routines run. Measured 98-99% of
-  // markers rejected on scenes of 50-500 labels.
+  // Every term below is confined to the box spanned by both rects and the anchor (for the
+  // leader lines), so anything disjoint from it contributes exactly zero
   const box_min_x = Math.min(old_state.x, new_state.x, anchor.x)
   const box_max_x = Math.max(old_state.x + old_state.w, new_state.x + new_state.w, anchor.x)
   const box_min_y = Math.min(old_state.y, new_state.y, anchor.y)
@@ -442,8 +428,6 @@ export function compute_delta_energy(
   const misses_box = (min_x: number, max_x: number, min_y: number, max_y: number) =>
     max_x < box_min_x || min_x > box_max_x || max_y < box_min_y || min_y > box_max_y
 
-  // Everything outside the box contributes zero, so the index skips most of it up front and
-  // the box test only has to reject what survives its buckets.
   const { anchor_candidates, label_candidates } = neighbors
   const anchor_count = neighbors.collect_anchors(box_min_x, box_max_x, box_min_y, box_max_y)
 
@@ -603,10 +587,8 @@ export function compute_label_positions(
       const label_width = Math.max(0, label_size.width)
       const label_height = Math.max(0, label_size.height)
       const radius = Math.max(0, point.point_style?.radius ?? 3)
-      // A non-finite anchor (log scale on a non-positive value, say) has nothing to place a
-      // label against, and keeping it would make every delta NaN -- so every SA move loses to
-      // `delta < 0` and the whole scene silently freezes at its greedy positions, not just
-      // this label. Degenerate `plot_bounds` (max < min) is separate and not handled here.
+      // A non-finite anchor (log scale on a non-positive value) would make every delta NaN,
+      // freezing the whole scene at its greedy positions
       if (![anchor_x, anchor_y, label_width, label_height, radius].every(Number.isFinite))
         continue
 
@@ -660,32 +642,21 @@ export function compute_label_positions(
   const weights: Required<LabelPlacementWeights> = { ...DEFAULT_WEIGHTS, ...config.weights }
   const anchors = label_infos.map((info) => info.anchor)
 
-  // Carried-over labels keep their offset from the anchor. A pan moves every anchor by the
-  // same vector, so replaying offsets reproduces the previous layout exactly and the anneal
-  // only fixes what changed: zoom crowding, plot edges, labels that just scrolled in.
+  // Carried-over labels keep their offset from the anchor: a pan moves every anchor alike, so
+  // replaying offsets reproduces the previous layout and the anneal only fixes what changed
   const labels: LabelState[] = Array.from({ length: num_labels })
   const placed: LabelState[] = []
   const cold_labels: number[] = []
+  const place_label = (idx: number, left: number, top: number) => {
+    const { width: w_px, height: h_px } = label_infos[idx]
+    placed.push((labels[idx] = { x: left, y: top, w: w_px, h: h_px, anchor_idx: idx }))
+  }
   for (let idx = 0; idx < num_labels; idx++) {
-    const {
-      id: identifier,
-      width: label_width,
-      height: label_height,
-      anchor,
-    } = label_infos[idx]
-    const offset = warm_start?.get(identifier)
-    if (!offset) {
-      cold_labels.push(idx)
-      continue
-    }
-    labels[idx] = {
-      x: anchor.x + offset.x - label_width / 2,
-      y: anchor.y + offset.y - label_height / 2,
-      w: label_width,
-      h: label_height,
-      anchor_idx: idx,
-    }
-    placed.push(labels[idx])
+    const { id, width: w_px, height: h_px, anchor } = label_infos[idx]
+    const offset = warm_start?.get(id)
+    if (offset)
+      place_label(idx, anchor.x + offset.x - w_px / 2, anchor.y + offset.y - h_px / 2)
+    else cold_labels.push(idx)
   }
 
   // Greedy initialization for the rest: pick best candidate per label. With nothing carried
@@ -724,20 +695,11 @@ export function compute_label_positions(
       }
     }
 
-    labels[idx] = {
-      x: best_candidate.x,
-      y: best_candidate.y,
-      w: label_width,
-      h: label_height,
-      anchor_idx: idx,
-    }
-    placed.push(labels[idx])
+    place_label(idx, best_candidate.x, best_candidate.y)
   }
 
-  // Simulated annealing. A warm re-solve polishes rather than searches: a fraction of the step
-  // budget, started cool, since full heat would shake a good layout apart before it cooled
-  // again. Only when most labels carried over, though — one restored label must not put all
-  // the new ones on a polish budget and leave the frame after a data change badly laid out.
+  // Simulated annealing. A warm re-solve polishes (fewer steps, started cool, as full heat
+  // would shake a good layout apart), but only when most labels carried over
   const is_warm = cold_labels.length * 4 <= num_labels
   const cold_iterations = config.sa_iterations ?? LABEL_PLACEMENT_DEFAULTS.sa_iterations
   const warm_iterations = config.warm_sa_iterations ?? WARM_SA_ITERATIONS
@@ -800,9 +762,8 @@ export function compute_label_positions(
     }
   }
 
-  // Label centre positions and, alongside them, the anchor-relative
-  // offsets that warm-start the next solve. Those are rebuilt rather than merged: labels that
-  // scrolled out of view or got culled must not linger in the map.
+  // Label centres plus the anchor-relative offsets warm-starting the next solve, rebuilt (not
+  // merged) so labels that scrolled out of view or got culled don't linger
   warm_start?.clear()
   const positions: Record<string, Point2D> = {}
   for (const [idx, { id: identifier, anchor }] of label_infos.entries()) {

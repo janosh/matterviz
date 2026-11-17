@@ -18,53 +18,17 @@
     if (is_crystal(struct)) dropped_structure = struct
   }
 
-  type BZExample = {
-    id: string
-    label: string
-    description: string
-  }
-
-  const examples: BZExample[] = [
-    {
-      id: `Po-simple-cubic`,
-      label: `Simple Cubic (SC)`,
-      description: `Po - cubic BZ, IBZ wedge 1/48th of it`,
-    },
-    {
-      id: `Fe-BCC`,
-      label: `Body-Centered Cubic (BCC)`,
-      description: `Fe - truncated octahedron BZ`,
-    },
-    {
-      id: `Cu-FCC`,
-      label: `Face-Centered Cubic (FCC)`,
-      description: `Cu - rhombic dodecahedron`,
-    },
-    {
-      id: `mp-1207297-Ac2Br2O1-tetragonal`,
-      label: `Tetragonal`,
-      description: `Ac₂Br₂O - elongated/compressed octahedron`,
-    },
-    {
-      id: `mp-862690-Ac4-hexagonal`,
-      label: `Hexagonal`,
-      description: `Ac - hexagonal prism`,
-    },
-    {
-      id: `mp-1183085-Ac4Mg2-orthorhombic`,
-      label: `Orthorhombic`,
-      description: `Ac₄Mg₂ - rectangular prism BZ`,
-    },
-    {
-      id: `mp-1183089-Ac4Mg2-monoclinic`,
-      label: `Monoclinic`,
-      description: `Ac₄Mg₂ - oblique prism BZ`,
-    },
-    {
-      id: `mp-686119-Ag13Bi14I56-triclinic`,
-      label: `Triclinic`,
-      description: `Ag₁₃Bi₁₄I₅₆ - general parallelepiped BZ`,
-    },
+  // [structure id, label, description]
+  // oxfmt-ignore
+  const examples: [string, string, string][] = [
+    [`Po-simple-cubic`, `Simple Cubic (SC)`, `Po - cubic BZ, IBZ wedge 1/48th of it`],
+    [`Fe-BCC`, `Body-Centered Cubic (BCC)`, `Fe - truncated octahedron BZ`],
+    [`Cu-FCC`, `Face-Centered Cubic (FCC)`, `Cu - rhombic dodecahedron`],
+    [`mp-1207297-Ac2Br2O1-tetragonal`, `Tetragonal`, `Ac₂Br₂O - elongated/compressed octahedron`],
+    [`mp-862690-Ac4-hexagonal`, `Hexagonal`, `Ac - hexagonal prism`],
+    [`mp-1183085-Ac4Mg2-orthorhombic`, `Orthorhombic`, `Ac₄Mg₂ - rectangular prism BZ`],
+    [`mp-1183089-Ac4Mg2-monoclinic`, `Monoclinic`, `Ac₄Mg₂ - oblique prism BZ`],
+    [`mp-686119-Ag13Bi14I56-triclinic`, `Triclinic`, `Ag₁₃Bi₁₄I₅₆ - general parallelepiped BZ`],
   ]
 
   // [example id, BZ order]: labels come from the matching first-order example
@@ -77,7 +41,7 @@
   const higher_order_examples = [
     ...higher_order_ids.map(([id, order]) => ({
       id,
-      label: examples.find((example) => example.id === id)?.label ?? id,
+      label: examples.find(([example_id]) => example_id === id)?.[1] ?? id,
       description: `${order === 2 ? `2nd` : `3rd`} order BZ`,
       order,
     })),
@@ -85,6 +49,8 @@
   ]
 
   let surface_opacity = $state(0.4)
+  // Setyawan–Curtarolo high-symmetry path from each structure's symmetry
+  let default_k_path = $state(true)
 </script>
 
 <h1 id="brillouin-zones">Brillouin Zones</h1>
@@ -93,15 +59,18 @@
   Surface Opacity: {format_num(surface_opacity, `.2f`)}
   <input type="range" min="0" max="1" step="0.05" bind:value={surface_opacity} />
 </label>
+<label>
+  <input type="checkbox" bind:checked={default_k_path} /> High-symmetry k-path
+</label>
 
 <div class="full-bleed grid">
-  {#each examples as { id: identifier, label, description } (identifier)}
+  {#each examples as [identifier, label, description] (identifier)}
     {@const structure = structure_map.get(identifier)}
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
       <LazyDemo label="{label}: {description}">
-        <BrillouinZone {structure} {surface_opacity} show_ibz />
+        <BrillouinZone {structure} {surface_opacity} show_ibz {default_k_path} />
       </LazyDemo>
     </div>
   {/each}

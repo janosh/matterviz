@@ -1134,3 +1134,34 @@ test.each([
   await tick()
   expect(event.defaultPrevented).toBe(expect_handled)
 })
+
+// Inside a shadow root (the custom elements, notebook hosts that sandbox widget output)
+// document.activeElement is the shadow host, never the focused cell, so arrow keys and
+// Enter/Space did nothing there
+test(`arrow keys walk cells when mounted in a shadow root`, async () => {
+  const host = document.createElement(`div`)
+  document.body.append(host)
+  const shadow = host.attachShadow({ mode: `open` })
+  const on_click = vi.fn()
+  mount(HeatmapMatrix, {
+    target: shadow,
+    props: { x_items, y_items, values: numbered_values, on_click },
+  })
+  await tick()
+  const shadow_cell = (x_idx: number, y_idx: number): HTMLElement => {
+    const cell = shadow.querySelector<HTMLElement>(
+      `.grid [data-x="${x_idx}"][data-y="${y_idx}"]`,
+    )
+    if (!cell) throw new Error(`no cell at ${x_idx}, ${y_idx}`)
+    return cell
+  }
+  shadow_cell(0, 0).focus()
+  expect(document.activeElement).toBe(host)
+  const arrow_right = keydown(`ArrowRight`, { cancelable: true })
+  shadow_cell(0, 0).dispatchEvent(arrow_right)
+  await tick()
+  expect(arrow_right.defaultPrevented).toBe(true)
+  expect(shadow.activeElement).toBe(shadow_cell(1, 0))
+  shadow_cell(1, 0).dispatchEvent(keydown(`Enter`, { cancelable: true }))
+  expect(on_click).toHaveBeenCalledWith(expect.objectContaining({ x_idx: 1, y_idx: 0 }))
+})

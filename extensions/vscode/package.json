@@ -188,6 +188,18 @@
           "default": false,
           "description": "Render all atoms with the same size regardless of element"
         },
+        "matterviz.structure.show_thermal_ellipsoids": {
+          "type": "boolean",
+          "default": false,
+          "description": "Draw atoms with anisotropic displacement parameters (CIF _atom_site_aniso_*) as thermal ellipsoids at true size instead of spheres"
+        },
+        "matterviz.structure.ellipsoid_probability": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Probability that the atom lies inside its thermal ellipsoid (ORTEP convention, 0.5 = 50%)",
+          "minimum": 0.05,
+          "maximum": 0.99
+        },
         "matterviz.structure.show_atoms": {
           "type": "boolean",
           "default": true,
@@ -258,6 +270,7 @@
           "description": "Method for determining bonds between atoms",
           "enum": [
             "electroneg_ratio",
+            "pair_cutoffs",
             "explicit_only"
           ]
         },
@@ -768,7 +781,7 @@
         "matterviz.fermi.mu": {
           "type": "number",
           "default": 0,
-          "description": "Chemical potential offset from the Fermi level (eV)"
+          "description": "Chemical potential offset from the Fermi level, in the band grid's energy unit"
         },
         "matterviz.fermi.color_property": {
           "type": "string",

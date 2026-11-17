@@ -1,6 +1,6 @@
 import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
-import type { BondingStrategy } from '#lib/structure/bonding.js'
+import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding.js'
 import { compute_bonds, get_majority_element } from '#lib/structure/bonding.js'
 import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list.js'
 import { split_site_partners } from '#lib/structure/partial-occupancy.js'
@@ -11,8 +11,9 @@ const site_element = (site: Site): string => get_majority_element(site) ?? `Unkn
 
 export interface CoordinationOptions {
   strategy?: BondingStrategy
-  // Strategy tuning (max_distance_ratio, strength_threshold, ...), as the scene's bonds use
-  bonding_options?: Record<string, unknown>
+  // The strategy's options (max_distance_ratio, strength_threshold, ...), as the scene's bonds
+  // use. Their pbc is replaced by `pbc` below: coordination counts the periodic crystal, not the drawn sites.
+  bonding_options?: BondingOptions
   // Periodic axes to bond across, defaults to the structure's own lattice.pbc
   pbc?: Pbc
 }
@@ -29,7 +30,7 @@ export interface CoordinationData {
 // are bonded across their cell boundaries (the lattice's pbc unless `pbc` overrides it), so
 // boundary atoms get their full shell and each periodic image of a partner counts as its own
 // neighbor. Shared by the 3D viewer and CoordinationBarPlot so both report identical numbers.
-export function calc_coordination_nums(
+export function compute_coordination_nums(
   structure: AnyStructure,
   options: CoordinationOptions = {},
 ): CoordinationData {

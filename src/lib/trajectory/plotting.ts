@@ -555,7 +555,7 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
 // Last sampling per source y array, reused while x, raw_y, limit and color also match: legend
 // toggles rebuild series objects around the same arrays, so they resample nothing
 const scatter_cache = new WeakMap<
-  readonly number[],
+  ArrayLike<number>,
   { key: unknown[]; prepared: Pick<DataSeries, `x` | `y` | `raw_y` | `line_underlays`> }
 >()
 
@@ -612,8 +612,8 @@ export function prepare_trajectory_scatter_series(
 // miss narrow energy spikes; drawing all 24k+ samples turns quantized thermal noise into a
 // solid wall and makes hover/layout work scale with the file instead of the viewport.
 function downsample_indices(
-  x_values: readonly number[],
-  y_values: readonly number[],
+  x_values: ArrayLike<number>,
+  y_values: ArrayLike<number>,
   limit: number,
 ): number[] {
   const last_idx = x_values.length - 1

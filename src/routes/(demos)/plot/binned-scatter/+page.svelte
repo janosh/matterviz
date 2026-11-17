@@ -3,7 +3,7 @@
   import type StructurePopupComponent from '#lib/convex-hull/StructurePopup.svelte'
   import type { ElementSymbol } from '#lib/element/index.js'
   import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
-  import { calc_lattice_params, scale } from '#lib/math.js'
+  import { compute_lattice_params, scale } from '#lib/math.js'
   import { BinnedScatterPlot } from '#lib/plot/index.js'
   import type { BinnedPointPayload, DensePointSeries } from '#lib/plot/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
@@ -98,7 +98,11 @@
       [0, lattice_a, 0],
       [0, 0, lattice_a],
     ]
-    const lattice = { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+    const lattice = {
+      matrix,
+      pbc: [true, true, true] as Pbc,
+      ...compute_lattice_params(matrix),
+    }
     return { id: elements.join(``), sites, lattice, charge: 0, properties: {} }
   }
 

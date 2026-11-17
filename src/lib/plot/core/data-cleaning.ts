@@ -2,11 +2,12 @@
 // removal, smoothing (moving average / Savitzky-Golay / Gaussian) and oscillation/instability
 // detection, plus the single-series, multi-series and xyz orchestrators built on them.
 
-import { median, type Vec2 } from '#lib/math.js'
-import type { DataSeries } from '#lib/plot/core/types.js'
+import { median, partition_point, type Vec2 } from '#lib/math.js'
+import type { DataSeries, NumericColumn } from '#lib/plot/core/types.js'
 import {
   assert_aligned_lengths,
   assert_series_lengths,
+  is_numeric_column,
   PER_POINT_KEYS,
 } from '#lib/plot/core/types.js'
 import { gaussian_kernel_smooth } from '#lib/spectral/helpers.js'
@@ -90,7 +91,7 @@ const DEFAULT_LOCAL_WINDOW_HALF = 7
 const DEFAULT_LOCAL_MAD_THRESHOLD = 2.0
 
 const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
-const pick = <T>(arr: readonly T[], indices: readonly number[]): T[] =>
+const pick = <T>(arr: ArrayLike<T>, indices: readonly number[]): T[] =>
   indices.map((idx) => arr[idx])
 
 const create_cleaning_quality = (
@@ -212,8 +213,8 @@ function detect_sign_change_frequency(values: number[], window_size: number): Me
 
 // Combined weighted detection; onset is the earliest onset an enabled method reported
 export function detect_instability(
-  x_values: readonly number[],
-  y_values: readonly number[],
+  x_values: ArrayLike<number>,
+  y_values: ArrayLike<number>,
   config: Pick<
     CleaningConfig,
     `oscillation_weights` | `oscillation_threshold` | `window_size`
@@ -327,7 +328,7 @@ class SlidingSum {
 // so the cost is linear in the input length, independent of the window width. Optional
 // increasing sample indices avoid computing and allocating outputs a downsampled plot drops.
 export function smooth_moving_average(
-  values: readonly number[],
+  values: NumericColumn,
   window: number,
   sample_indices?: readonly number[],
 ): number[] {
@@ -346,7 +347,7 @@ export function smooth_moving_average(
     previous_idx = idx
   }
   if (values.length === 0 || window === 1 || sample_indices?.length === 0)
-    return sample_indices ? sample_indices.map((idx) => values[idx]) : [...values]
+    return sample_indices ? sample_indices.map((idx) => values[idx]) : Array.from(values)
   const half_window = Math.floor(window / 2)
   const max_count = Math.min(values.length, 2 * half_window + 1)
   let max_abs = 0
@@ -413,10 +414,11 @@ function solve_linear(matrix: number[][], rhs: number[]): number[] | null {
   return aug.map((row) => row[size])
 }
 
-// Savitzky-Golay smoothing kernel: first row of (V^T V)^-1 V^T for the Vandermonde matrix V of
-// window offsets. With A = V^T V symmetric, that row is (A^-1 e0)^T V^T, so one linear solve
-// for w = A^-1 e0 gives coefficient_j = sum_k w_k * offset_j^k.
-function compute_savgol_coefficients(window: number, order: number): number[] {
+// Savitzky-Golay kernel evaluating the window's least-squares polynomial at offset `at` from
+// its center (0: the smoothing kernel): row p(at) (V^T V)^-1 V^T for the Vandermonde matrix V
+// of window offsets and p the powers of `at`. With A = V^T V symmetric, one linear solve for
+// w = A^-1 p gives coefficient_j = sum_k w_k * offset_j^k.
+function compute_savgol_coefficients(window: number, order: number, at = 0): number[] {
   const half = Math.floor(window / 2)
   const offsets = Array.from({ length: 2 * half + 1 }, (_, idx) => idx - half)
   const gram = Array.from({ length: order + 1 }, (_row, row) =>
@@ -424,7 +426,10 @@ function compute_savgol_coefficients(window: number, order: number): number[] {
       offsets.reduce((sum, offset) => sum + offset ** (row + col), 0),
     ),
   )
-  const weights = solve_linear(gram, [1, ...Array(order).fill(0)])
+  const weights = solve_linear(
+    gram,
+    Array.from({ length: order + 1 }, (_, pow) => at ** pow),
+  )
   if (!weights) return offsets.map(() => 1 / offsets.length)
   return offsets.map((offset) =>
     weights.reduce((sum, weight, power) => sum + weight * offset ** power, 0),
@@ -447,13 +452,13 @@ function smooth_savitzky_golay(
   const coeffs = compute_savgol_coefficients(actual_window, polynomial_order)
   const half = Math.floor(actual_window / 2)
   const coeffs_sum = coeffs.reduce((sum, coeff) => sum + coeff, 0)
-  const result: number[] = Array(values.length)
-  for (let idx = 0; idx < values.length; idx++) {
+  const len = values.length
+  const result: number[] = Array(len)
+  for (let idx = 0; idx < len; idx++) {
     let [sum, weight_sum] = [0, 0]
     for (let jdx = 0; jdx < actual_window; jdx++) {
       const data_idx = idx - half + jdx
-      if (data_idx < 0 || data_idx >= values.length || !Number.isFinite(values[data_idx]))
-        continue
+      if (data_idx < 0 || data_idx >= len || !Number.isFinite(values[data_idx])) continue
       sum += coeffs[jdx] * values[data_idx]
       weight_sum += coeffs[jdx]
     }
@@ -461,6 +466,21 @@ function smooth_savitzky_golay(
     // (e.g. a fully-determined fit with a non-finite center) has nothing to smooth with.
     result[idx] = Math.abs(weight_sum) > 1e-9 ? (sum / weight_sum) * coeffs_sum : values[idx]
   }
+  // The first and last `half` points have no centered window: a truncated kernel bends even a
+  // line (y = x read 0.23 at x = 0), so they take the outermost full window's fit (scipy's
+  // mode=`interp`), unless that window holds a non-finite value.
+  const fit_edge = (window_start: number, sign: -1 | 1): void => {
+    const edge = values.slice(window_start, window_start + actual_window)
+    if (!edge.every(Number.isFinite)) return
+    for (let offset = sign; Math.abs(offset) <= half; offset += sign) {
+      const kernel = compute_savgol_coefficients(actual_window, polynomial_order, offset)
+      let fitted = 0
+      for (let jdx = 0; jdx < actual_window; jdx++) fitted += kernel[jdx] * edge[jdx]
+      result[window_start + half + offset] = fitted
+    }
+  }
+  fit_edge(0, -1)
+  fit_edge(len - actual_window, 1)
   return result
 }
 
@@ -497,11 +517,9 @@ function local_median_and_mad(
   return { local_median, local_mad }
 }
 
-// Sliding-window MAD outlier detection; returns the indices to drop. Statistics are
-// always computed from the original values (not the progressively filtered ones) so one removal
-// cannot shift its neighbours' statistics and cascade into false positives. Points within
-// window_half of either end are never flagged: their one-sided window makes the local median
-// trail any trend and would flag the genuine endpoints of every monotonic series.
+// Sliding-window MAD outlier detection; returns the indices to drop. Statistics use the original
+// values so one removal cannot cascade into false positives. Points within window_half of either
+// end are never flagged: their one-sided window would flag the endpoints of any monotonic trend.
 function remove_local_outliers(
   y_values: readonly number[],
   config: LocalOutlierConfig,
@@ -607,7 +625,7 @@ export function clean_series<T extends DataSeries>(
   // `kept` indexes the original arrays; y_arr stays aligned with it so every filter pass
   // touches only those two and the auxiliary arrays are materialized once at the end.
   let kept = index_range(series.y.length)
-  let y_arr = [...series.y]
+  let y_arr = Array.from(series.y)
   const drop = (removed: readonly number[]) => {
     if (removed.length === 0) return
     const removed_set = new Set(removed)
@@ -664,10 +682,20 @@ export function clean_series<T extends DataSeries>(
   result_series.x = x_arr
   result_series.y = y_arr
   // Filter every per-point field once; scalar styles and metadata stay untouched.
-  for (const key of [`raw_y`, ...PER_POINT_KEYS] as const) {
+  for (const key of [`raw_y`, `point_ids`, ...PER_POINT_KEYS] as const) {
     const value = series[key]
-    if (Array.isArray(value))
+    if (is_numeric_column(value))
       Object.assign(result_series, { [key]: pick<unknown>(value, kept) })
+  }
+  // A break names the first point of a new stretch: it moves to the first survivor at or
+  // after it, and breaks left with no point between them (or after them) merge or drop
+  if (series.line_breaks) {
+    const breaks = series.line_breaks.map((break_idx) =>
+      partition_point(kept, (idx) => idx < break_idx),
+    )
+    result_series.line_breaks = [...new Set(breaks)].filter(
+      (break_idx) => break_idx > 0 && break_idx < kept.length,
+    )
   }
   const pick_error = (side: number | readonly number[]) =>
     typeof side === `number` ? side : pick(side, kept)
@@ -684,7 +712,7 @@ export function clean_series<T extends DataSeries>(
 
 // Clean multiple y-series with shared x, filtering to intersection of valid indices
 export function clean_multi_series(
-  x_values: readonly number[],
+  x_values: ArrayLike<number>,
   y_arrays: number[][],
   config: CleaningConfig = {},
 ): { x: number[]; cleaned_y: number[][]; quality: CleaningQuality[] } {
@@ -730,9 +758,9 @@ export function clean_multi_series(
 // Clean correlated x/y/z for 3D data. All three arrays are filtered to the intersection of
 // valid indices; bounds apply to `primary_axis` (resolved against x for x-dependent bounds).
 export function clean_xyz(
-  x_values: readonly number[],
-  y_values: readonly number[],
-  z_values: readonly number[],
+  x_values: ArrayLike<number>,
+  y_values: ArrayLike<number>,
+  z_values: ArrayLike<number>,
   config: CleaningConfig & { primary_axis?: `x` | `y` | `z` } = {},
 ): { x: number[]; y: number[]; z: number[]; quality: CleaningQuality } {
   const invalid_mode = config.invalid_values ?? `remove`

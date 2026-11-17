@@ -3,6 +3,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { element_data } from '#lib/element/index.js'
 import { element_by_symbol, element_for_mass } from '#lib/element/data.js'
 import { element_groups } from '#lib/element/groups.js'
+import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { element_from_lammps_type } from '#lib/element/helpers.js'
 import { expect, test } from 'vite-plus/test'
 import { CATEGORY_COUNTS as expected_counts } from '../test-fixtures'
@@ -160,6 +161,19 @@ test.each([
     // 0.1%: reference values carry 3-6 significant digits
     expect(Math.abs(actual - value) / value, symbol).toBeLessThan(1e-3)
   }
+})
+
+// Pauling χ of thallium is valence dependent: 1.62 for Tl(I), its common state, and 2.04 for
+// Tl(III) (Allred, J. Inorg. Nucl. Chem. 17, 215 (1961)). The Tl(III) value put Tl after Ga,
+// In and Bi, so electronegativity-ordered formulas read InTlSe2 for TlInSe2.
+test.each([
+  [`TlInSe2`, `TlInSe2`],
+  [`TlBiSe2`, `TlBiSe2`],
+  [`GaTlSe2`, `TlGaSe2`],
+  [`TlCuCl3`, `TlCuCl3`],
+])(`Tl(I) electronegativity orders %s as %s`, (input, expected) => {
+  expect(get_element(`Tl`).electronegativity).toBe(1.62)
+  expect(get_electro_neg_formula(input, { plain_text: true, delim: `` })).toBe(expected)
 })
 
 test(`fluorine has highest electronegativity`, () => {

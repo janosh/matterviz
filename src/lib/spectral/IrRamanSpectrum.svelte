@@ -86,8 +86,7 @@
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
-  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) and reject unknown units at the
-  // prop boundary; every read below uses the canonical unit
+  // accepts spellings found in the wild (`cm-1`, `cm⁻¹`), rejects unknown units
   let unit = $derived(canonical_frequency_unit(units))
 
   // Derived, not effect-synced, so a unit switch never broadens a stale width on the new grid
@@ -106,8 +105,7 @@
     on_mode_select?.(mode_idx)
   }
 
-  // Pad the grid well beyond the outermost peak so tails are not clipped, and keep the
-  // low-frequency edge at zero, as vibrational spectra are conventionally drawn.
+  // padded past the outermost peaks so tails are not clipped, floored at zero by convention
   let plot_range = $derived.by((): Vec2 => {
     // array_extent([]) is [Infinity, -Infinity], which is no range at all
     if (sticks.x.length === 0) return [0, 1]
@@ -122,8 +120,8 @@
     return broaden_spectrum(sticks, { ...opts, fwhm: display_fwhm })
   })
 
-  // Transmittance needs a bounded absorbance to invert, so it always scales to max=1
-  // regardless of the normalization selector. IR only: Raman light is scattered, not absorbed.
+  // Transmittance inverts a bounded absorbance, so it always scales to max=1 whatever the
+  // normalization. IR only: Raman light is scattered, not absorbed.
   let is_transmittance = $derived(kind === `ir` && presentation === `transmittance`)
   let curve_y = $derived.by(() => {
     if (broadened.y.length === 0) return []
@@ -184,7 +182,6 @@
   })
   const shape_input = { min: 0, max: 1, step: 0.05 }
 
-  let mode_count = $derived(spectrum.modes.length)
   let active_count = $derived(sticks.y.filter((val) => val > 1e-12).length)
 
   const spectrum_settings = track_settings(
@@ -197,8 +194,8 @@
       normalize: `max`,
     },
   )
-  // One percent of the unbroadened span; a single peak uses the initial 10 cm^-1 width.
-  // Including the FWHM-dependent plot padding would move the target after every reset.
+  // 1% of the unbroadened span (not the FWHM-dependent plot range, which would move the
+  // target after every reset); a single peak uses the initial 10 cm^-1
   const broadening_defaults = $derived.by(() => {
     const [lower, upper] = array_extent(sticks.x) // [Infinity, -Infinity] with no sticks
     const span_cm = convert_frequencies([upper - lower], `cm^-1`, unit)[0]
@@ -290,7 +287,7 @@
         <label>
           <input id="ir-raman-sticks" type="checkbox" bind:checked={show_sticks} />
           Sticks
-          <span class="value">{active_count}/{mode_count}</span>
+          <span class="value">{active_count}/{spectrum.modes.length}</span>
         </label>
       </SettingsSection>
       <SettingsSection

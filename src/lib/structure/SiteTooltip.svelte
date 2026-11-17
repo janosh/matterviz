@@ -36,8 +36,8 @@
       <span class="species">
         {#if occu !== 1}<span class="occupancy">{format_num(occu, `.3~f`)}</span>{/if}
         <strong>
-          {element}{#if oxi_state != null && oxi_state !== 0}<sup
-              >{Math.abs(oxi_state)}{oxi_state > 0 ? `+` : `−`}</sup
+          {element}{#if oxi_state != null}<sup
+              >{Math.abs(oxi_state)}{oxi_state < 0 ? `−` : `+`}</sup
             >{/if}
         </strong>
         {#if element_name}<span class="elem-name">{element_name}</span>{/if}

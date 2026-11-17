@@ -169,15 +169,16 @@ test.each([
   expect(visible_isosurfaces(undefined, bands && [...bands])).toEqual([])
 })
 
-describe(`nearest_face_vertex`, () => {
-  // Only the hit triangle's corners are candidates: vertex 4 (lifted apex) is nearer to the
-  // last point than any corner of face [0, 2, 3] but is not part of it
-  test.each([
-    { face: { a: 0, b: 1, c: 2 }, point: { x: 0.9, y: 0.1, z: 0 }, expected: 1 },
-    { face: { a: 0, b: 2, c: 3 }, point: { x: -5, y: 10, z: 0 }, expected: 3 },
-    { face: { a: 0, b: 2, c: 3 }, point: { x: 0.2, y: 0.7, z: 0.8 }, expected: 3 },
-  ])(`picks corner $expected of $face nearest to $point`, ({ face, point, expected }) => {
+// Only the hit triangle's corners are candidates: vertex 4 (lifted apex) is nearer to the
+// last point than any corner of face [0, 2, 3] but is not part of it
+test.each([
+  { face: { a: 0, b: 1, c: 2 }, point: { x: 0.9, y: 0.1, z: 0 }, expected: 1 },
+  { face: { a: 0, b: 2, c: 3 }, point: { x: -5, y: 10, z: 0 }, expected: 3 },
+  { face: { a: 0, b: 2, c: 3 }, point: { x: 0.2, y: 0.7, z: 0.8 }, expected: 3 },
+])(
+  `nearest_face_vertex: picks corner $expected of $face nearest to $point`,
+  ({ face, point, expected }) => {
     const geometry = make_geometry()
     expect(nearest_face_vertex(geometry, face, point)).toBe(expected)
-  })
-})
+  },
+)

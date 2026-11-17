@@ -23,6 +23,7 @@
     UserContentProps,
   } from '#lib/plot/core/types.js'
   import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+  import { plot_area_line } from '#lib/plot/core/layout.js'
   import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
@@ -170,15 +171,6 @@
     return { stroke, line_dash: `4,2`, stroke_width: Math.max(1, stroke_width - 0.1) }
   }
 
-  interface RibbonData {
-    x_values: number[]
-    y_values: number[]
-    half_widths: number[] // pixels
-    color: string
-    opacity: number
-    key: string
-  }
-
   // Material labels are stable identities; use an empty label for an unnamed dataset.
   const structures = $derived(
     Object.entries(band_structs).map(([label, band_structure]) => ({
@@ -192,9 +184,7 @@
   const effective_fermi_level = $derived(fermi_level ?? structures[0]?.bs.efermi)
 
   // whether any structure has a spin-down channel to select, else the Spin control is hidden
-  const has_spin_down = $derived(
-    structures.some(({ bs: band_structure }) => band_structure.spin_down_bands?.length),
-  )
+  const has_spin_down = $derived(structures.some(({ bs }) => bs.spin_down_bands?.length))
   let effective_spin_mode = $derived<BandsSpinMode>(
     band_type === `electronic`
       ? helpers.resolve_spin_mode(band_spin_mode, has_spin_down)
@@ -208,6 +198,8 @@
   // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) and reject unknown units at the
   // prop boundary; every read below uses the canonical unit
   let unit = $derived(canonical_frequency_unit(units))
+  // the value axis' unit: electronic bands are always eV (normalize_band_structure converts)
+  const axis_unit = $derived(band_type === `phonon` ? unit : `eV`)
   const convert_band_values = (values: number[]): number[] =>
     band_type === `phonon` ? convert_frequencies(values, unit) : values
   // inverse of convert_band_values for one plotted value
@@ -237,9 +229,8 @@
     new Set(path_mode === `union` ? all_segment_keys : common_segment_keys),
   )
 
-  // Map segments to x-axis positions, in the physical path order of the first structure
-  // (segments only other structures have, in union mode, follow). A jump between branches
-  // advances nothing.
+  // Segment x ranges in the first structure's path order (union-mode segments only others have
+  // follow); a jump between branches advances nothing
   let internal_x_positions = $derived.by((): Record<string, Vec2> => {
     const canonical_keys = structures[0]?.keys ?? []
     const ordered = [
@@ -247,15 +238,12 @@
       ...[...segments_to_plot].filter((key) => !canonical_keys.includes(key)),
     ]
     const lengths = ordered.map((key) => {
-      const [band_structure, branch] = all_segments[key][0]
-      return (
-        band_structure.distance[branch.end_index] - band_structure.distance[branch.start_index]
-      )
+      const [{ distance }, branch] = all_segments[key][0]
+      return distance[branch.end_index] - distance[branch.start_index]
     })
     const total = lengths.reduce((sum, len) => sum + len, 0)
-    // Each boundary scaled whole, so the path ends at exactly path_length, and rounded to 1e-12
-    // of it: frames whose paths differ only in scale (a sweep's) then place their ticks at the
-    // very same x, which lets every axis reuse its tick layout
+    // Each boundary scaled whole (the path ends at exactly path_length) and rounded to 1e-12 of
+    // it, so frames whose paths differ only in scale (a sweep's) share tick x and layout
     const place = (raw_x: number): number => {
       if (path_length === undefined || !(total > 0)) return raw_x
       return (Math.round((raw_x / total) * 1e12) / 1e12) * path_length
@@ -273,15 +261,14 @@
     x_positions = internal_x_positions
   })
 
-  // Band-line series (unstyled, with the line their style derives from), fat-band ribbons and,
-  // per series, its structure's max |slope| (the tooltip's dispersion label judges a band
-  // against its own structure's steepest, not another material's) in one pass over the plotted
-  // branch segments
+  // One pass over the plotted branches: unstyled band series (with the line their style derives
+  // from), fat-band ribbons and per series its structure's max |slope| (the tooltip's dispersion
+  // label judges a band against its own structure's steepest)
   let { series_geometry, ribbon_data, slope_scales } = $derived.by(() => {
     const all_series: { series: DataSeries; color: string; line: helpers.BandLine }[] = []
-    const all_ribbons: RibbonData[] = []
+    const all_ribbons = [] // half_widths in pixels
     const scales: number[] = [] // aligned with all_series
-    const markers = rest.on_point_click ? `line+points` : `line`
+    const markers: DataSeries[`markers`] = rest.on_point_click ? `line+points` : `line`
     const { opacity = 0.3, max_width = 6, scale = 1, color: ribbon_color } = ribbon_config
 
     for (const [bs_idx, { label, bs: band_structure, keys }] of structures.entries()) {
@@ -291,12 +278,14 @@
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
         band_type === `phonon` ? helpers.find_gamma_indices(band_structure) : []
-      // one px-per-width scale per structure so ribbons compare across bands and segments
+      const spin_mode = structure_spin_mode(band_structure)
+      // one px-per-width scale per structure so ribbons compare across bands and segments. They
+      // widen the spin-up line, so they go when it does
       const width_max = array_max(
         (band_structure.band_widths ?? []).flat().filter(Number.isFinite),
       )
-      const px_per_width = width_max > 0 ? (max_width * scale) / width_max : 0
-      const spin_mode = structure_spin_mode(band_structure)
+      const show_ribbons = width_max > 0 && spin_mode !== `down_only`
+      const px_per_width = show_ribbons ? (max_width * scale) / width_max : 0
 
       // The plotted branches in x order. Each band (and spin) is one series across them, its
       // line lifting at every branch start: the lines of separate series per branch, but one
@@ -321,44 +310,27 @@
           band_type === `electronic` ? band_structure.spin_down_bands?.[band_idx] : undefined
 
         // Spin channels to draw, each with its energies over the whole path
-        const channels: { spin: `up` | `down`; series_label: string; values: number[] }[] = []
-        if (spin_mode !== `down_only`) {
-          channels.push({
-            spin: `up`,
-            series_label: spin_down_band ? `${structure_label} (↑)` : structure_label,
-            values: band_structure.bands[band_idx],
-          })
-        }
-        if (spin_down_band && spin_mode !== `up_only`) {
-          channels.push({
-            spin: `down`,
-            series_label: `${structure_label} (↓)`,
-            values: spin_down_band,
-          })
-        }
-        for (const { spin, series_label, values } of channels) {
-          const [x, y, metadata, line_breaks] = [[], [], [], []] as [
-            number[],
-            number[],
-            helpers.BandPointMeta[],
-            number[],
-          ]
+        const channels: [`up` | `down`, number[]][] = []
+        if (spin_mode !== `down_only`) channels.push([`up`, band_structure.bands[band_idx]])
+        if (spin_down_band && spin_mode !== `up_only`) channels.push([`down`, spin_down_band])
+        for (const [spin, values] of channels) {
+          const arrow = spin === `up` ? `↑` : `↓`
+          const series_label = spin_down_band
+            ? `${structure_label} (${arrow})`
+            : structure_label
+          const [x, y, line_breaks]: number[][] = [[], [], []]
+          const metadata: helpers.BandPointMeta[] = []
           for (const { start_idx, end_idx, x_vals } of branches) {
             if (values.length < end_idx) continue // a channel short of this branch
             const y_vals = convert_band_values(values.slice(start_idx, end_idx))
+            const point_args = { x_vals, y_vals, band_idx, spin, is_acoustic, start_idx }
             const branch_metadata = helpers.build_point_metadata({
-              x_vals,
-              y_vals,
-              band_idx,
-              spin,
-              is_acoustic,
+              ...point_args,
               bs: band_structure,
-              start_idx,
             })
             for (const { slope } of branch_metadata) {
-              if (slope !== null && Number.isFinite(slope)) {
+              if (slope !== null && Number.isFinite(slope))
                 max_slope = Math.max(max_slope, Math.abs(slope))
-              }
             }
             if (x.length > 0) line_breaks.push(x.length)
             for (let idx = 0; idx < x_vals.length; idx++) {
@@ -368,17 +340,10 @@
             }
           }
           if (x.length === 0) continue
+          const series = { x, y, line_breaks, markers, label: series_label, metadata }
+          const id = JSON.stringify([label, band_idx, spin])
           all_series.push({
-            series: {
-              id: JSON.stringify([label, band_idx, spin]),
-              legend_id: JSON.stringify([label, spin]),
-              x,
-              y,
-              line_breaks,
-              markers,
-              label: series_label,
-              metadata,
-            },
+            series: { id, legend_id: JSON.stringify([label, spin]), ...series },
             color,
             line: [band_idx, spin, is_acoustic === true, structure_label],
           })
@@ -390,10 +355,7 @@
           const half_widths = (band_structure.band_widths?.[band_idx] ?? [])
             .slice(start_idx, end_idx)
             .map((width) => (Number.isFinite(width) && width > 0 ? width * px_per_width : 0))
-          // ribbons widen the spin-up line, so they go when it does
-          if (spin_mode === `down_only` || !half_widths.some((half_width) => half_width > 0)) {
-            continue
-          }
+          if (!half_widths.some((half_width) => half_width > 0)) continue
           all_ribbons.push({
             x_values: x_vals,
             y_values: convert_band_values(
@@ -411,9 +373,8 @@
     return { series_geometry: all_series, ribbon_data: all_ribbons, slope_scales: scales }
   })
 
-  // Each band series with its style. A band hover restyles only the lines it emphasises or
-  // mutes: every other series keeps its object (and its points), so ScatterPlot sees them as
-  // unchanged. Non-reactive bookkeeping keyed by the geometry entries, dropped with them.
+  // Each band series with its style. A band hover restyles only the lines it emphasises or mutes:
+  // every other series keeps its object (and points), so ScatterPlot sees them unchanged
   const styled_series = new WeakMap<(typeof series_geometry)[number], DataSeries>()
   let series_data = $derived(
     series_geometry.map((entry) => {
@@ -439,16 +400,9 @@
     const add_point = (pos: number, band_structure: BaseBandStructure, qpoint_idx: number) => {
       const qpoint: QPoint | undefined = band_structure.qpoints[qpoint_idx]
       if (!qpoint?.label) return
-      const label = helpers.pretty_sym_point(qpoint.label)
-      points_at[pos] ??= []
-      if (!points_at[pos].some((point) => point.label === label)) {
-        points_at[pos].push({
-          label,
-          frac_coords: qpoint.frac_coords,
-          qpoint_idx,
-          band_structure,
-        })
-      }
+      const [label, points] = [helpers.pretty_sym_point(qpoint.label), (points_at[pos] ??= [])]
+      if (points.some((point) => point.label === label)) return
+      points.push({ label, frac_coords: qpoint.frac_coords, qpoint_idx, band_structure })
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
       const [band_structure, branch] = all_segments[segment_key][0]
@@ -457,9 +411,8 @@
     }
     return points_at
   })
-  // Tick labels; labels meeting at one x are joined with a pipe. Non-breaking spaces keep a
-  // discontinuity label (`K | U`) on one line; the axis wraps long tick labels at ordinary
-  // spaces when they crowd each other on narrow plots
+  // Tick labels, joined by a pipe where several meet at one x, kept on one line (`K | U`) by
+  // non-breaking spaces: the axis wraps crowded tick labels at ordinary spaces
   let x_axis_ticks = $derived(
     Object.fromEntries(
       Object.entries(sym_points_at_x).map(([pos, points]) => [
@@ -480,8 +433,7 @@
   let k_path = $derived(
     k_lattice && structures[0] ? helpers.band_k_path(structures[0].bs, k_lattice) : undefined,
   )
-  // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
-  // scale, so it follows zoom, resize and fullscreen
+  // x of the clicked symmetry-point tick, the popup anchored to it through the live x scale
   let bz_popup_x = $state<number | null>(null)
   // The popup's 3D zone (three.js) is imported on the first tick click, not with every band
   // plot. A failed import (offline, a stale chunk after a deploy) closes it with a notice.
@@ -499,8 +451,8 @@
       },
     )
   }
-  // Marked at the drawn path's own point (folded with its branch, so it sits on the drawn label);
-  // a union-mode point only another structure has is not on that path and is folded alone
+  // Marked at the drawn path's own point (folded with its branch); a union-mode point only another
+  // structure has is folded alone
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
     if (bz_popup_x === null || !k_lattice) return []
     const lattice = k_lattice
@@ -520,18 +472,34 @@
   // Placed in the first band structure's reciprocal lattice (its q-points' frame), else the
   // structure's. Malformed values or none on the path only drop the markers, with a notice.
   type ModeOverlay = { markers: ModeValueMarker[]; error?: string }
-  // Each frame's markers once: a sweep revisits frames and a step can re-run this derived, and
-  // validating and projecting a q mesh is the costly part. Keyed by the mode values, valid for
-  // the band structure, lattice and path layout they were placed on.
-  const mode_overlays = new WeakMap<
-    ModeValues,
-    {
-      band_structure: BaseBandStructure
-      lattice: Matrix3x3
-      positions: string
-      overlay: ModeOverlay
+  // Each frame's markers once (a sweep revisits frames; projecting a q mesh is costly), valid
+  // for the band structure, lattice and path layout they were placed on
+  const mode_overlays = new WeakMap<ModeValues, { deps: unknown[]; overlay: ModeOverlay }>()
+  const place_mode_values = (
+    values: ModeValues,
+    band_structure: BaseBandStructure,
+    lattice: Matrix3x3,
+    label: string,
+  ): ModeOverlay => {
+    try {
+      const parsed = normalize_mode_values(values)
+      const projections = project_qpoints_onto_path(
+        band_structure,
+        lattice,
+        parsed.qpoints,
+        internal_x_positions,
+      )
+      if (parsed.qpoints.length > 0 && projections.length === 0) {
+        return {
+          markers: [],
+          error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
+        }
+      }
+      return { markers: thin_mode_markers(mode_value_markers(parsed, projections), x_range) }
+    } catch (exc) {
+      return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
     }
-  >()
+  }
   let mode_overlay = $derived.by((): ModeOverlay => {
     const band_structure = structures[0]?.bs
     if (!mode_values || !band_structure) return { markers: [] }
@@ -543,43 +511,16 @@
         error: `${label} needs a reciprocal lattice (band data or structure) to place its q-points on the path`,
       }
     }
-    const positions = JSON.stringify(internal_x_positions)
+    const deps = [band_structure, lattice, JSON.stringify(internal_x_positions)]
     const cached = mode_overlays.get(mode_values)
-    if (
-      cached?.band_structure === band_structure &&
-      cached.lattice === lattice &&
-      cached.positions === positions
-    )
-      return cached.overlay
-    const overlay = ((): ModeOverlay => {
-      try {
-        const parsed = normalize_mode_values(mode_values)
-        const projections = project_qpoints_onto_path(
-          band_structure,
-          lattice,
-          parsed.qpoints,
-          internal_x_positions,
-        )
-        if (parsed.qpoints.length > 0 && projections.length === 0) {
-          return {
-            markers: [],
-            error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
-          }
-        }
-        return { markers: thin_mode_markers(mode_value_markers(parsed, projections), x_range) }
-      } catch (exc) {
-        return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
-      }
-    })()
-    mode_overlays.set(mode_values, { band_structure, lattice, positions, overlay })
+    if (cached?.deps.every((dep, idx) => dep === deps[idx])) return cached.overlay
+    const overlay = place_mode_values(mode_values, band_structure, lattice, label)
+    mode_overlays.set(mode_values, { deps, overlay })
     return overlay
   })
-  // the colour bar for the mode markers, one object while its title holds: a new one per frame
-  // of a sweep would re-measure the bar (a forced layout) though nothing on it changed. Its
-  // title sits beside the bar, a line shorter, and the bar spans 120px rather than 220px, so it
-  // fits above the bands of short or narrow plots instead of pushing them down from outside (a
-  // horizontal colour bar wider than 70% of the padded plot always goes outside). A long title
-  // widens it rather than crushing the bar's tick labels.
+  // The mode markers' colour bar, one object while its title holds (a new one per sweep frame
+  // forces a re-measure). Title beside a 120px (not 220px) bar, so it fits above the bands of
+  // short or narrow plots instead of going outside (as one wider than 70% of the plot does).
   const mode_bar_title = $derived(
     mode_overlay.markers.length > 0 && mode_values ? mode_values.label : null,
   )
@@ -645,53 +586,44 @@
     ...x_axis,
   })
 
-  // Range in the data's own unit; unit conversion is a positive scale factor, which commutes
-  // with extent, the noise clamp and the proportional padding, so a units change converts the
-  // two endpoints instead of re-flattening every band
-  let raw_y_range = $derived.by((): Vec2 | undefined =>
-    helpers.padded_frequency_range(
-      structures.flatMap(({ bs: band_structure }) => [
-        ...band_structure.bands.flat(),
-        ...(band_structure.spin_down_bands?.flat() ?? []),
-      ]),
-      band_type === `phonon`,
-    ),
-  )
+  // Range in the data unit: a units change (a positive scale factor, which commutes with extent,
+  // noise clamp and padding) converts the two endpoints instead of re-flattening every band
+  let raw_y_range = $derived.by((): Vec2 | undefined => {
+    const values = structures.flatMap(({ bs }) => [bs.bands, bs.spin_down_bands ?? []].flat(2))
+    return helpers.padded_frequency_range(values, band_type === `phonon`)
+  })
   let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
   const internal_y_axis = $derived<AxisConfig>({
-    label: spectral_value_label(band_type === `phonon`, unit),
+    label: spectral_value_label(band_type === `phonon`, axis_unit),
     format: `.2f`,
     range: y_range,
     ...y_axis,
   })
 
+  // background shading keeps its color under the pointer: a fill region brightens on hover by
+  // default, which lit the whole imaginary half-plane up
+  const background = { hover_style: null, z_index: `below-lines`, fill_opacity: 0.2 } as const
   let fill_regions = $derived.by((): FillRegion[] => {
     const regions: FillRegion[] = highlight_regions
-      .filter((region) => Number.isFinite(region.y_min) && Number.isFinite(region.y_max))
-      .map((region) => ({
-        lower: Math.min(region.y_min, region.y_max),
-        upper: Math.max(region.y_min, region.y_max),
-        fill:
-          region.color ?? `var(--bands-highlight-region-color, light-dark(#f6e8c3, #4d3f20))`,
-        fill_opacity: region.opacity ?? 0.2,
-        // background shading keeps its color under the pointer: a fill region brightens on
-        // hover by default, which lit the whole imaginary half-plane up
-        hover_style: null,
-        label: region.label,
-        show_in_legend: Boolean(region.label),
-        z_index: `below-lines` as const,
+      .filter(({ y_min, y_max }) => Number.isFinite(y_min) && Number.isFinite(y_max))
+      .map(({ y_min, y_max, color, opacity, label }) => ({
+        ...background,
+        lower: Math.min(y_min, y_max),
+        upper: Math.max(y_min, y_max),
+        fill: color ?? `var(--bands-highlight-region-color, light-dark(#f6e8c3, #4d3f20))`,
+        fill_opacity: opacity ?? 0.2,
+        label,
+        show_in_legend: Boolean(label),
       }))
     if (band_type === `phonon` && shade_imaginary_modes && y_range && y_range[0] < 0) {
       regions.unshift({
+        ...background,
         lower: y_range[0],
         upper: 0,
         fill: `var(--bands-imaginary-region-color, light-dark(#f8d7da, #5a1a1f))`,
-        fill_opacity: 0.2,
-        hover_style: null,
         label: `Imaginary modes`,
         show_in_legend: false,
-        z_index: `below-lines`,
       })
     }
     return regions
@@ -712,25 +644,31 @@
     return null
   })
 
-  // One gap per system, from the first one (which also supplies the default E_F) and only the
-  // spin channels on display. Malformed occupations only drop the gap annotation and surface
-  // electronic_band_gap's message as a notice over the still-rendered bands.
+  // The first system's gap (it also supplies the default E_F), over the displayed spin channels.
+  // Malformed occupations only drop the annotation, with a notice over the still-drawn bands.
   let gap_result = $derived.by(() => {
     const band_structure = structures[0]?.bs
     if (!show_gap_annotation || band_type !== `electronic` || !band_structure)
       return { gap: null }
     const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
     const spin_mode = structure_spin_mode(band_structure)
-    const shown = (up: number[][], down: number[][] | undefined): number[][] => [
-      ...(spin_mode !== `down_only` ? up : []),
-      ...(spin_mode !== `up_only` ? (down ?? []) : []),
-    ]
-    const filling = occupations
-      ? shown(occupations, spin_down_occupations)
-      : effective_fermi_level
-    if (filling === undefined) return { gap: null }
+    // Occupations decide filling when given, so a missing spin-down set is an error (an empty
+    // one fails electronic_band_gap's shape check), never a silent fall back to E_F
+    const up_filling = occupations ?? effective_fermi_level
+    const down_filling = occupations ? (spin_down_occupations ?? []) : effective_fermi_level
+    if (up_filling === undefined || down_filling === undefined) return { gap: null }
+    const show_down = spin_down_bands && spin_mode !== null && spin_mode !== `up_only`
+    const down = show_down ? { bands: spin_down_bands, filling: down_filling } : undefined
+    // down_only passes an empty spin-up channel so the edges still say `down`
+    const show_up = !down || spin_mode !== `down_only`
     try {
-      return { gap: helpers.electronic_band_gap(shown(bands, spin_down_bands), filling) }
+      return {
+        gap: helpers.electronic_band_gap(
+          show_up ? bands : [],
+          show_up ? up_filling : [],
+          down,
+        ),
+      }
     } catch (exc) {
       return { gap: null, error: `Invalid band occupations: ${to_error(exc).message}` }
     }
@@ -773,9 +711,8 @@
     return x_start === null || x_end === null ? null : [x_start, x_end]
   })
 
-  // The plot is only mounted while there is something to draw, but a bound view outlives it in
-  // the host (e.g. BandsAndDos sync state). ScatterPlot honors a view passed at mount, so drop
-  // the view when the plot goes away or a remount would restore the old path's range.
+  // A bound view outlives the plot in the host (e.g. BandsAndDos sync state) and ScatterPlot
+  // honors a view passed at mount, so drop it with the plot or a remount restores the old range
   const show_plot = $derived(series_data.length > 0 && !strict_path_error)
   $effect(() => {
     if (!show_plot) return
@@ -828,7 +765,7 @@
     } = (metadata ?? {}) as Partial<helpers.BandPointMeta & { mode_value: number }>}
     {#if num_structures > 1 && label}<strong>{@html sanitize_html(label)}</strong><br />{/if}
     <TooltipValue
-      label={internal_y_axis.label || spectral_value_label(band_type === `phonon`, unit)}
+      label={internal_y_axis.label || spectral_value_label(band_type === `phonon`, axis_unit)}
       value={y_formatted}
       unit={internal_y_axis.unit}
     /><br />
@@ -951,7 +888,8 @@
       </SettingsSection>
     {/snippet}
 
-    {#snippet user_content({ height, width, x_scale_fn, y_scale_fn, pad })}
+    {#snippet user_content(ctx)}
+      {@const { height, width, x_scale_fn, y_scale_fn, pad } = ctx}
       <!-- Fat band ribbons (rendered behind band lines) -->
       {#each ribbon_data as ribbon (ribbon.key)}
         {@const path_d = helpers.generate_ribbon_path(
@@ -977,10 +915,7 @@
         .map((tick) => x_scale_fn(Number(tick)))
         .filter(Number.isFinite) as scaled_x (scaled_x)}
         <line
-          x1={scaled_x}
-          x2={scaled_x}
-          y1={pad.t}
-          y2={height - pad.b}
+          {...plot_area_line(scaled_x, false, ctx)}
           stroke="var(--bands-symmetry-line-color, light-dark(black, white))"
           stroke-width="var(--bands-symmetry-line-width, 1)"
           opacity="var(--bands-symmetry-line-opacity, 0.5)"
@@ -1007,10 +942,7 @@
         {@const hover_x = x_scale_fn(highlight_x)}
         {#if Number.isFinite(hover_x)}
           <line
-            x1={hover_x}
-            x2={hover_x}
-            y1={pad.t}
-            y2={height - pad.b}
+            {...plot_area_line(hover_x, false, ctx)}
             class="hovered-qpoint-line"
             stroke="var(--bands-hover-line-color, #ff6b35)"
             stroke-width="var(--bands-hover-line-width, 2)"
@@ -1026,8 +958,8 @@
         effective_fermi_level !== undefined ? y_scale_fn(effective_fermi_level) : NaN}
       {@const bands_x_end = x_scale_fn(x_range[1])}
       {@const gap_data = gap_result.gap}
-      {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
-      {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
+      {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm.energy) : NaN}
+      {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm.energy) : NaN}
       {@const gap_mid_y = (vbm_y + cbm_y) / 2}
       {@const ef_needs_offset =
         Number.isFinite(gap_mid_y) && Math.abs(fermi_y - gap_mid_y) < 16}
@@ -1035,17 +967,14 @@
         ? gap_mid_y + (fermi_y >= gap_mid_y ? 16 : -16)
         : fermi_y}
 
-      <!-- Fermi level line for electronic bands -->
-      <!-- E_F and gap labels sit in the right margin only when the caller padded for it,
-           otherwise just inside the plot edge so the SVG does not clip them -->
+      <!-- Fermi level line. E_F and gap labels sit in the right margin only when the caller
+           padded for it, else just inside the plot edge so the SVG does not clip them -->
       {@const ef_label_fits_right = width - bands_x_end >= 20}
       {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
         <line
           class="fermi-level-line"
-          x1={pad.l}
+          {...plot_area_line(fermi_y, true, ctx)}
           x2={bands_x_end}
-          y1={fermi_y}
-          y2={fermi_y}
           stroke={helpers.BANDS_CSS_COLORS.fermi}
           stroke-width="var(--bands-fermi-line-width, 1.5)"
           stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
@@ -1081,10 +1010,8 @@
       {@const ref_y = Number.isFinite(ref_freq) ? y_scale_fn(ref_freq) : NaN}
       {#if Number.isFinite(ref_y) && Number.isFinite(bands_x_end)}
         <line
-          x1={pad.l}
+          {...plot_area_line(ref_y, true, ctx)}
           x2={bands_x_end}
-          y1={ref_y}
-          y2={ref_y}
           stroke={helpers.BANDS_CSS_COLORS.reference}
           stroke-width="var(--bands-reference-line-width, 1)"
           stroke-dasharray="var(--bands-reference-line-dash, 4,3)"
@@ -1094,21 +1021,54 @@
 
       <!-- Electronic band edge and gap annotation -->
       {#if gap_data && Number.isFinite(vbm_y) && Number.isFinite(cbm_y) && Number.isFinite(bands_x_end)}
-        {#each [[vbm_y, `var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))`], [cbm_y, `var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))`]] as [number, string][] as [edge_y, color] (edge_y)}
+        <!-- VBM and CBM on the path (unless off the plotted path), joined by the transition -->
+        {@const [vbm_x, cbm_x] = [gap_data.vbm, gap_data.cbm].map(({ qpoint_idx }) => {
+          const data_x = qpoint_x(qpoint_idx)
+          return data_x === null ? NaN : x_scale_fn(data_x)
+        })}
+        {#if Number.isFinite(vbm_x) && Number.isFinite(cbm_x)}
           <line
-            x1={pad.l}
+            class="gap-transition"
+            x1={vbm_x}
+            y1={vbm_y}
+            x2={cbm_x}
+            y2={cbm_y}
+            stroke="var(--bands-gap-transition-color, var(--text-color))"
+            stroke-width="var(--bands-gap-transition-width, 1)"
+            opacity="0.6"
+            pointer-events="none"
+          />
+        {/if}
+        {#each [[`VBM`, gap_data.vbm, vbm_y, vbm_x, `var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))`], [`CBM`, gap_data.cbm, cbm_y, cbm_x, `var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))`]] as const as [name, edge, edge_y, edge_x, color] (name)}
+          <line
+            {...plot_area_line(edge_y, true, ctx)}
             x2={bands_x_end + 3}
-            y1={edge_y}
-            y2={edge_y}
             stroke={color}
             stroke-width="var(--bands-gap-line-width, 1)"
             stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
             opacity="0.7"
           />
+          {#if Number.isFinite(edge_x)}
+            <circle
+              class="band-edge {name.toLowerCase()}"
+              cx={edge_x}
+              cy={edge_y}
+              r="4"
+              fill={color}
+              stroke="var(--bands-gap-marker-stroke, light-dark(white, black))"
+              stroke-width="1"
+            >
+              <title>
+                {`${name} ${format_num(edge.energy, `.4~f`)} eV, band ${edge.band_idx + 1}${edge.spin ? ` (spin ${edge.spin})` : ``}`}
+              </title>
+            </circle>
+          {/if}
         {/each}
         {@const gap_label_fits_right = width - bands_x_end >= 70}
+        {@const gap_label_x = gap_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
         <text
-          x={gap_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
+          class="gap-label"
+          x={gap_label_x}
           y={gap_mid_y}
           dy="0.35em"
           font-size="10"
@@ -1117,6 +1077,9 @@
         >
           E<tspan dy="2" font-size="8">g:</tspan>
           <tspan dy="-2">{Number(gap_data.gap.toPrecision(4))} eV</tspan>
+          <tspan class="gap-kind" x={gap_label_x} dy="1.2em" font-size="9" opacity="0.8">
+            {gap_data.is_direct ? `direct` : `indirect`}
+          </tspan>
         </text>
       {/if}
     {/snippet}
@@ -1130,9 +1093,8 @@
     </ViewerNotices>
     <!-- hidden while zoomed away from its tick -->
     {#if ZonePopup && k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
-      <!-- centered above the tick on the x axis, kept inside the plot (centered on a plot
-      narrower than itself). The bottom arrow tracks the tick even when clamping shifts the popup
-      off-center -->
+      <!-- centered above the tick on the x axis, kept inside the plot (centered on a narrower
+      plot); its bottom arrow tracks the tick when clamping shifts it off-center -->
       {@const tick_x = ctx.x_scale_fn(bz_popup_x)}
       {@const half_width = (bz_popup_props.width ?? BZ_POPUP_DEFAULT_WIDTH) / 2}
       {@const left =

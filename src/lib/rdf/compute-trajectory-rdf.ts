@@ -6,13 +6,13 @@
 // histograms come back, so a 100k-frame run never needs its positions in memory at once
 // (unlike MSD/VACF, which are lag analyses and need the whole series).
 import { display_idx } from '#lib/labels.js'
-import { calc_lattice_params } from '#lib/math.js'
+import { compute_lattice_params } from '#lib/math.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { sweep_frames } from '#lib/trajectory/analysis.js'
-import { calc_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
-import { coordination_number } from './calc-pdf'
-import type { FrameRdfOptions } from './calc-rdf'
+import { compute_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
+import { coordination_number } from './compute-pdf'
+import type { FrameRdfOptions } from './compute-rdf'
 
 // Default sample: neighbour lists at the 10 A cutoff cost ~30-60 ms per 2000-atom frame, so
 // 100 frames stay a wait a user will sit through; a liquid's g(r) converges well within that.
@@ -209,8 +209,8 @@ export async function collect_trajectory_rdf(
           `collect_trajectory_rdf: frame ${display_idx(frame_number)}: ${lattice_unavailable_reason(structure, true)}`,
         )
       }
-      const volume = calc_lattice_params(structure.lattice.matrix).volume
-      const patterns = await calc_rdfs_async(structure, { cutoff, n_bins }, { signal })
+      const volume = compute_lattice_params(structure.lattice.matrix).volume
+      const patterns = await compute_rdfs_async(structure, { cutoff, n_bins }, { signal })
       return { patterns, volume }
     },
   )

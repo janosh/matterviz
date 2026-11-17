@@ -11,10 +11,7 @@
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
-  import {
-    DEFAULT_ELEMENT_TO_GAS,
-    GAS_STOICHIOMETRY,
-  } from '#lib/convex-hull/gas-thermodynamics.js'
+  import { relevant_gases as find_relevant_gases } from '#lib/convex-hull/gas-thermodynamics.js'
   import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -202,21 +199,10 @@
 
   // === Model and sweep ===
 
-  // Diatomic elemental gases of the elements present (the only atmospheres every free-energy
-  // source can represent)
-  const relevant_gases = $derived.by((): GasSpecies[] => {
-    const present = new Set(entries.flatMap((entry) => Object.keys(entry.composition)))
-    return [
-      ...new Set(
-        Object.entries(DEFAULT_ELEMENT_TO_GAS)
-          .filter(
-            ([element, gas]) =>
-              present.has(element) && Object.keys(GAS_STOICHIOMETRY[gas]).length === 1,
-          )
-          .map(([, gas]) => gas),
-      ),
-    ]
-  })
+  // Gases made of the elements present: elemental ones set their element's reference,
+  // compound ones (CO2 in Ca-C-O) join the diagram as phases
+  const present_elements = $derived(entries.flatMap((entry) => Object.keys(entry.composition)))
+  const relevant_gases = $derived(find_relevant_gases(present_elements))
   const compute_options = $derived<TernaryPhaseDiagramOptions>({
     ...options,
     ...(t_range && { t_range }),

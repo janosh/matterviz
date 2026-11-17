@@ -7,6 +7,7 @@
     FacetPanelContext,
   } from '#lib/plot/index.js'
   import { PLOT_COLORS } from '#lib/colors/index.js'
+  import { array_extent } from '#lib/math.js'
   import { FacetGrid, ScatterPlot } from '#lib/plot/index.js'
   import { frequency_unit_label } from './frequency-units'
   import type {
@@ -44,32 +45,24 @@
     kind: SpectrumPanelDatum[`kind`],
     response: TrajectorySpectrumCurve,
   ): FacetPanel<SpectrumPanelDatum> => ({ key: kind, data: { kind, response } })
+  // Frequencies where any curve clears the power floor, padded by 12% of that span or the
+  // coarsest spectral resolution and clipped to the data
   const significant_frequency_range = (
     curves: readonly TrajectorySpectrumCurve[],
   ): [number, number] | undefined => {
-    let data_minimum = Infinity
-    let data_maximum = -Infinity
-    let significant_minimum = Infinity
-    let significant_maximum = -Infinity
-    let maximum_resolution = 0
-    for (const curve of curves) {
-      if (Number.isFinite(curve.rayleigh_resolution)) {
-        maximum_resolution = Math.max(maximum_resolution, curve.rayleigh_resolution)
-      }
-      for (const [frequency_idx, frequency] of curve.frequencies.entries()) {
-        if (!Number.isFinite(frequency)) continue
-        data_minimum = Math.min(data_minimum, frequency)
-        data_maximum = Math.max(data_maximum, frequency)
-        if ((curve.normalized_power[frequency_idx] ?? 0) < SPECTRUM_POWER_FLOOR) continue
-        significant_minimum = Math.min(significant_minimum, frequency)
-        significant_maximum = Math.max(significant_maximum, frequency)
-      }
-    }
-    if (!Number.isFinite(significant_minimum) || !Number.isFinite(data_minimum))
-      return undefined
+    const finite = (values: number[]) => values.filter(Number.isFinite)
+    const [data_minimum, data_maximum] = array_extent(
+      curves.flatMap(({ frequencies }) => finite(frequencies)),
+    )
+    const [significant_minimum, significant_maximum] = array_extent(
+      curves.flatMap(({ frequencies, normalized_power }) =>
+        finite(frequencies.filter((_, idx) => normalized_power[idx] >= SPECTRUM_POWER_FLOOR)),
+      ),
+    )
+    if (!Number.isFinite(significant_minimum)) return undefined
     const padding = Math.max(
       (significant_maximum - significant_minimum) * 0.12,
-      maximum_resolution,
+      ...finite(curves.map(({ rayleigh_resolution }) => rayleigh_resolution)),
     )
     return [
       Math.max(data_minimum, significant_minimum - padding),
@@ -116,9 +109,7 @@
   let visible_frequency_range = $derived(
     frequency_range ??
       significant_frequency_range(
-        [result.vdos, result.ir, selected_raman_curve].flatMap((curve) =>
-          curve ? [curve] : [],
-        ),
+        [result.vdos, result.ir, selected_raman_curve].filter((curve) => curve !== null),
       ),
   )
   let spectroscopy_legend = $derived(

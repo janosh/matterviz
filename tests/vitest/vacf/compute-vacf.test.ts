@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import { autocorrelation_sums, group_atoms_by_element } from '#lib/trajectory/positions.js'
-import { calc_vacf, central_difference_velocities } from '#lib/vacf/calc-vacf.js'
+import { compute_vacf, central_difference_velocities } from '#lib/vacf/compute-vacf.js'
 import { describe, expect, it } from 'vite-plus/test'
 import { direct_origin_sum } from '../msd/helpers'
 import { cubic_matrix } from '../test-fixtures'
@@ -71,11 +71,11 @@ describe(`autocorrelation_sums (Wiener-Khinchin) against the direct origin loop`
     expect(largest).toBeGreaterThan(1)
   })
 
-  it(`reproduces the direct VACF of an orbiting atom through calc_vacf`, () => {
+  it(`reproduces the direct VACF of an orbiting atom through compute_vacf`, () => {
     const [n_frames, frequency] = [50, 0.07]
     const { positions, velocities } = circular_motion(n_frames, frequency, 1.3)
     const flat = Float64Array.from(velocities.flat(2))
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
+    const result = compute_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
       max_lag_fraction: 1,
     })
     const expected = result.lags.map(
@@ -94,7 +94,7 @@ describe(`analytic VACF limits`, () => {
     `circular motion (%s) gives VACF = cos(2 pi f lag) exactly`,
     (_label, frequency, n_frames) => {
       const { positions, velocities } = circular_motion(n_frames, frequency)
-      const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
+      const result = compute_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
       const [total] = result.curves
       const omega = 2 * Math.PI * frequency
       const expected = result.lags.map((lag) => Math.cos(omega * lag))
@@ -112,7 +112,7 @@ describe(`analytic VACF limits`, () => {
     // independent products, so the per-lag standard error is ~1/sqrt(3e4) = 6e-3.
     const [n_frames, n_atoms] = [400, 200]
     const { positions, velocities } = ideal_gas(n_frames, n_atoms, 314159)
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
+    const result = compute_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
     const [total] = result.curves
     const tail = total.vacf_normalized.slice(1)
     const worst = Math.max(...tail.map(Math.abs))
@@ -127,7 +127,7 @@ describe(`analytic VACF limits`, () => {
       [1.5, -2.25, 0.75],
       [4, 4, 4],
     ])
-    const result = calc_vacf(build_vacf_input(frames))
+    const result = compute_vacf(build_vacf_input(frames))
     for (const curve of result.curves) {
       expect(curve.vacf.every((value) => value === 0)).toBe(true)
       expect(curve.vacf_normalized.every((value) => value === 0)).toBe(true)
@@ -142,7 +142,7 @@ describe(`analytic VACF limits`, () => {
       [5, 5, 5],
     ])
     const elements: ElementSymbol[] = [`H`, `He`]
-    const result = calc_vacf(build_vacf_input(frames, { elements }))
+    const result = compute_vacf(build_vacf_input(frames, { elements }))
     expect(result.curves.map((curve) => curve.label)).toEqual([`Total`, `H`, `He`])
     const [total, hydrogen, helium] = result.curves
     expect(hydrogen.vacf[0]).toBeCloseTo(0.09, 12)
@@ -161,11 +161,11 @@ describe(`velocity sources`, () => {
     const { positions, velocities } = circular_motion(n_frames, frequency, 1.7)
     const options = { max_lag_fraction: 0.4 } as const
 
-    const stored = calc_vacf(
+    const stored = compute_vacf(
       build_vacf_input(positions, { velocity_frames: velocities }),
       options,
     )
-    const differenced = calc_vacf(build_vacf_input(positions), options)
+    const differenced = compute_vacf(build_vacf_input(positions), options)
     expect(stored.velocity_source).toBe(`stored`)
     expect(differenced.velocity_source).toBe(`central_difference`)
 
@@ -205,11 +205,11 @@ describe(`velocity sources`, () => {
     const wrapped = positions.map((frame) =>
       frame.map((xyz) => xyz.map((coord) => coord - box * Math.floor(coord / box))),
     )
-    const unwrapped = calc_vacf(
+    const unwrapped = compute_vacf(
       build_vacf_input(wrapped, { lattice: cubic_matrix(box), pbc: [true, true, true] }),
     )
     // Flagging the coordinates as already unwrapped is the one way to skip the unwrap
-    const folded = calc_vacf(
+    const folded = compute_vacf(
       build_vacf_input(wrapped, {
         lattice: cubic_matrix(box),
         pbc: [true, true, true],
@@ -228,7 +228,7 @@ describe(`velocity sources`, () => {
 
   it(`honours coords_unwrapped so LAMMPS xu/yu/zu are not re-folded`, () => {
     const { positions } = circular_motion(200, 0.04, 20)
-    const result = calc_vacf(
+    const result = compute_vacf(
       build_vacf_input(positions, {
         lattice: cubic_matrix(2),
         pbc: [true, true, true],
@@ -242,7 +242,7 @@ describe(`velocity sources`, () => {
 
   it(`ignores stored velocities when central differences are requested`, () => {
     const { positions, velocities } = circular_motion(100, 0.06)
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
+    const result = compute_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
       velocity_source: `central_difference`,
     })
     expect(result.velocity_source).toBe(`central_difference`)
@@ -253,11 +253,11 @@ describe(`velocity sources`, () => {
     build_vacf_input(circular_motion(n_frames, 0.1).positions)
   // oxfmt-ignore
   it.each<[string, () => unknown, RegExp]>([
-    [`velocity_source 'stored' without stored velocities`, () => calc_vacf(orbit_input(20), { velocity_source: `stored` }),
+    [`velocity_source 'stored' without stored velocities`, () => compute_vacf(orbit_input(20), { velocity_source: `stored` }),
       /velocity_source 'stored' was requested but the input carries no velocities/],
-    [`a velocity buffer that does not match the position layout`, () => calc_vacf({ ...orbit_input(10), velocities: new Float64Array(17) }),
+    [`a velocity buffer that does not match the position layout`, () => compute_vacf({ ...orbit_input(10), velocities: new Float64Array(17) }),
       /velocities has 17 entries but 10 frames x 1 atoms x 3 requires 30/],
-    ...[2, 1].map((n_frames) => [`differentiating ${n_frames} frames`, () => calc_vacf(orbit_input(n_frames)),
+    ...[2, 1].map((n_frames) => [`differentiating ${n_frames} frames`, () => compute_vacf(orbit_input(n_frames)),
       /central differences need at least 3 frames/] satisfies [string, () => unknown, RegExp]),
   ])(`refuses %s`, (_label, compute, error) => {
     expect(compute).toThrow(error)

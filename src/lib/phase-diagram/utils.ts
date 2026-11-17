@@ -282,7 +282,7 @@ function pick_bracketing_intersection_pair(
 // Lever rule along the isothermal tie line (the only direction it is defined in). Null unless
 // the region is exactly two-phase and the scan brackets the point. The format lists a
 // two-phase region's phases left to right, so phases[0] sits at the tie line's low-x end.
-export function calculate_lever_rule(
+export function compute_lever_rule(
   region: DiagramRegion,
   composition: number,
   temperature: number,

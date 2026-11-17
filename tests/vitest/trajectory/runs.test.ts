@@ -276,11 +276,8 @@ describe(`numeric frames`, () => {
     const first = create_numeric_md_frame(
       new Float64Array([1, 2, 3, 4, 5, 6]),
       new Uint8Array([14, 32]),
-      [
-        [3, 0, 0],
-        [1, 4, 0],
-        [0, 1, 5],
-      ],
+      // oxfmt-ignore
+      [[3, 0, 0], [1, 4, 0], [0, 1, 5]],
       pbc,
       0,
       {},
@@ -289,11 +286,8 @@ describe(`numeric frames`, () => {
     const next = create_numeric_md_frame(
       new Float64Array([-2, 3, 9, 5, -6, 7]),
       first.sites as Uint8Array,
-      [
-        [4, 0, 0],
-        [1, 5, 0],
-        [0, 1, 6],
-      ],
+      // oxfmt-ignore
+      [[4, 0, 0], [1, 5, 0], [0, 1, 6]],
       pbc,
       1,
       { energy: -1, per_atom: [[0.1, 0.2, 0.3]] },
@@ -397,11 +391,8 @@ describe(`numeric frames`, () => {
         const frame = create_numeric_md_frame(
           new Float64Array(values.length * 3),
           new Uint8Array(values.length).fill(14),
-          [
-            [4, 1, -0.5],
-            [-2, 5, 0.3],
-            [0.2, -0.7, 6],
-          ],
+          // oxfmt-ignore
+          [[4, 1, -0.5], [-2, 5, 0.3], [0.2, -0.7, 6]],
           pbc,
           0,
           {},
@@ -781,11 +772,8 @@ describe(`worker-served run lifecycle`, () => {
         const frame = create_numeric_md_frame(
           Float64Array.of(-0.3 + step / 10, 0, 0, 1, 0, 0, 3.9, 0, 0),
           Uint8Array.of(14, 14, 14),
-          [
-            [4, 0, 0],
-            [0, 4, 0],
-            [0, 0, 4],
-          ],
+          // oxfmt-ignore
+          [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
           [periodic, periodic, periodic],
           step,
           {},
@@ -865,10 +853,11 @@ describe(`worker-served run lifecycle`, () => {
   // oxfmt-ignore
   it.each([
     { label: `custom label` },
-    { species: [{ element: `H`, occu: 0.5, oxidation_state: 0 }] },
+    { species: [{ element: `H`, occu: 0.5 }] },
+    { species: [{ element: `H`, occu: 1, oxidation_state: 0 }] },
     { species: [{ element: `H`, occu: 1, oxidation_state: -0 }] },
-    { species: [{ element: `H`, occu: 1, oxidation_state: 0, isotope: 2 }] },
-    { species: Object.assign([{ element: `H`, occu: 1, oxidation_state: 0 }], { source: `test` }) },
+    { species: [{ element: `H`, occu: 1, isotope: 2 }] },
+    { species: Object.assign([{ element: `H`, occu: 1 }], { source: `test` }) },
     { properties: { force: Object.assign([1, 2, 3], { unit: `eV/A` }) } },
     { properties: { empty: undefined } },
     { provenance: { image_of: 0, unit_cell_idx: 0, completion: true } },

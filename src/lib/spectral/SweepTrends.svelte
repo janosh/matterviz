@@ -20,6 +20,7 @@
   type PointMeta = { series_id: string; frame_idx: number }
   const FAILED_COLOR = `crimson`
   const FAILED_LINE = { color: FAILED_COLOR, dash: `2 3`, opacity: 0.4 }
+  const hollow = (stroke: string) => ({ fill: `transparent`, stroke, stroke_width: 1.5 })
 
   let {
     sweep,
@@ -79,16 +80,8 @@
         return {
           radius: marked.has(idx) ? 7 : 4.5,
           cursor: `pointer`,
-          ...(load_state === `loading` && {
-            fill: `transparent`,
-            stroke: color,
-            stroke_width: 1.5,
-          }),
-          ...(frame.status?.unstable && {
-            fill: `transparent`,
-            stroke: `gray`,
-            stroke_width: 1.5,
-          }),
+          ...(load_state === `loading` && hollow(color)),
+          ...(frame.status?.unstable && hollow(`gray`)),
           ...(load_state === `failed` && {
             symbol_type: `Cross`,
             stroke: FAILED_COLOR,

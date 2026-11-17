@@ -334,16 +334,12 @@ export function draw_overlay_rings(
   scale: number,
 ): void {
   const radius = 10 * Math.max(scale, 0.6)
-  ctx.lineWidth = 2
   ctx.font = `bold ${Math.round(12 * Math.max(scale, 0.8))}px sans-serif`
   ctx.textAlign = `left`
   ctx.textBaseline = `middle`
   for (const { at, color, label } of rings) {
     const point = project(at.x, at.y, at.z)
-    ctx.strokeStyle = color
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI)
-    ctx.stroke()
+    draw_ring(ctx, point, radius, color, { stroke: { width: 2 } })
     ctx.fillStyle = color
     if (label) ctx.fillText(label, point.x + radius + 3, point.y)
   }

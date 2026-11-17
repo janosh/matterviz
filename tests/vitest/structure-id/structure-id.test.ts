@@ -3,12 +3,12 @@ import { create_lattice_converters, min_image_displacement } from '#lib/math.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
 import {
   apply_structure_id,
-  calc_structure_id,
+  compute_structure_id,
   CENTROSYMMETRY_PROPERTY,
   cna_type_name,
   CNA_TYPE_PROPERTY,
-} from '#lib/structure-id/calc-structure-id.js'
-import { CNA_TYPES } from '#lib/structure-id/calc-cna.js'
+} from '#lib/structure-id/compute-structure-id.js'
+import { CNA_TYPES } from '#lib/structure-id/compute-cna.js'
 import { describe, expect, test } from 'vite-plus/test'
 import {
   BCC_LATTICE_CONST,
@@ -77,7 +77,7 @@ describe(`neighbor list`, () => {
         }
       }),
     }
-    const result = calc_structure_id(unwrapped, { skip_csp: true })
+    const result = compute_structure_id(unwrapped, { skip_csp: true })
     expect(result.populations.fcc).toBe(108)
   })
 
@@ -97,8 +97,8 @@ describe(`neighbor list`, () => {
         xyz: shift_by_cells(site.xyz, bulk.lattice.matrix, [0, 0, -0.5]),
       })),
     }
-    const origin_result = calc_structure_id(at_origin, { skip_csp: true })
-    const shifted_result = calc_structure_id(shifted, { skip_csp: true })
+    const origin_result = compute_structure_id(at_origin, { skip_csp: true })
+    const shifted_result = compute_structure_id(shifted, { skip_csp: true })
     expect(shifted_result.populations).toEqual(origin_result.populations)
     // Sanity: the free surface really is visible, i.e. this is not vacuously comparing two
     // fully-fcc results
@@ -124,7 +124,7 @@ describe(`neighbor list`, () => {
         .map(({ idx }) => idx),
     )
     expect(bordering.size).toBe(12)
-    const result = calc_structure_id(crystal, { skip_csp: true })
+    const result = compute_structure_id(crystal, { skip_csp: true })
     if (!result.cna_types) throw new Error(`cna_types was not computed`)
     expect(result.cna_types[0]).toBe(CNA_TYPES.other)
     expect(result.cna_types[dup_idx]).toBe(CNA_TYPES.other)
@@ -146,7 +146,7 @@ describe(`common neighbor analysis`, () => {
     [`hcp`, () => make_hcp([4, 4, 4]), `hcp` as const, 128],
     [`dilated fcc`, () => make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.08), `fcc` as const, 108],
   ])(`adaptive CNA classifies a perfect %s supercell`, (_label, build, expected, n_atoms) => {
-    const result = calc_structure_id(build(), { skip_csp: true })
+    const result = compute_structure_id(build(), { skip_csp: true })
     expect(result.n_atoms).toBe(n_atoms)
     // all five keys are always present, the unpopulated ones at 0
     const empty = { bcc: 0, fcc: 0, hcp: 0, ico: 0, other: 0 }
@@ -167,7 +167,11 @@ describe(`common neighbor analysis`, () => {
   ])(
     `fixed-cutoff CNA on a perfect %s supercell`,
     (_label, build, cutoff, expected, n_atoms) => {
-      const result = calc_structure_id(build(), { cna_mode: `fixed`, cutoff, skip_csp: true })
+      const result = compute_structure_id(build(), {
+        cna_mode: `fixed`,
+        cutoff,
+        skip_csp: true,
+      })
       expect(result.populations[expected]).toBe(n_atoms)
       // with CSP skipped the cutoff query is the only one run
       expect(result.neighbor_cutoff).toBe(cutoff)
@@ -183,7 +187,7 @@ describe(`common neighbor analysis`, () => {
     `%f A random displacements (seed %d): %s fraction >= %f`,
     (amplitude, seed, type, min_frac) => {
       const displaced = with_random_displacements(make_fcc([4, 4, 4]), amplitude, seed)
-      const result = calc_structure_id(displaced, { skip_csp: true })
+      const result = compute_structure_id(displaced, { skip_csp: true })
       expect(result.populations[type] / result.n_atoms).toBeGreaterThanOrEqual(min_frac)
     },
   )
@@ -210,7 +214,7 @@ describe(`common neighbor analysis`, () => {
       )
       expect(neighbor_indices.size).toBe(12)
 
-      const result = calc_structure_id(with_vacancy(perfect, removed_idx), options)
+      const result = compute_structure_id(with_vacancy(perfect, removed_idx), options)
       expect(result.n_atoms).toBe(255)
       expect(result.populations.other).toBe(12)
       expect(result.populations.fcc).toBe(243)
@@ -235,7 +239,7 @@ describe(`common neighbor analysis`, () => {
     // Exercises the 12 x (5,5,5) branch: each neighbor of the center shares exactly its five
     // icosahedral edge partners with the center, and those five form a pentagon (5 bonds in
     // one ring, so the longest chain is 5). The 12 vertices themselves are surface atoms.
-    const result = calc_structure_id(make_icosahedron(), { skip_csp: true })
+    const result = compute_structure_id(make_icosahedron(), { skip_csp: true })
     expect(result.cna_types?.[0]).toBe(CNA_TYPES.ico)
     expect(result.populations.ico).toBe(1)
     expect(result.populations.other).toBe(12)
@@ -257,7 +261,7 @@ describe(`centrosymmetry`, () => {
     [`bcc`, () => make_bcc([4, 4, 4]), 8],
     [`dilated fcc`, () => make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.15), 12],
   ])(`a perfect %s lattice has CSP = 0 to round-off`, (_label, build, n_csp_neighbors) => {
-    const result = calc_structure_id(build(), { skip_cna: true, n_csp_neighbors })
+    const result = compute_structure_id(build(), { skip_cna: true, n_csp_neighbors })
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     expect(result.n_csp_undefined).toBe(0)
     expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
@@ -274,7 +278,7 @@ describe(`centrosymmetry`, () => {
   ])(
     `CSP neighbor count on %s`,
     (_label, build, n_csp_neighbors, expected_n, csp_vanishes) => {
-      const result = calc_structure_id(build(), { n_csp_neighbors })
+      const result = compute_structure_id(build(), { n_csp_neighbors })
       if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
       expect(result.n_csp_neighbors).toBe(expected_n)
       const max_csp = max_finite(result.centrosymmetry)
@@ -293,7 +297,7 @@ describe(`centrosymmetry`, () => {
     `a half-surface %s slab derives its own neighbor count`,
     (_label, build, code, want_n) => {
       const bulk = build()
-      const { n_csp_neighbors, centrosymmetry, cna_types } = calc_structure_id({
+      const { n_csp_neighbors, centrosymmetry, cna_types } = compute_structure_id({
         ...bulk,
         lattice: { ...bulk.lattice, pbc: [true, true, false] as Pbc },
       })
@@ -311,7 +315,7 @@ describe(`centrosymmetry`, () => {
 
   test(`displacing a perfect lattice raises CSP well clear of round-off`, () => {
     const crystal = with_random_displacements(make_fcc([3, 3, 3]), 0.35, 7)
-    const result = calc_structure_id(crystal, { skip_cna: true })
+    const result = compute_structure_id(crystal, { skip_cna: true })
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     // 0.35 Å is ~14% of the 2.556 Å nearest-neighbor distance, so every site loses its
     // inversion symmetry and no site may still read as centrosymmetric.
@@ -324,15 +328,15 @@ describe(`centrosymmetry`, () => {
     [`above the limit`, 34, /exceeds the/],
   ])(`rejects n_csp_neighbors %s`, (_label, n_csp_neighbors, pattern) => {
     expect(() =>
-      calc_structure_id(make_fcc([2, 2, 2]), { skip_cna: true, n_csp_neighbors }),
+      compute_structure_id(make_fcc([2, 2, 2]), { skip_cna: true, n_csp_neighbors }),
     ).toThrow(pattern)
   })
 })
 
-describe(`calc_structure_id plumbing`, () => {
+describe(`compute_structure_id plumbing`, () => {
   test(`writes both per-site properties and keeps them consistent with the result`, () => {
     const crystal = make_fcc([2, 2, 2])
-    const result = calc_structure_id(crystal)
+    const result = compute_structure_id(crystal)
     const labeled = apply_structure_id(crystal, result)
     expect(crystal.sites[0].properties).not.toHaveProperty(CNA_TYPE_PROPERTY)
     for (const [site_idx, site] of labeled.sites.entries()) {
@@ -342,7 +346,7 @@ describe(`calc_structure_id plumbing`, () => {
   })
 
   test(`apply_structure_id refuses a result from a different structure`, () => {
-    const result = calc_structure_id(make_fcc([2, 2, 2]))
+    const result = compute_structure_id(make_fcc([2, 2, 2]))
     expect(() => apply_structure_id(make_fcc([3, 3, 3]), result)).toThrow(
       /result covers 32 atoms but the structure has 108 sites/,
     )
@@ -370,14 +374,14 @@ describe(`calc_structure_id plumbing`, () => {
     ],
   ])(`rejects %s`, (_label, structure, options, pattern) => {
     const input = structure ?? make_fcc([2, 2, 2])
-    expect(() => calc_structure_id(input as Crystal, options)).toThrow(pattern)
+    expect(() => compute_structure_id(input as Crystal, options)).toThrow(pattern)
   })
 
   test(`a cluster too small to supply 12 neighbors reports NaN instead of guessing`, () => {
     // 6 atoms and no lattice: nobody can have 12 nearest neighbors, so no CSP is defined
     const { sites } = make_fcc([1, 1, 1]) // 4 atoms
     const cluster = { sites: [...sites, ...make_bcc([1, 1, 1]).sites] } // 6 atoms total
-    const result = calc_structure_id(cluster, { skip_cna: true })
+    const result = compute_structure_id(cluster, { skip_cna: true })
     expect(result.n_csp_undefined).toBe(cluster.sites.length)
     expect(result.centrosymmetry?.every(Number.isNaN)).toBe(true)
   })
@@ -387,7 +391,7 @@ describe(`calc_structure_id plumbing`, () => {
   test(`a ~10k atom supercell is classified exactly`, { timeout: 30_000 }, () => {
     const crystal = make_fcc([14, 14, 14]) // 4 atoms per cell
     expect(crystal.sites).toHaveLength(10976)
-    const result = calc_structure_id(crystal)
+    const result = compute_structure_id(crystal)
     expect(result.populations.fcc).toBe(10976)
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
@@ -398,7 +402,7 @@ describe(`calc_structure_id plumbing`, () => {
     // neighbors still exist, so CSP is defined and must sit far above round-off. Periodic
     // CSP ≈ 0 for the same geometry is covered by the perfect-fcc centrosymmetry case.
     const { sites } = make_fcc([4, 4, 4])
-    const cluster = calc_structure_id({ sites }, { skip_cna: true })
+    const cluster = compute_structure_id({ sites }, { skip_cna: true })
     if (!cluster.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     expect(cluster.n_csp_undefined).toBe(0)
     expect(max_finite(cluster.centrosymmetry)).toBeGreaterThan(10)

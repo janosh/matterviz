@@ -1011,7 +1011,10 @@ describe(`MatterViz Extension`, () => {
     } as const
     const nonce_of = () =>
       /nonce="(?<nonce>[a-zA-Z0-9]+)"/.exec(create_html(mock_webview, mock_context, data))?.[1]
-    expect(new Set(Array.from({ length: 1000 }, nonce_of)).size).toBe(1000)
+    const nonces = Array.from({ length: 1000 }, nonce_of)
+    expect(new Set(nonces).size).toBe(1000)
+    // 128 bits of CSPRNG output, not Math.random()'s 11 base-36 chars
+    for (const nonce of nonces) expect(nonce).toMatch(/^[0-9a-f]{32}$/)
   })
 
   describe(`Theme functionality`, () => {

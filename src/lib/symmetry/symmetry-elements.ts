@@ -40,7 +40,8 @@ export type SymmetryElement = {
   // Rotation order of the (proper part of the) operation: 2, 3, 4 or 6 for axes and
   // rotoinversions, 2 for mirror/glide planes, 1 for inversion centers
   order: number
-  // ITA-style symbol: "2", "2_1", "3_2", "m", "a"/"b"/"c"/"n"/"d"/"g" (glides), "-1", "-4"
+  // ITA-style symbol: "2", "2_1", "3_2", "m", "a"/"b"/"c"/"n"/"d"/"g" (glides, see
+  // glide_letter), "-1", "-4"
   label: string
   // Fractional direction: rotation/screw/rotoinversion axis, or mirror/glide plane
   // normal. Reduced integer vector with canonical sign. Null for inversion centers.
@@ -123,13 +124,6 @@ export const has_visible_symmetry_overlay = (
 
 const ELEM_TOL = 1e-6
 
-// moyo-wasm serializes nalgebra matrices as flat 9-arrays in COLUMN-major order
-export const mat3_from_flat_col_major = (flat: readonly number[]): Matrix3x3 => [
-  [flat[0], flat[3], flat[6]],
-  [flat[1], flat[4], flat[7]],
-  [flat[2], flat[5], flat[8]],
-]
-
 const mat_round = (mat: Matrix3x3): Matrix3x3 =>
   mat.map((row) => row.map((val) => Math.round(val))) as Matrix3x3
 
@@ -183,7 +177,7 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
   let current: Vec3 = [0, 0, 0]
   const sum: Vec3 = [0, 0, 0]
   for (let iter = 0; iter < order; iter++) {
-    if (iter > 0) current = math.add(math.mat3x3_vec3_multiply(mat, current), w_loc)
+    if (iter > 0) current = math.add(math.mul_3x3_vec3(mat, current), w_loc)
     sum[0] += current[0]
     sum[1] += current[1]
     sum[2] += current[2]
@@ -266,7 +260,10 @@ function reduce_glide(
 }
 
 // Glide letter from the reduced glide vector: a/b/c (half along one cell axis),
-// n (half along a face/body diagonal), d (quarter diagonal), g otherwise
+// n (half along a face/body diagonal), d (quarter of one: the diamond vectors 1/4(±a ± b),
+// 1/4(±a ± b ± c)), g otherwise. A quarter mixed with a half is no diamond glide: Fm-3m's
+// planes normal to ⟨110⟩ glide by (-1/4, 1/4, 1/2), which ITA lists as g, and only groups
+// like Fd-3m or I4_1/amd have d-glides.
 function glide_letter(glide_vec: Vec3): string {
   const doubled = glide_vec.map((val) => val * 2)
   const is_int = (vals: number[]) =>
@@ -277,8 +274,10 @@ function glide_letter(glide_vec: Vec3): string {
       return [`a`, `b`, `c`][doubled.findIndex((val) => Math.round(val) !== 0)]
     return `n`
   }
-  if (is_int(glide_vec.map((val) => val * 4))) return `d`
-  return `g`
+  const quarters = glide_vec.map((val) => val * 4)
+  // 2·v is not integer here, so some quarter is odd; d needs every nonzero one to be
+  const is_zero_or_odd = (val: number) => Math.round(val) === 0 || Math.round(val) % 2 !== 0
+  return is_int(quarters) && quarters.every(is_zero_or_odd) ? `d` : `g`
 }
 
 // All translation-independent data derived from a rotation matrix W (plus centerings), one
@@ -318,7 +317,7 @@ function build_rotation_info(
   rotation: readonly number[],
   centerings: readonly Vec3[],
 ): RotationInfo | null {
-  const mat = mat_round(mat3_from_flat_col_major(rotation))
+  const mat = mat_round(math.mat3x3_from_flat_col_major(rotation))
   const det = Math.round(math.det_3x3(mat))
   const mat_trace = Math.round(trace(mat))
 
@@ -349,8 +348,7 @@ function build_rotation_info(
     }
     // Sense of rotation from det[axis, x, W·x] for any x off the axis (0 for 2-folds)
     const probe: Vec3 = axis[1] === 0 && axis[2] === 0 ? [0, 1, 0] : [1, 0, 0]
-    const negative_sense =
-      math.det_3x3([axis, probe, math.mat3x3_vec3_multiply(mat, probe)]) < 0
+    const negative_sense = math.det_3x3([axis, probe, math.mul_3x3_vec3(mat, probe)]) < 0
     return { ...base, kind: `proper`, order, axis, covectors, dual, period, negative_sense }
   }
 
@@ -365,7 +363,7 @@ function build_rotation_info(
     // Plane-equation normal: the −1 eigenvector of Wᵀ, obtained as the +1 eigenvector of
     // −Wᵀ exactly the way `axis` above is the +1 eigenvector of −W. Integer and primitive
     // like `axis`, but a covector — see SymmetryElement.plane_normal for why they differ.
-    const transposed = math.transpose_3x3_matrix(proper_part)
+    const transposed = math.transpose_3x3(proper_part)
     const { proj: t_proj, order: t_order } = invariant_projector(transposed)
     const normal_eq = axis_from_projector(t_proj, t_order)
     if (!normal_eq) throw new Error(`Failed to extract mirror plane-equation normal`)
@@ -417,7 +415,7 @@ function element_locus_key(point: Vec3, info: RotationInfo): string {
 // Classify the operation (info.mat, w) given precomputed rotation-dependent data
 function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): SymmetryElement {
   const { mat, proj, mat_order, order } = info
-  const w_intrinsic = math.mat3x3_vec3_multiply(proj, width_value)
+  const w_intrinsic = math.mul_3x3_vec3(proj, width_value)
   const w_loc = math.subtract(width_value, w_intrinsic)
   const point = wrap_to_unit_cell(fixed_point(mat, w_loc, mat_order))
   const locus = element_locus_key(point, info)
@@ -494,7 +492,7 @@ export function symmetry_elements_from_ops(
   const centering_keys = new Set<string>()
   const centerings: Vec3[] = []
   for (const { rotation, translation } of operations) {
-    if (!is_identity(mat_round(mat3_from_flat_col_major(rotation)))) continue
+    if (!is_identity(mat_round(math.mat3x3_from_flat_col_major(rotation)))) continue
     const wrapped = wrap_to_unit_cell(translation)
     if (is_zero_vec(wrapped)) continue
     const key = wrapped.map((val) => val.toFixed(6)).join(`,`)

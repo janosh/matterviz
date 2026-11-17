@@ -9,6 +9,12 @@ import {
   sisso_reduced_mass,
 } from '#lib/phase-diagram/ternary/free-energy.js'
 import { G_ELEMENTS } from '#lib/phase-diagram/ternary/g-els-data.js'
+import {
+  compute_element_mu_shift,
+  compute_gas_chemical_potential,
+  get_default_gas_provider,
+  get_effective_pressures,
+} from '#lib/convex-hull/gas-thermodynamics.js'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_phase } from '../../test-fixtures'
 
@@ -210,6 +216,54 @@ describe(`build_free_energy_model`, () => {
       ((1 / 3) * BOLTZMANN_EV_PER_K * 1000 * Math.log(1e6)) / 2,
       8,
     )
+  })
+
+  // A compound gas phase sits at mu(T, p) in the compounds' frame: against 0 K references it is
+  // the provider's mu(T, p) (minus x_O Δμ_O when O2 sets the O level); against SISSO's
+  // experimental elements it is the true formation free energy, JANAF's ΔfG°(CO2, 1000 K) =
+  // -395.886 kJ/mol plus the provider's -0.2482 eV/atom carbonate fit, up to graphite's
+  // neglected H(298 K) - H(0 K) of 0.0109 eV per C (0.0036 eV/atom of CO2; measured 0.00366)
+  test(`compound gas phases: mu(T, p) in the static and SISSO frames`, () => {
+    const ca_c_o: ElementSymbol[] = [`Ca`, `C`, `O`]
+    const caco3 = make_phase({ Ca: 1, C: 1, O: 3 }, -7, {
+      volume_per_atom: 12,
+      e_form_per_atom: -2.5,
+    })
+    const co2_gas = { composition: { C: 1, O: 2 }, energy: 0, gas: `CO2` as const }
+    const entries = [
+      make_phase({ Ca: 1 }, -2),
+      make_phase({ C: 1 }, -9.2),
+      make_phase({ O: 2 }, -4.9),
+      caco3,
+      co2_gas,
+    ]
+    const gas_at = (mode: `static` | `sisso`, enabled_gases: (`CO2` | `O2`)[]) =>
+      build_free_energy_model(entries, ca_c_o, {
+        mode,
+        gas_config: { enabled_gases, pressures: { CO2: 1, O2: 0.2 } },
+      }).phases[4]
+    const provider = get_default_gas_provider()
+    const mu_co2 = compute_gas_chemical_potential(provider, `CO2`, 1000, 1)
+    expect(gas_at(`static`, [`CO2`])).toMatchObject({ source: `gas`, t_range: null })
+    expect(gas_at(`static`, [`CO2`]).dg_form(1000)).toBeCloseTo(mu_co2, 12)
+    const pressures = get_effective_pressures({ pressures: { O2: 0.2 } })
+    const delta_mu_o = compute_element_mu_shift(
+      `O`,
+      { enabled_gases: [`O2`] },
+      1000,
+      pressures,
+    )
+    expect(gas_at(`static`, [`CO2`, `O2`]).dg_form(1000)).toBeCloseTo(
+      mu_co2 - (2 / 3) * delta_mu_o,
+      12,
+    )
+    const sisso = gas_at(`sisso`, [`CO2`])
+    expect(sisso.t_range).toEqual([300, 2000])
+    const janaf = -395.886 / 96.48533212 / 3 - 0.2482
+    expect(Math.abs(sisso.dg_form(1000) - janaf)).toBeLessThan(0.004)
+    expect(sisso.dg_form(250)).toBeNaN()
+    // without an atmosphere a gas phase has no mu(T, p) to sit at
+    expect(() => build_free_energy_model(entries, ca_c_o)).toThrow(/needs gas_config/)
   })
 
   test(`references: exclude_from_hull entries are skipped, disjoint tables throw`, () => {

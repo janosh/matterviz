@@ -1,5 +1,5 @@
 import {
-  det2,
+  det_2x2,
   match_lattices,
   match_of_matrices,
   match_strain,
@@ -60,7 +60,7 @@ function brute_point_group(basis: Matrix2x2): Matrix2x2[] {
             [m00, m01],
             [m10, m11],
           ]
-          if (Math.abs(det2(int_mat)) !== 1) return []
+          if (Math.abs(det_2x2(int_mat)) !== 1) return []
           const image = mul2(mul2(int_mat, gram), transpose(int_mat))
           if (max_abs_diff(image.flat(), gram.flat()) > 1e-9) return []
           return [transpose(mul2(mul2(inverse, int_mat), basis))]
@@ -102,12 +102,12 @@ describe(`surface_frame`, () => {
     [`hexagonal`, hex(2.9)],
     [`oblique`, OBLIQUE],
   ])(`%s mesh keeps lengths, angle and handedness in an orthonormal frame`, (_, basis) => {
-    const rows = basis.map(([x, y]) => math.mat3x3_vec3_multiply(rotation, [x, y, 0]))
+    const rows = basis.map(([x, y]) => math.mul_3x3_vec3(rotation, [x, y, 0]))
     const matrix: Matrix3x3 = [rows[0], rows[1], math.add(math.scale(rows[0], 0.3), [0, 0, 7])]
     const frame = surface_frame(make_crystal(matrix, [[`Cu`, [0, 0, 0]]]))
     expect(max_abs_diff(frame.basis.flat(), basis.flat())).toBeLessThan(1e-14)
     const axes: Matrix3x3 = frame.axes
-    const gram = math.dot(axes, math.transpose_3x3_matrix(axes))
+    const gram = math.dot(axes, math.transpose_3x3(axes))
     expect(max_abs_diff(gram.flat(), math.IDENTITY_3X3.flat())).toBeLessThan(1e-15)
     expect(math.det_3x3(axes)).toBeCloseTo(1, 14)
   })
@@ -187,10 +187,12 @@ function expect_consistent(
     expect([...film_matrix.flat(), ...substrate_matrix.flat()].every(Number.isInteger)).toBe(
       true,
     )
-    expect(det2(film_matrix)).toBe(match.n_film_cells)
-    expect(det2(substrate_matrix)).toBe(match.n_substrate_cells)
-    expect(match.area).toBeCloseTo(match.n_substrate_cells * det2(substrate), 9)
-    expect(Math.max(match.area, match.n_film_cells * det2(film))).toBeLessThanOrEqual(max_area)
+    expect(det_2x2(film_matrix)).toBe(match.n_film_cells)
+    expect(det_2x2(substrate_matrix)).toBe(match.n_substrate_cells)
+    expect(match.area).toBeCloseTo(match.n_substrate_cells * det_2x2(substrate), 9)
+    expect(Math.max(match.area, match.n_film_cells * det_2x2(film))).toBeLessThanOrEqual(
+      max_area,
+    )
     // the reported matrices are exactly the bases that were matched and strained
     expect(match_of_matrices(substrate, film, match)).toEqual(match)
     const film_basis = mul2(film_matrix, film)
@@ -275,7 +277,7 @@ describe(`match_lattices`, () => {
     `%s: tie partner finds the 1×1 match`,
     (_, film, sub_mesh) => {
       const substrate = scaled(sub_mesh, 1.01)
-      const max_area = 2.5 * det2(substrate)
+      const max_area = 2.5 * det_2x2(substrate)
       const matches = match_lattices(substrate, film, { max_area })
       expect_consistent(matches, substrate, film, { max_area })
       const [first] = matches
@@ -309,7 +311,7 @@ describe(`match_lattices`, () => {
   ] satisfies [string, Matrix2x2, Matrix2x2, LatticeMatchOptions, number][])(
     `%s`,
     (_, substrate, film, tolerances, n_matches) => {
-      const options = { max_area: 1.5 * det2(substrate), ...tolerances }
+      const options = { max_area: 1.5 * det_2x2(substrate), ...tolerances }
       const matches = match_lattices(substrate, film, options)
       expect(matches).toHaveLength(n_matches)
       if (n_matches) expect_consistent(matches, substrate, film, options)
@@ -412,7 +414,7 @@ describe(`match_lattices`, () => {
   test(`Cu(100) substrate, Ag(100) film: analytic square coincidence cells`, () => {
     const matches = match_lattices(CU_100, AG_100)
     expect_consistent(matches, CU_100, AG_100)
-    const [area_cu, area_ag] = [det2(CU_100), det2(AG_100)]
+    const [area_cu, area_ag] = [det_2x2(CU_100), det_2x2(AG_100)]
     // square super-lattices (p, q) of index p² + q² are strained isotropically by
     // sqrt(n_s·A_s / (n_f·A_f)) − 1 and twisted by ±(atan2(q_s, p_s) − atan2(q_f, p_f)) mod
     // 90°, the sign picking one of two mirror-image cells with the same strain

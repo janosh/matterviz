@@ -103,14 +103,11 @@ describe(`FermiSurfaceTooltip`, () => {
     { is_tiled: false, symmetry_index: 5, n_symmetry_ops: 48, expected: null },
     { is_tiled: true, symmetry_index: 0, n_symmetry_ops: 48, expected: null },
     { is_tiled: true, symmetry_index: undefined, n_symmetry_ops: 48, expected: null },
-  ])(
-    `tiling info for is_tiled=$is_tiled index=$symmetry_index n_ops=$n_symmetry_ops`,
-    ({ expected, ...tiling }) => {
-      mount_tooltip({ hover_data: mock_hover_data(tiling) })
-      const text = document.querySelector(`.tiling-info`)?.textContent?.trim() ?? null
-      expect(text).toBe(expected)
-    },
-  )
+  ])(`tiling $is_tiled $symmetry_index/$n_symmetry_ops`, ({ expected, ...tiling }) => {
+    mount_tooltip({ hover_data: mock_hover_data(tiling) })
+    const text = document.querySelector(`.tiling-info`)?.textContent?.trim() ?? null
+    expect(text).toBe(expected)
+  })
 
   // TooltipContent's prefix/suffix contract is covered with ConvexHullTooltip; this checks the
   // wiring: functions get the hover data, prefix before the content and suffix after

@@ -1,6 +1,5 @@
-// Types, layout math and constants for Gizmo.svelte, kept out of the component so callers
-// (SceneControlProps, StructureViewport) can type and size a gizmo without importing a .svelte
-// module, and so the layout is unit-testable without a Threlte context.
+// Types, layout math and constants for Gizmo.svelte, so callers can type and size a gizmo
+// without importing a .svelte module and the layout is testable without a Threlte context.
 import { clamp } from 'svelte-widgets/utils'
 import { AXIS_COLORS, NEG_AXIS_COLORS } from '#lib/colors/index.js'
 import type { Vec3 } from '#lib/math.js'
@@ -16,9 +15,8 @@ export type GizmoAxisStyle = {
   hover?: { color?: string; labelColor?: string; opacity?: number }
 }
 
-// Where the gizmo sits inside its canvas. `fill` uses the whole canvas, for callers that give
-// the gizmo its own <Canvas> and place that element with CSS (ConvexHullCanvas). Not named
-// GizmoPlacement because #lib/convex-hull exports that already (its CSS-level corner).
+// Where the gizmo sits in its canvas; `fill` for a gizmo with its own CSS-placed <Canvas>
+// (ConvexHullCanvas). Not GizmoPlacement, which #lib/convex-hull exports already.
 type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
 
 export type GizmoOptions = {
@@ -36,9 +34,8 @@ export type GizmoOptions = {
 
 type GizmoRect = { x: number; y: number; width: number; height: number }
 
-// Where the gizmo draws, in CSS px from the canvas's top-left — the origin WebGPU viewports,
-// Renderer.setViewport/setScissor and pointer coordinates all share. Kept inside the canvas:
-// a viewport poking past the attachment fails WebGPU validation and drops the render pass.
+// Where the gizmo draws, in CSS px from the canvas's top-left (as viewports, scissors and
+// pointers), inside the canvas: a viewport past the attachment fails WebGPU validation.
 export function gizmo_rect(
   { placement = `bottom-left`, size, offset = {} }: GizmoOptions,
   width: number,
@@ -63,9 +60,8 @@ export function gizmo_rect(
   }
 }
 
-// Gizmo edge length for a multi-view pane. Panes are ~half the viewer, so the fixed
-// single-view size would dominate them: scale with the pane's short side instead, clamped to
-// stay legible when small and below the single-view size when large.
+// Gizmo edge length for a multi-view pane: scales with its short side, clamped to stay legible
+// when small and below the fixed single-view size when large.
 export const responsive_gizmo_size = (width: number, height: number): number =>
   Math.round(clamp(Math.min(width, height) * 0.2, 34, 72))
 
@@ -78,9 +74,8 @@ export const GIZMO_AXES: readonly (readonly [GizmoAxisKey, Vec3, boolean])[] = [
   [`nz`, [0, 0, -1], true],
 ] as const
 
-// Per-axis appearance every gizmo starts from, so a bare `gizmo` renders the familiar
-// red/green/blue axes. Negatives sit denser to read as pointing away. Callers override
-// individual axes through GizmoOptions.
+// Default per-axis appearance (red/green/blue, negatives denser to read as pointing away),
+// overridden per axis through GizmoOptions
 export const GIZMO_DEFAULT_STYLES = Object.fromEntries(
   [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
     axis,

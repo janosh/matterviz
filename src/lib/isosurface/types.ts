@@ -36,6 +36,10 @@ export interface VolumetricData extends ScalarGrid3D<Float64Array> {
   // [0,1] with spacing 1/(N-1)
   periodic: boolean
   label?: string // e.g. "charge density", "spin density", "orbital"
+  // Unit of the values in ASCII notation: `e/A^3` (VASP densities), `eV` (LOCPOT), `a.u.`
+  // (Gaussian cube: atomic units of whatever quantity it holds), `Bohr^-3/2` (cube orbitals);
+  // `` for a dimensionless field (ELF), null when the source names none
+  units: string | null
   // Compression-stripped source filename; reimporting a source replaces its volumes
   source?: string
   source_filename?: string // with compression suffix, for picker/URL identity
@@ -103,6 +107,11 @@ export function volume_from_json(raw: unknown): VolumetricData {
   }
   const optional = (key: `label` | `source` | `source_filename`) =>
     typeof data[key] === `string` ? { [key]: data[key] } : {}
+  if (data.units !== undefined && data.units !== null && typeof data.units !== `string`) {
+    throw new TypeError(
+      `Volumetric data units must be a string or null, got ${JSON.stringify(data.units)}`,
+    )
+  }
   if (data.signed !== undefined && typeof data.signed !== `boolean`)
     throw new TypeError(
       `Volumetric data signed flag must be a boolean, got ${JSON.stringify(data.signed)}`,
@@ -112,6 +121,8 @@ export function volume_from_json(raw: unknown): VolumetricData {
     lattice: data.lattice,
     origin: data.origin,
     periodic: data.periodic,
+    // a payload that names no unit has none we know, not some default one
+    units: typeof data.units === `string` ? data.units : null,
     ...optional(`label`),
     ...optional(`source`),
     ...optional(`source_filename`),

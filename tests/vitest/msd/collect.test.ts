@@ -1,4 +1,4 @@
-import { calc_msd } from '#lib/msd/calc-msd.js'
+import { compute_msd } from '#lib/msd/compute-msd.js'
 import { collect_msd_positions } from '#lib/msd/collect.js'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
@@ -58,7 +58,7 @@ describe(`collect_msd_positions`, () => {
         coords_unwrapped: false,
       })
       expect(collected.positions).toHaveLength(expected_frames * 2 * 3)
-      const result = calc_msd(collected)
+      const result = compute_msd(collected)
       const step = drift_per_frame * frame_stride
       expect(
         max_rel_error(
@@ -128,7 +128,7 @@ describe(`MSD components`, () => {
     [{ start_fraction: 0.5, end_fraction: 1 }, `10–19`],
     [{ start_fraction: 0.8, end_fraction: 0.2 }, `must be below end_fraction`],
   ])(`renders a curve and its Einstein fit for %o`, async (fit_options, expected) => {
-    const result = calc_msd(drift_positions(40))
+    const result = compute_msd(drift_positions(40))
     mounted.push(
       mount(MsdPlot, {
         target: document.body,
@@ -166,8 +166,8 @@ describe(`MSD components`, () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain(`recollect failed`))
   })
 
-  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with calc_msd's unwrapped copy
-  it(`budgets calc_msd's unwrapped copy of wrapped cell positions`, async () => {
+  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with compute_msd's unwrapped copy
+  it(`budgets compute_msd's unwrapped copy of wrapped cell positions`, async () => {
     const run = trajectory_from_frames(
       Array.from({ length: 20 }, (_, idx) => make_frame(idx, [[0, 0, 0]], { box_length: 5 })),
     )

@@ -54,17 +54,14 @@ describe(`scalars_to_vertex_colors`, () => {
     expect(rgb_at(flat, 0)).toEqual(rgb_at(flat, 1))
   })
 
-  test.each([NaN, Infinity, -Infinity])(
-    `%s scalars get the fallback color in linear space`,
-    (value) => {
-      // #808080 is 0.502 in sRGB → ≈0.2158 linear (discriminates the two spaces)
-      const colors = scalars_to_vertex_colors(new Float32Array([value]), {
-        ...viridis_opts,
-        fallback_color: `#808080`,
-      })
-      expect([...colors]).toEqual(Array(3).fill(expect.closeTo(0.2158, 3)))
-    },
-  )
+  test.each([NaN, Infinity, -Infinity])(`%s scalars get the fallback`, (value) => {
+    // #808080 is 0.502 in sRGB → ≈0.2158 linear (discriminates the two spaces)
+    const colors = scalars_to_vertex_colors(new Float32Array([value]), {
+      ...viridis_opts,
+      fallback_color: `#808080`,
+    })
+    expect([...colors]).toEqual(Array(3).fill(expect.closeTo(0.2158, 3)))
+  })
 
   // color_scale type spaces values and palette_range clips the scheme, like the 2D plots
   test(`log type and palette_range match the linear full-palette colors they reduce to`, () => {
@@ -96,65 +93,57 @@ describe(`scalars_to_vertex_colors`, () => {
   })
 })
 
-describe(`fit_value_range`, () => {
-  // `auto` centres on zero only for signed data, `true` always does, `false` never does
-  test.each([
-    { symmetric: `auto`, range: [-1, 3], expected: [-3, 3] },
-    { symmetric: `auto`, range: [1, 3], expected: [1, 3] },
-    { symmetric: `auto`, range: [-3, -1], expected: [-3, -1] },
-    { symmetric: true, range: [1, 3], expected: [-3, 3] },
-    { symmetric: true, range: [-3, -1], expected: [-3, 3] },
-    { symmetric: false, range: [-1, 3], expected: [-1, 3] },
-    { symmetric: false, range: [1, 3], expected: [1, 3] },
-    { symmetric: undefined, range: [-1, 3], expected: [-3, 3] }, // default is auto
-    { symmetric: undefined, range: [1, 3], expected: [1, 3] },
-  ] as const)(
-    `symmetric=$symmetric fits $range to $expected`,
-    ({ symmetric, range, expected }) => {
-      expect(fit_value_range(range[0], range[1], symmetric)).toEqual(expected)
-    },
-  )
+// `auto` centres on zero only for signed data, `true` always does, `false` never does
+test.each([
+  { symmetric: `auto`, range: [-1, 3], expected: [-3, 3] },
+  { symmetric: `auto`, range: [1, 3], expected: [1, 3] },
+  { symmetric: `auto`, range: [-3, -1], expected: [-3, -1] },
+  { symmetric: true, range: [1, 3], expected: [-3, 3] },
+  { symmetric: true, range: [-3, -1], expected: [-3, 3] },
+  { symmetric: false, range: [-1, 3], expected: [-1, 3] },
+  { symmetric: false, range: [1, 3], expected: [1, 3] },
+  { symmetric: undefined, range: [-1, 3], expected: [-3, 3] }, // default is auto
+  { symmetric: undefined, range: [1, 3], expected: [1, 3] },
+] as const)(
+  `fit_value_range: symmetric=$symmetric: $range → $expected`,
+  ({ symmetric, range, expected }) => {
+    expect(fit_value_range(range[0], range[1], symmetric)).toEqual(expected)
+  },
+)
+
+// the symmetry modes themselves are fit_value_range's (tabled above)
+// oxfmt-ignore
+test.each([
+  [`positive values keep [min, max]`, [[1, 2, 3]], {}, [1, 3]],
+  [`mixed-sign values get symmetric range`, [[-2, 5]], {}, [-5, 5]],
+  [`symmetric forces zero-centered range for one-signed samples`, [[2, 5]], { symmetric: true }, [-5, 5]],
+  [`multiple arrays merge, non-finite values ignored`, [[1, NaN, 4], [2, Infinity, 8]], {}, [1, 8]],
+  [`all-non-finite falls back to [0, 1]`, [[NaN, Infinity]], {}, [0, 1]],
+  [`empty input falls back to [0, 1]`, [], {}, [0, 1]],
+] as [string, number[][], { symmetric?: boolean }, number[]][])(
+  `compute_scalar_range: %s`,
+  (_label, arrays, options, expected) => {
+    const scalar_arrays = arrays.map((values) => new Float32Array(values))
+    expect(compute_scalar_range(scalar_arrays, options)).toEqual(expected)
+  },
+)
+
+test.each([
+  { range: { min: -3, max: 5, abs_max: 5, mean: 0 }, signed: true },
+  { range: { min: 0, max: 8, abs_max: 8, mean: 2 }, signed: false },
+  // Tiny negative noise below 1% of abs_max doesn't count as signed
+  { range: { min: -0.001, max: 8, abs_max: 8, mean: 2 }, signed: false },
+  { range: { min: -8, max: 0.001, abs_max: 8, mean: -2 }, signed: false },
+])(`is_signed_range: min=$range.min max=$range.max → $signed`, ({ range, signed }) => {
+  expect(is_signed_range(range)).toBe(signed)
 })
 
-describe(`compute_scalar_range`, () => {
-  // the symmetry modes themselves are fit_value_range's (tabled above)
-  // oxfmt-ignore
-  test.each([
-    [`positive values keep [min, max]`, [[1, 2, 3]], {}, [1, 3]],
-    [`mixed-sign values get symmetric range`, [[-2, 5]], {}, [-5, 5]],
-    [`symmetric forces zero-centered range for one-signed samples`, [[2, 5]], { symmetric: true }, [-5, 5]],
-    [`multiple arrays merge, non-finite values ignored`, [[1, NaN, 4], [2, Infinity, 8]], {}, [1, 8]],
-    [`all-non-finite falls back to [0, 1]`, [[NaN, Infinity]], {}, [0, 1]],
-    [`empty input falls back to [0, 1]`, [], {}, [0, 1]],
-  ] as [string, number[][], { symmetric?: boolean }, number[]][])(
-    `%s`,
-    (_label, arrays, options, expected) => {
-      const scalar_arrays = arrays.map((values) => new Float32Array(values))
-      expect(compute_scalar_range(scalar_arrays, options)).toEqual(expected)
-    },
-  )
-})
-
-describe(`is_signed_range`, () => {
-  test.each([
-    { range: { min: -3, max: 5, abs_max: 5, mean: 0 }, signed: true },
-    { range: { min: 0, max: 8, abs_max: 8, mean: 2 }, signed: false },
-    // Tiny negative noise below 1% of abs_max doesn't count as signed
-    { range: { min: -0.001, max: 8, abs_max: 8, mean: 2 }, signed: false },
-    { range: { min: -8, max: 0.001, abs_max: 8, mean: -2 }, signed: false },
-  ])(`min=$range.min max=$range.max → $signed`, ({ range, signed }) => {
-    expect(is_signed_range(range)).toBe(signed)
-  })
-})
-
-describe(`auto_color_config`, () => {
-  test.each([
-    [`signed data gets diverging RdBu with a symmetric`, -3, `interpolateRdBu`, [-5, 5]],
-    [`non-negative data gets Viridis over the [min, max]`, 1, `interpolateViridis`, [1, 5]],
-  ])(`%s range`, (_label, min, scheme, value_range) => {
-    expect(auto_color_config({ min, max: 5, abs_max: 5, mean: 1 })).toEqual({
-      scheme,
-      value_range,
-    })
+test.each([
+  [`signed data gets diverging RdBu with a symmetric`, -3, `interpolateRdBu`, [-5, 5]],
+  [`non-negative data gets Viridis over the [min, max]`, 1, `interpolateViridis`, [1, 5]],
+])(`auto_color_config: %s range`, (_label, min, scheme, value_range) => {
+  expect(auto_color_config({ min, max: 5, abs_max: 5, mean: 1 })).toEqual({
+    scheme,
+    value_range,
   })
 })

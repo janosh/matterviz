@@ -8,8 +8,10 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
 
 ```svelte example
 <script lang="ts">
-  import { calc_lattice_params, Structure } from 'matterviz'
-  import type { ElementSymbol, Matrix3x3, Vec3 } from 'matterviz'
+  import { Structure } from 'matterviz'
+  import { compute_lattice_params } from 'matterviz/math'
+  import type { ElementSymbol } from 'matterviz'
+  import type { Matrix3x3, Vec3 } from 'matterviz/math'
 
   // periodic lattice from its matrix, with lengths, angles and volume derived
   // site of one fully occupied element, labeled by it
@@ -28,7 +30,7 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
   const lattice = (matrix: Matrix3x3) => ({
     matrix,
     pbc: [true, true, true],
-    ...calc_lattice_params(matrix),
+    ...compute_lattice_params(matrix),
   })
   const fe_bcc = lattice([
     [-1.435, 1.435, 1.435],

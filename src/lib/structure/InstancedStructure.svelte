@@ -15,6 +15,7 @@
   import type { AtomGroups, RenderAtom } from './atom-groups'
   import type { AtomPropertyColors } from './atom-properties'
   import Bond from './Bond.svelte'
+  import { EllipsoidAtoms } from './ellipsoid-atoms'
   import type { BondData } from './bond-rendering'
   import { get_majority_element } from './bonding'
   import InstancedAtoms from './InstancedAtoms.svelte'
@@ -97,6 +98,18 @@
     invalidate()
   })
   $effect(() => () => partial_atoms.dispose())
+
+  // Thermal ellipsoids replacing the spheres of sites with an ADP (one InstancedMesh)
+  const ellipsoid_atoms = new EllipsoidAtoms()
+  $effect(() => {
+    ellipsoid_atoms.update(atom_groups.ellipsoid, sphere_segments, atom_color_field)
+    invalidate()
+  })
+  $effect(() => {
+    ellipsoid_atoms.set_opacity(atom_opacity)
+    invalidate()
+  })
+  $effect(() => () => ellipsoid_atoms.dispose())
 
   // What the colors were resolved from: a snapshot's topology identity, else the site records
   // (never materialized from columns), whose species arrays coordinate-only edits such as drag
@@ -204,6 +217,10 @@
 <!-- Partial-occupancy wedges and vacancy caps; instanceId is a site's first wedge -->
 {#if atom_groups.partial.length > 0}
   <T is={partial_atoms} {...atom_events(atom_groups.partial)} dispose={false} />
+{/if}
+
+{#if atom_groups.ellipsoid.length > 0}
+  <T is={ellipsoid_atoms} {...atom_events(atom_groups.ellipsoid)} dispose={false} />
 {/if}
 
 {#if bonds.length > 0}

@@ -9,7 +9,7 @@
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
   import { series_hover_props } from '#lib/plot/core/interactions.js'
   import { compute_vacf_async } from './async-compute.svelte'
-  import { revise_vacf } from './calc-vacf'
+  import { revise_vacf } from './compute-vacf'
   import type { VacfInput, VacfOptions, VacfResult } from './index'
 
   let {

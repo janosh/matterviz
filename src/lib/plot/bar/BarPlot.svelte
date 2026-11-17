@@ -6,6 +6,7 @@
   import { sanitize_html } from '#lib/sanitize.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
+  import { error_getter } from '#lib/plot/core/error-bars.js'
   import { format_value_or_num } from '#lib/labels.js'
   import type {
     BarHandlerProps,
@@ -88,6 +89,7 @@
   } from './data'
   import {
     compute_bar_rect,
+    bar_error_path,
     compute_line_points,
     nearest_line_point,
     visible_bar_indices,
@@ -139,6 +141,7 @@
     ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
+    error_bar_cap = 4,
     show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
@@ -188,6 +191,8 @@
       selected_bars?: { series_idx: number; bar_idx: number }[]
       // Fires on every Alt+drag, including one that selected nothing
       on_select?: (selection: { bars: BarHandlerProps<Metadata>[]; rect: PixelRect }) => void
+      // Half-width of the T caps on series' y_error bars, in px (0 draws bare lines)
+      error_bar_cap?: number
       // Line marker props (matching ScatterPlot)
       color_scale?: ColorScale
       // How series `size_values` map to marker radius in px (type, radius range, value range)
@@ -265,14 +270,14 @@
       const bars = internal_series.flatMap((srs, series_idx) => {
         if (srs.visible === false || srs.render_mode === `line`) return []
         const rect_at = bar_geometry(srs, series_idx)
-        return srs.x.flatMap((_, bar_idx) => {
+        return Array.from(srs.x, (_, bar_idx) => {
           const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
           const drawn = (vertical ? rect_h : rect_w) > 0
           return drawn &&
             overlaps_rect(rect, [rect_x, rect_x + rect_w], [rect_y, rect_y + rect_h])
             ? [get_bar_data(series_idx, bar_idx, series_color(srs))]
             : []
-        })
+        }).flat()
       })
       selected_bars = bars.map(({ series_idx, bar_idx }) => ({ series_idx, bar_idx }))
       on_select?.({ bars, rect })
@@ -348,7 +353,9 @@
   const series_color = (srs: Pick<BarSeries, `color` | `render_mode`>): string =>
     srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color)
   const has_finite_point = ({ x: coord_x, y: coord_y }: BarSeries<Metadata>) =>
-    coord_x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(coord_y[idx]))
+    Array.from(coord_x).some(
+      (x_val, idx) => Number.isFinite(x_val) && Number.isFinite(coord_y[idx]),
+    )
   // Only show secondary axes for series with at least one drawable bar. Horizontal bars put
   // their secondary values on x2, so y2 is never shown in that orientation.
   let show_x2 = $derived(
@@ -416,6 +423,32 @@
       })
   }
 
+  // A series' y_error bars at bar tips (a stack's cumulative value) or line points
+  const error_bars = (
+    srs: (typeof internal_series)[number],
+    series_idx: number,
+    indices: Iterable<number>,
+    scales: typeof frame.scales = frame.scales,
+  ): string => {
+    const { cat_scale, val_scale } = series_scales(srs, scales)
+    const is_line = srs.render_mode === `line`
+    const bases = mode === `stacked` && !is_line ? stacked_offsets[series_idx] : undefined
+    const rect_at = is_line ? null : bar_geometry(srs, series_idx, scales)
+    return bar_error_path({
+      series: srs,
+      indices,
+      vertical,
+      cap: error_bar_cap,
+      val_scale,
+      tip: (bar_idx) => (bases?.[bar_idx] ?? 0) + srs.y[bar_idx],
+      cat_px: (bar_idx) => {
+        if (!rect_at) return cat_scale(srs.x[bar_idx])
+        const { c0, c1 } = rect_at(bar_idx)
+        return (c0 + c1) / 2
+      },
+    })
+  }
+
   // === Bars during a pan ===
   // Bars keep the projection of the view a pan started from and their series group is
   // translated instead (see create_pan_anchor): re-rendering thousands of bar paths was most of
@@ -434,7 +467,9 @@
   // (anchored ones those beyond the pan reach).
   const small_bar_indices = $derived(
     internal_series.map((srs) =>
-      srs.render_mode !== `line` && srs.x.length < 1000 ? srs.x.map((_, idx) => idx) : [],
+      srs.render_mode !== `line` && srs.x.length < 1000
+        ? Array.from({ length: srs.x.length }, (_, idx) => idx)
+        : [],
     ),
   )
   const rendered_bars = $derived(
@@ -470,7 +505,7 @@
         if (!(srs.visible ?? true)) return
         if (srs.render_mode === `line`) {
           const { cat_scale, val_scale } = series_scales(srs, scales)
-          const points = srs.x.map((x_val, point_idx) => {
+          const points = Array.from(srs.x, (x_val, point_idx) => {
             const [cat_px, val_px] = [cat_scale(x_val), val_scale(srs.y[point_idx])]
             const [px_x, px_y] = vertical ? [cat_px, val_px] : [val_px, cat_px]
             return { x: clamp01(px_x / base_w), y: clamp01(px_y / base_h) }
@@ -480,14 +515,15 @@
         }
 
         const rect_at = bar_geometry(srs, series_idx, scales)
-        srs.x.forEach((x_val, bar_idx) => {
-          if (!Number.isFinite(x_val) || !Number.isFinite(srs.y[bar_idx])) return
+        for (let bar_idx = 0; bar_idx < srs.x.length; bar_idx++) {
+          const x_val = srs.x[bar_idx]
+          if (!Number.isFinite(x_val) || !Number.isFinite(srs.y[bar_idx])) continue
           const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
           const x_span: Vec2 = [rect_x / base_w, (rect_x + rect_w) / base_w]
           const y_span: Vec2 = [rect_y / base_h, (rect_y + rect_h) / base_h]
           const [cross, span] = vertical ? [x_span, y_span] : [y_span, x_span]
           obstacle_series.push(...bar_obstacles(vertical, cross, span))
-        })
+        }
       })
       return obstacle_series
     }),
@@ -506,7 +542,7 @@
       x: vertical ? srs.x : undefined,
       y: vertical ? undefined : srs.x,
       // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
-      weight: srs.y.map((value) => Math.abs(value)),
+      weight: Float64Array.from(srs.y, Math.abs),
       color: series_color(srs),
       label: srs.label,
       visible: srs.visible ?? true,
@@ -557,9 +593,9 @@
   }
   let legend_data = $derived(build_legend_items(series, legend_swatch))
 
-  // Hover state is indices only: the tooltip follows new data and closes once its mark is gone
-  // or hidden. `line` marks a line-series point, whose hover callback is on_point_hover. A
-  // click pins the hovered mark's tooltip unless on_bar_click/on_point_click takes the click.
+  // Hover state is indices only: the tooltip follows new data and closes once its mark is gone.
+  // `line` marks a line-series point (hover callback: on_point_hover). A click pins the
+  // tooltip unless on_bar_click/on_point_click takes it.
   type MarkKey = { series_idx: number; bar_idx: number; color: string; line?: boolean }
   const mark_info = (key: MarkKey) => {
     const { series_idx, bar_idx, color, line: is_line } = key
@@ -652,6 +688,16 @@
   let group_info = $derived(compute_group_info(internal_series, mode))
 
   // === Export ===
+  // Resolved [lower, upper] error magnitudes as CSV columns, like ScatterPlot's
+  const error_columns = (srs: BarSeries<Metadata>) => {
+    const get_error = error_getter(srs.y_error)
+    if (!get_error) return undefined
+    const errors = Array.from(srs.y, (_, idx) => get_error(idx))
+    return {
+      y_error_lower: errors.map(([low]) => low),
+      y_error_upper: errors.map(([, up]) => up),
+    }
+  }
   // The caller's visible series as given (category names, no padding for absent categories),
   // unlabelled ones numbered by input position as in the legend
   const export_sources = {
@@ -660,7 +706,14 @@
         series.flatMap((srs, series_idx) =>
           srs.visible === false
             ? []
-            : [{ label: srs.label ?? `Series ${series_idx + 1}`, x: srs.x, y: srs.y }],
+            : [
+                {
+                  label: srs.label ?? `Series ${series_idx + 1}`,
+                  x: srs.x,
+                  y: srs.y,
+                  extras: error_columns(srs),
+                },
+              ],
         ),
       ),
     ),
@@ -804,6 +857,18 @@
                     const point = find_closest_point(evt, points_in_view)
                     if (point) do_click(point, evt)
                   }}
+                />
+              {/if}
+              {#if srs.y_error != null}
+                <!-- under the markers, so a cap never hides the point it belongs to -->
+                <path
+                  class="error-bars"
+                  d={error_bars(
+                    srs,
+                    series_idx,
+                    Array.from(srs.x, (_, idx) => idx),
+                  )}
+                  clip-path="url(#{frame.clip_path_id})"
                 />
               {/if}
               {#if show_points}
@@ -1005,6 +1070,18 @@
                       {/if}
                     {/if}
                   {/each}
+                  {#if srs.y_error != null}
+                    <path
+                      class="error-bars"
+                      d={error_bars(
+                        srs,
+                        series_idx,
+                        rendered_bars[series_idx],
+                        anchored ? bar_anchor.scales : frame.scales,
+                      )}
+                      clip-path={anchored ? undefined : bar_clip}
+                    />
+                  {/if}
                 </g>
               </g>
             {/if}
@@ -1092,5 +1169,11 @@
   .bar-label {
     fill: var(--text-color);
     font-size: 11px;
+  }
+  path.error-bars {
+    fill: none;
+    stroke: var(--bar-error-bar-color, currentColor);
+    stroke-width: var(--bar-error-bar-width, 1.5);
+    stroke-opacity: var(--bar-error-bar-opacity, 0.8);
   }
 </style>

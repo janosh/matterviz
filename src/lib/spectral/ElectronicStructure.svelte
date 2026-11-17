@@ -13,12 +13,11 @@
   // A `sweep` runs the viewer along one axis, e.g. pressure: a control bar steps through a
   // series' frames, `load_frame` fetches frames on demand (neighbours prefetched), the spectra
   // span every loaded frame so their axes hold still, and the trends pane plots descriptors
-  // against the axis (see sweep.ts), loading the frames still lacking its values in the
-  // background. `compare_series` shows a second series beside the first:
-  // every frame pane splits into two sides, the compared series' frame nearest the shown value
-  // on the right, sharing spectra axes, one rotation link and the frame cache. A dropped file
-  // replaces the data of the panes it fills (see `fill`); while a sweep is shown only sweep JSONs
-  // are taken.
+  // against the axis (see sweep.ts), loading frames still lacking its values in the background.
+  // `compare_series` shows a second series beside the first: every frame pane splits into two
+  // sides, the compared series' frame nearest the shown value on the right, sharing spectra
+  // axes, one rotation link and the frame cache. A dropped file replaces the data of the panes
+  // it fills (see `fill`); while a sweep is shown only sweep JSONs are taken.
   import { format_num } from 'svelte-widgets/format'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import { create_on_screen, create_prop_state } from '#lib/effects.svelte.js'
@@ -43,7 +42,7 @@
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-  import { dot, in_range, matrix_inverse_3x3, type Matrix3x3, type Vec2 } from '#lib/math.js'
+  import { dot, in_range, inverse_3x3, type Matrix3x3, type Vec2 } from '#lib/math.js'
   import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
@@ -429,31 +428,25 @@
     with_trends: boolean,
   ): ElectronicPane[] => {
     const some = (has: (entry: Partial<SweepFrame>) => unknown) => entries.some(has)
-    const count = (record?: object) => Object.keys(record ?? {}).length
+    const any_keys = (...records: (object | undefined)[]) =>
+      records.some((record) => Object.keys(record ?? {}).length > 0)
     const filled: Record<ElectronicPane, boolean> = {
       structure: some((entry) => entry.structure),
       fermi: some((entry) => entry.fermi_data || entry.band_data),
-      bands: some((entry) => count(entry.band_structs) > 0),
-      dos: some((entry) => count(entry.doses) > 0),
-      phonon: some(
-        ({ phonon: spectra }) =>
-          count(spectra?.band_structs) + count(spectra?.doses) + count(spectra?.a2f),
-      ),
+      bands: some((entry) => any_keys(entry.band_structs)),
+      dos: some((entry) => any_keys(entry.doses)),
+      phonon: some(({ phonon: data }) => any_keys(data?.band_structs, data?.doses, data?.a2f)),
       trends: with_trends,
     }
     return PANE_IDS.filter((pane) => filled[pane])
   }
-  // In a sweep, what each shown series' frames loaded so far add up to: a running value per
-  // series that grows as its frames load and never shrinks when they are evicted, so panes stay
-  // and axes hold still (also across a swap or a series compared again), reset by a new sweep or
-  // loader. A pane has data when any frame has (loaded) it, so the default layout neither waits
-  // on the shown frame's load nor collapses on a frame without it.
   const shown_series = $derived(series ? [series, ...(compared ? [compared.series] : [])] : [])
-  // `next` returns `prev` while nothing changed, and the array is the last one while every
-  // series' value holds, so a load that changes no value (one of a series not shown, or
-  // another frame's) re-renders nothing downstream.
-  // An effect keeps the values as state, written only when one changes: every frame cache write
-  // would otherwise mark the whole viewer reading them (Svelte marks each path down the graph)
+  // In a sweep, a running value per shown series of what its frames loaded so far: it grows as
+  // they load and never shrinks on eviction, so panes stay and axes hold still (also across a
+  // swap or a series compared again), reset by a new sweep or loader. `next` returns `prev` while
+  // nothing changed and the array stays the last one while every value holds, so a load changing
+  // no value re-renders nothing downstream. An effect keeps the values as state, written only on
+  // change: each frame cache write would otherwise mark the whole viewer reading them.
   function running<T>(next: (loaded: SweepFrame[], prev?: T) => T): { readonly current: T[] } {
     let seen = { key: [] as unknown[], values: new WeakMap<SweepSeries, T>(), last: [] as T[] }
     const compute = (): T[] => {
@@ -487,6 +480,8 @@
     const grown = PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
     return grown.length === prev.length ? prev : grown // a superset of prev
   })
+  // a pane has data once any frame loaded it, so the default layout neither waits on the shown
+  // frame's load nor collapses on a frame without it
   const with_data = $derived(
     sweep
       ? PANE_IDS.filter((pane) => sweep_panes.current.some((filled) => filled.includes(pane)))
@@ -495,31 +490,23 @@
   // the frequency extent (data units) the shown series' loaded frames span, shared by the
   // sides. Each frame's extent is cached by its records, which a lazily loaded frame keeps
   // across reads, so a load costs that frame's extent, not every frame's.
-  type BandRecords = Record<string, BaseBandStructure>
-  const frame_spans = new WeakMap<
-    BandRecords,
-    WeakMap<Record<string, DosData>, Vec2 | undefined>
-  >()
-  const frame_span = (bands: BandRecords, dos: Record<string, DosData>): Vec2 | undefined => {
+  const frame_spans = new WeakMap<object, WeakMap<object, Vec2 | undefined>>()
+  const frame_span = (records?: SpectraRecords): Vec2 | undefined => {
+    const { band_structs: bands = NO_RECORDS, doses: dos = NO_RECORDS } = records ?? {}
     let by_dos = frame_spans.get(bands)
     if (!by_dos) frame_spans.set(bands, (by_dos = new WeakMap()))
     if (!by_dos.has(dos)) by_dos.set(dos, compute_frequency_range(bands, dos))
     return by_dos.get(dos)
   }
-  const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
+  const same_range = (lhs?: Vec2, rhs?: Vec2) => lhs?.[0] === rhs?.[0] && lhs?.[1] === rhs?.[1]
+  // the union of the loaded frames' extents, the same range while it holds
+  const running_union = (extent: (frame: SweepFrame) => Vec2 | undefined) =>
     running<Vec2 | undefined>((loaded, prev) => {
-      const span = union_ranges([
-        prev,
-        ...loaded.map((entry) => {
-          const { band_structs: bands = NO_RECORDS, doses: dos = NO_RECORDS } =
-            pick(entry) ?? {}
-          return frame_span(bands, dos)
-        }),
-      ])
-      return span?.[0] === prev?.[0] && span?.[1] === prev?.[1] ? prev : span
+      const span = union_ranges([prev, ...loaded.map(extent)])
+      return same_range(span, prev) ? prev : span
     })
-  const electronic_spans = running_span((entry) => entry)
-  const phonon_spans = running_span((entry) => entry.phonon)
+  const electronic_spans = running_union(frame_span)
+  const phonon_spans = running_union((entry) => frame_span(entry.phonon))
   // The mode values' (e.g. λ_qν) extent over the loaded frames, the phonon bands' colour and size
   // scale: frames compare on one scale, and the colour bar holds still instead of re-laying out
   // on every frame. Each frame's extent is cached by its mode values.
@@ -537,15 +524,9 @@
     }
     return mode_value_extents.get(mode_values)
   }
-  const mode_value_spans = running<Vec2 | undefined>((loaded, prev) => {
-    const span = union_ranges([
-      prev,
-      ...loaded.map(({ phonon: spectra }) =>
-        spectra?.mode_values ? mode_value_extent(spectra.mode_values) : undefined,
-      ),
-    ])
-    return span?.[0] === prev?.[0] && span?.[1] === prev?.[1] ? prev : span
-  })
+  const mode_value_spans = running_union(({ phonon: spectra }) =>
+    spectra?.mode_values ? mode_value_extent(spectra.mode_values) : undefined,
+  )
   const mode_value_scales = $derived.by((): Partial<ComponentProps<typeof Bands>> => {
     const value_range = sweep ? union_ranges(mode_value_spans.current) : undefined
     return value_range ? { color_scale: { value_range }, size_scale: { value_range } } : {}
@@ -569,9 +550,8 @@
   const show_trends = $derived(shown.has(`trends`)) // `shown` checks the sweep has descriptors
   // The frames the trends plot lacks a value for (its descriptor's or an overlay's) because
   // they never loaded (a supplied null is a value): while it shows they load in the background
-  // one at a time, the shown series first, then the compared one and the rest, each in index
-  // order (see frames.load_background)
-  // A failed frame stays missing (it counts against the loaded note) but isn't loaded again
+  // one at a time, the shown series first, then the compared one and the rest, in index order
+  // (see frames.load_background). A failed frame stays missing (in the note), never reloaded.
   const missing = $derived.by((): FrameRef[] => {
     if (!sweep || !series || !show_trends) return []
     const lines = descriptor_lines(sweep, descriptor)
@@ -716,7 +696,7 @@
       ) as Matrix3x3
       const integral = (matrix: Matrix3x3) =>
         matrix.flat().every((val) => Math.abs(val - Math.round(val)) < FRAME_TOL)
-      return !integral(overlap) && !integral(matrix_inverse_3x3(overlap))
+      return !integral(overlap) && !integral(inverse_3x3(overlap))
     })
     scenes_size = $state({ width: 0, height: 0 })
     // stacked, the scenes share their row while each keeps a readable width (each row is one
@@ -785,38 +765,26 @@
   // lines) and frames compare on one scale; a new sweep, series, unit or normalization starts
   // over. Without a sweep, compared sides share the union of their extents.
   const running_density = (
-    pick: (side: FrameSide) => Vec2 | undefined,
+    field: `dos_density` | `phonon_density` | `a2f_density`,
     scale_key: () => unknown,
   ) => {
     let held: { key: unknown[]; range?: Vec2 } = { key: [] }
     return (): Vec2 | undefined => {
-      if (!sweep) return compared ? union_ranges(sides.map(pick)) : undefined
+      if (!sweep && !compared) return undefined
+      const extents = sides.map((side) => side[field])
+      if (!sweep) return union_ranges(extents)
       const key = [sweep, units, scale_key(), ...shown_series]
       if (key.length !== held.key.length || key.some((part, idx) => part !== held.key[idx]))
         held = { key }
-      const next = union_ranges([held.range, ...sides.map(pick)])
-      if (next?.[0] !== held.range?.[0] || next?.[1] !== held.range?.[1]) held.range = next
+      const next = union_ranges([held.range, ...extents])
+      if (!same_range(next, held.range)) held.range = next
       return held.range
     }
   }
-  const dos_density_range = $derived.by(
-    running_density(
-      (side) => side.dos_density,
-      () => dos_props.normalize,
-    ),
-  )
-  const phonon_density_range = $derived.by(
-    running_density(
-      (side) => side.phonon_density,
-      () => phonon_props.dos_props?.normalize,
-    ),
-  )
-  const a2f_range = $derived.by(
-    running_density(
-      (side) => side.a2f_density,
-      () => phonon_props.dos_props?.normalize,
-    ),
-  )
+  const phonon_normalize = () => phonon_props.dos_props?.normalize
+  const dos_range = $derived.by(running_density(`dos_density`, () => dos_props.normalize))
+  const phonon_range = $derived.by(running_density(`phonon_density`, phonon_normalize))
+  const a2f_range = $derived.by(running_density(`a2f_density`, phonon_normalize))
 
   // === file drop ===
   const report_error = (message: string, filename?: string): void => {
@@ -1301,7 +1269,7 @@
                 orientation={side.spectra_side ? `horizontal` : `vertical`}
                 x_axis={sync.dos_x_axis}
                 y_axis={sync.y_axes[1]}
-                density_range={dos_props.density_range ?? dos_density_range}
+                density_range={dos_props.density_range ?? dos_range}
                 bind:density_extent={side.dos_density}
                 bind:view={sync.views[1]}
                 bind:resolved_padding={
@@ -1354,7 +1322,7 @@
             doses={spectra.doses ?? {}}
             a2f={spectra.a2f}
             frequency_range={union_ranges(phonon_spans.current)}
-            density_range={phonon_props.density_range ?? phonon_density_range}
+            density_range={phonon_props.density_range ?? phonon_range}
             bind:density_extent={side.phonon_density}
             a2f_range={phonon_props.a2f_range ?? a2f_range}
             bind:a2f_extent={side.a2f_density}
@@ -1487,11 +1455,14 @@
       var(--menu-option-selected-color, light-dark(#2563eb, #6ea8ff))
     );
   }
-  .row {
+  .row,
+  .pane {
     position: relative;
     display: grid;
     min-width: 0;
     min-height: 0;
+  }
+  .row {
     grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     &.horizontal {
       grid-template-columns: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
@@ -1509,14 +1480,8 @@
       grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
     }
   }
-  .pane {
-    position: relative;
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    > :global(:not(.structure-fullscreen-root)) {
-      height: 100%;
-    }
+  .pane > :global(:not(.structure-fullscreen-root)) {
+    height: 100%;
   }
   .band-crossings {
     position: absolute;
@@ -1550,16 +1515,19 @@
       border-left: var(--pane-rule);
     }
   }
-  .side-label {
+  .side-label,
+  .frame-status {
     display: flex;
     gap: 0.5em;
     align-items: baseline;
-    padding: 2px 1ex;
-    font-size: 0.85em;
     white-space: nowrap;
-    .far {
+    :is(.far, .unstable) {
       color: var(--warning-color, darkorange);
     }
+  }
+  .side-label {
+    padding: 2px 1ex;
+    font-size: 0.85em;
   }
   .trends-fill {
     position: absolute;
@@ -1570,16 +1538,7 @@
     color: var(--text-muted, currentColor);
     font-size: 0.8em;
   }
-  .frame-status {
-    display: flex;
-    gap: 0.5em;
-    align-items: baseline;
-    white-space: nowrap;
-    small {
-      color: var(--text-muted, currentColor);
-    }
-    .unstable {
-      color: var(--warning-color, darkorange);
-    }
+  .frame-status small {
+    color: var(--text-muted, currentColor);
   }
 </style>

@@ -8,6 +8,7 @@ import type {
   DataSeries,
   DisplayConfig,
   HandlerProps,
+  NumericColumn,
   Point,
   PointStyle,
 } from '../types'
@@ -23,7 +24,7 @@ export interface DataSeries3D<Metadata = Record<string, unknown>> extends Omit<
   DataSeries<Metadata>,
   `y_axis` | `filtered_data`
 > {
-  z: readonly number[]
+  z: NumericColumn
   filtered_data?: InternalPoint3D<Metadata>[]
 }
 

@@ -36,7 +36,7 @@ import {
   iter_cif_loops,
   leading_letters,
   make_lattice,
-  matrix3x3_from_rows,
+  mat3x3_from_rows,
   normalize_cif_names,
   parse_cif_uncertain_number,
   parse_coordinate,
@@ -54,6 +54,7 @@ import {
 } from '#lib/structure/parsers/vasp-header.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
+import { ADP_KEY } from '#lib/structure/thermal-ellipsoids.js'
 import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
@@ -64,9 +65,8 @@ import { load as yaml_load } from 'js-yaml'
 
 export { is_structure_file } from '#lib/structure/format-detect.js'
 
-// Format parsers throw local errors describing the invalid input. The dispatcher adds
-// filename context; recoverable issues such as skipped atoms go to parse_warn, which the file
-// viewer collects onto its parse result with collect_parse_warnings.
+// Format parsers throw local errors (the dispatcher adds filename context); recoverable issues
+// such as skipped atoms go to parse_warn, collected by the file viewer
 
 // Parse coordinates from a line, repairing malformed runs like "1.0-2.0-3.0"
 function parse_coordinate_line(line: string): number[] {
@@ -175,9 +175,7 @@ const create_frac_site_index = (
     },
   }
 }
-// Bravais lattice centering translations (excluding the identity) keyed by the
-// leading letter of a space-group Hermann-Mauguin symbol. R is the obverse
-// hexagonal setting.
+// Bravais centering translations (minus identity) by H-M symbol letter; R is obverse hexagonal
 // oxfmt-ignore
 const CENTERING_VECTORS: Record<string, Vec3[]> = {
   P: [], I: [[0.5, 0.5, 0.5]], A: [[0, 0.5, 0.5]], B: [[0.5, 0, 0.5]], C: [[0.5, 0.5, 0]],
@@ -230,12 +228,9 @@ interface PhonopyCell {
 
 type OptimadeSpecies = NonNullable<OptimadeStructure[`attributes`][`species`]>[number]
 
-// Per OPTIMADE spec, species_at_sites holds species NAMES (e.g. 'Si1') resolved via the
-// species list: highest-concentration entry in chemical_symbols wins, non-element entries
-// like 'vacancy' are skipped, and unresolved names are treated as element symbols.
-// Returns the chosen element, the species entry it came from and its index into that entry's
-// chemical_symbols (sym_idx = -1 on fallback), so callers can read the matching
-// mass/concentration entry.
+// OPTIMADE species_at_sites holds species NAMES (e.g. 'Si1'): the highest-concentration
+// element of the named entry's chemical_symbols wins ('vacancy' skipped), else the name is
+// read as an element symbol. sym_idx (-1 on fallback) indexes the entry's mass/concentration.
 function resolve_optimade_element(
   species_name: string,
   species_list: OptimadeSpecies[] | undefined,
@@ -249,8 +244,7 @@ function resolve_optimade_element(
     if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
   }
   if (best) return { symbol: best.symbol, sym_idx: best.sym_idx, spec }
-  // Fallback: the name may be an element with a trailing atom index (e.g. 'O1');
-  // element symbols never contain digits, so stripping them is safe
+  // the name may be an element with a trailing atom index (e.g. 'O1')
   const stripped = species_name.replace(/\d+$/, ``)
   if (is_elem_symbol(stripped)) return { symbol: stripped, sym_idx: -1, spec }
   return {
@@ -299,45 +293,33 @@ export const parse_poscar = (content: string): Crystal => {
         flags.length >= 6
           ? [is_true(flags[3]), is_true(flags[4]), is_true(flags[5])]
           : undefined
-      // Cartesian input is scaled then converted to fractional (axis-length fallback
-      // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
-      // both stay consistent (singular Cartesian keeps the scaled input as xyz)
+      // Cartesian input is scaled then converted (axis-length fallback for singular lattices,
+      // which keep it as xyz); abc wraps to [0, 1) and xyz is recomputed from it
       const cart = is_direct ? null : apply_axis_scale(coords, scale)
       const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
       const abc = wrap_to_unit_cell(raw_abc)
       const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)
 
-      sites.push(
-        make_site(
-          element,
-          abc,
-          xyz,
-          `${element}${sites.length + 1}`,
-          selective_dynamics ? { selective_dynamics } : {},
-        ),
-      )
+      const properties = selective_dynamics ? { selective_dynamics } : {}
+      sites.push(make_site(element, abc, xyz, `${element}${sites.length + 1}`, properties))
     }
   }
 
   return { sites, lattice: make_lattice(scaled_lattice) }
 }
 
-// Standard or extended XYZ through the trajectory reader, so both agree on what a file
-// means (Properties columns, Lattice, pbc, move flags). A multi-frame file yields its LAST
-// complete frame; a frame the writer was still appending (atom block past the end of the
-// file, or a half-written last line) is dropped with a warning by index_xyz_frames, and a
-// file with no complete frame at all is an error, not a silently empty structure.
+// Standard or extended XYZ through the trajectory reader, so both agree on a file's meaning.
+// A multi-frame file yields its LAST complete frame (a torn last frame is dropped with a
+// warning); a file with no complete frame is an error, not a silently empty structure.
 export const parse_xyz = (content: string): AnyStructure => {
   // content.trim() also drops Unicode whitespace such as a BOM, which TextLines keeps
   const lines = new TextLines(content.trim())
   // Own collector (forwarding to parse_warn) so a failure can name the warnings behind it
   const collector = create_warning_collector(parse_warn)
   const frames = index_xyz_frames(lines, collector.warn)
-  // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
-  // Tinker-style title after the count (`6 methane`) or a Properties layout with another
-  // leading column (`id:I:1:species:S:1:pos:R:3`) hides the frame from it. A file whose
-  // leading atom count accounts for exactly every remaining line is still one complete
-  // frame; a count larger than that is a torn frame and stays an error.
+  // The frame sampler misses a Tinker-style title after the count (`6 methane`) or another
+  // leading Properties column; a leading count matching exactly the remaining lines is still
+  // one complete frame, a larger one a torn frame and an error
   const leading_count = Math.trunc(parse_leading_num(lines.line(0) ?? ``))
   const remaining_lines = lines.count - Math.min(2, lines.count)
   if (frames.length === 0 && leading_count > 0 && leading_count === remaining_lines) {
@@ -359,16 +341,12 @@ export const parse_xyz = (content: string): AnyStructure => {
     },
     collector,
   )
-  // Wrap periodic axes into [0, 1) and recompute xyz so rendered atoms sit in the primary
-  // cell. Aperiodic axes (ASE's pbc="F F F" molecules, a slab's vacuum direction) are left
-  // alone: folding them would tear the geometry apart.
+  // wrap periodic axes into the primary cell, leaving aperiodic ones (pbc="F F F") alone
   return normalize_fractional_coords(structure)
 }
 
-// Parse a single symmetry expression dimension (e.g., "x-y+1/3" or "-x+y")
-// Returns the numeric coefficient for each variable and the translation constant
-// Null when a term cannot be resolved: every dimension defaults to 0, so a bad op degraded
-// in place would map the whole asymmetric unit onto the origin, inventing an atom there.
+// One dimension of a symmetry op ("x-y+1/3") as x/y/z coefficients plus translation. Null
+// when a term cannot be resolved: degrading it to 0 would put an atom on the origin.
 const parse_symmetry_expression = (
   expr_input: string,
 ): { coefficients: Vec3; translation: number } | null => {
@@ -381,17 +359,14 @@ const parse_symmetry_expression = (
   for (const token of expr.match(/[+-]?[^+-]+/g) ?? []) {
     const sign = token.startsWith(`-`) ? -1 : 1
     const term = token.replace(/^[+-]/, ``)
-
-    // Variable term (x, y, or z)
     const var_idx = [`x`, `y`, `z`].indexOf(term)
     if (var_idx !== -1) {
       coefficients[var_idx] += sign
       continue
     }
 
-    // Numeric term: integer, decimal, or fraction like "1/3"
+    // numeric term: integer, decimal, or fraction like "1/3" (not "1/2/3")
     const parts = term.split(`/`)
-    // skip malformed terms like "1/2/3"
     if (parts.length > 2) {
       parse_warn(`CIF: skipping malformed symmetry term '${term}'`)
       continue
@@ -409,18 +384,17 @@ const parse_symmetry_expression = (
 }
 
 // A symmetry op resolved to numbers: row `dim` maps (x,y,z) to coefficients·(x,y,z) + shift.
-type ParsedSymOp = { coefficients: [Vec3, Vec3, Vec3]; translations: Vec3 }
+// time_reversal is a magnetic op's trailing flag (`x,y,z,-1`), +1 for ordinary ops.
+type ParsedSymOp = { coefficients: math.Matrix3x3; translations: Vec3; time_reversal: number }
 
-// Every atom in a file is expanded by the same ops, so resolve the strings once here instead
-// of re-running the expression parser (regex match, split, indexOf) per atom — that was
-// O(atoms x ops x 3) string parses where O(ops x 3) suffices.
-// Ops arrive pre-normalized (quotes + whitespace already stripped, see cif_symop_of).
+// Resolved once per file rather than per atom. Ops arrive with quotes and whitespace stripped.
 const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
   operations.flatMap((operation) => {
     // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`
     const parts = operation.toLowerCase().split(`,`)
-    // magnetic ops end in a time-reversal flag (`x,y,z,-1`) that leaves positions alone
-    if (parts.length === 4 && /^[+-]?1$/.test(parts[3])) parts.pop()
+    // magnetic ops end in a time-reversal flag (`x,y,z,-1`) that only flips moments
+    const time_reversal =
+      parts.length === 4 && /^[+-]?1$/.test(parts[3]) ? Number(parts.pop()) : 1
     if (parts.length !== 3) return []
     const [x_expr, y_expr, z_expr] = parts.map((expr) => parse_symmetry_expression(expr))
     if (!x_expr || !y_expr || !z_expr) return []
@@ -428,12 +402,15 @@ const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
       {
         coefficients: [x_expr.coefficients, y_expr.coefficients, z_expr.coefficients],
         translations: [x_expr.translation, y_expr.translation, z_expr.translation],
+        time_reversal,
       },
     ]
   })
 
 // Positions of `coords` under every symmetry op and centering translation, wrapped into
-// [0, 1). The caller merges coincident images within CIF_SITE_TOLERANCE.
+// [0, 1). The caller merges coincident images within CIF_SITE_TOLERANCE. Images come ops
+// outer (the identity first), shifts inner (none first): image k is op floor(k / n_shifts)
+// shifted by centering k % n_shifts - 1, with n_shifts = centering.length + 1.
 const apply_symmetry_ops = (
   coords: Vec3,
   symmetry_ops: ParsedSymOp[],
@@ -462,9 +439,8 @@ const apply_symmetry_ops = (
   return wrapped
 }
 
-// Atom-site tag suffix -> field name (supports fract and Cartn coordinates). The residue /
-// record-type columns of a PDB-derived CIF (`_atom_site_label_comp_id`, `_atom_site_group_PDB`)
-// all map to `residue`: their presence means labels are PDB atom names (see cif_row_element)
+// Atom-site tag suffix -> field name. A PDB-derived CIF's residue / record-type columns all map
+// to `residue`: their presence means labels are PDB atom names (see cif_row_element)
 // oxfmt-ignore
 const CIF_ATOM_SITE_FIELDS = [
   [`_atom_site_label`, `label`], [`_atom_site_type_symbol`, `symbol`],
@@ -508,32 +484,18 @@ type CifAtom = {
   coords: Vec3
   occupancy: number
   type_symbol?: string // the raw _atom_site_type_symbol, keys the _atom_type oxidation loop
-  oxidation_state: number // from a charged type symbol (`Fe2+`) or the _atom_type loop, else 0
+  oxidation_state?: number // from a charged type symbol (`Fe2+`) or the _atom_type loop
 }
 
-// CIF labels (and the odd type symbol) that name water, deuterium or a polyatomic group
-// rather than an element, mapped to the atom they stand for. Ported from pymatgen's
-// CifParser._parse_symbol special map (`Hw`, `Ow`, `Wat`, `OH`, `NO3`) and extended with
-// common groups; read before the element readings so `NO3` is N rather than nobelium and
-// `PO4` P rather than polonium. A key must be followed by a non-letter so `D1` is deuterium
-// but `Dy1` dysprosium, and `CO3` is carbonate while all-caps `CO1` stays cobalt.
-// Deliberate departure from pymatgen: it maps hydroxyl/water labels `OH`/`OH2` to '' and drops
-// those rows, which loses a real oxygen site (hydrogens are rarely listed anyway). Here they
-// are O and keep their occupancy, so an `OH2 0.655` / `OH 0.345` pair on one position merges
-// into a single fully occupied O site like any other partially occupied pair.
+// CIF labels (and the odd type symbol) naming water, deuterium or a polyatomic group, mapped
+// to the atom they stand for (pymatgen's CifParser._parse_symbol special map plus common
+// groups), read before element readings so `NO3` is N, not nobelium. A key must be followed by
+// a non-letter: `D1` is deuterium but `Dy1` dysprosium, all-caps `CO1` stays cobalt. Unlike
+// pymatgen, which drops `OH`/`OH2` rows, these are O sites keeping their occupancy.
+// oxfmt-ignore
 const CIF_GROUP_ELEMENTS: Readonly<Record<string, ElementSymbol>> = {
-  Hw: `H`,
-  D: `H`,
-  Ow: `O`,
-  Wat: `O`,
-  wat: `O`,
-  OH: `O`, // also OH2
-  NO3: `N`,
-  NH4: `N`,
-  CO3: `C`,
-  CN: `C`,
-  PO4: `P`,
-  SO4: `S`,
+  Hw: `H`, D: `H`, Ow: `O`, Wat: `O`, wat: `O`, OH: `O`, // also OH2
+  NO3: `N`, NH4: `N`, CO3: `C`, CN: `C`, PO4: `P`, SO4: `S`,
 }
 const CIF_GROUP_RE = new RegExp(
   `^(?<group>${Object.keys(CIF_GROUP_ELEMENTS).join(`|`)})(?![A-Za-z])`,
@@ -546,15 +508,9 @@ const cif_group_element = (text = ``): ElementSymbol | undefined => {
 // Groups a type symbol may also spell, beyond the label ones: nitrosyl/nitryl (`NO+`, `NO2-`),
 // deuterated ammonium, hydroxide `HO`, deuteroxide and water. As labels they would shadow
 // all-caps element sites (`ND4` neodymium, `HO1` holmium). Longest first, so `D2O` is not `D`.
+// oxfmt-ignore
 const CIF_SYMBOL_GROUPS: Readonly<Record<string, ElementSymbol>> = {
-  ...CIF_GROUP_ELEMENTS,
-  ND4: `N`,
-  NO2: `N`,
-  NO: `N`,
-  HO: `O`,
-  OD: `O`,
-  H2O: `O`,
-  D2O: `O`,
+  ...CIF_GROUP_ELEMENTS, ND4: `N`, NO2: `N`, NO: `N`, HO: `O`, OD: `O`, H2O: `O`, D2O: `O`,
 }
 const CIF_SYMBOL_GROUP_RE = new RegExp(
   `^(?<group>${Object.keys(CIF_SYMBOL_GROUPS)
@@ -565,10 +521,9 @@ const CIF_CATION_GROUPS = new Set([`NH4`, `ND4`, `NO`, `NO2`])
 // Elements from Fm (Z 100) on form no ions in crystals, so `NO3+` stays nitrate's N, not No
 const ION_FORMER_COUNT = ELEM_SYMBOLS.indexOf(`Fm`)
 
-// The atom of the group a CIF type symbol spells, if it stands for one. A charge the group
-// can't carry makes the symbol the ion of the element its two letters spell: anion groups
-// carry no `+` (uppercase `CO3+` is Co3+, `PO4+` Po4+) and hydroxide only `-` (`HO`, `HO3+`
-// are holmium).
+// The atom of the group a CIF type symbol spells, if any. A charge the group can't carry makes
+// it the ion its two letters spell: anion groups carry no `+` (`CO3+` is Co3+) and hydroxide
+// only `-` (`HO`, `HO3+` are holmium)
 const cif_symbol_group = (raw_symbol = ``): ElementSymbol | undefined => {
   const group = CIF_SYMBOL_GROUP_RE.exec(raw_symbol)?.groups?.group
   if (group === undefined) return undefined
@@ -605,28 +560,23 @@ const cif_type_symbol_element = memo_by_symbol((raw_symbol): ElementSymbol | und
   )
 })
 
-// The oxidation state a charged CIF type symbol carries (`Fe2+` 2, `O2-` -2, `Ag+` 1,
-// `Fe2.5+` 2.5), else 0; a group symbol's (`NO3-`) belongs to no element. Unlike pymatgen,
-// this decorates without an _atom_type_oxidation_number loop. Sign-first symbols (`O-2`,
-// `Fe+2`) are not the CIF convention and read 0 without a loop, as in pymatgen.
-const cif_type_symbol_oxidation = memo_by_symbol((raw_symbol): number => {
-  if (cif_symbol_group(raw_symbol)) return 0
+// The oxidation state a charged CIF type symbol carries (`Fe2+` 2, `Ag+` 1, `Fe2.5+` 2.5), even
+// without an _atom_type_oxidation_number loop (unlike pymatgen), else undefined: a group's
+// (`NO3-`) belongs to no element, sign-first `O-2` is not the CIF convention (as in pymatgen)
+const cif_type_symbol_oxidation = memo_by_symbol((raw_symbol): number | undefined => {
+  if (cif_symbol_group(raw_symbol)) return undefined
   const { magnitude = `1`, sign } =
     /^[A-Za-z]{1,2}(?<magnitude>\d+(?:\.\d+)?)?(?<sign>[+-])$/.exec(raw_symbol)?.groups ?? {}
-  return sign ? Number(`${sign}${magnitude}`) : 0
+  return sign ? Number(`${sign}${magnitude}`) : undefined
 })
 
-// The element a CIF atom-site row names, read in priority order. _atom_site_type_symbol is an
-// element symbol plus an optional charge (`Fe2+`, `O2-`, sometimes uppercase `FE2+`): a group
-// (CIF_GROUP_ELEMENTS), then its leading letters two-then-one case-normalized. The label only
-// fills in when the symbol names nothing: a group/water label (`NO3` -> N, `Ow1` -> O), then
-// first capital plus trailing lowercase (`Fe1`, `Ru(1)`, `O1a`, `site1_Fe_center` -> Fe). An
-// all-caps label is read two letters first like pymatgen's CifParser._parse_symbol (`FE1` ->
-// Fe, `CA` -> Ca, `HO1` -> Ho); when the one-letter reading is an element too (PDB-style `CA`
-// alpha carbon, hydroxyl `HO1`) it is returned as `ambiguity` so parse_cif can warn once per file.
-// `pdb_names` (the loop carries a residue / group_PDB column, so labels are PDB atom names)
-// resolves that ambiguity the way parse_mmcif does: the first letter is the element (`CD` ->
-// C, `NE2` -> N, `HG11` -> H) and two letters only when one letter names nothing (`ZN` -> Zn).
+// The element a CIF atom-site row names: its type symbol (cif_type_symbol_element), else a
+// group/water label (`NO3` -> N, `Ow1` -> O), else the label's first capital plus trailing
+// lowercase (`Ru(1)`, `site1_Fe_center` -> Fe). An all-caps label reads two letters first like
+// pymatgen (`FE1` -> Fe, `HO1` -> Ho); when one letter is an element too (PDB-style `CA` alpha
+// carbon) that is returned as `ambiguity` for parse_cif to warn about once. With `pdb_names`
+// (a residue / group_PDB column) labels are PDB atom names read like parse_mmcif does: first
+// letter (`CD` -> C, `HG11` -> H), two letters only when one names nothing (`ZN` -> Zn).
 const cif_row_element = (
   raw_symbol: string | undefined,
   raw_label: string | undefined,
@@ -681,9 +631,8 @@ const parse_cif_atom_data = (
       ? parse_cif_uncertain_number(raw_data[occu_idx])
       : null) ?? 1
 
-  // Only a real label column names the site; unset placeholders (unquoted `.`/`?`) are
-  // undefined (split_cif_values), so an unset type symbol leaves the element read from the
-  // label to key the _atom_type oxidation lookup
+  // unset placeholders (unquoted `.`/`?`) are undefined, so an unset type symbol leaves the
+  // label's element to key the _atom_type oxidation lookup
   const raw_label = label === undefined ? undefined : raw_data[label]
   const type_symbol = symbol >= 0 ? raw_data[symbol] : undefined
   const { element, ambiguity } = cif_row_element(
@@ -697,17 +646,18 @@ const parse_cif_atom_data = (
   return { id, element, ambiguity, coords, occupancy, type_symbol, oxidation_state }
 }
 
+// A centering translation applied on top of every symmetry op; time_reversal -1 marks an
+// mCIF anti-centering
+type CifCentering = { shift: Vec3; time_reversal: number }
+
 // The symop column tag (old `_symmetry_` and current `_space_group_` spellings; parse_cif
 // rewrites dotted CIF2 names first) plus the magnetic-CIF op and (anti-)translation centering
 const CIF_SYMOP_TAG_RE =
   /_symmetry_equiv_pos_as_xyz|_space_group_symop_(?:(?:magn_)?operation|magn_centering)_xyz/i
 
-// The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
-// which split_cif_tokens keeps as one token; unquoted ones may be written `1 x,y,z` or,
-// sloppily, `1 x, y, z`, which splits the op across tokens. Any tokens beyond the loop's
-// column count are assumed to belong to the op column and are joined back together, unless
-// they make a whole number of rows: loop values are a token stream, so one line may hold
-// several rows (`'x,y,z' '-x,-y,-z'`), which joining would merge into one unreadable op.
+// The symmetry ops in one row of a symop loop. An unquoted op may be split across tokens
+// (`1 x, y, z`), so tokens beyond the column count are joined back into the op column, unless
+// they make a whole number of rows (one line may hold several, `'x,y,z' '-x,-y,-z'`).
 const cif_symops_of = (row: string, n_columns: number, symop_col: number): string[] => {
   const tokens = split_cif_tokens(row)
   const strip = (op: string): string => op.replaceAll(/\s+/g, ``)
@@ -722,21 +672,15 @@ const cif_symops_of = (row: string, n_columns: number, symop_col: number): strin
   return [strip(tokens.slice(symop_col, symop_col + 1 + extra).join(``))]
 }
 
-// Data lines of the loop whose header ends before `data_start`, up to the next loop_/data_
-// block. Blank lines and `#` comments are skipped, and so are data names (`_tag value`),
-// which a key-value item written after the loop starts with (fed to the row readers, one
-// would invent a symop and with it a phantom atom). They are skipped rather than treated
-// as the loop terminator CIF says they are, because writers do interleave unknown tags with
-// a loop's rows and truncating there would lose real atoms. A semicolon-delimited text field
-// is one value whose body lines can start with anything, including `_`/`loop_`/`data_`, so
-// the whole field is skipped (multi-line values are not supported, like in parse_mmcif).
+// Data lines of the loop whose header ends before `data_start`, up to the next loop_/data_.
+// Blank lines, `#` comments and data items (`_tag value`, or a bare `_tag` plus its value on
+// the next line) are skipped rather than ending the loop, as writers interleave unknown tags
+// with rows; read as rows they invented phantom symops. Semicolon text fields (whose lines may
+// start with anything) are skipped whole: multi-line values are unsupported, as in parse_mmcif.
 const cif_loop_lines = (lines: readonly string[], data_start: number): string[] => {
   const rows: string[] = []
   let in_text_field = false
-  // A standalone `_tag` with no value on its own line takes the NEXT line as its value; that
-  // value is not a loop row, and reading one that happens to look like an op invented a
-  // phantom atom just as the tag line itself did.
-  let awaiting_value = false
+  let awaiting_value = false // a bare `_tag` takes the next line as its value
   for (let idx = data_start; idx < lines.length; idx++) {
     const raw = lines[idx]
     const line = raw.trim()
@@ -768,10 +712,8 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
   return rows
 }
 
-// Loop values are one token stream, not one row per line: a long row may wrap onto the next
-// lines and one line may hold several rows, so the values are dealt out `n_columns` at a time.
-// A count that is not a multiple of n_columns has no unambiguous row split (which row is
-// short?), so it throws rather than guess and silently drop or misplace atoms.
+// Loop values are one token stream (rows may wrap or share lines), dealt out `n_columns` at a
+// time. A count off a multiple of n_columns has no unambiguous row split, so it throws.
 const cif_loop_rows = (
   lines: readonly string[],
   headers: readonly string[],
@@ -791,10 +733,9 @@ const cif_loop_rows = (
   )
 }
 
-// Keep one disorder group per assembly (the lowest-numbered, by absolute value since a minus
-// prefix marks a site disordered about a special position) and drop the mutually exclusive
-// others; rows without a group (`.`, `?`, blank) are always kept, rows without an assembly
-// (no column, `.` or `?`) share one
+// Keep the lowest-numbered disorder group per assembly (by absolute value: a minus marks
+// disorder about a special position), dropping the exclusive others; ungrouped rows stay, rows
+// without an assembly share one
 const keep_one_disorder_group = (
   rows: (string | undefined)[][],
   { disorder, assembly }: Record<string, number>,
@@ -815,6 +756,87 @@ const keep_one_disorder_group = (
   })
 }
 
+// Rows of the first loop declaring every (lowercase, CIF1-spelled) tag in `tags`, reduced to
+// those tags' values in order; null when no loop declares them all
+const cif_loop_columns = (
+  lines: string[],
+  tags: readonly string[],
+): (string | undefined)[][] | null => {
+  for (const { headers, data_start } of iter_cif_loops(lines)) {
+    const lower = headers.map((header) => header.toLowerCase())
+    const columns = tags.map((tag) => lower.indexOf(tag))
+    if (columns.includes(-1)) continue
+    const rows = cif_loop_rows(cif_loop_lines(lines, data_start), headers)
+    return rows.map((row) => columns.map((col) => row[col]))
+  }
+  return null
+}
+
+// Numeric loop values by label: rows whose label is unset or any value unreadable (`?`
+// placeholders for riding hydrogens) are skipped, with one warning per loop
+const cif_values_by_label = (
+  rows: (string | undefined)[][],
+  context: string,
+): Map<string, number[]> => {
+  const by_label = new Map<string, number[]>()
+  let n_skipped = 0
+  for (const [label, ...tokens] of rows) {
+    const values = tokens.map((token) => (token ? parse_cif_uncertain_number(token) : null))
+    if (label === undefined || values.some((value) => value === null)) n_skipped++
+    else by_label.set(label, values as number[])
+  }
+  if (n_skipped > 0) parse_warn(`CIF: skipped ${plural(n_skipped, `${context} row`)}`)
+  return by_label
+}
+
+// mCIF magnetic moments by atom-site label, in μB along a/|a|, b/|b|, c/|c| (CIF2 dotted
+// tags normalize to these)
+const CIF_MOMENT_TAGS = [`label`, `crystalaxis_x`, `crystalaxis_y`, `crystalaxis_z`].map(
+  (suffix) => `_atom_site_moment_${suffix}`,
+)
+const cif_moments = (lines: string[]): Map<string, Vec3> => {
+  const rows = cif_loop_columns(lines, CIF_MOMENT_TAGS) ?? []
+  const by_label = [...cif_values_by_label(rows, `magnetic moment`)]
+  return new Map(
+    by_label.map(([label, values]) => [
+      label,
+      vec3_from_values(values, `CIF magnetic moment of ${label}`),
+    ]),
+  )
+}
+
+// Anisotropic displacement parameters by atom-site label, as the fractional-basis tensor
+// U* = N U N (N = diag(a*, b*, c*)), so the Cartesian tensor of a site is A U* A^T with A's
+// columns the lattice vectors, and a symmetry op W (fractional) maps U* to W U* W^T. Reads
+// the first of the _atom_site_aniso_U_ij, _B_ij (B = 8π² U) or _beta_ij (β = 2π² U*) loops.
+const ADP_COMPONENTS = [`11`, `22`, `33`, `12`, `13`, `23`] as const
+// oxfmt-ignore
+const ADP_TENSOR_IDX = [[0, 3, 4], [3, 1, 5], [4, 5, 2]] // ADP_COMPONENTS index of each U_ij
+const ADP_KINDS = [
+  { kind: `u`, to_frac_basis: 1, reciprocal: true },
+  { kind: `b`, to_frac_basis: 1 / (8 * Math.PI ** 2), reciprocal: true },
+  { kind: `beta`, to_frac_basis: 1 / (2 * Math.PI ** 2), reciprocal: false },
+] as const
+const cif_adps = (lines: string[], reciprocal_lengths: Vec3): Map<string, math.Matrix3x3> => {
+  for (const { kind, to_frac_basis, reciprocal } of ADP_KINDS) {
+    const tags = ADP_COMPONENTS.map((ij) => `_atom_site_aniso_${kind}_${ij}`)
+    const rows = cif_loop_columns(lines, [`_atom_site_aniso_label`, ...tags])
+    if (!rows) continue
+    const scale = (row: number, col: number): number =>
+      to_frac_basis * (reciprocal ? reciprocal_lengths[row] * reciprocal_lengths[col] : 1)
+    const by_label = [...cif_values_by_label(rows, `anisotropic ADP`)]
+    return new Map(
+      by_label.map(([label, values]) => {
+        const tensor = ADP_TENSOR_IDX.map((row, row_idx) =>
+          row.map((comp_idx, col_idx) => values[comp_idx] * scale(row_idx, col_idx)),
+        )
+        return [label, tensor as math.Matrix3x3]
+      }),
+    )
+  }
+  return new Map()
+}
+
 export const parse_cif = (content: string): Crystal => {
   const text = content.trim()
   if (!text) throw new Error(`CIF file is empty`)
@@ -822,10 +844,8 @@ export const parse_cif = (content: string): Crystal => {
   const lines = normalize_cif_names(text.split(`\n`))
   const block_ids = cif_block_ids(lines)
 
-  // The first atom-site loop that has coordinates (fract or Cartn), an element column and
-  // at least one readable atom row. A loop of only placeholder rows (`? ? ? ? ?`) is
-  // skipped, so a multi-block file whose first block is empty reads the next block like
-  // pymatgen does. Throws the reason the last candidate loop was rejected.
+  // The first atom-site loop with coordinates, an element column and a readable row (a
+  // placeholder-only block is skipped, as in pymatgen); else throws the last rejection reason
   const find_atom_loop = () => {
     let failure = `No valid atom site loop found in CIF file`
     for (const { headers, data_start } of iter_cif_loops(lines)) {
@@ -866,14 +886,11 @@ export const parse_cif = (content: string): Crystal => {
   }
 
   const { coord_cols, atoms, block_id } = find_atom_loop()
-  // Everything else describing these atoms — cell, space group, symops, atom-type counts —
-  // is read from the data block the atom-site loop lives in. A multi-block file (a global
-  // block plus one per phase) declares a different cell and space group in each, so
-  // reading them file-wide picked whichever came first, not the one that applies.
+  // Cell, space group, symops and atom-type counts come from the atom loop's own data block:
+  // a multi-block file (global block plus one per phase) declares different ones in each
   const block_lines = lines.filter((_line, idx) => block_ids[idx] === block_id)
 
-  // Full pass over the block's loops: CIF imposes no ordering on data items, so a symop
-  // loop is as likely to follow the atom-site loop as to precede it
+  // CIF imposes no ordering on data items: a symop loop may follow the atom-site loop
   const symmetry_ops: string[] = []
   const centering_ops: string[] = []
   for (const { headers, data_start } of iter_cif_loops(block_lines)) {
@@ -903,9 +920,8 @@ export const parse_cif = (content: string): Crystal => {
   }).convert
 
   // Optional _atom_type loops: _atom_type_number_in_cell tells whether atom sites are already
-  // expanded, _atom_type_oxidation_number decorates the rows of each type symbol. Counts come
-  // from the first loop with a count column only (a second one restates them, so summing
-  // across loops doubled every count); oxidation numbers are read from every loop.
+  // expanded (read from the first loop with counts only: a second restates them),
+  // _atom_type_oxidation_number decorates the rows of each type symbol (read from every loop)
   const atom_type_counts: Record<string, number> = {}
   const atom_type_oxidation = new Map<string, number>()
   let counts_read = false
@@ -933,10 +949,9 @@ export const parse_cif = (content: string): Crystal => {
       }
     }
   }
-  // Keyed by the row's exact type symbol (else its element), as pymatgen looks it up; unlike
-  // pymatgen, which strips loop keys' charges, a bare `Fe` row never picks up an `Fe3+` entry.
-  // The loop's number wins over the symbol's charge, as in pymatgen: it is the unrounded value
-  // (`Fe2.67+` vs 2.6666666666666665) and the symbol only a label for it.
+  // Keyed by the row's exact type symbol (else element) as in pymatgen, minus its stripping of
+  // loop keys' charges (a bare `Fe` row never picks up `Fe3+`). The loop's number wins over the
+  // symbol's charge: it is unrounded (`Fe2.67+` vs 2.6666666666666665).
   for (const atom of atoms) {
     const loop_ox = atom_type_oxidation.get(atom.type_symbol ?? atom.element)
     if (loop_ox !== undefined) atom.oxidation_state = loop_ox
@@ -958,9 +973,8 @@ export const parse_cif = (content: string): Crystal => {
   )
 
   const { symbol: sg_symbol, number: sg_number } = cif_space_group(block_lines)
-  // Candidate lattice-centering translations from the space-group symbol (R
-  // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
-  // apply them is decided below by reconciling against _atom_type_number_in_cell.
+  // Candidate centering translations of the space-group symbol (R only in the hexagonal
+  // setting), applied below only if they reconcile _atom_type_number_in_cell
   const centering_letter = sg_symbol?.[0]?.toUpperCase()
   const is_hexagonal_setting =
     Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
@@ -970,24 +984,81 @@ export const parse_cif = (content: string): Crystal => {
     (centering_letter !== `R` || is_hexagonal_setting)
       ? CENTERING_VECTORS[centering_letter]
       : []
-  // mcif centering ops are pure translations applied on top of every op, like centering vectors
-  const magn_centering = parse_symmetry_ops(already_enumerated ? [] : centering_ops)
-    .map(({ translations }) => translations)
-    .filter((shift) => shift.some((coord) => coord !== 0))
+  // mcif centering ops are pure translations applied on top of every op, like centering
+  // vectors; an anti-centering (`x+1/2,y,z,-1`) also reverses time, flipping moments
+  const magn_centering: CifCentering[] = parse_symmetry_ops(
+    already_enumerated ? [] : centering_ops,
+  )
+    .map(({ translations, time_reversal }) => ({ shift: translations, time_reversal }))
+    .filter(({ shift }) => shift.some((coord) => coord !== 0))
 
-  // Build all sites by expanding each atom row via the symmetry ops (+ optional
-  // centering). Positions within CIF_SITE_TOLERANCE of each other (minimum image) are
-  // ONE site: a symmetry image landing on an existing image of the same row is a
-  // duplicate and dropped, while another row at that position contributes its species
-  // (disordered sites, e.g. Bi 0.5 / Zr 0.5, or Fe2+ 0.5 / Fe3+ 0.5), summing occupancies
-  // when the same species repeats up to full occupancy. This is what pymatgen's CifParser
-  // does and is what lets a CIF written from a disordered structure read back with the same
-  // site count.
-  // Sites keep the row's _atom_site_label (refinement labels like `Fe1`/`OH2` survive a
-  // parse -> structure_to_cif_str round trip); without a label column they are named
-  // `${element}${site_idx + 1}` like every other parser's.
+  // Per-site mCIF moments and ADPs, carried to every symmetry image (image k of a row is op
+  // floor(k / n_shifts), centering k % n_shifts, see apply_symmetry_ops). A fractional
+  // displacement maps as W d, so with A's columns the lattice vectors, (A W) takes the row's
+  // fractional-basis vector or tensor to Cartesian: U_cart = (A W) U* (A W)^T. Moments are
+  // axial, so they also pick up det(W) and the op's (and centering's) time reversal.
+  const moments = cif_moments(block_lines)
+  const reciprocal_lengths = math
+    .reciprocal_lattice(lattice_matrix)
+    .map((row) => Math.hypot(...row)) as Vec3
+  const adps = cif_adps(block_lines, reciprocal_lengths)
+  const lattice_columns = math.transpose_3x3(lattice_matrix)
+  const image_ops = [{ coefficients: math.IDENTITY_3X3, time_reversal: 1 }, ...ops_to_use].map(
+    ({ coefficients, time_reversal }) => ({
+      to_cart: math.dot(lattice_columns, coefficients),
+      moment_sign: time_reversal * Math.sign(math.det_3x3(coefficients)),
+    }),
+  )
+  const axis_lengths: Vec3 = [lattice_a, lattice_b, lattice_c]
+  // a row's moment as lattice-basis components (μB along a/|a| is 1/|a| of a), its U* as is
+  const row_data = atoms.map(({ id = `` }) => ({
+    moment: moments.get(id)?.map((comp, axis) => comp / axis_lengths[axis]) as
+      | Vec3
+      | undefined,
+    adp: adps.get(id),
+  }))
+  const atom_ids = new Set(atoms.map(({ id }) => id))
+  const unmatched = new Set(
+    [...moments.keys(), ...adps.keys()].filter((label) => !atom_ids.has(label)),
+  )
+  if (unmatched.size > 0) {
+    parse_warn(`CIF: moment/ADP labels match no atom-site label: ${[...unmatched].join(`, `)}`)
+  }
+  const has_moments = row_data.some(({ moment }) => moment)
+  // Properties of image `image_idx` of row `row_idx`: magmom (Cartesian μB, zero on atoms
+  // the moment loop leaves out, as in pymatgen) and the Cartesian U tensor (Å²)
+  const image_properties = (
+    row_idx: number,
+    image_idx: number,
+    shifts: readonly CifCentering[],
+  ): Record<string, unknown> => {
+    const { moment, adp } = row_data[row_idx]
+    if (!moment && !adp && !has_moments) return {}
+    const n_shifts = shifts.length + 1
+    const { to_cart, moment_sign } = image_ops[Math.floor(image_idx / n_shifts)]
+    const properties: Record<string, unknown> = {}
+    if (has_moments) {
+      const shift_sign = shifts[(image_idx % n_shifts) - 1]?.time_reversal ?? 1
+      properties.magmom = moment
+        ? math.scale(math.mul_3x3_vec3(to_cart, moment), moment_sign * shift_sign)
+        : [0, 0, 0]
+    }
+    if (adp) {
+      properties[ADP_KEY] = math.dot(math.dot(to_cart, adp), math.transpose_3x3(to_cart))
+    }
+    return properties
+  }
+
+  // Expand each atom row by the symmetry ops (+ centering). Positions within
+  // CIF_SITE_TOLERANCE (minimum image) are ONE site, as in pymatgen's CifParser: an image
+  // landing on the same row's earlier image is dropped, another row there adds its species
+  // (disorder: Bi 0.5 / Zr 0.5, Fe2+ / Fe3+), same species summing up to full occupancy. Sites
+  // keep the row's _atom_site_label, else are named `${element}${site_idx + 1}`.
   // n_overlaps counts same-element merges capped at full occupancy (warned once, below)
-  const build_sites = (extra_centering: Vec3[]): { sites: Site[]; n_overlaps: number } => {
+  const build_sites = (
+    extra_centering: CifCentering[],
+  ): { sites: Site[]; n_overlaps: number } => {
+    const shifts = extra_centering.map(({ shift }) => shift)
     const sites: Site[] = []
     const n_images = (ops_to_use.length + 1) * (extra_centering.length + 1)
     const site_index = create_frac_site_index(
@@ -1004,9 +1075,15 @@ export const parse_cif = (content: string): Crystal => {
       const coords = wrap_to_unit_cell(
         coord_cols.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
       )
+      // undecorated rows carry no oxidation_state key
+      const row_species: Species =
+        oxidation_state === undefined
+          ? { element, occu: occupancy }
+          : { element, occu: occupancy, oxidation_state }
       // the row's first site keeps its label, later images get a unique `_k` suffix
       let n_row_sites = 0
-      for (const abc of apply_symmetry_ops(coords, ops_to_use, extra_centering)) {
+      const images = apply_symmetry_ops(coords, ops_to_use, shifts)
+      for (const [image_idx, abc] of images.entries()) {
         const site_idx = site_index.find(abc)
         if (site_idx === undefined) {
           site_index.add(abc, sites.length)
@@ -1015,9 +1092,9 @@ export const parse_cif = (content: string): Crystal => {
             ? `${id}${n_row_sites > 0 ? `_${n_row_sites}` : ``}`
             : `${element}${sites.length + 1}`
           n_row_sites++
-          const site = make_site(element, abc, frac_to_cart(abc), label, {}, occupancy)
-          site.species[0].oxidation_state = oxidation_state
-          sites.push(site)
+          const properties = image_properties(row_idx, image_idx, extra_centering)
+          const site = make_site(element, abc, frac_to_cart(abc), label, properties)
+          sites.push({ ...site, species: [{ ...row_species }] })
           continue
         }
         if (last_row_at_site[site_idx] === row_idx) continue // symmetry duplicate
@@ -1032,11 +1109,10 @@ export const parse_cif = (content: string): Crystal => {
         for (const spec of species) if (spec.element === element) element_occu += spec.occu
         if (element_occu <= 1 + CIF_OCCUPANCY_TOLERANCE) {
           if (same_species) same_species.occu += occupancy
-          else species.push({ element, occu: occupancy, oxidation_state })
+          else species.push({ ...row_species })
         } else {
-          // past full occupancy these rows are one atom listed twice (e.g. Na1 and Na2
-          // related by a symop, or Na+ and Na rows), not a disordered site: a repeated
-          // species keeps the larger occupancy, a differently charged one is dropped
+          // past full occupancy these rows list one atom twice: a repeated species keeps the
+          // larger occupancy, a differently charged one is dropped
           if (same_species) same_species.occu = Math.max(same_species.occu, occupancy)
           n_overlaps++
         }
@@ -1045,12 +1121,9 @@ export const parse_cif = (content: string): Crystal => {
     return { sites, n_overlaps }
   }
 
-  // Expand with point-group ops first. If the space group is centered and the
-  // result falls short of _atom_type_number_in_cell, retry with centering and
-  // adopt it only when it reconciles the expected total exactly — this fixes
-  // CIFs listing point-only ops for the asymmetric unit while avoiding
-  // double-counting CIFs whose atom list already embeds centering (e.g. C2/c
-  // COD 7008984, where listed ops + atoms already total the cell contents).
+  // Expand with the listed ops first. If the space group is centered and that falls short of
+  // _atom_type_number_in_cell, retry with centering and adopt it only if it reconciles
+  // exactly, so atom lists already embedding centering (COD 7008984) are not doubled.
   let { sites, n_overlaps } = build_sites(magn_centering)
   const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
   let centering_fills_cell = false
@@ -1058,14 +1131,13 @@ export const parse_cif = (content: string): Crystal => {
     // The letter's translations add to explicit mcif centerings (with all their sums)
     const centered = build_sites([
       ...magn_centering,
-      ...centering,
-      ...magn_centering.flatMap((shift) => centering.map((vec) => math.add(shift, vec))),
+      ...centering.map((shift) => ({ shift, time_reversal: 1 })),
+      ...magn_centering.flatMap(({ shift, time_reversal }) =>
+        centering.map((vec) => ({ shift: math.add(shift, vec), time_reversal })),
+      ),
     ])
-    // Adopt centering only when per-element counts reconcile exactly. Checking
-    // the total alone is insufficient: it can coincide while individual element
-    // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
-    // Each element once per site, like the per-element expected counts: a disordered site
-    // holds one entry per element (Bi/Zr), while Fe2+ and Fe3+ species share one Fe position
+    // Per-element counts must reconcile, not just the total (Fe 1 / O 3 vs Fe 2 / O 2),
+    // counting each element once per site (Fe2+ and Fe3+ species share one Fe position)
     const elements = centered.sites.flatMap((site) => [
       ...new Set(site.species.map((spec) => spec.element)),
     ])
@@ -1076,9 +1148,8 @@ export const parse_cif = (content: string): Crystal => {
     if (reconciles) ({ sites, n_overlaps } = centered)
     centering_fills_cell = reconciles
   }
-  // Without a symop loop only the listed sites are drawn (ops are not generated from the
-  // space-group symbol, as pymatgen does): say so when the block declares a space group with
-  // more operations than the identity and neither its rows nor centering fill the cell
+  // Ops are not generated from the space-group symbol (pymatgen does): warn when a non-P1
+  // group lists no symops and neither its rows nor centering fill the cell
   const lists_cell = symmetry_ops.length > 0 || already_enumerated || centering_fills_cell
   if (!lists_cell && (!/^P1$/i.test(sg_symbol ?? `P1`) || (sg_number ?? 1) > 1)) {
     parse_warn(
@@ -1095,12 +1166,9 @@ export const parse_cif = (content: string): Crystal => {
 }
 
 // The first available cell wins, most detailed first
+// oxfmt-ignore
 const PHONOPY_CELL_TYPES = [
-  `supercell`,
-  `phonon_supercell`,
-  `unit_cell`,
-  `phonon_primitive_cell`,
-  `primitive_cell`,
+  `supercell`, `phonon_supercell`, `unit_cell`, `phonon_primitive_cell`, `primitive_cell`,
 ] as const
 
 // Detection shares parse_phonopy_yaml's top-level cell keys: a `phonopy:` header has no structure
@@ -1127,7 +1195,7 @@ export const parse_phonopy_yaml = (content: string): Crystal => {
     const { lattice, points } = cell as PhonopyCell
     if (!Array.isArray(lattice) || !Array.isArray(points)) continue
     // Phonopy stores lattice vectors as rows, use them directly.
-    const lattice_matrix = matrix3x3_from_rows(lattice, `phonopy lattice`)
+    const lattice_matrix = mat3x3_from_rows(lattice, `phonopy lattice`)
     const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
     const sites = points.map((point, point_idx) => {
       const element = element_from_candidates([point.symbol], point_idx)
@@ -1136,13 +1204,8 @@ export const parse_phonopy_yaml = (content: string): Crystal => {
         mass: point.mass,
         ...(point.reduced_to !== undefined && { reduced_to: point.reduced_to }),
       }
-      return make_site(
-        element,
-        abc,
-        frac_to_cart(abc),
-        `${element}${point_idx + 1}`,
-        properties,
-      )
+      const label = `${element}${point_idx + 1}`
+      return make_site(element, abc, frac_to_cart(abc), label, properties)
     })
     return { sites, lattice: make_lattice(lattice_matrix) }
   }
@@ -1157,9 +1220,8 @@ function* json_structure_records(obj: unknown): Generator<Record<string, unknown
   for (const value of Object.values(obj)) yield* json_structure_records(value)
 }
 
-// A serialized structure as pymatgen (or a hand-built object graph) writes it: sites carry
-// species plus abc and/or xyz; the lattice, when present, is authoritative only in its
-// matrix (default pymatgen verbosity writes matrix + pbc and no scalar params)
+// A serialized structure as pymatgen writes it: sites carry species plus abc and/or xyz, a
+// lattice only its matrix is authoritative (pymatgen writes matrix + pbc by default)
 type StructureLike = Omit<AnyStructure, `sites` | `lattice`> & {
   sites: (Omit<Site, `abc` | `xyz` | `label` | `properties`> & {
     abc?: Vec3
@@ -1199,10 +1261,9 @@ const json_species_issue = (entry: Record<string, unknown>): string | undefined 
   return undefined
 }
 
-// A JSON site's species as Species: pymatgen writes oxidation_state only for decorated species
-// (null or absent otherwise), hand-written JSON often omits occu or gives bare element symbols.
-// Values are checked here since CIF export and rendering do arithmetic on them. `where` names
-// the site in errors.
+// A JSON site's species as Species: pymatgen writes oxidation_state null or not at all for
+// undecorated species (read as absent; 0 is Fe0+ and kept), hand-written JSON may omit occu or
+// give bare symbols. Values are checked since export and rendering do arithmetic on them.
 export function json_species(species: unknown, where: string): Species[] {
   if (!Array.isArray(species) || !species.length) throw new Error(`${where} has no species`)
   return species.map((raw: unknown) => {
@@ -1212,8 +1273,12 @@ export function json_species(species: unknown, where: string): Species[] {
     if (!is_plain_object(entry)) throw invalid(`expected an element symbol or object`)
     const issue = json_species_issue(entry)
     if (issue) throw invalid(issue)
-    const { occu, oxidation_state } = entry
-    return { ...entry, occu: occu ?? 1, oxidation_state: oxidation_state ?? 0 } as Species
+    const { occu, oxidation_state, ...rest } = entry
+    return {
+      ...rest,
+      occu: occu ?? 1,
+      ...(oxidation_state == null ? {} : { oxidation_state }),
+    } as Species
   })
 }
 
@@ -1223,10 +1288,8 @@ const json_site_label = (label: unknown, species: Species[], idx: number): strin
   typeof label === `string` ? label : `${species[0].element}${idx + 1}`
 
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
-// matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
-// site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
-// `wrap: false` keeps the coordinates as written, like every other trajectory reader does
-// for its frames (MSD/VACF unwrap by minimum image and the viewer wraps for display).
+// matrix (pbc kept when declared), every site gets abc and xyz, and periodic fractional
+// coordinates wrap into [0, 1) unless `wrap: false` (trajectory frames stay as written).
 export function structure_from_json(
   raw: StructureLike,
   { wrap = true }: { wrap?: boolean } = {},
@@ -1250,7 +1313,7 @@ export function structure_from_json(
     })
     return { ...rest, sites }
   }
-  const matrix = matrix3x3_from_rows(raw_lattice.matrix, `JSON lattice matrix`)
+  const matrix = mat3x3_from_rows(raw_lattice.matrix, `JSON lattice matrix`)
   const lattice = make_lattice(matrix, is_pbc(raw_lattice.pbc) ? raw_lattice.pbc : undefined)
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
@@ -1267,11 +1330,9 @@ export function structure_from_json(
   return wrap ? normalize_fractional_coords(structure) : structure
 }
 
-// Wrap the fractional coordinates of periodic axes into [0, 1) and recompute xyz from them.
-// Molecules and already-wrapped structures are returned as-is (same reference), so callers
-// can pass every structure through without paying for a copy. Non-periodic axes keep
-// out-of-cell coordinates (a slab translated along its vacuum direction, an unwrapped
-// trajectory), since folding them would tear the geometry apart.
+// Wrap the fractional coordinates of periodic axes into [0, 1) and recompute xyz. Molecules
+// and already-wrapped structures are returned as-is (same reference). Non-periodic axes keep
+// out-of-cell coordinates: folding a slab's vacuum direction would tear the geometry apart.
 export function normalize_fractional_coords<T extends AnyStructure>(structure: T): T {
   if (!(`lattice` in structure) || numeric_sites.has(structure)) return structure
   const { pbc } = structure.lattice
@@ -1364,8 +1425,7 @@ function parser_for_filename(filename: string, content: string): FormatParser | 
 
 // The parser the content's own markers select, or null when nothing is recognized
 function parser_for_content(content: string): FormatParser | null {
-  // JSON before the line-count guard: minified JSON (e.g. fetched via extensionless blob:
-  // object URLs) is a single line
+  // JSON before the line-count guard: minified JSON is a single line
   const content_start = content.trimStart()
   if (content_start.startsWith(`{`) || content_start.startsWith(`[`))
     return parse_json_structure
@@ -1373,17 +1433,14 @@ function parser_for_content(content: string): FormatParser | null {
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 2) return null
 
-  // Formats with unmistakable markers are sniffed before XYZ/POSCAR/CIF: a LAMMPS data
-  // file starts with an atom count that the POSCAR heuristic would otherwise claim, and
-  // mmCIF would be swallowed by the CIF keyword check below.
+  // Unmistakable markers before XYZ/POSCAR/CIF heuristics, which would claim a LAMMPS data
+  // file's leading atom count or mmCIF's keywords
   if (is_lammps_dump_content(content)) return parse_lammps_dump
   if (is_lammps_data_content(content)) return parse_lammps_data
   // pw.x inputs are usually named `*.in`, like aims geometries outside their run directory
   if (is_qe_content(content)) return parse_qe
   if (is_aims_content(content)) return parse_aims
-  // mmCIF must be tested before PDB: PDBx writers column-align _atom_site.group_PDB, so
-  // their atom rows read `ATOM   1  N N   GLY ...` and match the PDB record test below.
-  // `_atom_site.` never appears in a PDB, so this order is unambiguous.
+  // mmCIF before PDB: column-aligned PDBx rows (`ATOM   1  N N   GLY`) match the PDB test
   if (is_mmcif_content(content)) return parse_mmcif
   if (/^(?:ATOM {2}|HETATM|CRYST1)/m.test(content)) return parse_pdb
   if (/^@<TRIPOS>MOLECULE/im.test(content)) return parse_mol2
@@ -1402,9 +1459,7 @@ function parser_for_content(content: string): FormatParser | null {
   )
     return parse_xyz
 
-  // POSCAR: line 2 starts with a number (the scale factor). First token only, since
-  // POSCAR allows three per-axis scale factors (or trailing comments) there — and a
-  // blank line must not pass
+  // POSCAR: line 2 starts with a number (the scale factor, maybe one per axis; not blank)
   if (lines.length >= 8 && !isNaN(parse_leading_num(lines[1]))) return parse_poscar
 
   const has_keyword = (pattern: RegExp) => lines.some((line) => pattern.test(line))
@@ -1413,14 +1468,11 @@ function parser_for_content(content: string): FormatParser | null {
   return null
 }
 
-// Parse a structure from file content in any supported format. A filename's extension is
-// authoritative (it never falls through to content sniffing); without one, or with an
-// unknown one, the format is sniffed from the content. Failures retain their local cause
-// and include the requested filename so callers can surface them directly. Recoverable
-// issues (skipped rows, placeholder cells, guessed elements) go to parse_warn.
+// Parse a structure from file content in any supported format. A known extension is
+// authoritative, else the content is sniffed. Errors name the file and keep their cause;
+// recoverable issues (skipped rows, guessed elements) go to parse_warn.
 export function parse_structure_file(raw_content: string, filename?: string): AnyStructure {
-  // A UTF-8 byte order mark (Windows editors, Python's `utf-8` codec keeps it) is no content:
-  // JSON.parse rejects it and line-anchored markers (`data_`, `loop_`) miss the first line
+  // A UTF-8 byte order mark is no content: JSON.parse rejects it and `^data_` misses it
   const content = raw_content.replace(/^\uFEFF/, ``)
   try {
     const parser =
@@ -1471,9 +1523,8 @@ function optimade_with_sites(raw: unknown, allow_empty = false): OptimadeStructu
     : null
 }
 
-// Lattice of an OPTIMADE entry with pbc from dimension_types (1 = periodic), or null without a
-// cell. An all-null row along a non-periodic direction becomes a zero vector that make_lattice
-// completes to a unit normal; all-null rows mean no cell (a molecule).
+// Lattice of an OPTIMADE entry with pbc from dimension_types (1 = periodic). A null row along
+// a non-periodic direction is completed by make_lattice; all-null rows mean a molecule (null).
 const optimade_lattice = ({
   lattice_vectors,
   dimension_types,
@@ -1487,15 +1538,13 @@ const optimade_lattice = ({
   const is_null_row = (row: unknown, idx: number): boolean =>
     !pbc[idx] && Array.isArray(row) && row.every((val) => val === null)
   const rows = lattice_vectors.map((row, idx) => (is_null_row(row, idx) ? [0, 0, 0] : row))
-  const matrix = matrix3x3_from_rows(rows, `OPTIMADE lattice_vectors`) // checks for 3 rows
+  const matrix = mat3x3_from_rows(rows, `OPTIMADE lattice_vectors`) // checks for 3 rows
   return lattice_vectors.every(is_null_row) ? null : make_lattice(matrix, pbc)
 }
 
-// Convert an OPTIMADE structure entry to a Crystal (see optimade_lattice) or Molecule.
-// Every site must be valid: a missing species or an unreadable position throws rather than
-// being dropped, since a structure rendered with silently missing atoms is worse than an
-// error. The remaining attributes (formula, provider fields, ...) become `properties`; per
-// site, the mass and a non-trivial concentration of the chosen element are kept.
+// Convert an OPTIMADE structure entry to a Crystal (see optimade_lattice) or Molecule. An
+// invalid site throws rather than silently vanishing. Other attributes become `properties`;
+// per site, the chosen element's mass and non-trivial concentration are kept.
 export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure {
   const {
     lattice_vectors: _lattice_vectors, // read by optimade_lattice, excluded from properties
@@ -1531,9 +1580,7 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
     } = resolve_optimade_element(species_name, species_list, idx)
     const abc: Vec3 = cart_to_frac ? cart_to_frac(xyz) : [0, 0, 0]
 
-    // Mass/concentration of the chosen element. sym_idx indexes the (parallel)
-    // chemical_symbols/mass/concentration arrays; -1 (name resolved directly, without
-    // chemical_symbols) falls back to index 0, the single-element entry.
+    // sym_idx -1 (name resolved without chemical_symbols) reads the single-element entry 0
     const spec_idx = Math.max(sym_idx, 0)
     const mass = spec?.mass?.[spec_idx]
     const concentration = spec?.concentration?.[spec_idx]
@@ -1544,18 +1591,13 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
     return make_site(element, abc, xyz, `${element}${idx + 1}`, site_props)
   })
 
-  return {
-    sites,
-    id: optimade.id,
-    properties,
-    ...(lattice && { lattice }),
-  }
+  return { sites, id: optimade.id, properties, ...(lattice && { lattice }) }
 }
 
 type StructureKind = `crystal` | `molecule` | `unknown`
 
-// Filename patterns that classify a file without running a full parse; the first match
-// wins. Content is only consulted where the extension alone leaves periodicity open.
+// Filename patterns classifying a file without a full parse (first match wins); content is
+// only consulted where the extension leaves periodicity open
 const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
   [/\.(?:cif|mmcif|mcif)$/i, () => `crystal`],
   // A PDB is only periodic if it declares a real (non-placeholder) CRYST1 cell

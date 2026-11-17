@@ -139,6 +139,7 @@ const make_band_data = (
     k_grid: dims,
     k_lattice,
     fermi_energy,
+    energy_unit: `eV`,
     n_bands: 1,
     n_spins: 1,
   }
@@ -234,18 +235,14 @@ describe(`extract_fermi_surface vertex properties`, () => {
       ...opts,
       grid_shift: opts.grid_shift && [...opts.grid_shift],
     })
-    const cart_to_frac = math.matrix_inverse_3x3(
-      math.transpose_3x3_matrix(band_data.k_lattice),
-    )
+    const cart_to_frac = math.inverse_3x3(math.transpose_3x3(band_data.k_lattice))
     const period = `periodic` in opts ? grid_n : grid_n - 1
     for (const interpolation_factor of [1, 2]) {
       const [surface] = extract_fermi_surface(band_data, { interpolation_factor }).isosurfaces
       const values = surface.properties?.field
       expect(values).toHaveLength(vertex_count(surface))
       const errors = vertices_of(surface).map((vertex, idx) =>
-        Math.abs(
-          (values?.[idx] ?? NaN) - field(...math.mat3x3_vec3_multiply(cart_to_frac, vertex)),
-        ),
+        Math.abs((values?.[idx] ?? NaN) - field(...math.mul_3x3_vec3(cart_to_frac, vertex))),
       )
       expect(Math.max(...errors)).toBeLessThan((1.75 * (two_pi / period) ** 2) / 8)
     }
@@ -460,68 +457,65 @@ describe(`Wigner-Seitz folding and preview resolution`, () => {
   test.each([
     [`fcc`, FCC_RECIPROCAL],
     [`sheared fcc`, SHEARED_FCC],
-  ])(
-    `folds a band-grid surface into the Wigner-Seitz zone (%s basis)`,
-    (_basis, k_lattice) => {
-      const band_data = sphere_data(k_lattice, 0.9)
-      const cell = extract_fermi_surface(band_data)
-      const folded = extract_fermi_surface(band_data, { wigner_seitz: true })
-      expect([cell.reciprocal_cell, folded.reciprocal_cell]).toEqual([
-        `parallelepiped`,
-        `wigner_seitz`,
-      ])
-      // shifted vertices are re-stored as Float32 (relative eps 6e-8): measured 1.7e-9 (fcc),
-      // 1.2e-8 (sheared) off; translating in f64 instead preserves the area exactly
-      expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
-      const frac_to_cart = math.create_frac_to_cart(k_lattice)
-      const others = Array.from({ length: 7 ** 3 }, (_, idx) =>
-        frac_to_cart([idx / 49, idx / 7, idx].map((n) => (Math.floor(n) % 7) - 3) as Vec3),
-      ).filter((point) => Math.hypot(...point) > 0)
-      // signed distance past the zone, |k| − |k − G| for the nearest other lattice point G
-      // (0 on the face of G)
-      const past_zone = (point: Vec3): { dist: number; face: Vec3 } => {
-        const dists = others.map((other) => math.euclidean_dist(point, other))
-        const nearest = dists.indexOf(Math.min(...dists))
-        return { dist: Math.hypot(...point) - dists[nearest], face: others[nearest] }
+  ])(`folds a band-grid surface into the WS zone (%s basis)`, (_basis, k_lattice) => {
+    const band_data = sphere_data(k_lattice, 0.9)
+    const cell = extract_fermi_surface(band_data)
+    const folded = extract_fermi_surface(band_data, { wigner_seitz: true })
+    expect([cell.reciprocal_cell, folded.reciprocal_cell]).toEqual([
+      `parallelepiped`,
+      `wigner_seitz`,
+    ])
+    // shifted vertices are re-stored as Float32 (relative eps 6e-8): measured 1.7e-9 (fcc),
+    // 1.2e-8 (sheared) off; translating in f64 instead preserves the area exactly
+    expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
+    const frac_to_cart = math.create_frac_to_cart(k_lattice)
+    const others = Array.from({ length: 7 ** 3 }, (_, idx) =>
+      frac_to_cart([idx / 49, idx / 7, idx].map((n) => (Math.floor(n) % 7) - 3) as Vec3),
+    ).filter((point) => Math.hypot(...point) > 0)
+    // signed distance past the zone, |k| − |k − G| for the nearest other lattice point G
+    // (0 on the face of G)
+    const past_zone = (point: Vec3): { dist: number; face: Vec3 } => {
+      const dists = others.map((other) => math.euclidean_dist(point, other))
+      const nearest = dists.indexOf(Math.min(...dists))
+      return { dist: Math.hypot(...point) - dists[nearest], face: others[nearest] }
+    }
+    let [n_moved, max_outside, max_off_face, n_unpaired] = [0, -Infinity, 0, 0]
+    for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
+      if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
+      for (const idx of new Set(surface.indices)) {
+        max_outside = Math.max(max_outside, past_zone(vertex_at(surface, idx)).dist)
       }
-      let [n_moved, max_outside, max_off_face, n_unpaired] = [0, -Infinity, 0, 0]
-      for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
-        if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
-        for (const idx of new Set(surface.indices)) {
-          max_outside = Math.max(max_outside, past_zone(vertex_at(surface, idx)).dist)
-        }
-        // ends of edges used by one triangle, i.e. the face cuts (vertices merged by position,
-        // as the cell's periodic seams are not shared)
-        const open_degree = new Map<string, number>()
-        const uses = edge_uses(surface, (idx) => pos_key(vertex_at(surface, idx)))
-        for (const [edge, count] of uses) {
-          for (const key of count === 1 ? edge.split(`|`) : []) {
-            open_degree.set(key, (open_degree.get(key) ?? 0) + 1)
-          }
-        }
-        expect(open_degree.size).toBeGreaterThan(0) // the sphere crosses the zone faces
-        // cuts close into loops: each end is shared by two open edges
-        expect([...open_degree.values()].every((degree) => degree % 2 === 0)).toBe(true)
-        for (const key of open_degree.keys()) {
-          const point = key.split(`,`).map((coord) => Number(coord) / 1e5) as Vec3
-          const { dist, face } = past_zone(point)
-          max_off_face = Math.max(max_off_face, Math.abs(dist))
-          // its periodic image across that face is on the cut there too
-          if (!open_degree.has(pos_key(math.subtract(point, face)))) n_unpaired++
+      // ends of edges used by one triangle, i.e. the face cuts (vertices merged by position,
+      // as the cell's periodic seams are not shared)
+      const open_degree = new Map<string, number>()
+      const uses = edge_uses(surface, (idx) => pos_key(vertex_at(surface, idx)))
+      for (const [edge, count] of uses) {
+        for (const key of count === 1 ? edge.split(`|`) : []) {
+          open_degree.set(key, (open_degree.get(key) ?? 0) + 1)
         }
       }
-      // Clipping runs in f64, storage is Float32 (eps 1.2e-7 at |k| ≤ 1.2): measured 6.5e-8 /
-      // 6.6e-8 past the zone (fcc / sheared), where whole-triangle folding left vertices 0.11 / 0.25
-      // outside. Open points carry the key rounding (√3·5e-6): measured 1.1e-5 off their face.
-      expect(max_outside).toBeLessThan(2e-7)
-      expect(max_off_face).toBeLessThan(2e-5)
-      expect(n_unpaired).toBe(0)
-      expect(n_moved).toBeGreaterThan(0)
-      const cubic = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
-      const [cubic_sheet] = extract_fermi_surface(cubic).isosurfaces
-      expect(fold_to_wigner_seitz(cubic_sheet, IDENTITY_MATRIX3)).toBe(cubic_sheet)
-    },
-  )
+      expect(open_degree.size).toBeGreaterThan(0) // the sphere crosses the zone faces
+      // cuts close into loops: each end is shared by two open edges
+      expect([...open_degree.values()].every((degree) => degree % 2 === 0)).toBe(true)
+      for (const key of open_degree.keys()) {
+        const point = key.split(`,`).map((coord) => Number(coord) / 1e5) as Vec3
+        const { dist, face } = past_zone(point)
+        max_off_face = Math.max(max_off_face, Math.abs(dist))
+        // its periodic image across that face is on the cut there too
+        if (!open_degree.has(pos_key(math.subtract(point, face)))) n_unpaired++
+      }
+    }
+    // Clipping runs in f64, storage is Float32 (eps 1.2e-7 at |k| ≤ 1.2): measured 6.5e-8 /
+    // 6.6e-8 past the zone (fcc / sheared), where whole-triangle folding left vertices 0.11 / 0.25
+    // outside. Open points carry the key rounding (√3·5e-6): measured 1.1e-5 off their face.
+    expect(max_outside).toBeLessThan(2e-7)
+    expect(max_off_face).toBeLessThan(2e-5)
+    expect(n_unpaired).toBe(0)
+    expect(n_moved).toBeGreaterThan(0)
+    const cubic = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
+    const [cubic_sheet] = extract_fermi_surface(cubic).isosurfaces
+    expect(fold_to_wigner_seitz(cubic_sheet, IDENTITY_MATRIX3)).toBe(cubic_sheet)
+  })
 
   // Real sheets as parsed: Float32 vertices exactly on a zone face sit ~1e-8 past it and count
   // as on it, rather than being clipped a rounding error away from themselves into zero-area,
@@ -674,24 +668,18 @@ describe(`free-electron sphere (numerical verification)`, () => {
     { n: 48, periodic: false, max_rel_err: 3e-3 },
     { n: 24, periodic: true, max_rel_err: 1e-2 },
     { n: 48, periodic: true, max_rel_err: 3e-3 },
-  ])(
-    `area ≈ 4πk_F² within $max_rel_err at N=$n (periodic=$periodic)`,
-    ({ n: count, periodic, max_rel_err }) => {
-      const iso = extract_sphere(count, periodic)
-      const rel_err = rel_area_error(iso)
-      expect(rel_err).toBeLessThan(0) // marching cubes inscribes the sphere
-      expect(Math.abs(rel_err)).toBeLessThan(max_rel_err)
-    },
-  )
+  ])(`area ≈ 4πk_F² ±$max_rel_err, N=$n`, ({ n: count, periodic, max_rel_err }) => {
+    const iso = extract_sphere(count, periodic)
+    const rel_err = rel_area_error(iso)
+    expect(rel_err).toBeLessThan(0) // marching cubes inscribes the sphere
+    expect(Math.abs(rel_err)).toBeLessThan(max_rel_err)
+  })
 
-  test.each([false, true])(
-    `area error shrinks ~4x from N=24 to N=48 (periodic=%s)`,
-    (periodic) => {
-      const err_24 = Math.abs(rel_area_error(extract_sphere(24, periodic)))
-      const err_48 = Math.abs(rel_area_error(extract_sphere(48, periodic)))
-      expect(err_48).toBeLessThan(err_24 / 3)
-    },
-  )
+  test.each([false, true])(`area error shrinks ~4x, N=24 to 48 (periodic=%s)`, (periodic) => {
+    const err_24 = Math.abs(rel_area_error(extract_sphere(24, periodic)))
+    const err_48 = Math.abs(rel_area_error(extract_sphere(48, periodic)))
+    expect(err_48).toBeLessThan(err_24 / 3)
+  })
 
   // Measured max |‖v‖ − k_F| is 0.018 grid spacings at N=24 (linear edge interpolation of a
   // quadratic is second-order accurate), far below the one-spacing bound a wrong grid
@@ -700,18 +688,15 @@ describe(`free-electron sphere (numerical verification)`, () => {
     { n: 24, periodic: false },
     { n: 48, periodic: false },
     { n: 24, periodic: true },
-  ])(
-    `every vertex lies on the sphere (N=$n, periodic=$periodic)`,
-    ({ n: count, periodic }) => {
-      const iso = extract_sphere(count, periodic)
-      const spacing = B_LEN / (periodic ? count : count - 1)
-      let max_dr = 0
-      for (const vertex of vertices_of(iso)) {
-        max_dr = Math.max(max_dr, Math.abs(Math.hypot(...vertex) - K_F))
-      }
-      expect(max_dr).toBeLessThan(0.05 * spacing)
-    },
-  )
+  ])(`every vertex on the sphere (N=$n, periodic=$periodic)`, ({ n: count, periodic }) => {
+    const iso = extract_sphere(count, periodic)
+    const spacing = B_LEN / (periodic ? count : count - 1)
+    let max_dr = 0
+    for (const vertex of vertices_of(iso)) {
+      max_dr = Math.max(max_dr, Math.abs(Math.hypot(...vertex) - K_F))
+    }
+    expect(max_dr).toBeLessThan(0.05 * spacing)
+  })
 
   test(`2x tricubic upsampling of N=24 matches the N=48 area error (−2.2e-3 vs −8.7e-3 raw)`, () => {
     const err_raw = Math.abs(rel_area_error(extract_sphere(24, false)))
@@ -824,19 +809,16 @@ describe(`grid/lattice conventions`, () => {
     [`endpoint-inclusive (BXSF), auto (2.4x)`, 20, false, 0],
     [`periodic (FRMSF), auto (2.4x)`, 20, true, 0],
     [`periodic (FRMSF lshift=0)`, 20, true, 1, [lshift_0, lshift_0, lshift_0]],
-  ])(
-    `Γ-centred sphere keeps its radius: %s`,
-    (_label, grid_n, periodic, factor, grid_shift) => {
-      const band_data = make_band_data(grid_n, sphere, { periodic, grid_shift })
-      const { isosurfaces } = extract_fermi_surface(band_data, {
-        mu: 0.3,
-        interpolation_factor: factor,
-      })
-      const radii = vertices_of(isosurfaces[0]).map((vertex) => Math.hypot(...vertex))
-      for (const radius of radii) expect(radius).toBeCloseTo(0.3, 1)
-      expect(radii.reduce((sum, radius) => sum + radius, 0) / radii.length).toBeCloseTo(0.3, 2)
-    },
-  )
+  ])(`Γ-centred sphere keeps radius: %s`, (_label, grid_n, periodic, factor, grid_shift) => {
+    const band_data = make_band_data(grid_n, sphere, { periodic, grid_shift })
+    const { isosurfaces } = extract_fermi_surface(band_data, {
+      mu: 0.3,
+      interpolation_factor: factor,
+    })
+    const radii = vertices_of(isosurfaces[0]).map((vertex) => Math.hypot(...vertex))
+    for (const radius of radii) expect(radius).toBeCloseTo(0.3, 1)
+    expect(radii.reduce((sum, radius) => sum + radius, 0) / radii.length).toBeCloseTo(0.3, 2)
+  })
 
   // longest axis drives auto: slabs and anisotropic meshes must not be over-refined
   test.each<[Vec3, number]>([
@@ -932,6 +914,7 @@ describe(`grid/lattice conventions`, () => {
       k_grid: [1, grid_n, grid_n],
       k_lattice: IDENTITY_MATRIX3,
       fermi_energy: 0.3,
+      energy_unit: `eV`,
       n_bands: 1,
       n_spins: 1,
     }
@@ -945,23 +928,20 @@ describe(`compute_fermi_slice`, () => {
   // An odd endpoint-inclusive (BXSF) grid puts a grid plane through the centre, so the Γ slice
   // cuts through on-plane mesh vertices whose edges a strict sign test would drop. The even
   // grid has no on-plane vertex and checks the fix is a no-op there.
-  test.each([21, 22, 31])(
-    `slices a %i-point grid through Γ, on-plane vertices and all`,
-    (count) => {
-      const fermi_data = extract_fermi_surface(
-        make_band_data(count, sphere, { fermi_energy: 0.25 }),
-      )
-      const { isolines } = compute_fermi_slice(fermi_data, {
-        miller_indices: [0, 0, 1],
-        distance: 0,
-      })
-      // the isosurface is a sphere of radius 0.25, so its central slice is one circle of that radius
-      expect(isolines).toHaveLength(1)
-      for (const [pixel_x, pixel_y] of isolines[0].points_2d) {
-        expect(Math.hypot(pixel_x, pixel_y)).toBeCloseTo(0.25, 2)
-      }
-    },
-  )
+  test.each([21, 22, 31])(`slices %i-point grid through Γ, on-plane vertices too`, (count) => {
+    const fermi_data = extract_fermi_surface(
+      make_band_data(count, sphere, { fermi_energy: 0.25 }),
+    )
+    const { isolines } = compute_fermi_slice(fermi_data, {
+      miller_indices: [0, 0, 1],
+      distance: 0,
+    })
+    // the isosurface is a sphere of radius 0.25, so its central slice is one circle of that radius
+    expect(isolines).toHaveLength(1)
+    for (const [pixel_x, pixel_y] of isolines[0].points_2d) {
+      expect(Math.hypot(pixel_x, pixel_y)).toBeCloseTo(0.25, 2)
+    }
+  })
 
   // oxfmt-ignore
   const quad_faces = [
@@ -1114,6 +1094,12 @@ describe(`lattice_point_group_matrices`, () => {
       [0.5, 4, 0],
       [0.7, 1.1, 5],
     ] as Matrix3x3,
+    // tetragonal by 2%: cubic within a loose tolerance
+    near_cubic: [
+      [4, 0, 0],
+      [0, 4, 0],
+      [0, 0, 4.08],
+    ] as Matrix3x3,
   }
   const k_lattice_of = (name: keyof typeof real_lattices) =>
     math.reciprocal_lattice(real_lattices[name], { two_pi: true })
@@ -1189,6 +1175,41 @@ describe(`lattice_point_group_matrices`, () => {
     expect(max_vertex_mismatch(ops, vertices)).toBeLessThan(1e-3)
   })
 
+  // The candidate search prunes by the lattice metric before the exact orthogonality test; a
+  // full scan over all 3^9 integer matrices applies only that test. Loose tolerances matter
+  // most: there the pruning bound is widest and the accepted set runs to hundreds of matrices.
+  test.each([
+    [`cubic`, 1e-5, 48],
+    [`hexagonal`, 1e-5, 24],
+    [`near_cubic`, 1e-5, 16],
+    [`near_cubic`, 0.05, 48],
+    [`triclinic`, 0.5, 22],
+    [`monoclinic`, 2, 1864],
+  ] as const)(`%s at symprec %f matches a full scan (%i ops)`, (name, symprec, n_ops) => {
+    const basis = math.reduce_basis(k_lattice_of(name))
+    const basis_t = math.transpose_3x3(basis)
+    const basis_t_inv = math.reciprocal_lattice(basis)
+    const scanned: number[][] = []
+    for (let code = 0; code < 3 ** 9; code++) {
+      const int_mat = [0, 1, 2].map((row) =>
+        [0, 1, 2].map((col) => (Math.trunc(code / 3 ** (3 * row + col)) % 3) - 1),
+      ) as Matrix3x3
+      if (Math.abs(math.det_3x3(int_mat)) !== 1) continue
+      const rot = math.dot(math.dot(basis_t, int_mat), basis_t_inv)
+      const gram = math.dot(math.transpose_3x3(rot), rot)
+      const deviations = gram.flat().map((val, idx) => Math.abs(val - Number(idx % 4 === 0)))
+      if (Math.max(...deviations) > symprec) continue
+      const operation = [0, 1, 2, 3].flatMap((col) =>
+        [0, 1, 2, 3].map((row) => (row < 3 && col < 3 ? rot[row][col] : Number(row === col))),
+      )
+      // the identity goes first, the rest keep scan order
+      if (code === (3 ** 9 - 1) / 2 + 3 ** 0 + 3 ** 4 + 3 ** 8) scanned.unshift(operation)
+      else scanned.push(operation)
+    }
+    expect(scanned).toHaveLength(n_ops)
+    expect(lattice_point_group_matrices(k_lattice_of(name), symprec)).toStrictEqual(scanned)
+  })
+
   // The cubic ops are exactly the 48 axis permutations × sign flips (Oh in Cartesian space),
   // also when the lattice arrives in a sheared (non-reduced) basis, where the {-1,0,1}
   // integer-matrix search alone finds only 4 of them
@@ -1222,17 +1243,14 @@ test.each([
   [`wigner_seitz`, 2 * Math.sqrt(3)],
   [`parallelepiped`, Math.hypot(100, 1, 1)],
   [undefined, Math.hypot(100, 1, 1)],
-] as const)(
-  `fermi_fit_extent of %s surfaces spans %d before padding`,
-  (reciprocal_cell, extent) => {
-    const cube: Vec3[] = [-1, 1].flatMap((x) =>
-      [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
-    )
-    const k_lattice: Matrix3x3 = [
-      [100, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
-    expect(fermi_fit_extent(cube, k_lattice, reciprocal_cell)).toBeCloseTo(extent / 0.92, 10)
-  },
-)
+] as const)(`fermi_fit_extent of %s surfaces: %d unpadded`, (reciprocal_cell, extent) => {
+  const cube: Vec3[] = [-1, 1].flatMap((x) =>
+    [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
+  )
+  const k_lattice: Matrix3x3 = [
+    [100, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  expect(fermi_fit_extent(cube, k_lattice, reciprocal_cell)).toBeCloseTo(extent / 0.92, 10)
+})

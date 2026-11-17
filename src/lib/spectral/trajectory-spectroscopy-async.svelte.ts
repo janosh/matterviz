@@ -1,5 +1,5 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// calc_trajectory_spectroscopy via a persistent Web Worker; see create_worker_client for
+// compute_trajectory_spectroscopy via a persistent Web Worker; see create_worker_client for
 // `.cancel` / `.mount` semantics. The client is shared by every mounted pane, so a pane holds
 // a `.mount()` claim for its lifetime (the worker ends with the last one), never `.cancel()`.
 import type { TrajectorySignal } from '#lib/trajectory/index.js'
@@ -10,7 +10,7 @@ import type {
   TrajectorySpectroscopyOptions,
   TrajectorySpectroscopyResult,
 } from './trajectory-spectroscopy'
-import { calc_trajectory_spectroscopy } from './trajectory-spectroscopy'
+import { compute_trajectory_spectroscopy } from './trajectory-spectroscopy'
 
 // Same field-by-field rebuild as plain_position_stream: raw typed arrays straight to
 // structured clone, only the small plain parts snapshotted
@@ -31,7 +31,7 @@ export const compute_trajectory_spectroscopy_async = create_worker_client<
     new Worker(new URL(`./trajectory-spectroscopy-worker.js`, import.meta.url), {
       type: `module`,
     }),
-  compute_sync: calc_trajectory_spectroscopy,
+  compute_sync: compute_trajectory_spectroscopy,
   build_payload: (input): TrajectorySpectroscopyInput => {
     const { infrared_signal, raman_signal } = input
     return {

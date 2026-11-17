@@ -4,10 +4,10 @@ import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import * as math from '#lib/math.js'
-import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/index.js'
 import {
-  calc_force_stats,
+  compute_force_stats,
   checked_site_forces,
   convert_atomic_numbers,
   create_plot_row_frame,
@@ -181,10 +181,43 @@ export const ase_calculator_data = (
   return results
 }
 
+// ase.io.jsonio writes an ndarray inside `info` as `{ __ndarray__: [shape, dtype, flat values] }`,
+// which no plot row or signal could read. Real arrays decode to nested arrays of their shape;
+// anything else (complex data interleaves its parts) stays as is.
+const NDARRAY_KEY = `__ndarray__`
+const decode_ase_info = (info: unknown): Record<string, unknown> => {
+  if (!info || typeof info !== `object`) return {}
+  return Object.fromEntries(
+    Object.entries(info).map(([key, value]: [string, unknown]) => {
+      const is_ndarray = value && typeof value === `object` && NDARRAY_KEY in value
+      const encoded: unknown = is_ndarray ? value[NDARRAY_KEY] : undefined
+      if (!Array.isArray(encoded)) return [key, value]
+      const [shape, , flat]: unknown[] = encoded
+      if (
+        !Array.isArray(shape) ||
+        !shape.every((size) => Number.isInteger(size) && size >= 0) ||
+        !Array.isArray(flat) ||
+        flat.length !== values_per_sample(shape) ||
+        !flat.every((entry) => typeof entry === `number`)
+      )
+        return [key, value]
+      // rows of the trailing axis first, then each outer axis in turn
+      let nested: unknown[] = flat
+      for (const size of shape.slice(1).toReversed()) {
+        const rows: unknown[] = []
+        for (let start = 0; start < nested.length; start += size)
+          rows.push(nested.slice(start, start + size))
+        nested = rows
+      }
+      return [key, shape.length === 0 ? flat[0] : nested]
+    }),
+  )
+}
+
 // A frame's cell, or undefined for none: ASE stores a molecule's missing cell as all zeros
 const ase_cell = (frame_data: Record<string, unknown>): math.Matrix3x3 | undefined => {
   if (!frame_data.cell) return undefined
-  const cell = matrix3x3_from_rows(frame_data.cell, `ASE cell`)
+  const cell = mat3x3_from_rows(frame_data.cell, `ASE cell`)
   return cell.every((row) => row.every((value) => value === 0)) ? undefined : cell
 }
 
@@ -246,8 +279,8 @@ function read_ase_frame_header(
   const metadata = {
     step,
     ...calculator,
-    ...(forces && calc_force_stats(forces)),
-    ...frame_data.info,
+    ...(forces && compute_force_stats(forces)),
+    ...decode_ase_info(frame_data.info),
   }
   const cell = ase_cell(frame_data)
   return {

@@ -4,13 +4,9 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
 
 ```svelte example
 <script lang="ts">
-  import {
-    element_data,
-    ELEM_PROPERTY_LABELS,
-    PeriodicTable,
-    ScatterPlot,
-    toggle_item,
-  } from 'matterviz'
+  import { element_data, PeriodicTable, ScatterPlot } from 'matterviz'
+  import { ELEM_PROPERTY_LABELS } from 'matterviz/labels'
+  import { toggle_item } from 'matterviz/utils'
   import type { ChemicalElement, ElementSymbol, InternalPoint } from 'matterviz'
 
   const symbols = element_data.map(({ symbol }) => symbol)

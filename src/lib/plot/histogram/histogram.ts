@@ -11,16 +11,16 @@ import {
   nice_range_from_extent,
   positive_log_domain,
 } from '#lib/plot/core/scales.js'
-import type { AxisConfig, ScaleType } from '#lib/plot/core/types.js'
+import type { AxisConfig, NumericColumn, ScaleType } from '#lib/plot/core/types.js'
 import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types.js'
 import { plot_color } from '#lib/colors/index.js'
 
 // One distribution to bin: `values` are the samples; everything else is legend/axis metadata.
 export interface HistogramSeries {
   id?: string | number // stable key for series reordering
-  values: readonly number[]
+  values: NumericColumn // plain or typed array
   // Per-sample weights aligned with `values` (default 1); non-finite ones drop their sample
-  weights?: readonly number[]
+  weights?: NumericColumn
   label?: string
   // Bar fill; without one a lone series uses `bar.color`, several the cycled palette
   color?: string

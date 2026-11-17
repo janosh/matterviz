@@ -36,14 +36,8 @@ vi.mock(`@threlte/core`, async (import_original) => ({
 
 const vector_structure = (): AnyStructure => ({
   sites: [
-    make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si`, {
-      force: [1, 0, 0],
-      magmom: [0, 0, -2],
-    }),
-    make_site(`O`, [0, 0, 0], [2, 0, 0], `O`, {
-      force: [0, 3, 0],
-      magmom: 0,
-    }),
+    make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si`, { force: [1, 0, 0], magmom: [0, 0, -2] }),
+    make_site(`O`, [0, 0, 0], [2, 0, 0], `O`, { force: [0, 3, 0], magmom: 0 }),
     make_site(`C`, [0, 0, 0], [0, 2, 0], `C`, {
       force: [0, 0, 0],
       magmom: [Number.NaN, 0, 0],
@@ -93,15 +87,20 @@ test.each(color_mode_cases)(
     }
     const view = new FrameView()
     let previous: VectorLayer[] = []
+    const numbers = Uint8Array.from({ length: 32 }, (_unused, idx) => [14, 8, 6][idx % 3])
+    const [no_cell, keys] = [[undefined, undefined] as const, [`force`, `magmom`]]
     for (let frame_idx = 0; frame_idx < 3; frame_idx++) {
+      const positions = Float64Array.from(
+        { length: 96 },
+        (_unused, idx) => idx / 7 + frame_idx,
+      )
       const frame = create_numeric_md_frame(
-        Float64Array.from({ length: 96 }, (_unused, idx) => idx / 7 + frame_idx),
-        Uint8Array.from({ length: 32 }, (_unused, idx) => [14, 8, 6][idx % 3]),
-        undefined,
-        undefined,
+        positions,
+        numbers,
+        ...no_cell,
         frame_idx,
         {},
-        [`force`, `magmom`],
+        keys,
       )
       for (let idx = 0; idx < 32; idx++) {
         frame.coordinates.set([Math.sin(idx + frame_idx), 0, idx / 7], idx * 12 + 6)
@@ -149,14 +148,9 @@ test.each(color_mode_cases)(
       }
       const retained_geometry = structuredClone(columns.vector_geometry)
       const base_options = { ...options, nothing_hidden: true, vector_origin_gap: 0 }
-      const color_options = {
-        ...base_options,
-        vector_configs: {
-          ...base_options.vector_configs,
-          force: { ...base_options.vector_configs.force, color: `purple` },
-        },
-      }
-      const recolored = build_vector_layers(structure, color_options, [])
+      const force = { ...base_options.vector_configs.force, color: `purple` }
+      const vector_configs = { ...base_options.vector_configs, force }
+      const recolored = build_vector_layers(structure, { ...base_options, vector_configs }, [])
       expect(recolored[0].arrows.placements).toBe(columns.vector_geometry.layers[0].placements)
       expect(recolored[0].arrows.colors).toBe(`purple`)
       for (const changes of [
@@ -184,10 +178,8 @@ test.each(color_mode_cases)(
       expect(compute_display_metrics(structure).vector_magnitudes).toEqual(
         metrics.vector_magnitudes,
       )
-      const with_unloaded = prepare_vector_geometry(structure, options)
-      expect(
-        with_unloaded.layers.find(({ key }) => key === `velocity`)?.placements.count,
-      ).toBe(0)
+      const { layers } = prepare_vector_geometry(structure, options)
+      expect(layers.find(({ key }) => key === `velocity`)?.placements.count).toBe(0)
     }
   },
 )
@@ -202,14 +194,9 @@ test.each([
 ])(
   `arrow matrices match Three.js composition with sizes %j`,
   async (shaft_size, head_size, head_length) => {
+    // oxfmt-ignore
     const vectors: Vec3[] = [
-      [0, 0, 0],
-      [0, -1, 0],
-      [1e-9, -1, 0],
-      [1e-7, -1, 0],
-      [0, 0.01 / 0.9, 0],
-      [NaN, 0, 0],
-      [Infinity, 0, 0],
+      [0, 0, 0], [0, -1, 0], [1e-9, -1, 0], [1e-7, -1, 0], [0, 0.01 / 0.9, 0], [NaN, 0, 0], [Infinity, 0, 0],
     ]
     for (let idx = 0; idx < 128; idx++)
       vectors.push([Math.sin(idx), Math.cos(idx), idx / 128 - 0.5])
@@ -222,11 +209,10 @@ test.each([
         color: `red`,
       })),
     )
+    const packed = pack_arrows(arrows, shaft_size, head_size, head_length)
     const component = mount(ArrowInstances, {
       target: document.body,
-      props: {
-        arrows: pack_arrows(arrows, shaft_size, head_size, head_length),
-      },
+      props: { arrows: packed },
     })
     try {
       flushSync()
@@ -236,10 +222,7 @@ test.each([
       expect(meshes).toHaveLength(2)
       for (const key of [`origins`, `rotations`, `lengths`, `colors`] as const)
         expect(meshes[0][key]).toBe(meshes[1][key])
-      const expected = [
-        new Float32Array(arrows.length * 16),
-        new Float32Array(arrows.length * 16),
-      ]
+      const expected = [0, 1].map(() => new Float32Array(arrows.length * 16))
       const matrix = new Matrix4()
       const up = new Vector3(0, 1, 0)
       for (const [idx, { position, vector, scale }] of arrows.entries()) {
@@ -327,16 +310,11 @@ test.each(color_mode_cases)(
     const origin_radius =
       (vector_origin_gap * options.get_site_radius(structure.sites[0], 0)) / 2
     const origins = layers.map(({ arrows }) => arrow_origins(arrows)[0])
-    for (const origin of origins) {
-      expect(Math.abs(Math.hypot(...origin) - origin_radius)).toBeLessThanOrEqual(
-        8 * 2 ** -23 * Math.max(1, origin_radius),
-      )
-    }
-    for (let axis = 0; axis < 3; axis++) {
-      expect(Math.abs(origins[0][axis] + origins[1][axis])).toBeLessThanOrEqual(
-        8 * 2 ** -23 * Math.max(1, origin_radius),
-      )
-    }
+    const f32_tol = 8 * 2 ** -23 * Math.max(1, origin_radius)
+    for (const origin of origins)
+      expect(Math.abs(Math.hypot(...origin) - origin_radius)).toBeLessThanOrEqual(f32_tol)
+    for (let axis = 0; axis < 3; axis++)
+      expect(Math.abs(origins[0][axis] + origins[1][axis])).toBeLessThanOrEqual(f32_tol)
     const first_force = layers[0].arrows.placements
     const retained_force = structuredClone(first_force)
     structure.sites[0].xyz = [4, 5, 6]
@@ -348,7 +326,6 @@ test.each(color_mode_cases)(
     check([`force`, `magmom`])
     expect(first_force).toEqual(retained_force)
     expect(layers[0].arrows.colors).toBe(`#112233`)
-
     options.nothing_hidden = false
     options.is_site_visible = (site_idx) => site_idx !== 0
     const visible_positions = arrow_origins(layers[0].arrows).slice(1)
@@ -357,7 +334,6 @@ test.each(color_mode_cases)(
     options.nothing_hidden = true
     options.vector_configs = { force: { visible: false } }
     check([`magmom`]) // Changes palette slot and switches to single-key coloring.
-
     structure = {
       sites: structure.sites.toReversed().map((site) => ({
         ...site,
@@ -368,12 +344,8 @@ test.each(color_mode_cases)(
     check([`force`, `magmom`, `velocity`])
     options.vector_configs = { magmom: { visible: false }, velocity: { visible: false } }
     check([`force`])
-    expect(arrow_origins(layers[0].arrows)).toEqual([
-      [0, 2, 0],
-      [2, 0, 0],
-      [4, 5, 6],
-    ])
-
+    // oxfmt-ignore
+    expect(arrow_origins(layers[0].arrows)).toEqual([[0, 2, 0], [2, 0, 0], [4, 5, 6]])
     // Inactive layers and all their records are released, including a zero-site replacement.
     options.vector_configs.force = { visible: false }
     check([])
@@ -406,9 +378,8 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
   try {
     flushSync()
     const meshes = threlte_stub.nodes.map(({ props }) => props.is)
-    if (!meshes.every((mesh): mesh is ArrowMesh => mesh instanceof ArrowMesh)) {
+    if (!meshes.every((mesh): mesh is ArrowMesh => mesh instanceof ArrowMesh))
       throw new Error(`Expected four arrow instance meshes, received ${meshes.length}`)
-    }
     expect(meshes).toHaveLength(4)
     const initial_version = meshes[0].origins.version
     for (let frame_idx = 1; frame_idx <= 4; frame_idx++) {
@@ -416,7 +387,7 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
         sites: structure.sites.toReversed().map((site, site_idx) => ({
           ...site,
           xyz: [frame_idx, site_idx, -frame_idx] as Vec3,
-          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `O`, occu: 1 }],
           properties: { force: [site_idx - 1, frame_idx, -2] },
         })),
       }
@@ -428,10 +399,7 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
       reused_arrows = layers[0].arrows
       fresh_arrows = build_vector_layers(structure, options, [])[0].arrows
       flushSync()
-      for (const [actual, expected] of [
-        [meshes[0], meshes[2]],
-        [meshes[1], meshes[3]],
-      ]) {
+      for (const [actual, expected] of [0, 1].map((idx) => [meshes[idx], meshes[idx + 2]])) {
         expect(actual.count).toBe(expected.count)
         expect(actual.origins.array).toEqual(expected.origins.array)
         expect(actual.lengths.array).toEqual(expected.lengths.array)
@@ -440,7 +408,6 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
         expect(actual.origins.version).toBeGreaterThan(initial_version)
       }
     }
-
     // Moving reused records must leave colors untouched; repaint only changed slots.
     const rendered_meshes = meshes.slice(0, 2)
     const color_versions = rendered_meshes.map((mesh) => mesh.colors?.version)
@@ -466,10 +433,8 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
       flushSync()
     }
     for (const mesh of rendered_meshes) {
-      expect(mesh.colors?.updateRanges).toEqual([
-        { start: 0, count: 3 },
-        { start: 6, count: 3 },
-      ])
+      // oxfmt-ignore
+      expect(mesh.colors?.updateRanges).toEqual([{ start: 0, count: 3 }, { start: 6, count: 3 }])
       expect(mesh.colors?.array.slice(0, 9)).toEqual(
         new Float32Array([1, 0, 0, 0, 0, 1, 1, 0, 0]),
       )

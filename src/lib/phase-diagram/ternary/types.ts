@@ -16,13 +16,15 @@ import type { Vec2, Vec3 } from '#lib/math.js'
 // sisso: Bartel et al. 2018 descriptor G^delta(V, m, T) on the 0 K formation enthalpy with
 //        experimental elemental references (needs a volume per atom)
 // static: the 0 K energy
-export type FreeEnergySource = `tabulated` | `sisso` | `static`
+// gas: a compound gas phase (CO, CO2, H2O) at mu(T, p) that gas_config adds (not a mode)
+export type FreeEnergySource = `tabulated` | `sisso` | `static` | `gas`
 // auto picks per entry: tabulated if present, else sisso if a volume is known, else static
-export type FreeEnergyMode = FreeEnergySource | `auto`
+export type FreeEnergyMode = Exclude<FreeEnergySource, `gas`> | `auto`
 
 export interface FreeEnergyOptions {
   mode?: FreeEnergyMode
-  // Gas atmospheres for elements supplied as gases (O from O2, ...); pressures in bar
+  // Gas atmospheres in bar: an elemental gas (O2) sets its element's reference, a compound gas
+  // (CO2) joins the diagram as a phase and replaces the entries of its formula
   gas_config?: GasThermodynamicsConfig
   gas_pressures?: Partial<Record<GasSpecies, number>>
 }

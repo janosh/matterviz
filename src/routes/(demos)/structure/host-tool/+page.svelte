@@ -2,7 +2,7 @@
   import type { Crystal } from '#lib/structure/index.js'
   import { Structure, make_site, structure_host_tool } from '#lib/structure/index.js'
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import { calc_lattice_params, create_frac_to_cart } from '#lib/math.js'
+  import { compute_lattice_params, create_frac_to_cart } from '#lib/math.js'
   import { onMount } from 'svelte'
   import DemoHostTool from './DemoHostTool.svelte'
 
@@ -17,7 +17,7 @@
     [0.63, 0.77, 0.91],
   ]
   const structure: Crystal = {
-    lattice: { matrix, pbc: [true, true, true], ...calc_lattice_params(matrix) },
+    lattice: { matrix, pbc: [true, true, true], ...compute_lattice_params(matrix) },
     sites: positions.map((abc) => make_site(`Cu`, abc, to_cart(abc), `Cu`)),
   }
   let ready = $state(false)

@@ -3,7 +3,7 @@ import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
 import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
-import type { Vec2 } from '#lib'
+import type { Vec2 } from '#lib/math.js'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type {
   AxisConfig3D,
@@ -95,6 +95,9 @@ const expect_three_bounds = (mesh: InstancedMesh) => {
   mesh.computeBoundingSphere()
   expect(written).toEqual(mesh.boundingSphere)
 }
+
+// the [0, 4]^3 data box most scene tests draw in
+const box_ranges: Record<`x` | `y` | `z`, Vec2> = { x: [0, 4], y: [0, 4], z: [0, 4] }
 
 const basic_series: DataSeries3D = {
   x: [1, 2, 3, 4, 5],
@@ -365,7 +368,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   ]
   const state = $state<{
     series: DataSeries3D[]
-    hovered_point: unknown
+    hovered_point: InternalPoint3D | null
     ranges: Record<`x` | `y` | `z`, Vec2>
   }>({
     series: [
@@ -400,33 +403,27 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
   const on_point_hover = vi.fn()
   const { scene, render_frame, unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      get series() {
-        return state.series
-      },
-      on_point_hover,
-      get ranges() {
-        return state.ranges
-      },
-      // same tick options as the 2D axes: an interval used to yield no ticks, a map 5 defaults,
-      // a `d` format turned 0.5 steps into duplicate integer labels
-      x_axis: { label: `&alpha;<sub>x</sub>`, ticks: -1 },
-      y_axis: { ticks: { 0: `a`, 2: `b`, 9: `out of range` } },
-      z_axis: { ticks: 8, format: `d` },
-      point_tween: { duration: 0 }, // data swaps below land at once, however slow the run
-      gizmo: false,
-      display: { show_bounding_box: true },
-      surfaces: [hemisphere],
-      fullscreen: true,
-      tooltip,
-      tooltip_portal: portal,
-      get hovered_point() {
-        return state.hovered_point as never
-      },
-      set hovered_point(value) {
-        state.hovered_point = value
-      },
-    }),
+    ScatterPlot3DScene(
+      anchor,
+      bind_props(
+        {
+          on_point_hover,
+          // same tick options as the 2D axes: an interval used to yield no ticks, a map 5 defaults,
+          // a `d` format turned 0.5 steps into duplicate integer labels
+          x_axis: { label: `&alpha;<sub>x</sub>`, ticks: -1 },
+          y_axis: { ticks: { 0: `a`, 2: `b`, 9: `out of range` } },
+          z_axis: { ticks: 8, format: `d` },
+          point_tween: { duration: 0 }, // data swaps below land at once, however slow the run
+          gizmo: false,
+          display: { show_bounding_box: true },
+          surfaces: [hemisphere],
+          fullscreen: true,
+          tooltip,
+          tooltip_portal: portal,
+        },
+        state,
+      ),
+    ),
   )
   flushSync()
   const instances = () => {
@@ -539,7 +536,7 @@ test.each<[string, false | undefined, boolean]>([
     ScatterPlot3DScene(anchor, {
       series: [{ x: [1], y: [1], z: [1], point_style: { fill }, color_values: [NaN] }],
       hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      ranges: box_ranges,
       gizmo: false,
       tooltip,
     }),
@@ -569,23 +566,23 @@ test.each([
     onTestFinished(() => interactivity.mockRestore())
     const state = $state<{ hovered_point: InternalPoint3D | null }>({ hovered_point: null })
     const { keys, unmount_scene } = mount_scene((anchor) =>
-      ScatterPlot3DScene(anchor, {
-        // x=9 falls outside the x range, so the cursor skips it
-        series: [
-          { x: [1, 2], y: [1, 1], z: [1, 1], label: `A` },
-          { x: [3, 9], y: [1, 1], z: [1, 1] },
-        ],
-        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-        gizmo: false,
-        on_point_hover,
-        on_point_click: clickable ? on_point_click : undefined,
-        get hovered_point() {
-          return state.hovered_point
-        },
-        set hovered_point(value) {
-          state.hovered_point = value
-        },
-      }),
+      ScatterPlot3DScene(
+        anchor,
+        bind_props(
+          {
+            // x=9 falls outside the x range, so the cursor skips it
+            series: [
+              { x: [1, 2], y: [1, 1], z: [1, 1], label: `A` },
+              { x: [3, 9], y: [1, 1], z: [1, 1] },
+            ],
+            ranges: box_ranges,
+            gizmo: false,
+            on_point_hover,
+            on_point_click: clickable ? on_point_click : undefined,
+          },
+          state,
+        ),
+      ),
     )
     onTestFinished(unmount_scene)
     flushSync()
@@ -611,7 +608,6 @@ test.each([
     expect(document.querySelector(`.plot-tooltip`)).toBeNull()
     expect(state.hovered_point).toBeNull()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
-
     const { handlers, interactiveObjects } = interactivity.mock.results[0].value as ReturnType<
       typeof extras.interactivity
     >
@@ -644,7 +640,7 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     series: DataSeries3D[]
     point_tween: InstanceTween
     display: DisplayConfig3D
-    hovered_point: unknown
+    hovered_point: InternalPoint3D | null
   }>({
     series: [{ x: [1, 2], y: [1, 1], z: [1, 1], point_style: { fill: `#000000`, radius: 2 } }],
     point_tween: { duration: 600, easing: linear },
@@ -652,25 +648,7 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     hovered_point: null,
   })
   const { scene, render_frame, unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      get series() {
-        return state.series
-      },
-      get point_tween() {
-        return state.point_tween
-      },
-      get display() {
-        return state.display
-      },
-      get hovered_point() {
-        return state.hovered_point as never
-      },
-      set hovered_point(value) {
-        state.hovered_point = value
-      },
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-      gizmo: false,
-    }),
+    ScatterPlot3DScene(anchor, bind_props({ ranges: box_ranges, gizmo: false }, state)),
   )
   flushSync()
   const set_xs = (xs: number[], grey: number, radius: number) => {
@@ -868,7 +846,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(result.filename).toBe(`scatter3d`)
     expect(String(result.data).split(`\n`)).toEqual([
       `series,x,y,color_value,size_value,z`,
-      ...basic_series.x.map(
+      ...Array.from(
+        basic_series.x,
         (x, idx) =>
           `Test Series,${x},${basic_series.y[idx]},${color_values[idx]},,${basic_series.z[idx]}`,
       ),
@@ -999,7 +978,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
     // original series objects are replaced, never mutated
     expect(multi_series[0].visible).toBeUndefined()
     if (mounted_component) await unmount(mounted_component)
-
     // Bound: the toggle writes hidden IDs (plain state here, so
     // the DOM can't re-render from it - that path is covered above)
     const state = { series: multi_series, hidden_series: [] as (string | number)[] }
@@ -1038,12 +1016,10 @@ describe(`ScatterPlot3D smoke tests`, () => {
     container.querySelector<HTMLElement>(`.legend-item`)?.click()
     await vi.waitFor(() => expect(first_hidden()).toBe(true))
     expect(state.series[0].visible).toBeUndefined()
-
     // parent rebuilds the array (anywidget trait sync, notebook re-render, ...)
     state.series = make_series()
     flushSync()
     await vi.waitFor(() => expect(first_hidden()).toBe(true))
-
     // The host explicitly controls visibility without rewriting data.
     state.hidden_series = []
     flushSync()
@@ -1095,7 +1071,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
       await tick()
       // one data scan: no surface here spans the plot's x/y, which alone needs a second pass
       expect(scans).toHaveBeenCalledOnce()
-
       const show_axes = query<HTMLInputElement>(container, `input[type="checkbox"]`)
       const x_min = query<HTMLInputElement>(container, `[aria-label="X min"]`)
       const x_max = query<HTMLInputElement>(container, `[aria-label="X max"]`)
@@ -1103,10 +1078,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
       expect(x_min.value).toBe(`0.25`)
       expect(x_max.value).toBe(``)
       expect(Number(x_max.placeholder)).toBe(max_value)
-
       show_axes.click()
       type_into(x_min, `2`)
-
       expect(controls_state.display).toEqual({ show_axes: false })
       controls_state.display.projections = { xy: true }
       controls_state.display.projection_opacity = 0.7
@@ -1173,7 +1146,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
     })
     await tick()
     await expect_plot_controls(container, controls_state, `scatter-3d`)
-
     await unmount(mounted_component)
     const props = { show_controls: false }
     mounted_component = mount(ScatterPlot3DControls, { target: container, props })

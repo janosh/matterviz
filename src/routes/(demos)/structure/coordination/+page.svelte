@@ -1,6 +1,7 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { type Crystal, SETTINGS_CONFIG } from '#lib'
+  import type { Crystal } from '#lib'
+  import { SETTINGS_CONFIG } from '#lib/settings.js'
   import type { CoordinationSplitMode } from '#lib/coordination/index.js'
   import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index.js'
   import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'

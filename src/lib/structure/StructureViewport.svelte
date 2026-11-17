@@ -569,7 +569,7 @@
         gizmo={gizmo_prop}
         {volumetric_data}
         {isosurface_settings}
-        supercell_tiling={session.supercell_tiling}
+        supercell_matrix={session.supercell_matrix}
         bind:camera_is_moving
         bind:selected_sites={
           () => session.selected_sites, (value) => session.inputs.set_selected_sites(value)

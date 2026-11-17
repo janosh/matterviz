@@ -215,8 +215,9 @@
     band_coloring: PhononBandColoring | null
     bz_inset_enlarged: boolean
   }
-  const initial_state = (dataset: PhononModeDataset): ExplorerState => ({
-    selection: default_phonon_mode_selection(dataset.modes),
+  // the explorer's defaults, its selection the dataset's first mode
+  const initial_state = (dataset?: PhononModeDataset): ExplorerState => ({
+    selection: dataset && default_phonon_mode_selection(dataset.modes),
     spectrum_kind: `ir`,
     amplitude: DEFAULT_PHONON_AMPLITUDE,
     supercell: [...DEFAULT_PHONON_SUPERCELL],
@@ -232,14 +233,7 @@
   // stays on the previous fixture while the next one downloads so the explorer never blanks
   let selected_fixture = $state.raw<ModeFixture>()
   let fixture_loading = $state(false)
-  let selection = $state<PhononModeSelection>()
-  let spectrum_kind = $state<SpectrumKind>(`ir`)
-  let amplitude = $state(DEFAULT_PHONON_AMPLITUDE)
-  let supercell = $state<Vec3>([...DEFAULT_PHONON_SUPERCELL])
-  let fps = $state(DEFAULT_PHONON_FPS)
-  let show_vectors = $state(DEFAULT_PHONON_SHOW_VECTORS)
-  let band_coloring = $state<PhononBandColoring | null>(null)
-  let bz_inset_enlarged = $state(false)
+  let explorer = $state(initial_state())
   let uploaded_dataset = $state.raw<PhononModeDataset>()
   let load_error = $state<string>()
   let upload_loading = $state(false)
@@ -301,18 +295,6 @@
     number_param(params, key, fallback + 1, 1, Infinity, true) - 1
   const index_value = (index?: number): string =>
     index === undefined ? `` : String(index + 1)
-  const apply_explorer_state = (next_state: ExplorerState): void => {
-    ;({
-      selection,
-      spectrum_kind,
-      amplitude,
-      supercell,
-      fps,
-      show_vectors,
-      band_coloring,
-      bz_inset_enlarged,
-    } = next_state)
-  }
 
   const apply_url_state = async (params: QueryParams): Promise<void> => {
     const file_param = params.get(`file`)
@@ -343,7 +325,7 @@
     const coloring = params.get(`color_by`) ?? ``
     next_state.band_coloring = is_phonon_band_coloring(coloring) ? coloring : null
     next_state.bz_inset_enlarged = bool_from_param(params, `bz_large`, false)
-    apply_explorer_state(next_state)
+    explorer = next_state
     url_initialized = true
   }
 
@@ -351,7 +333,7 @@
     // a click supersedes whatever the URL asked for, even if that load is still in flight
     url_initialized = true
     const fixture = await activate_fixture(file.name)
-    if (fixture) apply_explorer_state(initial_state(fixture.dataset))
+    if (fixture) explorer = initial_state(fixture.dataset)
   }
 
   const handle_file_drop = file_io.create_file_drop_handler({
@@ -365,7 +347,7 @@
       loads.cancel() // else a fixture still loading would apply its state to this upload
       fixture_loading = false
       uploaded_dataset = { modes, filename: metadata.source_filename ?? filename }
-      apply_explorer_state(initial_state(uploaded_dataset))
+      explorer = initial_state(uploaded_dataset)
       load_error = undefined
     },
     on_error: (error) => (load_error = error),
@@ -386,6 +368,8 @@
 
   const mode_fixture_url_entries = (fixture: ModeFixture): UrlParamEntry[] => {
     const default_state = initial_state(fixture.dataset)
+    const { selection, spectrum_kind, amplitude, supercell, fps, show_vectors } = explorer
+    const { band_coloring, bz_inset_enlarged } = explorer
     return [
       ...([`qpoint_idx`, `mode_idx`] as const).map((key): UrlParamEntry => [
         key.replace(`_idx`, ``),
@@ -478,14 +462,14 @@
     <PhononModeExplorer
       id="phonon-mode-explorer"
       phonons={active_dataset}
-      bind:selection
-      bind:spectrum_kind
-      bind:amplitude
-      bind:supercell
-      bind:fps
-      bind:show_vectors
-      bind:band_coloring
-      bind:bz_inset_enlarged
+      bind:selection={explorer.selection}
+      bind:spectrum_kind={explorer.spectrum_kind}
+      bind:amplitude={explorer.amplitude}
+      bind:supercell={explorer.supercell}
+      bind:fps={explorer.fps}
+      bind:show_vectors={explorer.show_vectors}
+      bind:band_coloring={explorer.band_coloring}
+      bind:bz_inset_enlarged={explorer.bz_inset_enlarged}
       style={explorer_height}
     />
   {:else if !load_error}

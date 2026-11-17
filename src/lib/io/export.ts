@@ -391,15 +391,8 @@ const DEFINITION_TAGS = new Set([
   `radialGradient`,
   `filter`,
 ])
-const SHAPE_TAGS = new Set([
-  `rect`,
-  `circle`,
-  `ellipse`,
-  `path`,
-  `line`,
-  `polyline`,
-  `polygon`,
-])
+// oxfmt-ignore
+const SHAPE_TAGS = new Set([`rect`, `circle`, `ellipse`, `path`, `line`, `polyline`, `polygon`])
 const is_no_paint = (paint: string): boolean =>
   paint === `none` || paint === `transparent` || /^rgba\(.*,\s*0\)$/.test(paint)
 

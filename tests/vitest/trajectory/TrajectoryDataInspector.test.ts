@@ -30,7 +30,7 @@ const make_run = (n_frames = 4) =>
     },
   )
 const make_site = (site_idx: number, properties: Record<string, unknown>): Site => ({
-  species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
+  species: [{ element: `Fe`, occu: 1 }],
   abc: [site_idx / 10, 0.25, 0.5] as Vec3,
   xyz: [site_idx, 2.5, 5] as Vec3,
   label: `Fe${site_idx + 1}`,

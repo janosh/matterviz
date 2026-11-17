@@ -9,10 +9,10 @@
   import type { BarHandlerProps, BarSeries, UserContentProps } from '#lib/plot/core/types.js'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
   import { is_drag, series_hover_props } from '#lib/plot/core/interactions.js'
-  import { calc_structure_id_async } from './async-compute.svelte'
-  import type { CnaTypeName } from './calc-cna'
-  import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
-  import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
+  import { compute_structure_id_async } from './async-compute.svelte'
+  import type { CnaTypeName } from './compute-cna'
+  import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './compute-cna'
+  import type { StructureIdOptions, StructureIdResult } from './compute-structure-id'
   import type { AnyStructure } from '#lib/structure/index.js'
 
   type PlotMetadata = Record<string, unknown>
@@ -82,7 +82,7 @@
         inputs.map(async ({ structure }) => {
           const cached = id_cache.get(structure)
           if (cached?.key === key) return cached.result
-          const result = await calc_structure_id_async(structure, options, { signal })
+          const result = await compute_structure_id_async(structure, options, { signal })
           id_cache.set(structure, { key, result })
           return result
         }),

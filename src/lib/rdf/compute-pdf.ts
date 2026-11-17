@@ -1,9 +1,9 @@
-import { calc_lattice_params } from '#lib/math.js'
+import { compute_lattice_params } from '#lib/math.js'
 import type { PdfWeighting } from '#lib/scattering/index.js'
 import { pdf_scattering_weights } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { to_error } from 'svelte-widgets/utils'
-import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from './calc-rdf'
+import { compute_all_pair_rdfs, compute_rdf, shell_volume } from './compute-rdf'
 import type {
   PdfPattern,
   RdfOptions,
@@ -25,7 +25,7 @@ const with_pdf_defaults = <T extends RdfOptions>(options: T): T => ({
   n_bins: options.n_bins ?? PDF_DEFAULT_N_BINS,
 })
 
-// Occupancy-weighted atom count per element. Mirrors exactly the weights calc-rdf sums for its
+// Occupancy-weighted atom count per element. Mirrors exactly the weights compute-rdf sums for its
 // ideal-gas normalization (Σ occu over the sites carrying that element), so the fractions c_a
 // derived here stay in step with the g_ab(r) they multiply. Any other composition source
 // (formula string, oxidation-state map) could silently disagree on partial occupancies.
@@ -39,13 +39,13 @@ export function site_composition(structure: Crystal): Record<string, number> {
   return counts
 }
 
-// Number density ρ0 = N/V in atoms/Å³, using the original cell exactly as calc-rdf's
+// Number density ρ0 = N/V in atoms/Å³, using the original cell exactly as compute-rdf's
 // normalization does — not the expanded image cloud.
 export function number_density(structure: Crystal): number {
   if (!structure.lattice?.matrix) {
     throw new Error(`Crystal must have a lattice to compute the PDF number density`)
   }
-  const { volume } = calc_lattice_params(structure.lattice.matrix)
+  const { volume } = compute_lattice_params(structure.lattice.matrix)
   const composition = Object.values(site_composition(structure))
   const n_atoms = composition.reduce((sum, count) => sum + count, 0)
   if (!(volume > 0)) {
@@ -69,7 +69,7 @@ const reduced_pdf = (pattern: RdfPattern, rho_0: number): number[] =>
   pattern.r.map((radius, idx) => 4 * Math.PI * radius * rho_0 * (pattern.g_r[idx] - 1))
 
 // n = ∫ 4π·r²·ρ·g(r) dr over [r_min, r_max), the coordination number in that shell. Summed
-// with the same shell volumes calc-rdf normalized by, so it recovers the exact pair count.
+// with the same shell volumes compute-rdf normalized by, so it recovers the exact pair count.
 // We expose this integral rather than the radial distribution R(r) = 4π·r²·ρ·g(r) as an array:
 // R(r) carries no information beyond g(r) and ρ, and integrating it over a shell is the one
 // thing it is actually used for. Pass the TOTAL density for a total g(r), and the NEIGHBOUR
@@ -88,7 +88,7 @@ export function coordination_number(
       `Cannot infer a bin width from ${pattern.r.length} bin(s); need at least 2 uniformly spaced bin centres`,
     )
   }
-  // calc-rdf emits uniformly spaced bin CENTRES, r[idx] = (idx + 0.5)·bin_size
+  // compute-rdf emits uniformly spaced bin CENTRES, r[idx] = (idx + 0.5)·bin_size
   const bin_size = pattern.r[1] - pattern.r[0]
   let total = 0
   for (let bin_idx = 0; bin_idx < pattern.r.length; bin_idx++) {
@@ -101,26 +101,26 @@ export function coordination_number(
 
 // Reduced PDF G(r) for one structure. With center_species/neighbor_species set this is the
 // partial G_ab(r); without them it is the composition-averaged (unweighted) G(r).
-export function calculate_pdf(structure: Crystal, options: RdfOptions = {}): PdfPattern {
+export function compute_pdf(structure: Crystal, options: RdfOptions = {}): PdfPattern {
   const rho_0 = number_density(structure)
-  const pattern = calculate_rdf(structure, with_pdf_defaults(options))
+  const pattern = compute_rdf(structure, with_pdf_defaults(options))
   return { ...pattern, rho_0, reduced_g_r: reduced_pdf(pattern, rho_0) }
 }
 
 // Total scattering-weighted PDF: g(r) = Σ_ab w_ab·g_ab(r) and G(r) = 4π·r·ρ0·(g(r) − 1), with
 // Faber-Ziman weights w_ab = c_a·c_b·b_a·b_b/<b>² supplied by #lib/scattering.
-export function calculate_total_pdf(
+export function compute_total_pdf(
   structure: Crystal,
   { radiation, s_val, ...rdf_options }: TotalPdfOptions = {},
 ): TotalPdfPattern {
   // Rejects a lattice-less or empty structure with the PDF's own message before the search
   const rho_0 = number_density(structure)
-  const partial_rdfs = calculate_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
+  const partial_rdfs = compute_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
   return weight_pdf_partials(structure, partial_rdfs, { radiation, s_val, rho_0 })
 }
 
-// The weighting half of calculate_total_pdf: combine a structure's partial g_ab(r) (from
-// calculate_all_pair_rdfs) into the total for one radiation, so switching radiation skips
+// The weighting half of compute_total_pdf: combine a structure's partial g_ab(r) (from
+// compute_all_pair_rdfs) into the total for one radiation, so switching radiation skips
 // the expensive neighbour search.
 export function weight_pdf_partials(
   structure: Crystal,
@@ -159,10 +159,10 @@ export function weight_pdf_partials(
 
   for (const partial of partial_rdfs) {
     if (!partial.element_pair) {
-      throw new Error(`calculate_all_pair_rdfs returned a pattern with no element_pair`)
+      throw new Error(`compute_all_pair_rdfs returned a pattern with no element_pair`)
     }
     const [el_a, el_b] = partial.element_pair
-    // The Faber-Ziman sum runs over ORDERED pairs (a, b), but calculate_all_pair_rdfs emits
+    // The Faber-Ziman sum runs over ORDERED pairs (a, b), but compute_all_pair_rdfs emits
     // the E(E+1)/2 UNORDERED pairs. g_ab = g_ba by symmetry, so an unlike pair stands in for
     // two ordered terms and must carry twice the weight of a like pair. Dropping this factor
     // of 2 is the classic total-PDF bug: the weights then sum to less than 1, so the total

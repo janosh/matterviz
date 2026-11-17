@@ -1,5 +1,5 @@
 import Dos from '#lib/spectral/Dos.svelte'
-import type { Vec2 } from '#lib'
+import type { Vec2 } from '#lib/math.js'
 import type { PymatgenCompleteDos } from '#lib/spectral/helpers.js'
 import {
   extract_pdos,
@@ -21,6 +21,7 @@ import {
   clip_rect,
   doc_query,
   expect_plot_controls,
+  fire,
   mount_sized,
   plot_svg,
   reset_section,
@@ -38,6 +39,7 @@ const phonon_dos: PhononDos = {
 
 const electronic_dos: ElectronicDos = {
   type: `electronic`,
+  energy_unit: `eV`,
   energies: [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
   densities: [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2, 0.1],
   efermi: 0,
@@ -45,6 +47,7 @@ const electronic_dos: ElectronicDos = {
 
 const spin_polarized_dos: ElectronicDos = {
   type: `electronic`,
+  energy_unit: `eV`,
   energies: [-3, -2, -1, 0, 1, 2, 3],
   densities: [0.2, 0.4, 0.6, 1.0, 0.6, 0.4, 0.2],
   spin_down_densities: [0.15, 0.35, 0.55, 0.9, 0.55, 0.35, 0.15],
@@ -155,40 +158,32 @@ describe(`Dos component`, () => {
     [`orbital pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `orbital`) ?? {} }, 3],
     [`filtered pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `atom`, [`Fe`]) ?? {} }, 2],
   ])(`renders %s`, async (_desc, props, n_lines) => {
-    mount(Dos, { target: document.body, props })
-    await tick()
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(n_lines)
+    const plot = await mount_plot(props) // throws without a .scatter
+    expect(plot.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(n_lines)
   })
 
   // `cm-1`/`cm⁻¹` are the spellings found in the wild; they must map to cm^-1 at the prop
   // boundary instead of throwing inside convert_frequencies
   it.each([`cm^-1`, `cm-1`, `cm⁻¹`])(`labels the phonon axis in %s as cm⁻¹`, async (units) => {
-    mount(Dos, {
-      target: document.body,
-      props: {
-        doses: { '': phonon_dos },
-        units: units as FrequencyUnit,
-        show_controls: true,
-        show_units_control: true,
-        controls_open: true,
-        normalize: `max`,
-        show_normalize_control: true,
-        sigma: 0.5,
-        sigma_range: [0, 2],
-      },
+    const plot = await mount_plot({
+      doses: { '': phonon_dos },
+      units: units as FrequencyUnit,
+      show_controls: true,
+      show_units_control: true,
+      controls_open: true,
+      normalize: `max`,
+      show_normalize_control: true,
+      sigma: 0.5,
+      sigma_range: [0, 2],
     })
-    await tick()
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
+    expect(plot.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
     expect(document.body.textContent).toContain(`Phonon frequency (cm−1)`)
     const select = doc_query<HTMLSelectElement>(`#dos-units`)
     expect(select.value).toBe(`cm^-1`)
     // picking an option writes the canonical unit back to `units` (the handler is delegated, so
     // the synthetic change event must bubble like a real one)
     select.value = `meV`
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
+    await fire(select, new Event(`change`, { bubbles: true }))
     expect(document.body.textContent).toContain(`Phonon frequency (meV)`)
     for (const section of [`dos`, `smearing`]) await reset_section(section)
     expect(select.value).toBe(`THz`)
@@ -272,22 +267,19 @@ describe(`Dos component`, () => {
     const plot = await mount_plot({ doses: { '': doses } })
     const ticks = (axis: string) =>
       [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map(
-        (element) => element.textContent,
+        ({ textContent }) => textContent,
       )
     const [x_before, y_before] = [ticks(`x`), ticks(`y`)]
     expect(x_before.length + y_before.length).toBeGreaterThan(4)
-    plot_svg(plot).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    await tick()
+    await fire(plot_svg(plot), new MouseEvent(`dblclick`, { bubbles: true }))
     expect([ticks(`x`), ticks(`y`)]).toEqual([x_before, y_before])
   })
 
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
     const controls_state = { controls_open: true }
-    const target = document.createElement(`div`)
-    mount(Dos, {
-      target,
-      props: bind_props(
+    const plot = await mount_plot(
+      bind_props(
         {
           doses: { '': phonon_dos },
           controls_toggle_props: { 'data-testid': `dos-toggle` },
@@ -295,12 +287,11 @@ describe(`Dos component`, () => {
         },
         controls_state,
       ),
-    })
-    await tick()
-    expect(target.querySelector(`[data-testid="dos-pane"]`)?.getAttribute(`style`)).toContain(
+    )
+    expect(plot.querySelector(`[data-testid="dos-pane"]`)?.getAttribute(`style`)).toContain(
       `min-width: 20rem`,
     )
-    await expect_plot_controls(target, controls_state, `dos`)
+    await expect_plot_controls(plot, controls_state, `dos`)
   })
 
   it(`shows EmptyState for an empty canonical collection`, () => {
@@ -312,6 +303,7 @@ describe(`Dos component`, () => {
   // peak 2, down 1 keep 2:1), mirror spin-down stacks too, phonon densities are per shown unit
   const split: ElectronicDos = {
     type: `electronic`,
+    energy_unit: `eV`,
     energies: [-1, 0, 1],
     densities: [0, 2, 0],
     spin_down_densities: [0, 1, 0],
@@ -338,11 +330,12 @@ describe(`Dos component`, () => {
         densities: spin_polarized_dos.densities.map((density) => density * 0.5),
       },
     }
-    mount(Dos, {
-      target: document.body,
-      props: { doses: multi_spin_dos, stack: true, spin_mode: `overlay`, controls_open: true },
+    await mount_plot({
+      doses: multi_spin_dos,
+      stack: true,
+      spin_mode: `overlay`,
+      controls_open: true,
     })
-    await tick()
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)
     expect(area_paths).toHaveLength(4)
 
@@ -396,17 +389,8 @@ describe(`format_dos_tooltip`, () => {
   // rows: format_dos_tooltip args [x_formatted, y_formatted, label, is_horizontal, is_phonon,
   // x_axis_label, y_axis_label, num_series, normalize?], expected title, expected [label, value,
   // unit] lines
-  type Args = [
-    string,
-    string,
-    string | null,
-    boolean,
-    boolean,
-    string,
-    string,
-    number,
-    NormalizationMode?,
-  ]
+  // oxfmt-ignore
+  type Args = [string, string, string | null, boolean, boolean, string, string, number, NormalizationMode?]
   // oxfmt-ignore
   it.each([
     [[`5.00`, `0.50`, `DOS 1`, false, true, `Frequency (THz)`, `Density`, 2], `DOS 1`, [[`Density`, `0.50`], [`Frequency`, `5.00`, `THz`]]],
@@ -422,8 +406,9 @@ describe(`format_dos_tooltip`, () => {
   ] as [Args, string | undefined, [string, string, string?][]][])(`%j`, (args, title, lines) => {
     const [x_formatted, y_formatted, label, is_horizontal, is_phonon, ...rest] = args
     const [x_axis_label, y_axis_label, num_series, normalize] = rest
+    // a phonon axis in its display unit, an electronic one in its DOS's energy unit
     const result = format_dos_tooltip({
-      units: `cm^-1`, x_formatted, y_formatted, label, is_horizontal, is_phonon, x_axis_label, y_axis_label,
+      units: is_phonon ? `cm^-1` : `eV`, x_formatted, y_formatted, label, is_horizontal, is_phonon, x_axis_label, y_axis_label,
       num_series, normalize,
     })
     expect(result.title).toBe(title)

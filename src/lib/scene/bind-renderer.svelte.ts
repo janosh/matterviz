@@ -24,14 +24,11 @@ type AttributeBackend = {
 
 let destroy_attribute_guarded = false
 
-// three's WebGPUAttributeUtils.destroyAttribute() (r187, still on dev; mrdoob/three.js#35535 was closed as won't-fix since only software WebGPU like SwiftShader refuses such small buffers) calls data.buffer.destroy() unguarded.
-// If that attribute's createBuffer was refused earlier — CI's software WebGPU rejects uploads as
-// small as 480 bytes under memory pressure — the backend entry exists but holds no buffer, so
-// disposing the geometry throws a TypeError. That throw surfaces in a Threlte <T> effect
-// teardown, and Svelte runs teardowns outside the try/catch that routes to error boundaries: it
-// escapes mid-flush, the batch carrying pending writes is dropped, and its root is left dirty,
-// which makes Batch#schedule bail forever after. The whole page stops reacting, which is what
-// wedged the edit-bonds e2e tests on CI. Drop the dead entry instead of throwing.
+// three's WebGPUAttributeUtils.destroyAttribute() (r187; mrdoob/three.js#35535 closed as
+// won't-fix) calls data.buffer.destroy() unguarded, which throws for an attribute whose
+// createBuffer was refused (CI's software WebGPU rejects 480-byte uploads under memory
+// pressure). The throw escapes a Threlte <T> effect teardown mid-flush, outside Svelte's error
+// boundaries, and leaves the page unreactive for good. Drop the dead entry instead.
 function guard_destroy_attribute(): void {
   if (destroy_attribute_guarded) return
   destroy_attribute_guarded = true
@@ -50,9 +47,8 @@ function guard_destroy_attribute(): void {
   }
 }
 
-// Shared factory for every Threlte <Canvas> in the library. WebGPURenderer acquires its device
-// asynchronously and render() *throws* before init() resolves, but Threlte's setAnimationLoop
-// awaits it — only render() calls outside the loop (PNG/video capture) need their own await.
+// Shared factory for every Threlte <Canvas>. render() throws before the async init() resolves:
+// Threlte's loop awaits it, renders outside it (PNG/video capture) must too.
 export function create_renderer(
   canvas: HTMLCanvasElement,
   { on_device_lost }: { on_device_lost?: (info: DeviceLostInfo) => void } = {},
@@ -64,9 +60,8 @@ export function create_renderer(
     antialias: true,
     powerPreference: `high-performance`,
   })
-  // A lost WebGPU device is never restored in place; recovery means a new renderer, which
-  // callers get by remounting the <Canvas>. Chain rather than replace three's handler: its
-  // device-lost flag is what stops render() drawing to a dead device until then.
+  // A lost device needs a new renderer (remount the <Canvas>). Chain three's handler, whose
+  // device-lost flag stops render() drawing to the dead device until then.
   if (on_device_lost) {
     const three_on_device_lost = renderer.onDeviceLost.bind(renderer)
     renderer.onDeviceLost = (info: DeviceLostInfo) => {
@@ -74,9 +69,8 @@ export function create_renderer(
       on_device_lost(info)
     }
   }
-  // three floors the drawing buffer to whole device pixels but styles the canvas at the exact,
-  // usually fractional, size Threlte measures, so the browser resamples (blurs) every frame.
-  // Style it at the size actually drawn instead, at most one device pixel short of its box.
+  // three floors the drawing buffer to whole device pixels but styled the fractional measured
+  // size, so browsers blurred every frame: style the drawn size (under a device px short).
   const fit_style = () => {
     const ratio = renderer.getPixelRatio()
     canvas.style.width = `${canvas.width / ratio}px`
@@ -102,13 +96,10 @@ export function create_renderer(
   return renderer
 }
 
-// Mirror the Threlte scene + active camera into bindable props (for export panes etc.) and
-// register the canvas -> renderer/scene mappings so PNG-export and element-capture helpers can
-// find them. Creates an $effect (call during component init). Returns the Threlte context for
-// further use (e.g. clipping planes). The registries are WeakMaps keyed by canvas, so an
-// unmounted <Canvas> drops out with its element; the renderer itself is disposed by Threlte.
-// Scenes that only need the registration (PNG export) omit on_bind. `ready` lets PNG export
-// wait for content the scene is still preparing (see scene_registry).
+// Mirror the Threlte scene + active camera into bindable props via on_bind (optional) and
+// register canvas -> renderer/scene WeakMaps for PNG export and element capture. Call during
+// component init; returns the Threlte context. `ready` lets PNG export wait for content still
+// being prepared (see scene_registry).
 export function bind_renderer(
   on_bind?: (scene: Scene, camera: Camera) => void,
   ready?: () => Promise<void>,

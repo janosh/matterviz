@@ -184,7 +184,7 @@ describe(`BarPlot`, () => {
 
   // Focus is the keyboard's hover, so leaving the chart is the keyboard's mouseleave.
   // Arrowing between marks must not clear it, though - that is sliding along, not leaving.
-  test(`focus opens the tooltip, and only leaving the chart closes it`, async () => {
+  test(`focus opens the tooltip, only leaving the chart closes it, arrows move the tab stop`, async () => {
     const on_bar_hover = vi.fn()
     const plot = await mount_sized_bar_plot({ series: [basic], on_bar_hover })
     const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
@@ -205,6 +205,10 @@ describe(`BarPlot`, () => {
     )
     await tick()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+
+    bars[0].focus()
+    await fire(bars[0], keydown(`ArrowRight`))
+    expect(bars.slice(0, 2).map((bar) => bar.getAttribute(`tabindex`))).toEqual([`-1`, `0`])
   })
 
   // StructureBarPlot wires bar hover for on_sites_hover only when bar_sites maps bars to
@@ -260,15 +264,6 @@ describe(`BarPlot`, () => {
       expect(await pin_cycle(driver, { keyboard: true, lit })).toMatch(/x: 1\s*y: 10/)
     },
   )
-
-  test(`arrow keys move the tab stop between marks`, async () => {
-    const plot = await mount_sized_bar_plot({ series: [basic] })
-    const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
-    bars[0].focus()
-    await fire(bars[0], keydown(`ArrowRight`))
-    expect(bars[1].getAttribute(`tabindex`)).toBe(`0`)
-    expect(bars[0].getAttribute(`tabindex`)).toBe(`-1`)
-  })
 
   test.each([
     { name: `empty data`, series: [], expected_series: 0, expected_bars: 0 },
@@ -476,7 +471,7 @@ describe(`BarPlot`, () => {
     // the focusable marker groups name themselves to screen readers, like the bars do
     const focusable = [...plot.querySelectorAll(`.line-points [tabindex]`)]
     expect(focusable.map((point) => point.getAttribute(`aria-label`))).toEqual(
-      basic.y.map((value, idx) => `point ${idx + 1} of Test Series: ${value}`),
+      Array.from(basic.y, (value, idx) => `point ${idx + 1} of Test Series: ${value}`),
     )
     expect(focusable.every((point) => point.getAttribute(`role`) === `button`)).toBe(true)
     markers[0].dispatchEvent(mouse(`mouseover`))
@@ -505,16 +500,17 @@ describe(`BarPlot`, () => {
     expect(query(plot, `.legend-marker`).innerHTML).toContain(`steelblue`)
   })
 
-  test(`markerless line series emit point hover and click callbacks`, async () => {
-    const on_point_hover = vi.fn()
-    const on_point_click = vi.fn()
-    const plot = await mount_sized_bar_plot({
-      series: [{ x: [-0.01, 1], y: [1, 0], render_mode: `line`, markers: `line` }],
-      x_axis: { range: [0, 1] },
-      y_axis: { range: [0, 1] },
-      on_point_hover,
-      on_point_click,
-    })
+  test(`markerless line series emit point callbacks, with no hit target when no vertex is in range`, async () => {
+    const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+    const mount_line = (x: number[], y: number[]) =>
+      mount_sized_bar_plot({
+        series: [{ x, y, render_mode: `line`, markers: `line` }],
+        x_axis: { range: [0, 1] },
+        y_axis: { range: [0, 1] },
+        on_point_hover,
+        on_point_click,
+      })
+    const plot = await mount_line([-0.01, 1], [1, 0])
     const hit_target = plot.querySelector(`.line-series polyline[stroke="transparent"]`)
     const { x: clientX, y: clientY } = clip_rect(plot)
     const edge_event = { bubbles: true, clientX, clientY }
@@ -530,19 +526,13 @@ describe(`BarPlot`, () => {
     }
     hit_target?.dispatchEvent(mouse(`mouseleave`))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
-  })
-
-  test(`omits line hit targets when no data vertex is in range`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [{ x: [-1, 2], y: [0.5, 0.5], render_mode: `line`, markers: `line` }],
-      x_axis: { range: [0, 1] },
-      y_axis: { range: [0, 1] },
-      on_point_click: vi.fn(),
-    })
+    // a segment crossing the view with both vertices outside it draws, but has no hit target
+    const out_of_range = await mount_line([-1, 2], [0.5, 0.5])
+    const visible_line = `.line-series polyline:not([stroke="transparent"])`
+    expect(out_of_range.querySelector(visible_line)).not.toBeNull()
     expect(
-      plot.querySelector(`.line-series polyline:not([stroke="transparent"])`),
-    ).not.toBeNull()
-    expect(plot.querySelector(`.line-series polyline[stroke="transparent"]`)).toBeNull()
+      out_of_range.querySelector(`.line-series polyline[stroke="transparent"]`),
+    ).toBeNull()
   })
 
   test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
@@ -686,7 +676,8 @@ describe(`BarPlot`, () => {
     const on_export = desc === `default` ? undefined : vi.fn()
     const plot = await mount_sized_bar_plot({
       series: [
-        { x: [`A`, `B`], y: [1, 2], label: `kept` },
+        // asymmetric errors export as resolved lower/upper magnitude columns
+        { x: [`A`, `B`], y: [1, 2], label: `kept`, y_error: { lower: [0.5, 1], upper: 0.2 } },
         { x: [`C`], y: [3], label: `hidden`, visible: false },
         { x: [`B`], y: [4] },
       ],
@@ -699,10 +690,10 @@ describe(`BarPlot`, () => {
     await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce())
     const csv = on_export ? on_export.mock.calls[0][1].data : save.mock.calls[0][0]
     expect(String(csv).split(/\r?\n/)).toEqual([
-      `series,x,y`,
-      `kept,A,1`,
-      `kept,B,2`,
-      `Series 3,B,4`,
+      `series,x,y,y_error_lower,y_error_upper`,
+      `kept,A,1,0.5,0.2`,
+      `kept,B,2,1,0.2`,
+      `Series 3,B,4,,`,
     ])
     if (on_export) {
       expect(save).not.toHaveBeenCalled()
@@ -711,33 +702,78 @@ describe(`BarPlot`, () => {
     } else expect(save.mock.calls[0][1]).toBe(`Category.csv`)
   })
 
-  test(`default tooltip shows series label for multi-series on hover`, async () => {
-    const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
-    const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }
-    const plot = await mount_sized_bar_plot({
-      series: [series_a, series_b],
-      x_axis: { label: `X` },
-      y_axis: { label: `Count` },
-    })
-    const bar = plot.querySelector(`path[role="button"]`)
-    expect(bar).toBeInstanceOf(SVGPathElement)
-    await fire(bar, mouse(`mousemove`))
-    const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    expect(text).toContain(`Group A`)
-    expect(text).toContain(`Count`)
+  // Each error bar sits centred on its bar's (group-offset) slot, symmetric about the bar's
+  // tip: the cumulative value for stacked segments, the far end from the base for negatives
+  test.each([
+    [`grouped`, `vertical`],
+    [`stacked`, `vertical`],
+    [`overlay`, `vertical`],
+    [`grouped`, `horizontal`],
+    [`stacked`, `horizontal`],
+  ] as const)(`y_error bars sit on the bar tips (%s, %s)`, async (mode, orientation) => {
+    const vertical = orientation === `vertical`
+    const series: BarSeries[] = [
+      { x: [`a`, `b`, `c`], y: [3, -2, 5], y_error: 0.5, label: `one` },
+      { x: [`a`, `b`, `c`], y: [2, -4, 1], y_error: [1, 0.25, 0.75], label: `two` },
+    ]
+    const bar = { opacity: 1, border_radius: 0 }
+    const plot = await mount_sized_bar_plot({ series, mode, orientation, bar })
+    const rects = bar_rects(plot)
+    const error_paths = [...plot.querySelectorAll(`.bar-series path.error-bars`)]
+    expect(error_paths).toHaveLength(2)
+    // error_bar_path's stem: M across,lo V hi (vertical) or M lo,across H hi; caps run across
+    const stem_letter = vertical ? `V` : `H`
+    const stems = error_paths.flatMap((path) =>
+      [
+        ...(path.getAttribute(`d`) ?? ``).matchAll(
+          /M(?<first>[\d.-]+),(?<second>[\d.-]+)(?<dir>[VH])(?<end>[\d.-]+)/g,
+        ),
+      ]
+        .map((match) => match.slice(1))
+        .filter(([, , letter]) => letter === stem_letter),
+    )
+    expect(stems).toHaveLength(6)
+    const ys = series.flatMap((srs) => [...srs.y])
+    const clip = clip_rect(plot)
+    const [lo, hi] = vertical ? [clip.y, clip.y + clip.height] : [clip.x, clip.x + clip.width]
+    for (const [rect_idx, rect] of rects.entries()) {
+      const [first, second, , end] = stems[rect_idx].map(Number)
+      const [across, start] = vertical ? [first, second] : [second, first]
+      const center = vertical ? rect.x + rect.width / 2 : rect.y + rect.height / 2
+      // the tip is the edge away from the base: up/right for positive values
+      const [neg_tip, pos_tip] = vertical
+        ? [rect.y + rect.height, rect.y]
+        : [rect.x, rect.x + rect.width]
+      expect(across).toBeCloseTo(center, 9)
+      expect((start + end) / 2).toBeCloseTo(ys[rect_idx] > 0 ? pos_tip : neg_tip, 9)
+      // the auto range takes in the topmost error end: no stem pokes out of the plot
+      for (const px of [start, end]) {
+        expect(px).toBeGreaterThanOrEqual(lo - 1e-9)
+        expect(px).toBeLessThanOrEqual(hi + 1e-9)
+      }
+    }
   })
 
-  test(`custom tooltip snippet`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [basic],
-      tooltip: createRawSnippet<[BarHandlerProps]>((data) => ({
-        render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
-      })),
-    })
-    const first_bar = plot.querySelector(`path[role="button"]`)
-    expect(first_bar).toBeInstanceOf(SVGPathElement)
-    await fire(first_bar, mouse(`mousemove`))
-    expect(plot.querySelector(`.custom-tooltip`)?.textContent).toBe(`x: 1, y: 10`)
+  test(`default tooltip names the hovered series; a tooltip snippet replaces it`, async () => {
+    const hovered_text = async (selector: string, props = {}) => {
+      const plot = await mount_sized_bar_plot({
+        series: [
+          { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` },
+          { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` },
+        ],
+        y_axis: { label: `Count` },
+        ...props,
+      })
+      await fire(query(plot, `path[role="button"]`, SVGPathElement), mouse(`mousemove`))
+      return plot.querySelector(selector)?.textContent ?? ``
+    }
+    const text = await hovered_text(`.plot-tooltip`)
+    expect(text).toContain(`Group A`)
+    expect(text).toContain(`Count`)
+    const tooltip = createRawSnippet<[BarHandlerProps]>((data) => ({
+      render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
+    }))
+    expect(await hovered_text(`.custom-tooltip`, { tooltip })).toBe(`x: 1, y: 10`)
   })
 
   describe(`categorical bar charts`, () => {
@@ -941,11 +977,11 @@ describe(`BarPlot`, () => {
   })
 
   test.each([
-    { orientation: `vertical`, secondary_axis: `y2` },
-    { orientation: `horizontal`, secondary_axis: `x2` },
+    { orientation: `vertical`, secondary_axis: `y2`, explicit_axis: { y_axis: `y` } },
+    { orientation: `horizontal`, secondary_axis: `x2`, explicit_axis: { x_axis: `x` } },
   ] as const)(
-    `visible automatic axis groups reassign in $orientation orientation`,
-    async ({ orientation, secondary_axis }) => {
+    `visible automatic axis groups reassign, explicit ones reserve their slot ($orientation)`,
+    async ({ orientation, secondary_axis, explicit_axis }) => {
       const input: BarSeries[] = [
         { x: [1, 2], y: [1, 2], label: `Energy`, unit: `eV` },
         { x: [1, 2], y: [100, 200], label: `Pressure`, unit: `GPa` },
@@ -973,23 +1009,11 @@ describe(`BarPlot`, () => {
         ),
       ).toBe(true)
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
-    },
-  )
-
-  test.each([
-    { orientation: `vertical`, secondary_axis: `y2`, explicit_axis: { y_axis: `y` } },
-    { orientation: `horizontal`, secondary_axis: `x2`, explicit_axis: { x_axis: `x` } },
-  ] as const)(
-    `explicit value axes reserve their slot in $orientation orientation`,
-    async ({ orientation, secondary_axis, explicit_axis }) => {
-      const plot = await mount_sized_bar_plot({
+      const explicit = await mount_sized_bar_plot({
         orientation,
-        series: [
-          { x: [1, 2], y: [1, 2], unit: `eV`, ...explicit_axis },
-          { x: [1, 2], y: [100, 200], unit: `GPa` },
-        ],
+        series: [{ ...input[0], ...explicit_axis }, input[1]],
       })
-      expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
+      expect(explicit.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
     },
   )
 

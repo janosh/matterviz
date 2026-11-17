@@ -1,4 +1,5 @@
-import type { AnyStructure, Vec3 } from '#lib'
+import type { AnyStructure } from '#lib'
+import type { Vec3 } from '#lib/math.js'
 import type { BondPair } from '#lib/structure/index.js'
 import {
   electroneg_ratio,
@@ -46,6 +47,11 @@ import {
 import { octahedron_points } from './geometry-fixtures'
 
 const uniform_red = { mode: `uniform`, color: `#ff0000` } as const
+// Deterministic pseudo-random numbers in [0, 1] (LCG, glibc parameters)
+const lcg = (seed: number) => () => {
+  seed = (seed * 1103515245 + 12345) & 0x7fffffff
+  return seed / 0x7fffffff
+}
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
 
@@ -227,14 +233,11 @@ describe(`convex_hull_3d`, () => {
   // Split partial sites a rounding apart (here 1e-4 Å) double a corner: the sliver faces between
   // the copies broke the horizon, giving hulls of 13.3 A^3 for a 10.7 A^3 octahedron
   test(`near-duplicate corners keep the octahedron's volume`, () => {
-    let seed = 7
-    const rand = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff
-      return seed / 0x7fffffff - 0.5
-    }
+    const rand = lcg(7)
     const corners = octahedron_points.map((point) => point.map((coord) => 2 * coord) as Vec3)
     for (let trial = 0; trial < 200; trial++) {
-      const jitter = (point: Vec3) => point.map((coord) => coord + 1e-4 * rand()) as Vec3
+      const jitter = (point: Vec3) =>
+        point.map((coord) => coord + 1e-4 * (rand() - 0.5)) as Vec3
       const points = [...corners.map(jitter), ...corners.slice(0, 3).map(jitter)]
       const hull = convex_hull_3d(points)
       expect(hull.volume).toBeCloseTo(32 / 3, 2)
@@ -243,12 +246,7 @@ describe(`convex_hull_3d`, () => {
   })
 
   test(`random point clouds satisfy Euler formula and outward normals`, () => {
-    // Deterministic pseudo-random points (LCG, glibc parameters)
-    let seed = 42
-    const rand = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff
-      return seed / 0x7fffffff
-    }
+    const rand = lcg(42)
     for (let trial = 0; trial < 20; trial++) {
       const points = Array.from(
         { length: 4 + Math.floor(rand() * 12) },
@@ -659,8 +657,7 @@ describe(`compute_polyhedra`, () => {
     expect(compute_polyhedra(make_nacl_cluster(), [])).toHaveLength(0)
     expect(compute_polyhedra({ sites: [] }, octahedral_bonds)).toHaveLength(0)
     const elemental = make_nacl_cluster()
-    for (const site of elemental.sites)
-      site.species = [{ element: `Si`, occu: 1, oxidation_state: 0 }]
+    for (const site of elemental.sites) site.species = [{ element: `Si`, occu: 1 }]
     // A composition with no eligible anion pairs must skip the bond graph entirely.
     const bonds = [...octahedral_bonds]
     const read_bond = vi.fn(() => octahedral_bonds[0])

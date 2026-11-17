@@ -109,7 +109,7 @@ export type SlabInfo = {
   // Whether a symmetry that flips the surface normal relates the two faces
   is_symmetric: boolean
   // Whether the oxidation states give a dipole along the normal above 1e-3 e/Å per surface
-  // area. Undefined when no species carries a non-zero oxidation state (charges unknown).
+  // area. Undefined when no species carries an oxidation state (charges unknown).
   is_polar?: boolean
 }
 

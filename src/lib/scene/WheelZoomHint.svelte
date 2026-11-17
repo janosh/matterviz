@@ -3,9 +3,8 @@
   import { fade } from 'svelte/transition'
   import type { WheelZoomGate } from './wheel-zoom.svelte'
 
-  // Brief centered notice when a WheelZoomGate let a plain wheel scroll the page instead of
-  // zooming. Passes clicks through and stays mounted while hidden, so the polite live region
-  // already exists when its first message arrives.
+  // Brief notice when a WheelZoomGate let a plain wheel scroll the page. Click-through, and
+  // mounted while hidden so the polite live region exists before its first message.
   let { gate }: { gate: WheelZoomGate } = $props()
 </script>
 

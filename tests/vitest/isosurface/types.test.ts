@@ -30,20 +30,18 @@ test.each([
   expect(normalize_active_volume_id(active, volumes)).toBe(expected)
 })
 
-describe(`grid_data_range`, () => {
-  // oxfmt-ignore
-  test.each([
-    [`all-positive`, [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [1, 8, 8, 4.5]],
-    [`mixed pos/neg`, [[[-5, 2], [3, -1]], [[0, 6], [-7, 4]]], [-7, 6, 7, 0.25]],
-    [`abs_max driven by min`, [[[-10, 1]]], [-10, 1, 10, -4.5]],
-    [`uniform zero`, [[[0, 0], [0, 0]]], [0, 0, 0, 0]],
-    [`single element`, [[[42]]], [42, 42, 42, 42]],
-    [`single negative`, [[[-3.5]]], [-3.5, -3.5, 3.5, -3.5]],
-    [`empty grid`, [], [0, 0, 0, 0]],
-  ] as [string, number[][][], number[]][])(`%s: [min, max, abs_max, mean] = %j`, (_label, grid, [min, max, abs_max, mean]) => {
-    const range = grid_data_range(grid.length ? flatten_grid(grid).values : [])
-    expect(range).toEqual({ min, max, abs_max, mean: expect.closeTo(mean) })
-  })
+// oxfmt-ignore
+test.each([
+  [`all-positive`, [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [1, 8, 8, 4.5]],
+  [`mixed pos/neg`, [[[-5, 2], [3, -1]], [[0, 6], [-7, 4]]], [-7, 6, 7, 0.25]],
+  [`abs_max driven by min`, [[[-10, 1]]], [-10, 1, 10, -4.5]],
+  [`uniform zero`, [[[0, 0], [0, 0]]], [0, 0, 0, 0]],
+  [`single element`, [[[42]]], [42, 42, 42, 42]],
+  [`single negative`, [[[-3.5]]], [-3.5, -3.5, 3.5, -3.5]],
+  [`empty grid`, [], [0, 0, 0, 0]],
+] as [string, number[][][], number[]][])(`grid_data_range: %s: [min, max, abs_max, mean] = %j`, (_label, grid, [min, max, abs_max, mean]) => {
+  const range = grid_data_range(grid.length ? flatten_grid(grid).values : [])
+  expect(range).toEqual({ min, max, abs_max, mean: expect.closeTo(mean) })
 })
 
 const vol_with_range = (min: number, max: number, signed?: boolean): VolumetricData =>
@@ -120,23 +118,18 @@ test.each([
   expect(() => index_volumes(ids.map((id) => ({ ...volume, id })))).toThrow(error)
 })
 
-test.each([`geometry`, `color`, `unrelated`])(
-  `remove_volume of a %s source preserves surviving identities`,
-  (removed) => {
-    const ids = [`geometry`, `color`, `unrelated`]
-    const volumes = ids.map((id) => make_volume_fixture([[[1]]], { id }))
-    const layer = { ...auto_volume_layer(volumes[0]), color_volume_id: `color` }
-    const result = remove_volume(volumes, [layer], removed)
-    expect(result.volumes.map((volume) => volume.id)).toEqual(
-      ids.filter((id) => id !== removed),
-    )
-    expect(result.layers).toEqual(
-      removed === `geometry`
-        ? []
-        : [{ ...layer, color_volume_id: removed === `color` ? undefined : `color` }],
-    )
-  },
-)
+test.each([`geometry`, `color`, `unrelated`])(`remove_volume keeps ids (%s)`, (removed) => {
+  const ids = [`geometry`, `color`, `unrelated`]
+  const volumes = ids.map((id) => make_volume_fixture([[[1]]], { id }))
+  const layer = { ...auto_volume_layer(volumes[0]), color_volume_id: `color` }
+  const result = remove_volume(volumes, [layer], removed)
+  expect(result.volumes.map((volume) => volume.id)).toEqual(ids.filter((id) => id !== removed))
+  expect(result.layers).toEqual(
+    removed === `geometry`
+      ? []
+      : [{ ...layer, color_volume_id: removed === `color` ? undefined : `color` }],
+  )
+})
 
 describe(`label_file_volumes`, () => {
   const vol = (label?: string): VolumetricData =>
@@ -174,16 +167,13 @@ describe(`label_file_volumes`, () => {
   test.each([
     [[`charge`, `magnetization`], `Fe-CHGCAR.bz2`, [`Fe-CHGCAR: charge`, `Fe-CHGCAR: magnetization`]],
     [[undefined, undefined], `density.cube`, [`density.cube: 1`, `density.cube: 2`]],
-  ])(
-    `multi-block %j in %s share one source with "file: block" labels`,
-    (block_labels, filename, expected) => {
-      const labeled = label_file_volumes(block_labels.map(vol), filename)
-      expect(labeled.map((entry) => entry.label)).toEqual(expected)
-      expect(new Set(labeled.map((entry) => entry.source))).toEqual(
-        new Set([expected[0].split(`:`)[0]]),
-      )
-    },
-  )
+  ])(`%j in %s: "file: block" labels`, (block_labels, filename, expected) => {
+    const labeled = label_file_volumes(block_labels.map(vol), filename)
+    expect(labeled.map((entry) => entry.label)).toEqual(expected)
+    expect(new Set(labeled.map((entry) => entry.source))).toEqual(
+      new Set([expected[0].split(`:`)[0]]),
+    )
+  })
 })
 
 describe(`merge_imported_volumes`, () => {
@@ -267,6 +257,16 @@ describe(`volume_from_json`, () => {
     expect(vol.data_range.mean).toBe(4.5)
   })
 
+  // a payload naming no unit gets none, not some default one
+  test.each([
+    [`e/A^3`, `e/A^3`],
+    [``, ``],
+    [null, null],
+    [undefined, null],
+  ])(`units %j read as %j`, (units, expected) => {
+    expect(volume_from_json({ ...base, grid: [[[1]]], units }).units).toBe(expected)
+  })
+
   test.each([true, false, undefined])(`keeps the signed hint %s`, (signed) => {
     const vol = volume_from_json({ ...base, grid: [[[1]]], signed })
     expect(vol.signed).toBe(signed)
@@ -284,6 +284,7 @@ describe(`volume_from_json`, () => {
     [{ ...base, grid: [[[1]]], lattice: [[1, 0, 0]] }, /3x3 lattice/],
     [{ ...base, grid: [[[1]]], periodic: `yes` }, /boolean periodic/],
     [{ ...base, grid: [[[1]]], signed: `no` }, /signed flag must be a boolean/],
+    [{ ...base, grid: [[[1]]], units: 3 }, /units must be a string or null/],
     [{ ...base, grid: [[[1]]], id: undefined }, /nonempty string/],
     [42, /must be an object/],
   ])(`rejects malformed payload %#`, (payload, expected) => {

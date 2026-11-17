@@ -1,7 +1,7 @@
 // Parser for VASP vaspwave.h5 charge (+ magnetization) density: charge/{charge,grid} plus the
 // structure under structure/positions (py4vasp's VASP 6.x schema). Full files run to hundreds
 // of MB, so hosts prune them to these datasets first. Wavefunctions are out of scope.
-import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math.js'
+import { compute_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math.js'
 import type { Crystal, Site } from '#lib/structure/index.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
@@ -72,7 +72,7 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
 
   return {
     sites,
-    lattice: { matrix: lattice, pbc: [true, true, true], ...calc_lattice_params(lattice) },
+    lattice: { matrix: lattice, pbc: [true, true, true], ...compute_lattice_params(lattice) },
   }
 }
 
@@ -160,6 +160,7 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
         origin: [0, 0, 0],
         periodic: true,
         label: component_labels[component_idx],
+        units: `e/A^3`, // divided by the cell volume above
       })
     },
   )

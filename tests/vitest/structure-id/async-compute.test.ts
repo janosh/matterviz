@@ -1,8 +1,8 @@
 // The vitest environment has no Worker, so these exercise the synchronous SSR fallback path
-// of calc_structure_id_async — including that a thrown error becomes a rejection rather
+// of compute_structure_id_async — including that a thrown error becomes a rejection rather
 // than a synchronous throw, which is the contract every caller's .catch() relies on.
-import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
-import { calc_structure_id_async } from '#lib/structure-id/async-compute.svelte.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
+import { compute_structure_id_async } from '#lib/structure-id/async-compute.svelte.js'
 import {
   structure_from_payload,
   to_structure_id_payload,
@@ -25,8 +25,8 @@ describe(`worker payload`, () => {
     expect(Object.keys(payload).toSorted()).toEqual(
       `lattice` in structure ? [`lattice`, `xyz`] : [`xyz`],
     )
-    expect(calc_structure_id(structure_from_payload(payload), options)).toEqual(
-      calc_structure_id(structure, options),
+    expect(compute_structure_id(structure_from_payload(payload), options)).toEqual(
+      compute_structure_id(structure, options),
     )
   })
 
@@ -37,27 +37,27 @@ describe(`worker payload`, () => {
   })
 })
 
-describe(`calc_structure_id_async`, () => {
+describe(`compute_structure_id_async`, () => {
   test(`matches the sync result, dedupes in-flight requests, never reuses a settled one`, async () => {
     const crystal = make_fcc([2, 2, 2])
-    const first = calc_structure_id_async(crystal, { skip_csp: true })
-    const second = calc_structure_id_async(crystal, { skip_csp: true })
+    const first = compute_structure_id_async(crystal, { skip_csp: true })
+    const second = compute_structure_id_async(crystal, { skip_csp: true })
     expect(second).toBe(first)
     // Differing options must NOT collapse onto the same entry
-    const third = calc_structure_id_async(crystal, { skip_cna: true })
+    const third = compute_structure_id_async(crystal, { skip_cna: true })
     expect(third).not.toBe(first)
     const [first_result] = await Promise.all([first, second, third])
-    expect(first_result).toEqual(calc_structure_id(crystal, { skip_csp: true }))
+    expect(first_result).toEqual(compute_structure_id(crystal, { skip_csp: true }))
 
-    const after_settle = calc_structure_id_async(crystal, { skip_csp: true })
+    const after_settle = compute_structure_id_async(crystal, { skip_csp: true })
     expect(after_settle).not.toBe(first)
     expect(await after_settle).toEqual(first_result)
   })
 
   test(`rejects rather than throwing synchronously`, async () => {
     // No try/catch around the call itself: a synchronous throw would fail the test here.
-    // calc_structure_id's individual validation paths are covered in structure-id.test.ts.
-    const promise = calc_structure_id_async({ sites: [] })
+    // compute_structure_id's individual validation paths are covered in structure-id.test.ts.
+    const promise = compute_structure_id_async({ sites: [] })
     await expect(promise).rejects.toThrow(/structure has no sites/)
   })
 })

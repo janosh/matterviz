@@ -1,10 +1,10 @@
 // Exercises the Web Worker branch of compute_msd_async. happy-dom has no Worker, so
-// calc-msd.test.ts only ever reaches the synchronous fallback; here a stub Worker
+// compute-msd.test.ts only ever reaches the synchronous fallback; here a stub Worker
 // is installed before the module is imported so the real postMessage plumbing runs.
 // The generic client (request ids, dedupe, abort, error replies) is covered by
 // worker-client.test.ts; only the MSD-specific contract is asserted here.
 import type { compute_msd_async as ComputeMsdAsync } from '#lib/msd/async-compute.svelte.js'
-import { calc_msd } from '#lib/msd/calc-msd.js'
+import { compute_msd } from '#lib/msd/compute-msd.js'
 import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
@@ -19,7 +19,7 @@ import { orbit_run } from '../vacf/helpers'
 // The stub plays msd-worker.ts, whose serve_worker keeps the stream a request names
 const input_of = create_input_store<TrajectoryPositionStream>()
 const stub = install_stub_worker<WorkerRequest<TrajectoryPositionStream, MsdOptions>>(
-  (message) => calc_msd(input_of(message), message.options),
+  (message) => compute_msd(input_of(message), message.options),
 )
 let compute_msd_async: typeof ComputeMsdAsync
 
@@ -36,7 +36,7 @@ describe(`worker code path`, () => {
     const result = await compute_msd_async(positions)
     await compute_msd_async(drift_positions(20))
     expect(stub.posted).toHaveLength(2)
-    expect(result.curves[0].msd).toEqual(calc_msd(positions).curves[0].msd)
+    expect(result.curves[0].msd).toEqual(compute_msd(positions).curves[0].msd)
     expect_module_worker(stub.instances, `src/lib/msd/msd-worker.ts`)
     const { input } = stub.posted[0].message
     expect(input?.positions).toBeInstanceOf(Float64Array)
@@ -67,7 +67,7 @@ it(`MsdPlot relabels dt edits without recomputing, and recomputes without re-sen
     return [state.result, state.error_msg, stub.posted.length]
   }
   const relabelled: MsdOptions = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
-  const expected = calc_msd(positions, relabelled)
+  const expected = compute_msd(positions, relabelled)
   const invalid = [undefined, expect.stringContaining(`without time_unit`), 1]
   try {
     await settle(6)
@@ -78,7 +78,7 @@ it(`MsdPlot relabels dt edits without recomputing, and recomputes without re-sen
     expect(await edit({ max_lag_fraction: 0.5, dt: 2 })).toEqual(invalid)
     expect(await edit(relabelled)).toEqual([expected, undefined, 1])
     const recomputed = { ...relabelled, max_lag_fraction: 0.3 }
-    expect(await edit(recomputed)).toEqual([calc_msd(positions, recomputed), undefined, 2])
+    expect(await edit(recomputed)).toEqual([compute_msd(positions, recomputed), undefined, 2])
     expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
   } finally {
     await unmount(component)
@@ -90,7 +90,7 @@ it(`MsdPlot relabels dt edits without recomputing, and recomputes without re-sen
 // Fits belong to their curve: hovering `Li fit` in the legend reports Li like `Li` itself
 it(`MsdPlot reports the element curve under a legend entry`, async () => {
   const on_curve_hover = vi.fn()
-  const result = calc_msd({ ...drift_positions(), elements: [`Li`, `Si`] })
+  const result = compute_msd({ ...drift_positions(), elements: [`Li`, `Si`] })
   mount(MsdPlot, {
     target: document.body,
     props: { result, on_curve_hover, style: `width: 400px; height: 300px` },

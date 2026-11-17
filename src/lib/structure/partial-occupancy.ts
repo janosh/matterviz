@@ -1,4 +1,5 @@
 import type { Vec3 } from '#lib/math.js'
+import { subtract } from '#lib/math.js'
 import type { Site } from '#lib/structure/index.js'
 import { is_image_site } from '#lib/structure/site.js'
 
@@ -99,12 +100,11 @@ export const merge_split_partial_sites = (
   })
   const render_sites: RenderSite[] = []
   const groups: { center: Vec3; indices: number[] }[] = []
-  // Groups indexed by coordinate bucket, each registered under its own bucket and the handful
-  // of neighbours it actually lies close to (see `neighbor_offsets`), so a lookup is a single
-  // key even when two coincident sites round to opposite sides of a boundary. Scanning every
-  // group instead made this quadratic, and it runs per trajectory frame: 8k split-partial
-  // sites took 218 ms a frame, which hiding one species of an alloy reaches at any site count
-  // (that leaves one visible species summing under 1).
+  // Groups indexed by coordinate bucket, each registered under its own bucket and the few
+  // neighbours it lies close to (see `neighbor_offsets`), so a lookup is one key even when two
+  // coincident sites round to opposite sides of a boundary. Scanning every group was quadratic
+  // per trajectory frame: 218 ms for 8k split-partial sites, which hiding one species of an
+  // alloy reaches at any site count (its one visible species sums under 1).
   const groups_by_bucket = new Map<string, number[]>()
   const bucket_of = (coord: number) => Math.round(coord / MERGE_BUCKET_SIZE)
   for (const [site_idx, site] of sites.entries()) {
@@ -117,16 +117,9 @@ export const merge_split_partial_sites = (
     // candidates arrive in group-creation order, so the first hit is the one `find` returned
     let group_idx = -1
     for (const candidate of groups_by_bucket.get(`${basis_x},${basis_y},${basis_z}`) ?? []) {
-      const { center } = groups[candidate]
-      const [delta_x, delta_y, delta_z] = [
-        center[0] - site.xyz[0],
-        center[1] - site.xyz[1],
-        center[2] - site.xyz[2],
-      ]
-      if (
-        delta_x * delta_x + delta_y * delta_y + delta_z * delta_z <=
-        MERGE_DISTANCE_TOLERANCE ** 2
-      ) {
+      const [delta_x, delta_y, delta_z] = subtract(groups[candidate].center, site.xyz)
+      const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+      if (dist_sq <= MERGE_DISTANCE_TOLERANCE ** 2) {
         group_idx = candidate
         break
       }
@@ -150,13 +143,8 @@ export const merge_split_partial_sites = (
   }
   for (const { indices } of groups) {
     const [representative_idx] = indices
-    const merged =
-      indices.length > 1
-        ? {
-            ...sites[representative_idx],
-            species: indices.flatMap((idx) => sites[idx].species),
-          }
-        : undefined
+    const species = indices.length > 1 ? indices.flatMap((idx) => sites[idx].species) : null
+    const merged = species ? { ...sites[representative_idx], species } : undefined
     render_sites.push(make_render_site(representative_idx, indices, merged))
   }
   return render_sites
@@ -219,10 +207,7 @@ export const compute_slice_geometry = (site_species: Site[`species`]): SliceGeom
       },
     ]
   }
-  const total_visible_occupancy = visible_species.reduce(
-    (occupancy_sum, { occu }) => occupancy_sum + occu,
-    0,
-  )
+  const total_visible_occupancy = visible_species.reduce((sum, { occu }) => sum + occu, 0)
   // Preserve total angular coverage at one full turn for invalid overfull inputs.
   const occupancy_scale_factor =
     total_visible_occupancy > 1 + OCCUPANCY_TOL ? 1 / total_visible_occupancy : 1

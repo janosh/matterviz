@@ -16,16 +16,16 @@ import type { Slab, SlabOptions } from './types'
 
 // Whether the slab's dipole along the surface normal exceeds 1e-3 e/Å per surface area, as
 // pymatgen's Slab.is_polar: occupancy-weighted oxidation states about the sites' centroid.
-// Undefined when every oxidation state is 0 (what parsers store for files declaring none).
+// Undefined when no species is decorated; undecorated species in a partly decorated slab count as 0.
 function is_polar_slab(sites: Site[], normal: Vec3, area: number): boolean | undefined {
-  if (sites.every((site) => site.species.every((spec) => !spec.oxidation_state)))
+  if (sites.every((site) => site.species.every((spec) => spec.oxidation_state === undefined)))
     return undefined
   const heights = sites.map((site) => math.dot(site.xyz, normal))
   const centroid = math.mean(heights)
   let dipole = 0
   for (const [idx, { species }] of sites.entries()) {
     for (const { oxidation_state, occu } of species)
-      dipole += oxidation_state * occu * (heights[idx] - centroid)
+      dipole += (oxidation_state ?? 0) * occu * (heights[idx] - centroid)
   }
   return Math.abs(dipole) / area > 1e-3
 }
@@ -113,7 +113,7 @@ export function make_slab(
 
   // Rebuilding the matrix from its own lattice parameters puts a along +x, b in the xy
   // plane and hence the surface normal along +z, leaving fractional coordinates intact.
-  const cell = math.calc_lattice_params(slab_matrix)
+  const cell = math.compute_lattice_params(slab_matrix)
   const final_matrix = reorient_lattice
     ? math.cell_to_lattice_matrix(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma)
     : slab_matrix

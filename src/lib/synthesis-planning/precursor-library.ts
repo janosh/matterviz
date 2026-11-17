@@ -150,11 +150,19 @@ const library_by_key = new Map(
   PRECURSOR_LIBRARY.map((info) => [precursor_key(info.formula), info]),
 )
 
+// Lookups by formula string: routes look up the same few hundred formulas tens of thousands of
+// times, and each miss of this cache parses the formula
+const lookup_cache = new Map<string, PrecursorInfo | null>()
+
 // Library entry for a formula in any element ordering, or null when it is not a common precursor
 export const lookup_precursor_info = (formula: string): PrecursorInfo | null => {
+  let info = lookup_cache.get(formula)
+  if (info !== undefined) return info
   try {
-    return library_by_key.get(precursor_key(formula)) ?? null
+    info = library_by_key.get(precursor_key(formula)) ?? null
   } catch {
-    return null
+    info = null
   }
+  lookup_cache.set(formula, info)
+  return info
 }

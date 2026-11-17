@@ -134,8 +134,7 @@
     facet_layout,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
-    // `range_padding` defaults to 0.05 (a framing pad around the density bins) rather than
-    // ScatterPlot's 0. No controls pane; hover is reported via on_point_click / the tooltip.
+    // `range_padding` defaults to 0.05 (a pad around the density bins), not ScatterPlot's 0
     Pick<
       BasePlotProps,
       `padding` | `range_padding` | `title` | `hovered` | `fullscreen` | `fullscreen_toggle`
@@ -177,8 +176,7 @@
       children?: Snippet<[OverlayContext]>
       // Extra header buttons rendered next to the fullscreen toggle
       header_controls?: Snippet<[OverlayContext]>
-      // auto-placed badge (e.g. MAE/R² stats): rendered inside the plot area wherever it
-      // overlaps the least data, while also avoiding the auto-placed colorbar
+      // Badge (e.g. MAE/R² stats) auto-placed in the plot area where it overlaps the least data
       annotation?: Snippet<[OverlayContext]>
       // Marginal distribution plots along the plot edges: true, a type, or a per-side map
       marginals?: MarginalsProp
@@ -222,7 +220,7 @@
   })
 
   // Only scan the data when a range bound is auto. Explicit bounds merge per bound so facet
-  // grids get the pinned range (not the [0, 1] no-scan sentinel) and measure the real ticks.
+  // grids get the pinned range, not the [0, 1] no-scan sentinel.
   const needs_data_range = (range: AxisConfig[`range`]): boolean =>
     range?.[0] == null || range?.[1] == null
   const pin_range = (axis: AxisConfig, fallback: Vec2): Vec2 => [
@@ -243,9 +241,8 @@
   })
 
   const frame = create_cartesian_frame({
-    controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane, only the fullscreen button
-    // No default tick format: a supplied formatter skips format_tick_values' duplicate
-    // avoidance, so a fixed default would repeat labels on narrow ranges
+    controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane
+    // No default tick format: it would skip format_tick_values' duplicate avoidance
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({ ...auto_ranges, x2: unit_range, y2: unit_range }),
     has_x2: () => false,
@@ -271,8 +268,7 @@
   const { facet, pan_zoom } = frame
   const x_scale_fn = $derived(frame.scales.x)
   const y_scale_fn = $derived(frame.scales.y)
-  // Plain copies: the frame's ranges are deep $state proxies, and the density paths read
-  // these bounds per bin (screen_cell), which would be a reactive read each time
+  // Plain copies of the frame's $state ranges, as the density paths read them per bin
   const x_range = $derived<Vec2>([...frame.ranges.current.x])
   const y_range = $derived<Vec2>([...frame.ranges.current.y])
   const has_plot_size = $derived(width > 0 && height > 0)
@@ -283,8 +279,8 @@
     height: frame.chart_height,
   })
 
-  // Density bins use the decoration-independent base padding (plus fixed marginal strips):
-  // they are the solver's obstacle field, so the solved pad would feed back into the solve
+  // Density bins use the base padding (plus marginal strips), not the solved pad: they are
+  // the solver's obstacle field
   const density_bin_count = (total: number, start: number, end: number): number =>
     Math.max(8, Math.ceil(Math.max(1, total - start - end) / density_settings.bin_px))
   const density_bins = $derived.by(() => {
@@ -299,8 +295,7 @@
     x: axis_transform(x_scale_type),
     y: axis_transform(y_scale_type),
   })
-  // Wait for measured dimensions before indexing and binning, avoiding an extra pass
-  // for the placeholder plot size.
+  // Binning waits for measured dimensions, skipping a pass at the placeholder size
   const x_order = $derived(series_x_order(series))
   const per_series_density = $derived(series.some((srs) => srs.density_color_scale != null))
   const density_result = $derived(
@@ -315,8 +310,7 @@
       per_series_density,
     ),
   )
-  // The pooled grid still drives occupancy and zoom; colored strips retain each series'
-  // counts so overlapping models never hide each other or mix into a misleading color.
+  // The pooled grid drives occupancy and zoom; per-series strips keep overlapping models apart
   const density_grids = $derived(density_result.series_bins ?? [density_result])
   // `grids` lets hot loops pass a snapshot instead of reading density_grids per bin
   const occupied_series = (bin_idx: number, grids = density_grids): number[] =>
@@ -407,8 +401,7 @@
         if (!counts[y_bin * x_bins + x_bin]) continue
         const start = x_bin
         while (x_bin + 1 < x_bins && counts[y_bin * x_bins + x_bin + 1]) x_bin++
-        // canonical bins -> screen cells, same as draw_density: without it the obstacle field is
-        // mirrored on a reversed range and the solver drops decorations onto the dense cloud
+        // canonical bins -> screen cells as in draw_density, or reversed ranges mirror the field
         const [[col_a, row], [col_b]] = [to_screen(start, y_bin), to_screen(x_bin, y_bin)]
         const [col, n_cols] = [Math.min(col_a, col_b), Math.abs(col_b - col_a) + 1]
         runs.push({
@@ -428,8 +421,8 @@
       render_mode === `density` &&
       density_result.max_count > 0,
   )
-  // Config is the raw prop, not color_bar_props (whose title changes with the visible
-  // count), so data changes don't trigger a layout read.
+  // The raw prop, not color_bar_props (whose title tracks the count), so data changes don't
+  // trigger a layout read
   const colorbar = create_colorbar_decoration({
     id: `density-colorbar`,
     enabled: () => show_colorbar,
@@ -474,16 +467,14 @@
       ? (size_scale.radius_range?.[1] ?? SCALE_DEFAULTS.binned_radius[1])
       : (size_scale.pick_radius ?? SCALE_DEFAULTS.binned_radius[1]),
   )
-  // Share projected points between painting, picking, and labels. Size controls and
-  // selection changes then reuse the viewport instead of rescanning the entire dataset.
+  // Projected points shared by painting, picking, and labels
   const points_in_view = $derived(
     render_mode === `points`
       ? [...visible_points(series, x_range, y_range, x_scale_fn, y_scale_fn, x_order)]
       : [],
   )
   // A hover holds only while the bins or points it was resolved against do: a data swap, zoom,
-  // pan or resize replaces them without a pointer event, so it clears until the next move
-  // instead of showing a bin or point that is no longer under the cursor
+  // pan or resize clears it until the next pointer move
   let hovered_bin = $derived.by<DensityBin | null>(() => (void density_result, null))
   let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(
     () => (void points_in_view, null),
@@ -504,8 +495,7 @@
       ? min_point_radius
       : size_scale_fn(size_value)
 
-  // Located per selection change, not per pulse frame, and by index so it stays independent
-  // of the scales (which move every pan frame).
+  // Located per selection change by index, independent of the (per-pan-frame) scales
   const selected_point = $derived.by(() => {
     if (selected_point_id == null) return null
     for (const [series_idx, srs] of series.entries()) {
@@ -522,8 +512,7 @@
     { step: 0.035, element: () => wrapper },
   )
 
-  // Shared by both layers so a marker looks the same whichever one draws it. `pulse` is the
-  // animation phase for the selected marker, or null for a plain one.
+  // Shared by both layers. `pulse` is the selected marker's animation phase, null otherwise.
   function draw_marker(
     ctx: CanvasRenderingContext2D,
     center_x: number,
@@ -601,8 +590,7 @@
     ctx.globalAlpha = 1
   }
 
-  // NaN fails every comparison, so this also rejects non-finite coords. Derived so the
-  // bounds are sorted once per view, not per call.
+  // NaN fails every comparison, so this also rejects non-finite coords
   const in_view = $derived.by(() => {
     const [x_min, x_max] = range_bounds(x_range)
     const [y_min, y_max] = range_bounds(y_range)
@@ -610,8 +598,8 @@
       coord_x >= x_min && coord_x <= x_max && coord_y >= y_min && coord_y <= y_max
   })
 
-  // Every point except the selected one, which pulses and so lives on the overlay. Reads
-  // neither the pulse nor the hover, so this layer only repaints when the data or view move.
+  // Every point except the selected one (on the overlay), so this layer only repaints when
+  // the data or view move
   function draw_points(ctx: CanvasRenderingContext2D) {
     for (const point of points_in_view) {
       const { series_idx, point_idx, cx: center_x, cy: center_y, size_value } = point
@@ -623,14 +611,12 @@
     ctx.globalAlpha = 1
   }
 
-  // The two markers that change at interaction rate. Repainting these on their own canvas is
-  // what keeps a pulse tick or a pointer move off the O(all points) path above.
+  // The two markers that change at interaction rate, on their own canvas
   function draw_marked_points(ctx: CanvasRenderingContext2D) {
     if (render_mode !== `points`) return // density mode has no per-point markers
     for (const [mark, pulse] of [
       [hovered_point, null],
-      // selected last, so its ring sits over the hover. Don't subscribe this paint effect to
-      // pulse ticks when the selected ID does not resolve to a point.
+      // selected last, its ring over the hover; no pulse subscription without a selected point
       [selected_point, selected_point ? selected_pulse.unit : null],
     ] as const) {
       if (!mark) continue
@@ -652,35 +638,26 @@
     draw: (ctx: CanvasRenderingContext2D) => void,
     clip_to_plot = false,
   ) => {
-    if (node)
-      canvas_painters.set(node, (target, pixel_ratio) =>
-        paint_at(target, draw, clip_to_plot, pixel_ratio),
-      )
-    paint_at(node, draw, clip_to_plot)
-  }
-  const paint_at = (
-    node: HTMLCanvasElement | undefined,
-    draw: (ctx: CanvasRenderingContext2D) => void,
-    clip_to_plot: boolean,
-    pixel_ratio?: number,
-  ) => {
-    const surface = prepare_canvas(node, width, height, pixel_ratio)
-    if (!surface) return
-    const { ctx } = surface
-    ctx.setTransform(surface.pixel_ratio, 0, 0, surface.pixel_ratio, 0, 0)
-    ctx.clearRect(0, 0, width, height)
-    ctx.save()
-    if (clip_to_plot) {
-      ctx.beginPath()
-      ctx.rect(plot_rect.x, plot_rect.y, plot_rect.width, plot_rect.height)
-      ctx.clip()
+    const paint_at = (target: HTMLCanvasElement | undefined, pixel_ratio?: number) => {
+      const surface = prepare_canvas(target, width, height, pixel_ratio)
+      if (!surface) return
+      const { ctx } = surface
+      ctx.setTransform(surface.pixel_ratio, 0, 0, surface.pixel_ratio, 0, 0)
+      ctx.clearRect(0, 0, width, height)
+      ctx.save()
+      if (clip_to_plot) {
+        ctx.beginPath()
+        ctx.rect(plot_rect.x, plot_rect.y, plot_rect.width, plot_rect.height)
+        ctx.clip()
+      }
+      draw(ctx)
+      ctx.restore()
     }
-    draw(ctx)
-    ctx.restore()
+    if (node) canvas_painters.set(node, paint_at)
+    paint_at(node)
   }
 
-  // Canvases live in <foreignObject>s inside the frame's SVG so they sit in SVG paint order:
-  // under the axes, reference lines and marginals, above the title background.
+  // Canvases live in <foreignObject>s so they sit in SVG paint order (under the axes)
   let base_canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
   // Base layer for the data, overlay for the hovered/selected markers (see draw_marked_points)
@@ -758,8 +735,8 @@
   let previous_label_series: typeof series | undefined
   let previous_label_config: string | undefined
 
-  // An effect, not $derived: the solve mutates `label_offsets`, and a lazy derived is skipped
-  // while the template renders no labels, leaving stale offsets to warm-start the next solve.
+  // An effect, not a lazy $derived skipped while no labels render, which would leave stale
+  // `label_offsets` to warm-start the next solve
   let point_label_positions = $state<Record<string, Point2D>>({})
   $effect(() => {
     // Warm keys are index-based, so a data swap must search cold, not polish the old layout
@@ -849,8 +826,7 @@
     if (pan_zoom.drag_start || pan_zoom.is_panning) return
     const coords = get_relative_coords(event)
     if (!coords) return clear_hover()
-    // The raw cursor, not a pre-offset point: PlotTooltip needs the true anchor to
-    // flip and to keep the pointer glyph clear (see its `offset`/`avoid_cursor`).
+    // The raw cursor: PlotTooltip offsets and flips around the true anchor
     tooltip_pos = coords
     hovered = true
     if (render_mode === `density`) {
@@ -1005,42 +981,32 @@
       </div>
     {/if}
 
-    {#if hovered_bin && tooltip !== false}
+    {#if tooltip !== false && (hovered_bin || hovered_point)}
+      {@const bin = hovered_bin}
+      {@const props = !bin && hovered_point ? point_payload(hovered_point) : null}
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
         offset={{ x: 12, y: 8 }}
         constrain_to={{ width, height }}
         exclusion_rects={frame.exclusion_rects}
-        fallback_size={{ width: 150, height: 64 }}
-        bg_color={bin_color(hovered_bin)}
+        fallback_size={bin ? { width: 150, height: 64 } : { width: 120, height: 44 }}
+        bg_color={bin ? bin_color(bin) : props?.color}
       >
-        {#if hovered_bin.series_idx != null}
-          {@html sanitize_html(
-            series[hovered_bin.series_idx].label ?? `Series ${hovered_bin.series_idx + 1}`,
-          )}<br />
-        {/if}
-        {hovered_bin.count.toLocaleString()} samples<br />
-        {@const { x_range: bin_x, y_range: bin_y } = hovered_bin}
-        {@render xy_values(
-          `${fmt_x(bin_x[0])} - ${fmt_x(bin_x[1])}`,
-          `${fmt_y(bin_y[0])} - ${fmt_y(bin_y[1])}`,
-        )}
-      </PlotTooltip>
-    {:else if hovered_point && tooltip !== false}
-      {@const props = point_payload(hovered_point)}
-      <PlotTooltip
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        offset={{ x: 12, y: 8 }}
-        constrain_to={{ width, height }}
-        exclusion_rects={frame.exclusion_rects}
-        fallback_size={{ width: 120, height: 44 }}
-        bg_color={series_color(hovered_point.series_idx)}
-      >
-        {#if tooltip}
+        {#if bin}
+          {#if bin.series_idx != null}
+            {@html sanitize_html(
+              series[bin.series_idx].label ?? `Series ${bin.series_idx + 1}`,
+            )}<br />
+          {/if}
+          {bin.count.toLocaleString()} samples<br />
+          {@render xy_values(
+            `${fmt_x(bin.x_range[0])} - ${fmt_x(bin.x_range[1])}`,
+            `${fmt_y(bin.y_range[0])} - ${fmt_y(bin.y_range[1])}`,
+          )}
+        {:else if props && tooltip}
           {@render tooltip(props)}
-        {:else}
+        {:else if props}
           {@render xy_values(props.x_formatted, props.y_formatted)}
         {/if}
       </PlotTooltip>

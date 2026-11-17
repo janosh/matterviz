@@ -1,7 +1,7 @@
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import * as kde_math from '#lib/plot/box/kde.js'
 import * as box_math from '#lib/plot/box/box-plot.js'
-import type { Vec2 } from '#lib'
+import type { Vec2 } from '#lib/math.js'
 import type { BoxPlotSeries, Orientation } from '#lib/plot/index.js'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -51,7 +51,7 @@ const mount_sized_box_plot = (
 
 // Boxes only render when they have at least one finite value (finite median)
 const rendered_box_count = (series: readonly BoxPlotSeries[] = []): number =>
-  series.filter((srs) => (srs.visible ?? true) && srs.y.some((val) => Number.isFinite(val)))
+  series.filter((srs) => (srs.visible ?? true) && Array.from(srs.y).some(Number.isFinite))
     .length
 
 describe(`BoxPlot`, () => {
@@ -779,8 +779,9 @@ describe(`BoxPlot`, () => {
     expect(attrs.filter((val) => val.includes(`NaN`))).toEqual([])
     const [samples, opts] = kde_spy.mock.calls[0] ?? []
     // log10(10 ** val) round-trips to within a few ulps
-    expect(samples).toHaveLength(exponents.length)
-    samples?.forEach((val, idx) => expect(val).toBeCloseTo(exponents[idx], 12))
+    const sample_list = Array.from(samples ?? [])
+    expect(sample_list).toHaveLength(exponents.length)
+    sample_list.forEach((val, idx) => expect(val).toBeCloseTo(exponents[idx], 12))
     expect(opts).toMatchObject({ ...kde_math.VIOLIN_KDE_OPTS, bandwidth: 0.25 })
     expect(kde_spy.mock.results[0]?.value.bandwidth).toBe(0.25)
     const path = plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``
@@ -863,20 +864,9 @@ describe(`BoxPlot`, () => {
   })
 })
 
-// One CSV row per visible box with its five-number summary and outliers
-test(`BoxPlot CSV export lists each box's summary statistics`, async () => {
-  const on_export = vi.fn()
-  const plot = await mount_sized_box_plot({ series: [basic], on_export })
-  const result = await export_via_pane(on_export, `CSV`, plot)
-  expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`])
-  const [header, row] = String(result.data).split(`\n`)
-  expect(header.split(`,`).slice(0, 3)).toEqual([`series`, `n`, `min`])
-  expect(header.endsWith(`,outliers`)).toBe(true)
-  expect(row.startsWith(`Box A,`)).toBe(true)
-})
-
 // The tick of an unlabeled box used to read its 0-based index while legend and CSV said
-// `Box 1`, and its aria-label read `box 1: , median`
+// `Box 1`, and its aria-label read `box 1: , median`. The CSV has one row per visible box
+// with its five-number summary and outliers
 test(`unlabeled boxes are numbered from 1 in ticks, legend, aria-labels and CSV`, async () => {
   const on_export = vi.fn()
   const plot = await mount_sized_box_plot({
@@ -893,7 +883,10 @@ test(`unlabeled boxes are numbered from 1 in ticks, legend, aria-labels and CSV`
     `Toggle visibility for Box 2`,
   ])
   expect(aria_labels(`g.box-series`)).toEqual([`Box 1, median 2`, `Box 2, median 5`])
-  const { data } = await export_via_pane(on_export, `CSV`, plot)
-  const rows = String(data).split(`\n`).slice(1)
+  const { data, offered } = await export_via_pane(on_export, `CSV`, plot)
+  expect(offered).toEqual([`PNG`, `SVG`, `CSV`])
+  const [header, ...rows] = String(data).split(`\n`)
+  expect(header.split(`,`).slice(0, 3)).toEqual([`series`, `n`, `min`])
+  expect(header.endsWith(`,outliers`)).toBe(true)
   expect(rows.map((row) => row.split(`,`)[0])).toEqual([`Box 1`, `Box 2`])
 })

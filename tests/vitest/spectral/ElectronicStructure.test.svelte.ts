@@ -152,23 +152,22 @@ vi.mock(`#lib/colors/backdrop.svelte.js`, async (original) => {
 
 // a_i · b_j = 2π δ_ij with the band grid's identity k_lattice: one Cartesian frame
 const structure = make_crystal(2 * Math.PI, [[`Cu`, [0, 0, 0]]])
-// one band on a 3³ grid peaking at its centre, above E_F = 7
-const band_data: BandGridData = {
-  energies: [
-    [
-      {
-        values: Float64Array.from({ length: 27 }, (_, idx) => (idx === 13 ? 8 : 5)),
-        dims: [3, 3, 3],
-        order: `z_fastest`,
-      },
-    ],
-  ],
-  k_grid: [3, 3, 3],
-  k_lattice: IDENTITY_MATRIX3,
-  fermi_energy: 7,
-  n_bands: 1,
-  n_spins: 1,
+// a band grid in eV, one sheet per `bands` entry on an n_k³ grid in the identity k_lattice
+const make_band_grid = (bands: Float64Array[], n_k: number, fermi_energy: number) => {
+  const dims: Vec3 = [n_k, n_k, n_k]
+  return {
+    energies: [bands.map((values) => ({ values, dims, order: `z_fastest` as const }))],
+    k_grid: dims,
+    k_lattice: IDENTITY_MATRIX3,
+    fermi_energy,
+    energy_unit: `eV` as const,
+    n_bands: bands.length,
+    n_spins: 1,
+  }
 }
+// one band on a 3³ grid peaking at its centre, above E_F = 7
+const peak = Float64Array.from({ length: 27 }, (_, idx) => (idx === 13 ? 8 : 5))
+const band_data: BandGridData = make_band_grid([peak], 3, 7)
 // the grid's band 0 along Γ → X, crossing E_F = 7
 const band_struct: BaseBandStructure = {
   type: `electronic`,
@@ -186,6 +185,7 @@ const band_struct: BaseBandStructure = {
 }
 const dos: ElectronicDos = {
   type: `electronic`,
+  energy_unit: `eV`,
   energies: [4, 6, 8, 10],
   densities: [0, 1, 1, 0],
   efermi: 7,
@@ -220,17 +220,51 @@ const mount_live = (init: ComponentProps<typeof ElectronicStructure>) => {
   const props = $state(init)
   return { props, root: mount_host(props) }
 }
+// mounts the host at a measured size, as the side-by-side layout needs
+const mount_sized_host = (
+  props: Partial<ComponentProps<typeof ElectronicStructure>>,
+  width: number,
+  height: number,
+) =>
+  mount_sized(ElectronicStructure, props, {
+    selector: `.electronic-structure`,
+    width,
+    height,
+    on_mount: (component) => mounted.push(component),
+  })
 const count = (root: Element, selector: string) => root.querySelectorAll(selector).length
-// Elements measure 800x600 here: tall enough panes for the side-by-side layout's plots, under
-// 24px side labels
-const mock_panes_height = (height: number) => {
+// Elements measure 800x600 here: the panes `height` high (every row `rows`), tall enough for
+// the side-by-side layout's plots, under 24px side labels
+const mock_panes_height = (height: number, rows = height) => {
   const spy = vi
     .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
     .mockImplementation(function (this: HTMLElement) {
-      return this.classList.contains(`side-label`) ? 24 : height
+      if (this.classList.contains(`side-label`)) return 24
+      return this.classList.contains(`panes`) ? height : rows
     })
   onTestFinished(() => spy.mockRestore())
 }
+// fakes the animation-frame clock (and `extra` timers) for the test
+const fake_timers = (...extra: (`setTimeout` | `clearTimeout`)[]) => {
+  vi.useFakeTimers({
+    toFake: [`requestAnimationFrame`, `cancelAnimationFrame`, `performance`, ...extra],
+  })
+  onTestFinished(() => void vi.useRealTimers())
+}
+// lets pending loads settle for a macrotask, then flushes their effects
+const next_tick = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  flushSync()
+}
+const drop_file = (root: Element, content: BlobPart, filename: string) =>
+  root.dispatchEvent(create_drop_event(new File([content], filename)))
+// waits for the sweep loader to fetch a frame
+const expect_load = (load_frame: unknown, series_id: string, frame_idx: number) =>
+  vi.waitFor(() =>
+    expect(load_frame).toHaveBeenCalledWith(series_id, frame_idx, {
+      signal: expect.any(AbortSignal),
+    }),
+  )
 const shown_panes = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>(`.pane`)].map((pane) => pane.dataset.pane)
 const view_dir = (controls?: OrbitControls): Vector3 => {
@@ -270,9 +304,7 @@ test.each([800, 400])(
     expect(root.classList.contains(`stacked`)).toBe(stacked)
     // the panes' own fullscreen toggles are off: the viewer's row holds the only one
     expect(count(root, `.fullscreen-btn`)).toBe(1)
-    expect(
-      root.querySelector(`:scope > .panes > .control-buttons .fullscreen-btn`),
-    ).not.toBeNull()
+    expect(count(root, `:scope > .panes > .control-buttons .fullscreen-btn`)).toBe(1)
     expect(
       root.querySelector(`:scope > .panes > .sides > .side > .row.scenes`)?.classList,
     ).toContain(`vertical`)
@@ -431,17 +463,7 @@ const sphere = Float64Array.from({ length: 125 }, (_, idx) =>
   ),
 )
 const two_sheets: BandGridData = {
-  energies: [
-    [
-      { values: sphere, dims: [5, 5, 5], order: `z_fastest` },
-      { values: sphere.map((energy) => energy + 0.05), dims: [5, 5, 5], order: `z_fastest` },
-    ],
-  ],
-  k_grid: [5, 5, 5],
-  k_lattice: IDENTITY_MATRIX3,
-  fermi_energy: 0.3,
-  n_bands: 2,
-  n_spins: 1,
+  ...make_band_grid([sphere, sphere.map((energy) => energy + 0.05)], 5, 0.3),
   band_indices: [8, 9],
 }
 
@@ -450,18 +472,7 @@ const two_sheets: BandGridData = {
 // lines take their sheet's colour and E_F crossings are dotted on the bands and the 3D path
 test(`hover previews a band point's energy, a click pins it and isolates the band`, async () => {
   // extraction runs on animation frames: fake them to step it deterministically
-  vi.useFakeTimers({
-    toFake: [
-      `setTimeout`,
-      `clearTimeout`,
-      `requestAnimationFrame`,
-      `cancelAnimationFrame`,
-      `performance`,
-    ],
-  })
-  onTestFinished(() => {
-    vi.useRealTimers()
-  })
+  fake_timers(`setTimeout`, `clearTimeout`)
   resolved.length = 0
   const on_plot_click = vi.fn()
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
@@ -478,12 +489,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
       on_plot_click,
     },
   })
-  const root = await mount_sized(ElectronicStructure, props, {
-    selector: `.electronic-structure`,
-    width: 1200,
-    height: 900,
-    on_mount: (component) => mounted.push(component),
-  })
+  const root = await mount_sized_host(props, 1200, 900)
   await vi.advanceTimersByTimeAsync(200)
   const scatter = root.querySelector(`[data-pane="bands"] .scatter`)
   if (!scatter) throw new Error(`no band plot`)
@@ -711,7 +717,7 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
   const drop = async (content: string, filename: string) => {
     on_file_load.mockClear()
     on_error.mockClear()
-    root.dispatchEvent(create_drop_event(new File([content], filename)))
+    drop_file(root, content, filename)
     await vi.waitFor(() =>
       expect(on_file_load.mock.calls.length + on_error.mock.calls.length).toBe(1),
     )
@@ -757,7 +763,7 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
 })
 
 // drops onto an empty viewer, resolving with what on_file_load or on_error received
-const drop_into_empty = async (file: File) => {
+const drop_into_empty = async (content: BlobPart, filename: string) => {
   const [on_file_load, on_error] = [vi.fn(), vi.fn()]
   // every key the drop may fill is present, so the viewer's writes reach these props
   const { props, root } = mount_live({
@@ -767,7 +773,7 @@ const drop_into_empty = async (file: File) => {
     on_file_load,
     on_error,
   })
-  root.dispatchEvent(create_drop_event(file))
+  drop_file(root, content, filename)
   await vi.waitFor(() =>
     expect(on_file_load.mock.calls.length + on_error.mock.calls.length).toBe(1),
   )
@@ -777,7 +783,7 @@ const drop_into_empty = async (file: File) => {
 
 test(`a { band_structure, dos } JSON (BandsAndDos' format) fills both spectra`, async () => {
   const json = JSON.stringify({ band_structure: band_struct, dos })
-  const { props, loaded } = await drop_into_empty(new File([json], `bands_dos.json`))
+  const { props, loaded } = await drop_into_empty(json, `bands_dos.json`)
   expect(loaded).toEqual({ filename: `bands_dos.json`, panes: [`bands`, `dos`] })
   expect(props.band_structs?.[`bands_dos.json`]?.bands).toEqual(band_struct.bands)
   expect(props.doses?.[`bands_dos.json`]?.densities).toEqual(dos.densities)
@@ -792,7 +798,7 @@ test(`a vaspout.h5 trajectory fills the structure from its final frame and its D
     `vaspout-si-static-scf.h5`,
     `tests/vitest/fixtures/vasp-hdf5`,
   )
-  const { props, loaded } = await drop_into_empty(new File([bytes], `vaspout.h5`))
+  const { props, loaded } = await drop_into_empty(bytes, `vaspout.h5`)
   expect(loaded).toEqual({ filename: `vaspout.h5`, panes: [`structure`, `dos`] })
   expect(
     new Set(props.structure?.sites.map(({ species }: Site) => species[0].element)),
@@ -836,8 +842,7 @@ test.each([
 test(`a dropped POSCAR turned out of the band grid's frame is reported`, async () => {
   const on_error = vi.fn()
   const root = mount_host({ structure, band_data, on_error })
-  const file = new File([poscar(turned(Math.PI / 6))], `POSCAR`)
-  root.dispatchEvent(create_drop_event(file))
+  drop_file(root, poscar(turned(Math.PI / 6)), `POSCAR`)
   await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
   expect(on_error.mock.calls[0][0].error_msg).toContain(`different Cartesian frames`)
   expect(root.querySelector<HTMLButtonElement>(`.sync-rotation-toggle`)?.disabled).toBe(true)
@@ -877,6 +882,15 @@ const make_sweep = (): Sweep => ({
   ],
 })
 const ALL_PANES: ElectronicPane[] = [`structure`, `fermi`, `trends`, `bands`, `dos`]
+// mounts a sweep (all panes unless `init` says) on live props, its series and frame bound
+const mount_sweep = (init: ComponentProps<typeof ElectronicStructure> = {}) =>
+  mount_live({
+    sweep: make_sweep(),
+    series_id: undefined,
+    frame_idx: 0,
+    panes: ALL_PANES,
+    ...init,
+  })
 const shown_density = () => viewers.dos?.doses?.total?.densities[1]
 const status = (root: Element) => root.querySelector(`.frame-status`)?.textContent?.trim()
 const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
@@ -913,17 +927,13 @@ const lazy_sweep = () => {
     label: `${series_id} ${frame_idx}`,
   }))
   sweep.load_frame = load_frame
-  const loads = () => load_frame.mock.calls.map(([series_id, idx]) => [series_id, idx])
+  const loads = () => load_frame.mock.calls.map(([series_id, idx]) => `${series_id} ${idx}`)
   return { sweep, load_frame, loads }
 }
 
 test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, () => {
-  const { props, root } = mount_live({
-    sweep: make_sweep(),
-    frame_idx: 0,
-    series_id: undefined,
-    panes: ALL_PANES,
-    // the props a sweep replaces: never shown while it is set
+  // the props a sweep replaces: never shown while it is set
+  const { props, root } = mount_sweep({
     doses: { total: { ...dos, densities: [9, 9, 9, 9] } },
   })
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`])
@@ -987,19 +997,8 @@ test.each([
 )
 
 test(`playback holds its frame while the viewer is off screen and plays on in view`, () => {
-  vi.useFakeTimers({
-    toFake: [`requestAnimationFrame`, `cancelAnimationFrame`, `performance`],
-  })
-  onTestFinished(() => {
-    vi.useRealTimers()
-  })
-  const { props, root } = mount_live({
-    sweep: make_sweep(),
-    frame_idx: 0,
-    series_id: undefined,
-    fps: 5,
-    panes: ALL_PANES,
-  })
+  fake_timers()
+  const { props, root } = mount_sweep({ fps: 5 })
   trigger_intersection(root, false)
   root.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
   flushSync()
@@ -1014,12 +1013,7 @@ test(`playback holds its frame while the viewer is off screen and plays on in vi
 })
 
 test(`clicking a trends point selects its series and frame`, () => {
-  const { props, root } = mount_live({
-    sweep: make_sweep(),
-    frame_idx: 0,
-    series_id: undefined,
-    panes: ALL_PANES,
-  })
+  const { props, root } = mount_sweep()
   viewers.trends?.on_frame_select?.(`bcc`, 0)
   flushSync()
   expect([props.series_id, props.frame_idx]).toEqual([`bcc`, 0])
@@ -1034,18 +1028,9 @@ test(`clicking a trends point selects its series and frame`, () => {
 
 test(`load_frame fetches the shown frame and its neighbours, merged into the panes`, async () => {
   const { sweep, load_frame, loads } = lazy_sweep()
-  const { props, root } = mount_live({
-    sweep,
-    series_id: undefined,
-    frame_idx: 2,
-    panes: ALL_PANES,
-  })
+  const { props, root } = mount_sweep({ sweep, frame_idx: 2 })
   // the last frame's next is the first, where playback wraps
-  expect(loads()).toEqual([
-    [`fcc`, 2],
-    [`fcc`, 0],
-    [`fcc`, 1],
-  ])
+  expect(loads()).toEqual([`fcc 2`, `fcc 0`, `fcc 1`])
   await vi.waitFor(() => expect(shown_density()).toBe(12))
   expect(status(root)).toBe(`fcc 2`)
   props.frame_idx = 1
@@ -1055,10 +1040,7 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
   props.series_id = `bcc`
   props.frame_idx = 0
   flushSync()
-  expect(loads().slice(3)).toEqual([
-    [`bcc`, 0],
-    [`bcc`, 1],
-  ])
+  expect(loads().slice(3)).toEqual([`bcc 0`, `bcc 1`])
 })
 
 test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, async () => {
@@ -1173,8 +1155,7 @@ test.each([
       flushSync()
       await vi.waitFor(() => expect(viewers.dos?.doses?.total).toBeDefined())
     }
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    flushSync()
+    await next_tick()
     expect(read(root)).toEqual(want.loaded)
     for (const compare_series of [`bcc`, undefined, `bcc`]) {
       props.compare_series = compare_series
@@ -1193,7 +1174,7 @@ test.each([
 
 // A bound descriptor carries over to a new sweep only when it has that key
 test(`replacing the sweep resets a descriptor it does not have`, () => {
-  const { props } = mount_live({ sweep: make_sweep(), descriptor: `n_ef`, panes: ALL_PANES })
+  const { props } = mount_sweep({ descriptor: `n_ef` })
   expect(viewers.trends?.descriptor).toBe(`n_ef`)
   props.sweep = make_sweep() // has n_ef: kept
   flushSync()
@@ -1226,14 +1207,10 @@ test.each([false, true])(
     // frame 2 is not prefetched from frame 0: its grid loads after the jump
     props.frame_idx = 2
     flushSync()
-    if (load_frame)
-      await vi.waitFor(() =>
-        expect(load_frame).toHaveBeenCalledWith(`fcc`, 2, { signal: expect.any(AbortSignal) }),
-      )
+    if (load_frame) await expect_load(load_frame, `fcc`, 2)
     props.frame_idx = 1
     flushSync()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    flushSync()
+    await next_tick()
     expect(on_error).toHaveBeenCalledOnce()
     props.series_id = `bcc`
     flushSync()
@@ -1241,8 +1218,7 @@ test.each([false, true])(
     // back to a series already reported: not again
     props.series_id = `fcc`
     flushSync()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    flushSync()
+    await next_tick()
     expect(on_error).toHaveBeenCalledTimes(2)
   },
 )
@@ -1260,9 +1236,7 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
   await vi.waitFor(() => expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`]))
   props.frame_idx = 1 // a frame without DOS keeps the pane (empty) instead of collapsing it
   flushSync()
-  await vi.waitFor(() =>
-    expect(load_frame).toHaveBeenCalledWith(`fcc`, 2, { signal: expect.any(AbortSignal) }),
-  )
+  await expect_load(load_frame, `fcc`, 2)
   expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`])
 })
 
@@ -1279,11 +1253,7 @@ test(`a replaced lazy sweep draws the frames its own loader returns`, async () =
   }
   teardown_reads.add(`dos`)
   onTestFinished(() => void teardown_reads.delete(`dos`))
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep: bare_sweep().sweep,
-    frame_idx: 0,
-  })
-  const root = mount_host(props)
+  const { props, root } = mount_live({ sweep: bare_sweep().sweep, frame_idx: 0 })
   // a DOS pane without its empty state (undefined while there is no pane)
   const dos_drawn = () =>
     root.querySelector(`[data-pane="dos"]`)?.querySelector(`.empty-state`) === null
@@ -1292,9 +1262,7 @@ test(`a replaced lazy sweep draws the frames its own loader returns`, async () =
   props.sweep = sweep
   flushSync()
   expect(dos_drawn()).toBe(false) // the old DOS unmounted, the path this test is about
-  await vi.waitFor(() =>
-    expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
-  )
+  await expect_load(load_frame, `fcc`, 0)
   await vi.waitFor(() => expect(dos_drawn()).toBe(true))
 })
 
@@ -1315,20 +1283,11 @@ test(`an equal copy of a lazy sweep reuses its loaded frames, a changed one load
   })
   props.sweep = copy()
   flushSync()
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  expect([loads(), shown_density()]).toEqual([
-    [
-      [`fcc`, 0],
-      [`fcc`, 1],
-    ],
-    10,
-  ])
+  await next_tick()
+  expect([loads(), shown_density()]).toEqual([[`fcc 0`, `fcc 1`], 10])
   props.sweep = copy(10) // frame 2 moved: another sweep
   await vi.waitFor(() => expect(loads()).toHaveLength(4))
-  expect(loads().slice(2)).toEqual([
-    [`fcc`, 0],
-    [`fcc`, 1],
-  ])
+  expect(loads().slice(2)).toEqual([`fcc 0`, `fcc 1`])
 })
 
 test(`a dropped sweep JSON replaces the viewer's data, which then takes only sweeps`, async () => {
@@ -1347,8 +1306,7 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
     series: [{ id: `fcc`, frames: [{ value: 0 }, { value: 20, doses: { total: dos } }] }],
     descriptors: [{ key: `n_ef`, label: `N(E_F)`, compute: `fermi_dos` }],
   }
-  const sweep_file = new File([JSON.stringify(sweep_json)], `sweep.json`)
-  root.dispatchEvent(create_drop_event(sweep_file))
+  drop_file(root, JSON.stringify(sweep_json), `sweep.json`)
   await vi.waitFor(() => expect(props.sweep?.series[0].frames).toHaveLength(2))
   expect(types.isProxy(props.sweep?.series)).toBe(false)
   flushSync()
@@ -1364,22 +1322,20 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
     axis: sweep_json.axis,
     series: [{ id: `fcc`, frames: [{ value: 0, structure }] }],
   }
-  const plain_file = new File([JSON.stringify(plain_sweep)], `plain.json`)
-  root.dispatchEvent(create_drop_event(plain_file))
+  drop_file(root, JSON.stringify(plain_sweep), `plain.json`)
   await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
   expect(on_file_load).toHaveBeenLastCalledWith({
     filename: `plain.json`,
     panes: [`structure`],
   })
 
-  root.dispatchEvent(create_drop_event(new File([POSCAR], `POSCAR`)))
+  drop_file(root, POSCAR, `POSCAR`)
   await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
   expect(props.error_msg).toBe(
     `POSCAR is no sweep JSON: while a sweep is shown the viewer takes only sweeps`,
   )
   // an invalid sweep JSON is reported with its filename
-  const bad_file = new File([JSON.stringify({ ...plain_sweep, extra: 1 })], `bad.json`)
-  root.dispatchEvent(create_drop_event(bad_file))
+  drop_file(root, JSON.stringify({ ...plain_sweep, extra: 1 }), `bad.json`)
   await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(2))
   expect(on_error).toHaveBeenLastCalledWith({
     error_msg: `Invalid sweep at root.extra: unknown field`,
@@ -1389,9 +1345,7 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
   const load_frame = vi.fn(async () => ({}))
   props.sweep = { ...make_sweep(), load_frame }
   flushSync()
-  await vi.waitFor(() =>
-    expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
-  )
+  await expect_load(load_frame, `fcc`, 0)
 })
 
 // === compare ===
@@ -1458,29 +1412,13 @@ test.each([
     const width_spy = vi
       .spyOn(HTMLElement.prototype, `clientWidth`, `get`)
       .mockReturnValue(row_width)
-    const height_spy = vi
-      .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
-      .mockImplementation(function (this: HTMLElement) {
-        if (this.classList.contains(`side-label`)) return 24
-        return this.classList.contains(`panes`) ? panes_height : 320
-      })
-    onTestFinished(() => {
-      width_spy.mockRestore()
-      height_spy.mockRestore()
-    })
-    const root = await mount_sized(
-      ElectronicStructure,
-      {
-        sweep: make_sweep(),
-        compare_series: `bcc`,
-        panes: scene_split ? ALL_PANES : [`trends`, `bands`, `dos`],
-      },
-      {
-        selector: `.electronic-structure`,
-        width,
-        height: 400,
-        on_mount: (comp) => mounted.push(comp),
-      },
+    onTestFinished(() => width_spy.mockRestore())
+    mock_panes_height(panes_height, 320)
+    const panes: ElectronicPane[] = scene_split ? ALL_PANES : [`trends`, `bands`, `dos`]
+    const root = await mount_sized_host(
+      { sweep: make_sweep(), compare_series: `bcc`, panes },
+      width,
+      400,
     )
     flushSync()
     const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
@@ -1515,9 +1453,8 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
     entry.doses = { total: { ...wide_dos, densities: [0, 4, 4, 0] } }
     entry.phonon = phonon
   }
-  const { props, root } = mount_live({
+  const { props, root } = mount_sweep({
     sweep,
-    series_id: undefined,
     frame_idx: 2,
     compare_series: undefined,
     panes: [...ALL_PANES, `phonon`],
@@ -1644,20 +1581,10 @@ test.each([
 test(`a compared series loads through the same frame cache, window and aborts`, async () => {
   mock_panes_height(1000)
   const { sweep, load_frame, loads } = lazy_sweep()
-  const { props, root } = mount_live({
-    sweep,
-    frame_idx: 2,
-    compare_series: `bcc`,
-    panes: ALL_PANES,
-  })
+  const { props, root } = mount_sweep({ sweep, frame_idx: 2, compare_series: `bcc` })
   // the shown frames first: fcc's 100 GPa and bcc's nearest, then fcc's neighbours (bcc's
   // frame nearest the next one, 0 GPa, is the same frame)
-  expect(loads()).toEqual([
-    [`fcc`, 2],
-    [`bcc`, 0],
-    [`fcc`, 0],
-    [`fcc`, 1],
-  ])
+  expect(loads()).toEqual([`fcc 2`, `bcc 0`, `fcc 0`, `fcc 1`])
   await vi.waitFor(() => expect(side_labels(root)).toEqual([`fcc · fcc 2`, `bcc · bcc 0`]))
   expect(instances.dos.at(-1)?.doses?.total?.densities[1]).toBe(10)
   // cleared and compared again: the recently shown bcc frame needs no reload
@@ -1672,8 +1599,7 @@ test(`a compared series loads through the same frame cache, window and aborts`, 
 })
 
 test(`compared scenes share one rotation link, all four turning together`, () => {
-  const { props, root } = mount_live({
-    sweep: make_sweep(),
+  const { props, root } = mount_sweep({
     frame_idx: 2,
     compare_series: `bcc`,
     panes: [`structure`, `fermi`],
@@ -1749,17 +1675,11 @@ function fill_setup(
       scalars: { tc: idx },
     })),
   }))
-  const { props: state, root } = mount_live({
-    sweep: { ...make_sweep(), series, load_frame },
-    frame_idx: 0,
-    descriptor: `n_ef`,
-    panes: ALL_PANES,
-    ...props,
-  })
+  const sweep = { ...make_sweep(), series, load_frame }
+  const { props: state, root } = mount_sweep({ sweep, descriptor: `n_ef`, ...props })
   const settle = async (...indices: number[]) => {
     for (const call of calls) if (indices.includes(call.idx)) call.resolve()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    flushSync()
+    await next_tick()
   }
   const note = () => root.querySelector(`.trends-fill`)?.textContent?.trim() ?? null
   const loaded = () => calls.map(({ idx }) => idx)

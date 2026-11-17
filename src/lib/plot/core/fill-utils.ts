@@ -42,7 +42,7 @@ export interface Pt {
 interface ResolvedBoundary {
   points: Pt[]
   curve: FillCurveType
-  index_x?: readonly number[]
+  index_x?: ArrayLike<number>
 }
 
 // One renderable fill slice: the upper and lower edges (data coords) with their curves
@@ -206,12 +206,8 @@ const piecewise_eval = (
   const edge = endpoint_clamp(x_values, y_values, coord_x)
   if (edge !== null) return edge
   const idx = bracket(x_values, coord_x)
-  const [coord_x_0, coord_x_1, coord_y_0, coord_y_1] = [
-    x_values[idx],
-    x_values[idx + 1],
-    y_values[idx],
-    y_values[idx + 1],
-  ]
+  const [coord_x_0, coord_x_1] = [x_values[idx], x_values[idx + 1]]
+  const [coord_y_0, coord_y_1] = [y_values[idx], y_values[idx + 1]]
   if (curve === `stepAfter`) return coord_y_0 // hold previous until the next knot
   if (curve === `stepBefore`) return coord_y_1 // jump to next value immediately past a knot
   if (curve === `step`) return coord_x < (coord_x_0 + coord_x_1) / 2 ? coord_y_0 : coord_y_1 // switch at the midpoint
@@ -249,8 +245,8 @@ const clean_pts = (pts: Pt[]): Pt[] =>
     .toSorted((left_value, right_value) => left_value.x - right_value.x)
 
 // Zip parallel x/y arrays into finite, x-sorted points
-const finite_points = (x_values: readonly number[], y_values: readonly number[]): Pt[] =>
-  clean_pts(x_values.map((coord_x, idx) => ({ x: coord_x, y: y_values[idx] })))
+const finite_points = (x_values: ArrayLike<number>, y_values: ArrayLike<number>): Pt[] =>
+  clean_pts(Array.from(x_values, (coord_x, idx) => ({ x: coord_x, y: y_values[idx] })))
 
 interface DomainContext {
   x_domain: Vec2
@@ -288,10 +284,12 @@ export function resolve_boundary_points(
   boundary: FillBoundary,
   series: readonly DataSeries[],
   domains: DomainContext,
-  companion_x?: readonly number[] | null,
+  companion_x?: ArrayLike<number> | null,
 ): ResolvedBoundary | null {
   // x positions data-without-x values align to, else the x domain (ascending even when reversed)
-  const span_xs = companion_x?.length ? companion_x : range_bounds(domains.x_domain)
+  const span_xs = companion_x?.length
+    ? Array.from(companion_x)
+    : range_bounds(domains.x_domain)
   // finite x extent flat and function edges span (companion x may be unsorted or gapped)
   const [x_start, x_end] = array_extent(span_xs)
 
@@ -352,7 +350,7 @@ export function resolve_boundary_points(
     // No x: spread the values evenly along the companion's x positions (or the x domain),
     // interpolating between them, so equal lengths align by index and no two values share an x
     const last_value_idx = Math.max(1, boundary.values.length - 1)
-    const points = boundary.values.map((value, idx) => {
+    const points = Array.from(boundary.values, (value, idx) => {
       const frac_idx = (idx * (span_xs.length - 1)) / last_value_idx // exact at equal lengths
       const lower_idx = Math.floor(frac_idx)
       const x_lo = span_xs[lower_idx]
@@ -365,29 +363,34 @@ export function resolve_boundary_points(
   return null
 }
 
+// A boundary's native points with start_x < x < end_x
+const points_within = (points: Pt[], start_x: number, end_x: number): Pt[] =>
+  points.slice(
+    partition_point(points, (point) => point.x <= start_x),
+    partition_point(points, (point) => point.x < end_x),
+  )
+
 // Clip a prepared boundary to [xa, xb], inserting on-curve endpoints so the edge starts/ends at xa/xb
 function clip_boundary(boundary: PreparedBoundary, start_x: number, end_x: number): Pt[] {
-  const first = partition_point(boundary.points, (point) => point.x <= start_x)
-  const last = partition_point(boundary.points, (point) => point.x < end_x)
-  const inside = boundary.points.slice(first, last)
+  const inside = points_within(boundary.points, start_x, end_x)
   const start = { x: start_x, y: boundary.eval(start_x) }
   const end = { x: end_x, y: boundary.eval(end_x) }
   return [start, ...inside, end].filter((point) => Number.isFinite(point.y))
 }
 
+// Both boundaries evaluated at one x of the where-detection grid
+type WhereSample = { coord_x: number; y_up: number; y_lo: number; passes: boolean }
+
 // Binary-search the x where a `where` toggle occurs between two grid samples (boundaries linear between them)
 function where_crossing(
-  start_x: number,
-  end_x: number,
-  ya_up: number,
-  ya_lo: number,
-  yb_up: number,
-  yb_lo: number,
+  left_sample: WhereSample,
+  right_sample: WhereSample,
   where: (coord_x: number, y_up: number, y_lo: number) => boolean,
 ): number {
+  const { coord_x: start_x, y_up: ya_up, y_lo: ya_lo, passes: cond_left } = left_sample
+  const { coord_x: end_x, y_up: yb_up, y_lo: yb_lo } = right_sample
   let left = start_x
   let right = end_x
-  const cond_left = where(start_x, ya_up, ya_lo)
   for (let iter = 0; iter < 24; iter++) {
     const mid = (left + right) / 2
     const frac = (mid - start_x) / (end_x - start_x)
@@ -411,37 +414,25 @@ function where_intervals(
   // detection grid: native x of both boundaries within the overlap, plus the endpoints
   const knots = new Set([start_x, end_x])
   for (const { points } of [upper, lower]) {
-    const first = partition_point(points, (point) => point.x <= start_x)
-    const last = partition_point(points, (point) => point.x < end_x)
-    for (let idx = first; idx < last; idx++) knots.add(points[idx].x)
+    for (const point of points_within(points, start_x, end_x)) knots.add(point.x)
   }
-  const grid = sorted_numbers(knots)
+  // each grid x's two evals + where() run once, shared by both neighbouring crossings
+  const samples = sorted_numbers(knots).map((coord_x): WhereSample => {
+    const [y_up, y_lo] = [upper.eval(coord_x), lower.eval(coord_x)]
+    return { coord_x, y_up, y_lo, passes: where(coord_x, y_up, y_lo) }
+  })
 
   const intervals: Vec2[] = []
-  // carry the previous grid sample so each point's two evals + where() run once, not twice
-  let prev_x = grid[0]
-  let prev_up = upper.eval(prev_x)
-  let prev_lo = lower.eval(prev_x)
-  let prev_passes = where(prev_x, prev_up, prev_lo)
-  let seg_start = prev_passes ? prev_x : null
-  for (let idx = 1; idx < grid.length; idx++) {
-    const coord_x = grid[idx]
-    const y_up = upper.eval(coord_x)
-    const y_lo = lower.eval(coord_x)
-    const passes = where(coord_x, y_up, y_lo)
-    if (passes !== prev_passes) {
-      const cross = where_crossing(prev_x, coord_x, prev_up, prev_lo, y_up, y_lo, where)
-      if (seg_start !== null) {
-        intervals.push([seg_start, cross])
-        seg_start = null
-      } else {
-        seg_start = cross
-      }
+  let seg_start = samples[0].passes ? samples[0].coord_x : null
+  for (let idx = 1; idx < samples.length; idx++) {
+    const [prev, sample] = [samples[idx - 1], samples[idx]]
+    if (sample.passes === prev.passes) continue
+    const cross = where_crossing(prev, sample, where)
+    if (seg_start === null) seg_start = cross
+    else {
+      intervals.push([seg_start, cross])
+      seg_start = null
     }
-    prev_x = coord_x
-    prev_up = y_up
-    prev_lo = y_lo
-    prev_passes = passes
   }
   if (seg_start !== null) intervals.push([seg_start, end_x])
   return intervals.filter(([value_a, value_b]) => value_b > value_a)
@@ -585,7 +576,7 @@ export function convert_error_band_to_fill_region(
   )
   // [lower, upper] magnitudes below and above each finite y; gaps stay gaps
   const edge = (side: 0 | 1, direction: 1 | -1): number[] =>
-    coord_y.map((val, idx) =>
+    Array.from(coord_y, (val, idx) =>
       Number.isFinite(val) ? val + direction * get_error(idx)[side] : NaN,
     )
 

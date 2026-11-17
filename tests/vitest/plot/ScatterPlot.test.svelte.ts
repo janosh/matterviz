@@ -121,6 +121,8 @@ test(`CDF geometry refreshes after domain, scale, style, and data changes`, asyn
 
 const axis_tick_labels = (plot: HTMLElement, side: `x` | `y` | `y2`): (string | null)[] =>
   [...plot.querySelectorAll(`.${side}-axis .tick text`)].map((label) => label.textContent)
+const attrs_of = (root: ParentNode, selector: string, attr: string): (string | null)[] =>
+  [...root.querySelectorAll(selector)].map((element) => element.getAttribute(attr))
 const marker_radius = (marker: Element): number => {
   const path = marker.getAttribute(`d`) ?? ``
   const match = /^M(?<radius>-?\d*\.?\d+(?:e-?\d+)?),0/i.exec(path)
@@ -183,9 +185,7 @@ describe(`ScatterPlot`, () => {
   // Past the marker threshold the SVG points that carry role/tabindex/aria-label are
   // gone, so arrow keys drive a cursor through the data instead
   describe(`canvas keyboard cursor`, () => {
-    const arrow = async (svg: Element, key: string) => {
-      await fire(svg, keydown(key))
-    }
+    const arrow = (svg: Element, key: string) => fire(svg, keydown(key))
     const announced = (plot: HTMLElement) => query(plot, `[aria-live="polite"]`).textContent
 
     test(`End and arrows step and wrap, Enter pins, Escape unpins then clears`, async () => {
@@ -568,10 +568,7 @@ describe(`ScatterPlot`, () => {
       const plot = await mount_sized_scatter_plot(
         bind_props({ series, density_contours: true, ...bare }, state),
       )
-      const paths = () =>
-        [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
-          path.getAttribute(`d`),
-        )
+      const paths = () => attrs_of(plot, `g.density-contours path`, `d`)
       const before = paths()
       vi.mocked(level_densities).mockClear()
       await shift_pan(
@@ -595,8 +592,8 @@ describe(`ScatterPlot`, () => {
     ] as const)(`%s is skipped, not drawn`, async (_name, scale_type, bad_ys) => {
       const clean = cloud(5, 5)
       const dirty: DataSeries = {
-        x: [...clean.x, ...bad_ys.map(() => 5)],
-        y: [...clean.y, ...bad_ys],
+        x: [...Array.from(clean.x), ...bad_ys.map(() => 5)],
+        y: [...Array.from(clean.y), ...bad_ys],
       }
       const contour_paths = async (srs: DataSeries) => {
         document.body.innerHTML = ``
@@ -606,9 +603,7 @@ describe(`ScatterPlot`, () => {
           x_axis: { range: [0, 10] },
           density_contours: true,
         })
-        return [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
-          path.getAttribute(`d`),
-        )
+        return attrs_of(plot, `g.density-contours path`, `d`)
       }
       const clean_paths = await contour_paths(clean)
       expect(clean_paths.length).toBeGreaterThan(0)
@@ -891,7 +886,6 @@ describe(`ScatterPlot`, () => {
       fullscreen_toggle: false,
       legend: null,
     })
-
     await vi.waitFor(() => expect(report_layout).toHaveBeenCalled())
     const report = report_layout.mock.calls.at(-1)?.[0]
     // the data [1, 5] x [2, 8] ends on nice ticks, so ranges reach just past it (not a whole
@@ -1067,7 +1061,6 @@ describe(`ScatterPlot`, () => {
       expect(
         image.compareDocumentPosition(overlay_marker) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
-
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
         selected_points: { series_idx: number; point_idx: number }[]
@@ -1352,19 +1345,16 @@ describe(`ScatterPlot`, () => {
     const first_hidden = () =>
       plot.querySelector<HTMLElement>(`.legend-item`)?.classList.contains(`hidden`)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(10)
-
     plot.querySelector<HTMLElement>(`.legend-item`)?.click()
     flushSync()
     expect(first_hidden()).toBe(true)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
     expect(state.series[0].visible).toBeUndefined()
-
     // parent rebuilds the array (anywidget trait sync, notebook re-render, ...)
     state.series = make_series()
     flushSync()
     expect(first_hidden()).toBe(true)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
-
     // Explicit visibility state shows it again without replacing the series.
     state.hidden_series = []
     flushSync()
@@ -1439,11 +1429,12 @@ describe(`ScatterPlot`, () => {
       ],
       y_axis: { range: [0, 1] },
     })
-    const drawn = () =>
-      [...plot.querySelectorAll(`g[data-series-id]:has(> path[fill="none"])`)].map((group) =>
-        group.getAttribute(`data-series-id`),
-      )
-    expect(drawn()).toEqual([`in`])
+    const drawn = attrs_of(
+      plot,
+      `g[data-series-id]:has(> path[fill="none"])`,
+      `data-series-id`,
+    )
+    expect(drawn).toEqual([`in`])
   })
 
   test.each([0, 300])(
@@ -1695,7 +1686,6 @@ describe(`ScatterPlot`, () => {
         state,
       ),
     )
-
     const lines = plot.querySelectorAll(`g[data-series-id="trend"] path[fill="none"]`)
     expect(lines).toHaveLength(2)
     expect(plot.querySelector(`.y-axis`)?.textContent).toContain(`100`)
@@ -1705,7 +1695,6 @@ describe(`ScatterPlot`, () => {
         (element) => element.textContent === `Series`,
       ),
     ).toBe(false)
-
     const line_width_input = doc_query(
       `[data-key="line.width"] input[type="range"]`,
       HTMLInputElement,
@@ -1720,7 +1709,6 @@ describe(`ScatterPlot`, () => {
       expect(state.styles).toEqual({ line: { width: Number(width) } })
       expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).not.toBeNull()
     }
-
     // Clearing the override restores the authored width in the plot and controls.
     doc_query(`[aria-label="Clear line style overrides"]`, HTMLButtonElement).click()
     await tick()
@@ -1728,7 +1716,6 @@ describe(`ScatterPlot`, () => {
     expect(line_width_input.value).toBe(`3`)
     expect(state.styles).toEqual({})
     expect(plot.querySelector(`[aria-label="Clear line style overrides"]`)).toBeNull()
-
     state.show_controls = false
     state.styles = { line: { width: 4, color: `green`, dash: `4 2`, opacity: 0.5 } }
     await tick()
@@ -1738,7 +1725,6 @@ describe(`ScatterPlot`, () => {
       expect(line.getAttribute(`stroke-dasharray`)).toBe(`4 2`)
       expect(line.getAttribute(`stroke-opacity`)).toBe(`0.5`)
     }
-
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
@@ -1774,7 +1760,6 @@ describe(`ScatterPlot`, () => {
     })
     const svg = plot_svg(plot)
     expect(svg.style.cursor).toBe(`crosshair`)
-
     // a near miss: 8px below the marker, outside its own hit area but inside the hover radius
     click_at(svg, await move_to_marker(plot, 1, { dy: 8 }))
     expect(svg.style.cursor).toBe(`pointer`)
@@ -1784,17 +1769,14 @@ describe(`ScatterPlot`, () => {
     click_at(plot.querySelectorAll(`path.marker`)[1], await move_to_marker(plot, 1))
     expect(on_plot_click).toHaveBeenCalledTimes(2)
     expect(on_plot_click).toHaveBeenLastCalledWith(expect.objectContaining({ x: 2, y: 3 }))
-
     // far from every point the click would land on nothing, so the crosshair returns
     svg.dispatchEvent(mouse(`mousemove`, { clientX: 0, clientY: 0 }))
     await next_animation_frame()
     expect(svg.style.cursor).toBe(`crosshair`)
-
     // without a plot click handler the hand never shows on the background
     const passive = await mount_sized_scatter_plot({ series: [basic] })
     await move_to_marker(passive, 1, { dy: 8 })
     expect(plot_svg(passive).style.cursor).toBe(`crosshair`)
-
     // a tighter click radius keeps the tooltip's reach but not the click's: 8px off the marker
     // hovers (within 20px) but must not click (outside 5px). `x` mode measures along x only and
     // used to report every candidate at distance 0, so the click radius never applied there
@@ -1843,7 +1825,6 @@ describe(`ScatterPlot`, () => {
     expect(on_fill_click).toHaveBeenCalledOnce()
     expect(on_ref_line_click).toHaveBeenCalledOnce()
     expect(on_plot_click).not.toHaveBeenCalled()
-
     const svg = plot_svg(plot)
     const clip = clip_rect(plot)
     await drag(svg, {}, [clip.x + 10, clip.y + 10], [clip.x + 80, clip.y + 80])
@@ -1908,7 +1889,6 @@ describe(`ScatterPlot`, () => {
     })
     const marker = plot.querySelector(`.marker`)
     expect(marker?.getAttribute(`stroke`)).toBe(`rgb(120, 130, 140)`)
-
     plot.style.color = `rgb(40, 50, 60)`
     await vi.waitFor(() => expect(marker?.getAttribute(`stroke`)).toBe(`rgb(40, 50, 60)`))
   })
@@ -1948,8 +1928,7 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot(
       bind_props({ line_tween: { duration: 0 }, legend: null, x_axis, y_axis }, state),
     )
-    const paths = () =>
-      [...plot_svg(plot).querySelectorAll(`path`)].map((path) => path.getAttribute(`d`))
+    const paths = () => attrs_of(plot_svg(plot), `path`, `d`)
     const before = paths()
     edit(state.series[0])
     await flush_render()
@@ -1995,17 +1974,6 @@ describe(`ScatterPlot`, () => {
     },
   )
 
-  // x2 data (e.g. photon energy over wavelength) must not stretch the primary x axis
-  test(`x axis spans only its own series`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        { x: [400, 800], y: [400, 800] },
-        { x: [1, 3], y: [1, 3], x_axis: `x2` },
-      ],
-    })
-    expect(Number(axis_tick_labels(plot, `x`)[0])).toBeGreaterThanOrEqual(300)
-  })
-
   test(`input warnings fire once, not on every data update that keeps them`, async () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const line_style = { stroke: `red` }
@@ -2037,12 +2005,10 @@ describe(`ScatterPlot`, () => {
     const label = (axis: `y` | `y2`) => plot.querySelector(`.${axis}-label`)?.textContent
     expect(label(`y`)).toContain(`Energy (eV)`)
     expect(label(`y2`)).toContain(`Pressure (GPa)`)
-
     state.series[0].visible = false
     await flush_render()
     expect(label(`y`)).toContain(`Pressure (GPa)`)
     expect(plot.querySelector(`g.y2-axis`)).toBeNull()
-
     // an explicit y_axis assignment is kept and the remaining group fills the other axis
     state.y2_axis = { scale_type: `linear` }
     state.series = [
@@ -2072,7 +2038,6 @@ describe(`ScatterPlot`, () => {
       (_, idx) => marker_position(plot, idx).y,
     )
     const spacing = marker_y.slice(1).map((value, idx) => Math.abs(value - marker_y[idx]))
-
     expect(spacing[0] / spacing[1]).toBeCloseTo(1, 1)
   })
 
@@ -2098,7 +2063,6 @@ describe(`ScatterPlot`, () => {
         })
         return [...plot.querySelectorAll(selector)].map(read)
       }
-
       const [instant, tweened] = [await geometry(0), await geometry(60_000)]
       expect(tweened.filter(Boolean).length).toBeGreaterThan(0)
       expect(tweened).toEqual(instant)
@@ -2121,13 +2085,11 @@ describe(`ScatterPlot`, () => {
       const original = marker()
       const position = original.parentElement?.getAttribute(`transform`)
       vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
-
       state.series = state.series.toReversed().map((series) => ({
         ...series,
         [axis]: series.id === `tracked` ? [240, 180] : [100, 300],
       }))
       await flush_render()
-
       expect(marker()).toBe(original)
       // The same marker starts its tween at the old position instead of snapping.
       expect(marker().parentElement?.getAttribute(`transform`)).toBe(position)
@@ -2273,7 +2235,6 @@ describe(`ScatterPlot`, () => {
     const invalid_plot = await mount_sized_scatter_plot({ series: invalid })
     expect(invalid_plot.querySelectorAll(`.marker`)).toHaveLength(10)
     document.body.replaceChildren()
-
     // Null entries must survive the auto-label scan. A throw there only kills the placement
     // effect, so assert placement actually ran: unplaced labels keep the default 10/0 offset.
     const labelled = await mount_sized_scatter_plot({
@@ -2289,13 +2250,10 @@ describe(`ScatterPlot`, () => {
         },
       ] as DataSeries[],
     })
-    const label_xs = [...labelled.querySelectorAll(`text.label-text`)].map((label) =>
-      label.getAttribute(`x`),
-    )
+    const label_xs = attrs_of(labelled, `text.label-text`, `x`)
     expect(label_xs).toHaveLength(2)
     expect(label_xs).not.toContain(`10`) // 10 is the un-placed fallback offset
     document.body.replaceChildren()
-
     const out_of_range_plot = await mount_sized_scatter_plot({
       series: [{ x: [1, 2, 3], y: [4, 5, 6] }],
       x_axis: { range: [100, 200] },
@@ -2327,12 +2285,10 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `x`)).toContain(`10`)
     expect(axis_tick_labels(plot, `x`)).not.toContain(`100`)
     expect(axis_tick_labels(plot, `y`)).not.toContain(`50`)
-
     state.series[1].visible = true
     await flush_render()
     expect(axis_tick_labels(plot, `x`)).toContain(`100`)
     expect(axis_tick_labels(plot, `y`)).toContain(`50`)
-
     // Every series hidden: no data backs the auto ranges, so the view stays put
     state.series[0].visible = false
     state.series[1].visible = false
@@ -2343,13 +2299,15 @@ describe(`ScatterPlot`, () => {
   })
 
   // A point missing one coordinate is not drawn, so neither its other coordinate nor its error
-  // bar may stretch that axis to where nothing is plotted
-  test(`points missing a coordinate widen no axis`, async () => {
+  // bar may stretch that axis to where nothing is plotted. Nor may x2 data (e.g. photon energy
+  // over wavelength) stretch the primary x axis.
+  test(`points missing a coordinate or on x2 widen no primary axis`, async () => {
     const plot = await mount_sized_scatter_plot({
       ...bare,
       series: [
         { x: [0, 10, 1000], y: [0, 1, NaN], x_error: [0, 0, 5000] },
         { x: [5, NaN], y: [0.5, 500], y_error: [0.1, 5000] },
+        { x: [-400, 800], y: [0, 1], x_axis: `x2` },
       ],
     })
     const max_tick = (side: `x` | `y`) => Math.max(...axis_tick_labels(plot, side).map(Number))
@@ -2443,10 +2401,8 @@ describe(`ScatterPlot`, () => {
       return { x: Number(label.getAttribute(`x`)), y: Number(label.getAttribute(`y`)) }
     }
     const initial_offset = label_offset()
-
     props.label_placement_config = { sa_iterations: 0, candidate_gap: 100 }
     await tick()
-
     expect(label_offset()).not.toEqual(initial_offset)
   })
 
@@ -2466,22 +2422,30 @@ describe(`ScatterPlot`, () => {
       ],
       label_placement_config: { max_neighbors: { count: 1, radius: 30 }, sa_iterations: 0 },
     })
-
     expect(
       [...plot.querySelectorAll(`text.label-text`)].map((label) => label.textContent),
     ).toEqual([`Lonely`])
   })
 
-  test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
+  // A data change under a resting pointer (e.g. sweep playback) re-reports the hovered point
+  // with its new values, then null once it is gone
+  test(`coalesces pointer hover to the latest point, clears it on leave, re-reports on data change`, async () => {
     const on_point_hover = vi.fn()
-    const plot = await mount_sized_scatter_plot({
+    const state = $state<{ series: DataSeries[] }>({
       series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
-      x_axis: { range: [0, 1] },
-      y_axis: { range: [0, 1] },
-      point_tween: { duration: 0 },
-      on_point_hover,
-      legend: null,
     })
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
+        {
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
+          point_tween: { duration: 0 },
+          on_point_hover,
+          legend: null,
+        },
+        state,
+      ),
+    )
     const svg = plot_svg(plot)
     stub_svg_rect(svg)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(2)
@@ -2497,10 +2461,8 @@ describe(`ScatterPlot`, () => {
     await next_animation_frame()
     expect(on_point_hover).toHaveBeenCalledTimes(1)
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
-
     svg.dispatchEvent(mouse(`mouseleave`))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
-
     on_point_hover.mockClear()
     sweep_markers()
     svg.dispatchEvent(mouse(`mouseleave`))
@@ -2508,32 +2470,8 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
     await next_animation_frame()
     expect(on_point_hover).toHaveBeenCalledOnce()
-  })
-
-  // A data change under a resting pointer (e.g. sweep playback) re-reports the hovered point
-  // with its new values, then null once it is gone
-  test(`on_point_hover hears the hovered point's new values after a data change`, async () => {
-    const on_point_hover = vi.fn()
-    const state = $state<{ series: DataSeries[] }>({
-      series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
-    })
-    const plot = await mount_sized_scatter_plot(
-      bind_props(
-        {
-          x_axis: { range: [0, 1] as [number, number] },
-          y_axis: { range: [0, 1] as [number, number] },
-          point_tween: { duration: 0 },
-          on_point_hover,
-          legend: null,
-        },
-        state,
-      ),
-    )
-    const svg = plot_svg(plot)
-    stub_svg_rect(svg)
-    const { x: coord_x, y: coord_y } = marker_position(plot, 1)
-    svg.dispatchEvent(mouse(`mousemove`, { clientX: coord_x, clientY: coord_y }))
-    await next_animation_frame()
+    on_point_hover.mockClear()
+    await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenLastCalledWith(expect.objectContaining({ x: 1, y: 1 }))
     state.series = [{ x: [0, 1], y: [0, 0.5], markers: `points` }]
     flushSync()
@@ -2577,7 +2515,6 @@ describe(`ScatterPlot`, () => {
             ? { dy: (coord_y < 150 ? 290 : 10) - coord_y }
             : { dx: (coord_x < 200 ? 390 : 10) - coord_x }
       await move_to_marker(plot, target_idx, offset)
-
       expect(on_point_hover).toHaveBeenCalledOnce()
       expect(on_point_hover.mock.calls[0][0]).toMatchObject({
         x: x_values[target_idx],
@@ -2601,7 +2538,6 @@ describe(`ScatterPlot`, () => {
       ?.dispatchEvent(mouse(`mousemove`, { clientX: 1, clientY: 1 }))
     await unmount(component)
     await next_animation_frame()
-
     expect(on_point_hover).not.toHaveBeenCalled()
   })
 
@@ -2620,7 +2556,6 @@ describe(`ScatterPlot`, () => {
     ]
     const state = $state({ fill_regions: make_fills() })
     await mount_sized_scatter_plot(bind_props(fill_plot_props(), state))
-
     const hovered = (idx: number) =>
       svg_query(`[aria-label="Fill region ${idx + 1}"]`).classList.contains(`hovered`)
     await hover(svg_query(`[aria-label="Fill region 2"]`)) // fallback index 1 vs explicit id `1`
@@ -2631,7 +2566,6 @@ describe(`ScatterPlot`, () => {
     }
     await rerender(make_fills())
     expect(hovered(1)).toBe(true)
-
     // a unique explicit id keeps its hover when an insertion shifts its source index
     await hover(svg_query(`[aria-label="Fill region 1"]`))
     await rerender([
@@ -2652,10 +2586,8 @@ describe(`ScatterPlot`, () => {
       { id: second_id, lower: 0.4, upper: 0.6, fill: `slategray` },
     ]
     await mount_sized_scatter_plot({ ...fill_plot_props(), fill_regions })
-
     const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
     expect(fills).toHaveLength(fill_regions.length)
-
     await hover(fills[0])
     expect(fills[0].classList.contains(`hovered`)).toBe(true)
     expect(fills[1].classList.contains(`hovered`)).toBe(false)
@@ -2670,7 +2602,6 @@ describe(`ScatterPlot`, () => {
     })
     await mount_sized_scatter_plot(bind_props({ ...fill_plot_props(), legend: {} }, state))
     await tick()
-
     const fill_item = (label: string) =>
       [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((element) =>
         element.textContent?.includes(label),
@@ -2680,24 +2611,19 @@ describe(`ScatterPlot`, () => {
       await flush_render()
     }
     const visibility = () => state.fill_regions.map((region) => region.visible)
-
     expect(document.querySelectorAll(`.fill-region`)).toHaveLength(2)
-
     // click hides only that fill (writes `visible` into the bound fill_regions); the fill is
     // no longer drawn, but its legend item persists (greyed) so it can be toggled back
     await fire_fill(`Band`, `click`)
     expect(visibility()).toEqual([false, undefined])
     expect(document.querySelectorAll(`.fill-region`)).toHaveLength(1)
     expect(fill_item(`Band`)?.classList.contains(`hidden`)).toBe(true)
-
     // hovering the hidden fill's legend item must not mark it active (nothing renders to highlight)
     fill_item(`Band`)?.dispatchEvent(mouse(`mouseenter`))
     await flush_render()
     expect(fill_item(`Band`)?.classList.contains(`active`)).toBe(false)
-
     await fire_fill(`Band`, `click`)
     expect(visibility()).toEqual([true, undefined])
-
     // double-click isolates the fill; a second double-click on the sole visible fill shows all
     await fire_fill(`Cap`, `dblclick`)
     expect(visibility()).toEqual([false, true])
@@ -2789,7 +2715,6 @@ describe(`ScatterPlot`, () => {
     expect([left, right, top]).toEqual([``, `9px`, `17px`])
     expect(legend.getAttribute(`data-decoration-x`)).toBeNull()
     expect(colorbar.getAttribute(`data-decoration-x`)).toBeNull()
-
     // The tooltip dodges the pinned colorbar and legend through the frame's exclusion
     // list. place_tooltip sums overlap areas, so a rect listed twice would be dodged twice.
     vi.mocked(place_tooltip).mockClear()
@@ -2813,7 +2738,6 @@ describe(`ScatterPlot`, () => {
     const legend = doc_query(`.legend`)
     const initial_position = { left: legend.style.left, top: legend.style.top }
     layout_spy.mockClear()
-
     series[0].y = [6, 4, 9, 3, 8]
     await flush_render()
     expect(layout_spy).not.toHaveBeenCalled()
@@ -2903,7 +2827,6 @@ describe(`ScatterPlot`, () => {
       const start_position = marker_position(plot, 0)
       expect([marker_fill(first), marker_radius(first)]).toEqual([`#440154`, 2])
       vi.advanceTimersByTime(SETTLE_MS + 1) // past the window where every change snaps
-
       series[0] = {
         ...series[0],
         color_values: [100, 0, null] as number[],
@@ -2933,7 +2856,6 @@ describe(`ScatterPlot`, () => {
       expect((Number(label.getAttribute(`x`)) - 10) / -40).toBeCloseTo(frac, 1)
       expect(Number(label.getAttribute(`y`)) / 20).toBeCloseTo(frac, 1)
       expect(marker_position(plot, 0)).toEqual(start_position)
-
       vi.advanceTimersByTime(1000)
       await vi.waitFor(() =>
         expect([marker_fill(first), marker_radius(first)]).toEqual([`#fde725`, 10]),
@@ -2941,7 +2863,6 @@ describe(`ScatterPlot`, () => {
       expect(
         [`x`, `y`].map((attr) => query(plot, `text.label-text`).getAttribute(attr)),
       ).toEqual([`-30`, `20`])
-
       // a label switched on after settling lands on its auto-placed spot, no slide from {10, 0}
       series[0] = { ...series[0], point_label: [{}, { text: `B`, auto_placement: true }, {}] }
       await flush_render()
@@ -3073,7 +2994,6 @@ describe(`ScatterPlot`, () => {
     expect(state.view?.x?.[0]).toBeCloseTo(25, 6)
     expect(state.view?.x?.[1]).toBeCloseTo(125, 6)
     expect(state.view?.y).toEqual([0, 10])
-
     // the host scrolls the view back through the same prop
     state.view = { ...state.view, x: [0, 100] }
     await tick()
@@ -3155,7 +3075,6 @@ describe(`ScatterPlot`, () => {
     )
     expect(error_spy).not.toHaveBeenCalled()
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
-
     // the host scrolls only y; y2 has to come along in the same flush
     state.view = { y: [0, 5] }
     await tick()
@@ -3163,7 +3082,6 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y`)).not.toContain(`10`)
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
     expect(error_spy).not.toHaveBeenCalled()
-
     // a write the plot cannot show (a non-finite bound) is corrected in `view`; a derived y2
     // is no part of it, so one written there stays and moves nothing
     state.view = { y: [NaN, 10], y2: [3, 4] }
@@ -3171,7 +3089,6 @@ describe(`ScatterPlot`, () => {
     expect(state.view).toMatchObject({ y: [0, 5], y2: [3, 4] })
     expect(axis_tick_labels(plot, `y`)).toContain(`5`)
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
-
     // y2 follows the linear y gesture; independently panning its log scale would overflow.
     state.y2_axis = { sync: `synced`, scale_type: `log` }
     await tick()

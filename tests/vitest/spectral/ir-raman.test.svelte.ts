@@ -96,20 +96,18 @@ const sio2_spectrum = spectrum_from_phonon_data(sio2_data, parse_born(sio2_born)
   raman_tensors: sio2_raman_json.raman_tensors,
 })
 
-describe(`eigenvector mass-weighting convention`, () => {
-  // Pins fixture/code agreement on eigenvectors of the mass-weighted dynamical matrix: in a
-  // pure translation mass-weighted components scale as sqrt(M), displacement ones are equal
-  it.each([
-    [`NaCl acoustic`, nacl_data],
-    [`CO2 T_x`, co2_data],
-  ])(`%s: component ratio equals sqrt(mass ratio)`, (_name, data) => {
-    const eigenvector = data.qpoints[0].modes[0].eigenvector
-    if (!eigenvector) throw new Error(`fixture has no eigenvector`)
-    const ratio = eigenvector[0][0][0] / eigenvector[1][0][0]
-    const mass_ratio = Math.sqrt(data.atoms[0].mass / data.atoms[1].mass)
-    expect(ratio).toBeCloseTo(mass_ratio, 12)
-    expect(Math.abs(mass_ratio - 1)).toBeGreaterThan(0.1) // hypotheses distinguishable
-  })
+// Pins fixture/code agreement on eigenvectors of the mass-weighted dynamical matrix: in a
+// pure translation mass-weighted components scale as sqrt(M), displacement ones are equal
+it.each([
+  [`NaCl acoustic`, nacl_data],
+  [`CO2 T_x`, co2_data],
+])(`%s eigenvector: component ratio equals sqrt(mass ratio)`, (_name, data) => {
+  const eigenvector = data.qpoints[0].modes[0].eigenvector
+  if (!eigenvector) throw new Error(`fixture has no eigenvector`)
+  const ratio = eigenvector[0][0][0] / eigenvector[1][0][0]
+  const mass_ratio = Math.sqrt(data.atoms[0].mass / data.atoms[1].mass)
+  expect(ratio).toBeCloseTo(mass_ratio, 12)
+  expect(Math.abs(mass_ratio - 1)).toBeGreaterThan(0.1) // hypotheses distinguishable
 })
 
 describe(`acoustic mode identification`, () => {
@@ -343,20 +341,21 @@ describe(`spectrum_sticks`, () => {
   })
 })
 
-describe(`peak_mode_indices`, () => {
-  // sticks closer than half the distance merge into one peak; farther ones stay apart, and a
-  // silent stick never claims the pointer from an active one
-  it.each([
-    [101, [1, 1, 1], [0, 1]],
-    [115, [1, 1, 1], [1, 2]],
-    [140, [1, 1, 1], []],
-    [101, [0, 1, 1], [1, 2]],
-  ])(`at %d with intensities %j picks the nearest peak`, (position, y, expected) => {
+// sticks closer than half the distance merge into one peak; farther ones stay apart, and a
+// silent stick never claims the pointer from an active one
+it.each([
+  [101, [1, 1, 1], [0, 1]],
+  [115, [1, 1, 1], [1, 2]],
+  [140, [1, 1, 1], []],
+  [101, [0, 1, 1], [1, 2]],
+])(
+  `peak_mode_indices at %d with intensities %j picks the nearest peak`,
+  (position, y, expected) => {
     const modes = [0, 1, 2].map((mode_idx) => ({ ...co2_spectrum.modes[8], mode_idx }))
     const sticks = { x: [100, 104, 108], y, modes }
     expect(peak_mode_indices(sticks, position, 10)).toEqual(expected)
-  })
-})
+  },
+)
 
 describe(`broaden_spectrum`, () => {
   // width at half maximum, linearly interpolating the grid points bracketing each crossing
@@ -397,9 +396,8 @@ describe(`broaden_spectrum`, () => {
     const both = broaden_spectrum({ x: [1000, 1200], y: [1, 2] }, opts)
     const first = broaden_spectrum({ x: [1000], y: [1] }, opts)
     const second = broaden_spectrum({ x: [1200], y: [2] }, opts)
-    for (let idx = 0; idx < both.y.length; idx += 137) {
+    for (let idx = 0; idx < both.y.length; idx += 137)
       expect(both.y[idx]).toBeCloseTo(first.y[idx] + second.y[idx], 10)
-    }
   })
 
   it(`accepts a frequency-dependent width model`, () => {
@@ -559,10 +557,8 @@ const CM_TO_THZ = 0.0299792458
 const CO2_FREQS = [0, 0, 0, 2, 2, 667, 667, 1333, 2349].map((freq, idx) =>
   idx < 5 ? freq : freq * CM_TO_THZ,
 )
-// Exactly as the fixture declares them, since this test pins declared order. PhononDB
-// PBEsol puts the triply-degenerate TO mode at 5.0527 THz = 168.5 cm^-1 against ~164
-// measured (normal PBEsol agreement for a rocksalt halide); the three translations carry
-// ~1e-7 THz of force-constant residual rather than the literal 0 a synthetic file can use.
+// As the fixture declares them (PhononDB PBEsol: TO mode at 168.5 cm^-1 vs ~164 measured;
+// the translations carry ~1e-7 THz of force-constant residual, not a literal 0)
 // oxfmt-ignore
 const NACL_FREQS = [
   -0.0000001723, -0.0000000824, 0.0000000659,
@@ -663,6 +659,7 @@ phonon:
     )
   })
 
+  // oxfmt-ignore
   it.each([
     [`no phonon list`, h_cell(), /no non-empty 'phonon' list/],
     [`no atom masses`, Q_BAND, /no 'points'\/'atoms' list with per-atom masses/],
@@ -671,22 +668,12 @@ phonon:
     [`unnormalised`, `${H_BAND}${eig_x(2)}`, /not normalised \(sum \|e\|\^2 = 4/],
     [`extra eigenvector atom`, `${H_BAND}${eig_x(1, 2)}`, /over 1 atoms, got 2 atom blocks/],
     // atom and component are both named 1-based
-    [
-      `bad eigenvector component`,
-      `${H_BAND}    eigenvector:\n    - - [1,0]\n      - [0,0]\n      - [0]\n`,
-      /eigenvector atom 1 component 3\b/,
-    ],
+    [`bad eigenvector component`, `${H_BAND}    eigenvector:\n    - - [1,0]\n      - [0,0]\n      - [0]\n`, /eigenvector atom 1 component 3\b/],
     [`negative mass`, `${h_cell(1, -1)}${Q_BAND}`, /invalid 'mass'/],
     [`band count`, `${H_BAND}${eig_x()}`, /lists 1 bands but a 1-atom cell has 3N = 3 modes/],
     // A 2-row lattice would otherwise be cast to Matrix3x3 unchecked
-    [
-      `2-row lattice`,
-      `lattice:\n- [1,0,0]\n- [0,1,0]\n${H_BAND}${eig_x()}${MORE_FREQS}`,
-      /'lattice': expected 3 rows, got 2/,
-    ],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_phonon_modes(content)).toThrow(pattern)
-  })
+    [`2-row lattice`, `lattice:\n- [1,0,0]\n- [0,1,0]\n${H_BAND}${eig_x()}${MORE_FREQS}`, /'lattice': expected 3 rows, got 2/],
+  ])(`throws on %s`, (_name, content, pattern) => expect(() => parse_phonon_modes(content)).toThrow(pattern))
 })
 
 describe(`parse_born`, () => {
@@ -761,6 +748,7 @@ describe(`IrRamanSpectrum component`, () => {
       props: { spectrum: co2_spectrum, ...props },
     })
 
+  const attr = (element: Element, name: string) => Number(element.getAttribute(name))
   const no_grid = { x_grid: false, y_grid: false }
   // One stick per active optical mode: NaCl's triply degenerate TO mode, CO2's 2 bends + nu3
   // (the 3 acoustic modes are excluded and the gerade modes carry exactly zero intensity, so
@@ -775,9 +763,8 @@ describe(`IrRamanSpectrum component`, () => {
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(n_sticks)
     expect(document.querySelector(`.legend`)).not.toBeNull()
-    for (const axis_tick of document.querySelectorAll(`.tick`)) {
+    for (const axis_tick of document.querySelectorAll(`.tick`))
       expect(axis_tick.querySelectorAll(`line`)).toHaveLength(1)
-    }
   })
 
   it(`forwards flat control props and controls_open binding`, async () => {
@@ -806,7 +793,7 @@ describe(`IrRamanSpectrum component`, () => {
   })
 
   it.each([`multiple peaks`, `single peak`])(
-    `resets authored spectrum and stable broadening defaults for %s`,
+    `resets authored spectrum and stable broadening defaults, fixed FWHM bounds for %s`,
     async (variant) => {
       render({
         spectrum:
@@ -837,23 +824,13 @@ describe(`IrRamanSpectrum component`, () => {
       await tick()
       await reset_section(`broadening`)
       expect(Number(fwhm_input.value)).toBe(reset_width)
-    },
-  )
-
-  // The bounds came from the plotted range, whose padding is 8 FWHM around a single peak: each
-  // drag to the max raised the max by 1.6x, so the width ran away without limit
-  it.each([`multiple peaks`, `single peak`])(
-    `the FWHM slider bounds stay put as the width changes (%s)`,
-    async (variant) => {
-      const modes = variant === `single peak` ? [co2_spectrum.modes[8]] : co2_spectrum.modes
-      render({ spectrum: { ...co2_spectrum, modes }, fwhm: 10, controls_open: true })
-      await tick()
-      const slider = doc_query<HTMLInputElement>(`#ir-raman-fwhm`)
-      const bounds = [slider.min, slider.max]
+      // Bounds from the plotted range (padded 8 FWHM around a single peak) rose 1.6x on each
+      // drag to the max, so the width ran away without limit
+      const bounds = [fwhm_input.min, fwhm_input.max]
       for (let drag = 0; drag < 3; drag++) {
-        set_input(slider, slider.max)
+        set_input(fwhm_input, fwhm_input.max)
         await tick()
-        expect([slider.min, slider.max]).toEqual(bounds)
+        expect([fwhm_input.min, fwhm_input.max]).toEqual(bounds)
       }
     },
   )
@@ -887,7 +864,6 @@ describe(`IrRamanSpectrum component`, () => {
       await tick()
       const sticks = [...document.querySelectorAll(`line.mode-stick`)]
       expect(sticks).toHaveLength(3)
-      const attr = (element: Element, name: string) => Number(element.getAttribute(name))
       const [freq_attr, other_attr] = orientation === `horizontal` ? [`y`, `x`] : [`x`, `y`]
       for (const stick of sticks) {
         expect(attr(stick, `${freq_attr}1`)).toBe(attr(stick, `${freq_attr}2`))
@@ -961,13 +937,12 @@ describe(`IrRamanSpectrum component`, () => {
       expect(presentation_select !== null).toBe(kind === `ir`)
       const sticks = [...document.querySelectorAll(`line.mode-stick`)]
       expect(sticks).toHaveLength(n_sticks)
-      const y_of = (stick: Element, attr: string) => Number(stick.getAttribute(attr))
       // Every stick starts on the shared baseline
-      const base_px = y_of(sticks[0], `y1`)
-      expect(sticks.every((stick) => y_of(stick, `y1`) === base_px)).toBe(true)
+      const base_px = attr(sticks[0], `y1`)
+      expect(sticks.every((stick) => attr(stick, `y1`) === base_px)).toBe(true)
       // The strongest mode spans the full axis, so its far end fixes which way round the
       // axis runs: y grows downwards in SVG, so a baseline at 1 (top) hangs sticks down
-      const tips = sticks.map((stick) => y_of(stick, `y2`))
+      const tips = sticks.map((stick) => attr(stick, `y2`))
       if (baseline) expect(Math.max(...tips)).toBeGreaterThan(base_px)
       else expect(Math.min(...tips)).toBeLessThan(base_px)
     },

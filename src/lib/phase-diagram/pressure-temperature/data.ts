@@ -98,34 +98,12 @@ const field_errors = (
 // Every field by list, with its kind: an unknown key is likely a typo of an optional one, and
 // a wrong kind would throw in the detailed checks (sigma.length, phases.forEach) or render as
 // nonsense (a truthy `metastable: "no"`)
+// oxfmt-ignore
 const LISTS = {
   phases: [`phase`, { id: `string`, name: `string`, color: `string`, description: `string` }],
-  boundaries: [
-    `boundary`,
-    {
-      id: `string`,
-      phases: `array`,
-      points: `array`,
-      sigma_t: `array`,
-      sigma_p: `array`,
-      label: `string`,
-      metastable: `boolean`,
-      style: `object`,
-    },
-  ],
+  boundaries: [`boundary`, { id: `string`, phases: `array`, points: `array`, sigma_t: `array`, sigma_p: `array`, label: `string`, metastable: `boolean`, style: `object` }],
   regions: [`region`, { phase: `string`, vertices: `array`, label_position: `array` }],
-  special_points: [
-    `special point`,
-    {
-      id: `string`,
-      type: `string`,
-      position: `array`,
-      phases: `array`,
-      sigma_t: `number`,
-      sigma_p: `number`,
-      label: `string`,
-    },
-  ],
+  special_points: [`special point`, { id: `string`, type: `string`, position: `array`, phases: `array`, sigma_t: `number`, sigma_p: `number`, label: `string` }],
 } as const satisfies Record<string, readonly [string, Record<string, Kind>]>
 const TOP_FIELDS = {
   ...Object.fromEntries(Object.keys(LISTS).map((key) => [key, `array`])),

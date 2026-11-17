@@ -1,14 +1,13 @@
 <script lang="ts">
   // Translucent (hkl) lattice planes clipped to the displayed block, with opaque outlines so
   // overlapping planes stay legible (same treatment as the mirror planes in SymmetryElements).
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import type { Matrix3x3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import { dispose_on_change, positions_geometry } from '#lib/scene/geometry.svelte.js'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
   import { untrack } from 'svelte'
   import type { LatticePlane } from './lattice-planes'
-  import { whole_tile_counts } from './supercell'
   import {
     lattice_plane_polygons,
     polygon_edge_vertices,
@@ -19,23 +18,23 @@
   let {
     planes,
     lattice,
-    tiling = [1, 1, 1],
+    supercell = math.IDENTITY_3X3,
   }: {
     planes: LatticePlane[]
-    lattice: Matrix3x3
-    // Unit cells the rendered structure spans along a/b/c. Planes are a property of the
-    // crystal, not of one cell, so they carry on through the whole tiled block.
-    tiling?: Vec3
+    lattice: Matrix3x3 // the cell Miller indices refer to
+    // Integer matrix of the rendered supercell (supercell lattice = supercell · lattice).
+    // Planes are a property of the crystal, not of one cell, so they carry on through it.
+    supercell?: Matrix3x3
   } = $props()
 
-  const tiling_key = $derived(whole_tile_counts(tiling).join(`,`))
-  const tile_counts = $derived(tiling_key.split(`,`).map(Number) as Vec3)
+  const supercell_key = $derived(supercell.flat().join(`,`))
+  const supercell_matrix = $derived(supercell_key.split(`,`).map(Number))
   // Trajectory frames often supply new arrays with unchanged geometry. Styles stay reactive
   // separately, so changing only a family's color or opacity never replaces its GPU buffers.
   const geometry_key = $derived(
     JSON.stringify([
       lattice.flat().join(`,`),
-      tiling_key,
+      supercell_key,
       planes.map(({ hkl, offsets }) => [hkl.join(`,`), offsets?.join(`,`)]),
     ]),
   )
@@ -48,8 +47,9 @@
   const groups = $derived.by(() => {
     void geometry_key
     return untrack(() => {
-      const block_lattice = math.scale_lattice_matrix(lattice, tile_counts)
-      return tile_lattice_planes(planes, tile_counts).map((plane) => {
+      const matrix = math.mat3x3_from_flat_row_major(supercell_matrix)
+      const block_lattice = math.dot(matrix, lattice)
+      return tile_lattice_planes(planes, matrix).map((plane) => {
         const polygons = lattice_plane_polygons(plane, block_lattice).map(
           ({ polygon }) => polygon,
         )

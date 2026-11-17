@@ -139,7 +139,8 @@
         <input
           type="text"
           bind:value={input_value}
-          placeholder="e.g. 2x2x2"
+          placeholder="2x2x2 or 1 1 0, -1 1 0, 0 0 1"
+          title="Repeats along a, b, c (2x2x2) or a supercell matrix as 9 integers, row by row"
           class:invalid={!input_valid}
           onkeydown={(event) => handle_key_down(event, true)}
         />

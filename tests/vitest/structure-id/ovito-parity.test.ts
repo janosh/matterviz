@@ -4,9 +4,9 @@
 // alongside OVITO's per-atom output. Both implementations therefore see byte-identical positions,
 // so any disagreement is an algorithm difference rather than a fixture difference.
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { calc_lattice_params } from '#lib/math.js'
+import { compute_lattice_params } from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
 import { make_site } from '#lib/structure/site.js'
 import { describe, expect, test } from 'vite-plus/test'
 import { load_json } from '../test-fixtures'
@@ -47,14 +47,14 @@ const to_crystal = ({ matrix, positions }: OvitoCase): Crystal => {
     lattice: {
       matrix: lattice_matrix,
       pbc: [true, true, true],
-      ...calc_lattice_params(lattice_matrix),
+      ...compute_lattice_params(lattice_matrix),
     },
   }
 }
 
 describe(`parity with OVITO ${ovito_version}`, () => {
   test.each(labeled_cases)(`%s: adaptive CNA matches atom for atom`, (_label, ovito_case) => {
-    const result = calc_structure_id(to_crystal(ovito_case), { skip_csp: true })
+    const result = compute_structure_id(to_crystal(ovito_case), { skip_csp: true })
     if (!result.cna_types) throw new Error(`CNA was not computed`)
     expect(Array.from(result.cna_types)).toEqual(ovito_case.cna_adaptive)
   })
@@ -63,7 +63,7 @@ describe(`parity with OVITO ${ovito_version}`, () => {
     `%s: fixed-cutoff CNA matches atom for atom`,
     (_label, ovito_case) => {
       const { fixed_cutoff, cna_fixed } = ovito_case
-      const result = calc_structure_id(to_crystal(ovito_case), {
+      const result = compute_structure_id(to_crystal(ovito_case), {
         cna_mode: `fixed`,
         cutoff: fixed_cutoff,
         skip_csp: true,
@@ -74,7 +74,7 @@ describe(`parity with OVITO ${ovito_version}`, () => {
   )
 
   test.each(labeled_cases)(`%s: centrosymmetry matches within 1e-12`, (_label, ovito_case) => {
-    const result = calc_structure_id(to_crystal(ovito_case), {
+    const result = compute_structure_id(to_crystal(ovito_case), {
       skip_cna: true,
       n_csp_neighbors: ovito_case.n_csp_neighbors,
     })

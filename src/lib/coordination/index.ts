@@ -1,4 +1,4 @@
-export * from './calc-coordination'
+export * from './compute-coordination'
 export { default as CoordinationBarPlot } from './CoordinationBarPlot.svelte'
 
 export const COORDINATION_SPLIT_MODES = {

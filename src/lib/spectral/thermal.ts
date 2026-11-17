@@ -27,21 +27,18 @@ export function thermal_properties(
   unit: FrequencyUnit = `THz`,
 ): ThermalProperties {
   const { frequencies, densities } = dos
-  if (frequencies.length !== densities.length) {
+  if (frequencies.length !== densities.length)
     throw new Error(
       `Phonon DOS has ${frequencies.length} frequencies but ${densities.length} densities`,
     )
-  }
   if (!frequencies.every(Number.isFinite))
     throw new Error(`Phonon DOS frequencies must all be finite`)
-  if (!densities.every((density) => Number.isFinite(density) && density >= 0)) {
+  if (!densities.every((density) => Number.isFinite(density) && density >= 0))
     throw new Error(`Phonon DOS densities must all be finite and ≥ 0`)
-  }
-  if (!temperatures.every((temp) => Number.isFinite(temp) && temp >= 0)) {
+  if (!temperatures.every((temp) => Number.isFinite(temp) && temp >= 0))
     throw new Error(
       `Temperatures must be finite and ≥ 0 K, got ${JSON.stringify(temperatures)}`,
     )
-  }
   // The DOS is a density per `unit` of frequency, so integrate over the original grid (sorted,
   // positive frequencies only) and only convert the mode energies ħω to eV. Dropping the
   // non-positive points also drops the grid segment between the last of them and the first
@@ -50,11 +47,10 @@ export function thermal_properties(
     .map((_, idx) => idx)
     .filter((idx) => frequencies[idx] > 0)
     .toSorted((idx_a, idx_b) => frequencies[idx_a] - frequencies[idx_b])
-  if (order.length < 2) {
+  if (order.length < 2)
     throw new Error(
       `Phonon DOS needs at least 2 positive frequencies to integrate over, got ${order.length}`,
     )
-  }
   const grid = order.map((idx) => frequencies[idx])
   const mode_energies = convert_frequencies(grid, `eV`, unit)
   // trapezoid weights folded with the density, so every integral is one weighted sum
@@ -68,9 +64,7 @@ export function thermal_properties(
     // 0 K gives x = ∞ for every mode: the ground state. `|| 0` turns a -0 (which passes the
     // ≥ 0 check) into +0, since x = -∞ would make every mode function NaN
     const thermal_energy = BOLTZMANN_EV_PER_K * temp || 0
-    let entropy_sum = 0
-    let log_sum = 0
-    let heat_capacity_sum = 0
+    let [entropy_sum, log_sum, heat_capacity_sum] = [0, 0, 0]
     // Share exp/expm1/log across all three integrals without storing a per-temperature grid.
     // exp(−x) avoids low-T overflow; expm1 keeps 1 − exp(−x) accurate at high T.
     for (let idx = 0; idx < weights.length; idx++) {

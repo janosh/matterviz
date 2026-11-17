@@ -37,7 +37,7 @@ const frame: TrajectoryFrame = {
     charge: 0,
     sites: [
       {
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        species: [{ element: `H`, occu: 1 }],
         xyz: [1, 2, 3],
         abc: [1, 2, 3],
         label: `H1`,

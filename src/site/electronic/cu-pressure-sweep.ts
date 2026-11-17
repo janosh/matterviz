@@ -351,6 +351,12 @@ export function cu_pressure_sweep(input: {
   band_data: BandGridData
   band_struct: BaseBandStructure
 }): Sweep {
+  // the grid's E_F and energies pin the band structure's (eV), so they must be eV too
+  if (input.band_data.energy_unit !== `eV`) {
+    throw new Error(
+      `cu_pressure_sweep needs a band grid in eV, got ${input.band_data.energy_unit ?? `an unknown unit`}`,
+    )
+  }
   const scales = CU_VOLUME_RATIOS.map((ratio) => Math.cbrt(ratio))
   let ambient: ReturnType<typeof cu_phonons> | undefined
   const load_frame: SweepFrameLoader = async (_series_id, frame_idx, { signal }) => {
@@ -366,7 +372,9 @@ export function cu_pressure_sweep(input: {
           scale_energy(energy, input.band_data.fermi_energy, scales[frame_idx]),
         ),
       },
-      doses: { 'bands 3–6': band_grid_dos(band_data) },
+      // one smearing (eV) for every frame, so N(E_F) compares across pressures; the default
+      // follows each frame's bandwidth
+      doses: { 'bands 3–6': band_grid_dos(band_data, { sigma: 0.1 }) },
     }
   }
   return {

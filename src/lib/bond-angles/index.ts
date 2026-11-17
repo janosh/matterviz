@@ -1,4 +1,4 @@
-export * from './calc-bond-angles'
+export * from './compute-bond-angles'
 export * from './series'
 export { default as BondAnglePlot } from './BondAnglePlot.svelte'
 

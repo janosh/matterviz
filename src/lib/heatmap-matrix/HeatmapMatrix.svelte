@@ -756,7 +756,10 @@
         )
       return
     }
-    const active_el = document.activeElement
+    // The matrix's own root: inside a shadow root (custom elements, sandboxed notebook
+    // output) document.activeElement is the shadow host, never the focused cell
+    const root = matrix_el?.getRootNode()
+    const active_el = (root instanceof ShadowRoot ? root : document).activeElement
     if (!(active_el instanceof HTMLElement) || !active_el.dataset.x) return
     // Enter and Space activate the focused cell like a click (cells are not buttons)
     if (event.key === `Enter` || event.key === ` `) {

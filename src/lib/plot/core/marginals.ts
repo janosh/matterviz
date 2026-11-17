@@ -78,8 +78,7 @@ export interface MarginalConfig {
   style?: string
 }
 
-// MarginalConfig with every MARGINAL_DEFAULTS field resolved to a concrete value (so consumers
-// read them directly, no per-use `?? default` — the defaults live only in MARGINAL_DEFAULTS)
+// MarginalConfig with every MARGINAL_DEFAULTS field resolved
 export type ResolvedMarginalConfig = MarginalConfig & {
   type: MarginalType
   size: number
@@ -113,8 +112,7 @@ export interface MarginalSeriesInput {
   color: string
   label?: string
   visible?: boolean
-  // Which axis the series renders on; a marginal only summarizes series whose axis matches
-  // the side it binds to (so a top/x marginal ignores x2 series, a right/y marginal ignores y2)
+  // Which axis the series renders on; a marginal only summarizes series on its bound axis
   x_axis?: `x` | `x2`
   y_axis?: `y` | `y2`
 }
@@ -130,8 +128,7 @@ export interface MarginalSeriesCurve {
 // A 1-D scale: data value -> pixel (positional axis or marginal-value direction)
 export type ScaleFn = (value: number) => number
 
-// Pixel span, data range, and scale type for one axis a marginal can bind to. Plots pass an
-// `axes` map with all four axes to PlotMarginals.
+// Pixel span, data range, and scale type for one axis a marginal can bind to
 export interface MarginalAxis {
   pixel_range: Vec2
   range: Vec2
@@ -143,8 +140,7 @@ export interface MarginalAxis {
 }
 export type MarginalAxes = Record<MarginalAxisBinding, MarginalAxis>
 
-// The host scale's pixel span and domain plus scale_type/format/label from its AxisConfig,
-// as every plot passes to PlotMarginals. `tick_label` maps a position to a label.
+// The host scale's pixel span and domain plus scale_type/format/label from its AxisConfig
 export const marginal_axis = (
   scale: PlotScaleFn,
   range: Vec2,
@@ -195,9 +191,8 @@ export interface MarginalHover {
   axis_title?: string // title of the shared positional axis (e.g. `Error`), if any
 }
 
-// Prepare projection and ordering once per strip. Queries examine only neighboring positions,
-// keeping original-order ties on reversed axes, and compare in current pixels (a query may
-// pass a resized context) to keep exact boundary hits and distance ties.
+// Projection and ordering prepared once per strip. Queries examine only neighboring positions
+// and compare in current pixels (a query may pass a resized context).
 export function create_marginal_hit_test(
   ctx: MarginalRenderContext,
 ): (
@@ -239,8 +234,7 @@ export function create_marginal_hit_test(
     )
     let best = points[idx] ?? points[idx - 1]
     let distance = Math.abs(project(best) - pos)
-    // Check both neighbors and any equal-distance plateau. At very large coordinates,
-    // subtraction can round several distinct positions to the same distance.
+    // Check both neighbors and any equal-distance plateau (large coordinates round to ties)
     for (const step of [-1, 1]) {
       for (
         let cursor = step < 0 ? idx - 1 : idx + 1;
@@ -310,12 +304,9 @@ export function create_marginal_hit_test(
     })
 
     if (kind === `bars`) {
-      // Among bins whose rendered rect contains the pointer, pick the largest-value (tallest) bar.
-      // Baseline-anchored bars nest, so the tallest containing bar wins render-order independently.
-      let best: {
-        curve: MarginalSeriesCurve
-        bar: { pos0: number; pos1: number; value: number }
-      } | null = null
+      // Baseline-anchored bars nest, so the tallest bar containing the pointer wins
+      type Bar = { pos0: number; pos1: number; value: number }
+      let best: { curve: MarginalSeriesCurve; bar: Bar } | null = null
       for (const series_curve of curves) {
         if (series_curve.curve.kind !== `bars`) continue
         for (const bar of series_curve.curve.bins) {
@@ -323,12 +314,7 @@ export function create_marginal_hit_test(
           const edge_a = positional_scale(bar.pos0)
           const edge_b = positional_scale(bar.pos1)
           if (!Number.isFinite(edge_a) || !Number.isFinite(edge_b)) continue
-          if (
-            pointer_pos < Math.min(edge_a, edge_b) ||
-            pointer_pos > Math.max(edge_a, edge_b)
-          ) {
-            continue
-          }
+          if (!in_range(pointer_pos, [edge_a, edge_b])) continue
           if (!contains_cross(value_scale(bar.value))) continue
           if (!best || bar.value > best.bar.value) best = { curve: series_curve, bar }
         }
@@ -344,16 +330,13 @@ export function create_marginal_hit_test(
     }
 
     if (kind === `line`) {
-      // Among the fills (baseline to curve) containing the pointer, pick the outermost one,
-      // render-order independent, using each series' point nearest the pointer position.
-      // A pointer outside every fill is a miss.
+      // The outermost fill (baseline to curve) containing the pointer, by each series' point
+      // nearest the pointer position; outside every fill is a miss
       let chosen: LineHit | null = null
       let best_extent = -1
       for (const points of lines.values()) {
-        const first = project(points[0]),
-          last = project(points[points.length - 1])
-        if (pointer_pos < Math.min(first, last) || pointer_pos > Math.max(first, last))
-          continue
+        const ends: Vec2 = [project(points[0]), project(points[points.length - 1])]
+        if (!in_range(pointer_pos, ends)) continue
         const near = nearest(points, pointer_pos, project)
         if (!near) continue
         const value_px = current === ctx ? near.px_val : value_scale(near.value)
@@ -377,8 +360,7 @@ export function create_marginal_hit_test(
   }
 }
 
-// Deliberately NOT part of settings.ts DEFAULTS, which would pull marginals into the
-// settings-UI JSON schema.
+// Not in settings.ts DEFAULTS, which would pull marginals into the settings-UI JSON schema
 export const MARGINAL_DEFAULTS = {
   type: `histogram` as MarginalType,
   size: 64,
@@ -392,8 +374,7 @@ export const MARGINAL_DEFAULTS = {
   value_axis: true,
 }
 
-// Normalize a single side's shorthand to a MarginalConfig, `false` (explicit disable), or
-// undefined (not specified -> fall back to default)
+// One side's shorthand as a MarginalConfig, `false` (disabled) or undefined (unspecified)
 const to_config = (
   input: MarginalSideInput | undefined,
 ): MarginalConfig | false | undefined => {
@@ -420,14 +401,10 @@ const resolve_side = (
   return { ...MARGINAL_DEFAULTS, ...inherited, ...base_cfg, ...user }
 }
 
-// Expand the `marginals` prop into a per-side resolved config, merging with the plot's
-// `default_sides` (the sensible defaults a given plot enables when `marginals` is `true`).
-// - `true`: enable exactly the plot's default sides
-// - a type string: that type on the plot's default sides (or top+right if none), inheriting
-//   each default side's config (e.g. shared bins)
-// - a per-side map: enable ONLY the sides the user lists (default sides do not auto-activate),
-//   merging the plot's per-side default config under the user's
-// tooltip_off (the plot's tooltip={false}) silences every strip's tooltip that doesn't set its own
+// Expand the `marginals` prop into per-side resolved configs over the plot's `default_sides`:
+// `true` enables exactly those; a type string applies that type on them (or top+right if
+// none); a per-side map enables ONLY the listed sides, merged over their defaults.
+// tooltip_off (the plot's tooltip={false}) silences strips that don't set their own tooltip.
 export function normalize_marginals(
   prop: MarginalsProp | undefined,
   default_sides: Partial<Record<MarginalSide, MarginalSideInput>> = {},
@@ -480,8 +457,7 @@ export const add_sides = (left: Required<Sides>, right: Required<Sides>): Requir
 export const default_axis_for_side = (side: MarginalSide): MarginalAxisBinding =>
   is_x_side(side) ? `x` : `y`
 
-// Which sides carry an axis (drives `auto` placement). Bottom/left hold the primary x/y axes and
-// are always present; top/right only when the plot shows a secondary axis there.
+// Which sides carry an axis (drives `auto` placement): bottom/left always, top/right with x2/y2
 export const marginal_axis_presence = (
   top: boolean,
   right: boolean,
@@ -491,8 +467,7 @@ export const marginal_axis_presence = (
 const is_flush = (placement: MarginalPlacement, has_axis: boolean): boolean =>
   placement === `flush` || (placement === `auto` && !has_axis)
 
-// Thickness an outer strip occupies at the container edge (0 when flush or absent). Content
-// anchored to that edge, like the plot title above a top strip, shifts inward by this much.
+// Thickness an outer strip occupies at the container edge (0 when flush or absent)
 export const outer_strip_reservation = (
   config: ResolvedMarginalConfig | null,
   has_axis: boolean,
@@ -513,7 +488,6 @@ export function marginal_strip_rect(
   const flush = is_flush(config.placement, has_axis)
   const is_x = is_x_side(side)
   const grows_negative = side === `top` || side === `left`
-  // Flush strips sit a gap from the plot; outer strips sit inside any outside decorations.
   const plot_near = is_x ? pad.t : pad.l
   const plot_far = is_x ? height - pad.b : width - pad.r
   const container_far = is_x ? height : width
@@ -547,8 +521,7 @@ export function marginal_value_scale(
   const is_x = is_x_side(side)
   const thickness = is_x ? rect.height : rect.width
   const near = is_x ? rect.y : rect.x // strip edge at the smaller pixel coordinate
-  // top/left strips grow toward smaller pixel coords; their baseline (value=lo, plot-facing) sits
-  // at the far edge, and value increases in the negative pixel direction
+  // top/left strips grow toward smaller pixel coords, baseline at the far edge
   const grows_negative = side === `top` || side === `left`
   const baseline = grows_negative ? near + thickness : near
   const sign = grows_negative ? -1 : 1
@@ -573,8 +546,7 @@ const clean_pairs = (
     if (require_positive && pos <= 0) continue
     if (weights && out_wts) {
       const weight = weights[idx]
-      // skip non-finite and negative weights (non-monotone CDF, skewed normalization); zero
-      // is kept so rug/kde positions aren't needlessly dropped
+      // skip non-finite and negative weights (non-monotone CDF); zero is kept
       if (!Number.isFinite(weight) || weight < 0) continue
       out_wts.push(weight)
     }
@@ -590,8 +562,7 @@ function compute_histogram(
   pos_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // The main Histogram's binner, so a strip agrees bar for bar with the chart beside it: exactly
-  // `config.bins` bins, uniform in the axis' scale space (log-uniform on a log axis)
+  // The main Histogram's binner, so a strip agrees bar for bar with the chart beside it
   const { edges, counts } = bin_values(positions, pos_range, config.bins, scale_type, weights)
   let max = 0
   // A strip summarizes the points in view, so it normalizes by the in-range total
@@ -634,8 +605,7 @@ function compute_cdf(positions: number[], weights: number[] | undefined): Margin
   return { kind: `line`, points, max: 1 }
 }
 
-// Smallest strictly-positive value (Infinity if none): repairs a degenerate log lower bound (<= 0)
-// so kde grids / histogram bins don't dip to non-renderable positions
+// Smallest positive value (Infinity if none), repairing a degenerate log lower bound (<= 0)
 const smallest_positive = (vals: number[]): number =>
   vals.reduce((min, val) => (val > 0 && val < min ? val : min), Infinity)
 
@@ -645,8 +615,6 @@ function compute_kde(
   positional_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // Repair a degenerate log range with lower bound <= 0 (NaN pixels) by clamping to the
-  // smallest positive sample
   let clip: [number | null, number | null] | undefined
   if (get_scale_type_name(scale_type) === `log` && positional_range[0] <= 0) {
     const min_pos = smallest_positive(positions)
@@ -658,8 +626,7 @@ function compute_kde(
     range: positional_range,
     clip,
     max_samples: 5000,
-    // Grid uniform in the axis' bin space: a data-unit grid would crowd nearly every point
-    // into the top decade of a log axis and draw the lower decades as one straight segment
+    // Grid uniform in the axis' bin space, or a log axis' lower decades draw as one segment
     grid_transform: bin_transform(scale_type),
   })
   const points = kde.grid.map((pos, idx) => ({ pos, value: kde.density[idx] }))
@@ -675,8 +642,7 @@ export function compute_marginal_curve(
   positional_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // Canonicalize to an ascending range: clean_pairs' clipping and the kde grid assume
-  // lower <= upper, and an inverted axis hands over a reversed range
+  // Ascending range: clean_pairs and the kde grid assume lower <= upper (inverted axes don't)
   const range = range_bounds(positional_range)
   const { positions: pos, weights: wts } = clean_pairs(positions, weights, range, scale_type)
   // rug returns the raw positions (empty or not); other types short-circuit on empty input
@@ -687,8 +653,7 @@ export function compute_marginal_curve(
       : { kind: `line`, points: [], max: 0 }
   }
   if (config.type === `histogram`) {
-    // on a degenerate log axis (lower bound <= 0) bin over the smallest positive sample instead, so
-    // bins aren't spread below the smallest renderable position (mirrors compute_kde's clip)
+    // a degenerate log axis (lower bound <= 0) bins from the smallest positive sample
     const hist_range: Vec2 =
       get_scale_type_name(scale_type) === `log` && range[0] <= 0
         ? [smallest_positive(pos), range[1]]
@@ -710,8 +675,7 @@ export function compute_marginal_curve(
 export const curves_max = (curves: MarginalCurve[]): number =>
   curves.reduce((max, curve) => (curve.kind === `rug` ? max : Math.max(max, curve.max)), 0)
 
-// Value-axis title for a strip: explicit `config.label` wins, else auto per type (histogram uses
-// its normalization). `rug` has no value axis so returns an empty string.
+// Value-axis title: explicit `config.label`, else per type (empty for rug)
 export const default_marginal_label = (config: ResolvedMarginalConfig): string => {
   if (config.label != null) return config.label
   if (config.type === `cdf`) return `CDF`

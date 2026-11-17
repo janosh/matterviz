@@ -695,8 +695,6 @@
     border: none;
     box-sizing: border-box;
     color: inherit;
-  }
-  .remap-search:focus {
     outline: none;
   }
   .remap-options {

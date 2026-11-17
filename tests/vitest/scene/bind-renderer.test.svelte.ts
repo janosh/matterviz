@@ -8,9 +8,8 @@ import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { WebGPUBackend } from 'three/webgpu'
 import { beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 
-// Stub only useThrelte and keep the real @threlte/core exports - using the real
-// currentWritable makes the camera store behave authentically: `.current` is a
-// non-reactive read while `.subscribe` is the reactive channel the fix depends on.
+// Stub only useThrelte: the real currentWritable's `.current` is a non-reactive read while
+// `.subscribe` is the reactive channel the fix depends on.
 let fake_threlte: {
   scene: Scene
   camera: ReturnType<typeof currentWritable<Camera>>
@@ -74,14 +73,12 @@ test(`create_renderer styles the canvas at its drawing buffer size`, async () =>
   error_spy.mockRestore()
 })
 
-// three's destroyAttribute does data.buffer.destroy() unguarded, which throws for an attribute
-// whose createBuffer was refused. Svelte runs effect teardowns outside the try/catch that feeds
-// error boundaries, so the throw escaped mid-flush and froze the whole page.
+// three's destroyAttribute calls data.buffer.destroy() unguarded, which threw for a refused
+// upload from an effect teardown, outside Svelte's error boundaries, and froze the page.
 describe(`destroyAttribute guard`, () => {
   beforeAll(async () => {
-    // create_renderer installs the prototype guard before it constructs anything, so no GPU is
-    // needed here. happy-dom has none, so three falls back to WebGL2 and its async init()
-    // rejects - expected, and swallowed so it does not show up as stray stderr every run.
+    // create_renderer installs the guard before constructing anything, so no GPU is needed;
+    // three's WebGL2 fallback init() rejects in happy-dom, swallowed to keep stderr clean.
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
     create_renderer(document.createElement(`canvas`))
     await vi.waitUntil(() => error_spy.mock.calls.length > 0)

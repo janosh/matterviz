@@ -1,5 +1,5 @@
 import {
-  calculate_e_above_hull,
+  compute_e_above_hull,
   compute_e_above_hull_nd,
   compute_e_form_per_atom,
   compute_lower_hull_nd,
@@ -16,7 +16,7 @@ import { compute_hull_model } from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { matrix_inverse_3x3, mat3x3_vec3_multiply, solve_linear_system } from '#lib/math.js'
+import { inverse_3x3, mul_3x3_vec3, solve_linear_system } from '#lib/math.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../test-fixtures'
@@ -194,7 +194,7 @@ function prepare_brute_force_e_hull(
       // Singularity depends only on the matrix. Reuse the same 3x3 inverse/multiply
       // operations as solve_linear_system, without rebuilding an inverse for every query.
       if (!solve_linear_system(matrix, Array(dim).fill(0))) return
-      const inverse = dim === 3 ? matrix_inverse_3x3(matrix as Matrix3x3) : null
+      const inverse = dim === 3 ? inverse_3x3(matrix as Matrix3x3) : null
       simplexes.push({ verts, matrix, inverse })
       return
     }
@@ -206,7 +206,7 @@ function prepare_brute_force_e_hull(
     for (const { verts, matrix, inverse } of simplexes) {
       const rhs = Array.from({ length: dim }, (_, row) => query[row] - verts[0][row])
       const lambda = inverse
-        ? mat3x3_vec3_multiply(inverse, rhs as Vec3)
+        ? mul_3x3_vec3(inverse, rhs as Vec3)
         : solve_linear_system(matrix, rhs)
       if (!lambda) continue
       const weights = [1 - lambda.reduce((sum, val) => sum + val, 0), ...lambda]
@@ -371,7 +371,7 @@ describe(`N-dimensional quickhull`, () => {
   })
 })
 
-describe(`calculate_e_above_hull`, () => {
+describe(`compute_e_above_hull`, () => {
   const fe_o_refs: PhaseData[] = [make_elem(`Fe`, -4.0), make_elem(`O`, -2.0)]
   const fe_o_feo_refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
   // only an Fe reference + precomputed E_form: the O corner is synthesized at 0
@@ -422,12 +422,12 @@ describe(`calculate_e_above_hull`, () => {
     [`lone unary off zero`, fe_polymorphs[0], [fe_polymorphs[0]], 0],
     [`unary polymorph above an off-zero ground state`, fe_polymorphs[1], fe_polymorphs, 0.1],
   ])(`%s`, (_desc, query, refs, expected) => {
-    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(expected, 10)
+    expect(compute_e_above_hull(query, refs)).toBeCloseTo(expected, 10)
   })
 
   test(`binary: interpolates hull tie-line, on-hull entries ≈ 0`, () => {
     // Hull: Fe (x=0, e_form 0) — FeO (x=0.5, e_form -4.5) — O (x=1, e_form 0)
-    const results = calculate_e_above_hull(
+    const results = compute_e_above_hull(
       [
         make_phase({ Fe: 1, O: 1 }, -6.5, { entry_id: `FeO-unstable` }), // e_form -3.5 → 1.0
         make_phase({ Fe: 3, O: 1 }, -5.25, { entry_id: `Fe3O` }), // tie-line -2.25, e_form -1.75
@@ -452,7 +452,7 @@ describe(`calculate_e_above_hull`, () => {
       make_phase({ Fe: 1 }, -3.5, { entry_id: `x` }),
       make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `x` }),
     ]
-    expect(calculate_e_above_hull(entries, fe_o_feo_refs)).toEqual([1, 1, 0.5, 0])
+    expect(compute_e_above_hull(entries, fe_o_feo_refs)).toEqual([1, 1, 0.5, 0])
   })
 
   // Near-coplanar entries leave quickhull sliver facets whose planes overshoot the covering
@@ -465,7 +465,7 @@ describe(`calculate_e_above_hull`, () => {
       make_phase({ Li: 2, Fe: 1, O: 4 }, -0.1999999995, { entry_id: `Li2FeO4` }),
       make_phase({ Li: 2, Fe: 3, O: 1 }, -0.1999999994, { entry_id: `Li2Fe3O` }),
     ]
-    const results = calculate_e_above_hull(entries, entries)
+    const results = compute_e_above_hull(entries, entries)
     // an LP reference puts every entry on the hull; the gaps are ~1e-9 eV/atom
     expect(results).toHaveLength(entries.length)
     for (const [idx, dist] of results.entries())
@@ -483,7 +483,7 @@ describe(`calculate_e_above_hull`, () => {
     const comp = Object.fromEntries(els.map((element) => [element, 1]))
     const elem_refs = els.map((element) => make_elem(element, 0))
     const e_hull = (energy: number, refs: PhaseData[]) =>
-      calculate_e_above_hull(make_phase(comp, energy, { entry_id: `q` }), refs)
+      compute_e_above_hull(make_phase(comp, energy, { entry_id: `q` }), refs)
     expect(e_hull(0.5, elem_refs)).toBeCloseTo(0.5, 10)
     expect(e_hull(-0.2, elem_refs)).toBe(0)
     const stable = make_phase(comp, -1.0, { entry_id: `stable-compound` })
@@ -504,22 +504,22 @@ describe(`calculate_e_above_hull`, () => {
       /Unrecognized composition key/,
     ],
   ] as const)(`throws for %s`, (_desc, entry, refs, err) => {
-    expect(() => calculate_e_above_hull(entry, [...refs])).toThrow(err)
+    expect(() => compute_e_above_hull(entry, [...refs])).toThrow(err)
   })
 
   test(`empty input → [] and unplaceable entries → NaN`, () => {
-    expect(calculate_e_above_hull([], fe_o_refs)).toEqual([])
-    expect(calculate_e_above_hull([], [])).toEqual([]) // nothing to place, so no hull needed
+    expect(compute_e_above_hull([], fe_o_refs)).toEqual([])
+    expect(compute_e_above_hull([], [])).toEqual([]) // nothing to place, so no hull needed
     const no_atoms = make_phase({}, 0, { entry_id: `empty` })
-    expect(calculate_e_above_hull([no_atoms], fe_o_refs)).toEqual([NaN])
+    expect(compute_e_above_hull([no_atoms], fe_o_refs)).toEqual([NaN])
     // an explicit e_form_per_atom must not turn the zero-atom case into a throw
     const no_atoms_with_e_form = make_phase({ Fe: 0 }, 0, {
       entry_id: `zero`,
       e_form_per_atom: -0.1,
     })
-    expect(calculate_e_above_hull([no_atoms_with_e_form], fe_o_refs)).toEqual([NaN])
+    expect(compute_e_above_hull([no_atoms_with_e_form], fe_o_refs)).toEqual([NaN])
     expect(
-      calculate_e_above_hull(
+      compute_e_above_hull(
         [no_atoms_with_e_form],
         [...fe_o_refs, make_phase({ Li: 1 }, -2.0, { entry_id: `Li` })],
       ),
@@ -576,7 +576,7 @@ describe(`pymatgen cross-validation`, () => {
     const without_e_form = without_hull.map(({ e_form_per_atom: _e_form, ...rest }) => rest)
     for (const input of [without_hull, without_e_form]) {
       if (input === without_e_form && entries === quinary) continue // quinary has no raw energies
-      const results = calculate_e_above_hull(input, input)
+      const results = compute_e_above_hull(input, input)
       let max_diff = 0
       for (const [idx, entry] of entries.entries()) {
         max_diff = Math.max(max_diff, Math.abs(results[idx] - (entry.e_above_hull as number)))
@@ -587,9 +587,9 @@ describe(`pymatgen cross-validation`, () => {
   })
 
   test(`single-entry mode matches batch mode`, () => {
-    const batch = calculate_e_above_hull(quinary, quinary)
+    const batch = compute_e_above_hull(quinary, quinary)
     for (const [idx, entry] of quinary.entries())
-      expect(calculate_e_above_hull(entry, quinary)).toBe(batch[idx])
+      expect(compute_e_above_hull(entry, quinary)).toBe(batch[idx])
   })
 })
 
@@ -719,7 +719,7 @@ describe(`process_hull_for_stats`, () => {
         .filter((entry) => !entry.is_element)
         .toSorted((left_value, right_value) => left_value.energy - right_value.energy)
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
-      expect(calculate_e_above_hull(entries, entries).slice(-2)).toEqual([0, 0.5])
+      expect(compute_e_above_hull(entries, entries).slice(-2)).toEqual([0, 0.5])
     },
   )
 })

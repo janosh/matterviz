@@ -11,7 +11,7 @@ import type {
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import * as plotting from '#lib/trajectory/plotting.js'
-import * as calc_rdf from '#lib/rdf/calc-rdf.js'
+import * as calc_rdf from '#lib/rdf/compute-rdf.js'
 import type { Site } from '#lib/structure/index.js'
 import * as structure_component from '#lib/structure/Structure.svelte'
 import * as msd_pane_module from '#lib/msd/TrajectoryMsdPane.svelte'
@@ -1383,12 +1383,8 @@ describe(`panes`, () => {
     const planner = doc_query(`.trajectory-flight-pane`)
     // The paired frame controls synchronize number/slider edits and retain valid bounds.
     const frame_inputs = [...planner.querySelectorAll<HTMLInputElement>(`.input-row input`)]
-    expect(frame_inputs.map((input) => input.type)).toEqual([
-      `number`,
-      `range`,
-      `number`,
-      `range`,
-    ])
+    // oxfmt-ignore
+    expect(frame_inputs.map((input) => input.type)).toEqual([`number`, `range`, `number`, `range`])
     const [first_number, first_slider, last_number, last_slider] = frame_inputs
     // numbered 1..N like the step input
     expect([first_number.value, first_number.min, last_number.value]).toEqual([`1`, `1`, `3`])
@@ -1559,10 +1555,8 @@ describe(`events`, () => {
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     window.dispatchEvent(keydown(`v`, { cancelable: true }))
     await tick()
-    expect([props.display_mode, sibling_props.display_mode]).toEqual([
-      `structure`,
-      `structure+plot`,
-    ])
+    // oxfmt-ignore
+    expect([props.display_mode, sibling_props.display_mode]).toEqual([`structure`, `structure+plot`])
   })
 
   test.each([

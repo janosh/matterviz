@@ -1,13 +1,13 @@
-// Web Worker branch of calc_rdfs_async (see structure-id/worker-path.test.ts for why a
+// Web Worker branch of compute_rdfs_async (see structure-id/worker-path.test.ts for why a
 // stub Worker is installed before the import): the payload must carry one element per site,
 // which the structure-id payload omits, or every pair would histogram as X-X.
-import type { calc_rdfs_async as CalcRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
+import type { compute_rdfs_async as ComputeRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
 import {
-  calculate_all_pair_rdfs,
-  calculate_rdf,
-  calculate_rdfs,
+  compute_all_pair_rdfs,
+  compute_rdf,
+  compute_rdfs,
   type RdfsOptions,
-} from '#lib/rdf/calc-rdf.js'
+} from '#lib/rdf/compute-rdf.js'
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
 import { flushSync, mount, unmount } from 'svelte'
@@ -19,11 +19,11 @@ const stub = install_stub_worker<{
   id: number
   input: StructureIdPayload
   options: RdfsOptions
-}>(({ input, options }) => calculate_rdfs(structure_from_payload(input), options))
-let calc_rdfs_async: typeof CalcRdfsAsync
+}>(({ input, options }) => compute_rdfs(structure_from_payload(input), options))
+let compute_rdfs_async: typeof ComputeRdfsAsync
 
 beforeAll(async () => {
-  ;({ calc_rdfs_async } = await import(`#lib/rdf/async-compute.svelte.js`))
+  ;({ compute_rdfs_async } = await import(`#lib/rdf/async-compute.svelte.js`))
 })
 afterEach(stub.reset)
 
@@ -33,7 +33,7 @@ test(`ships positions, lattice and species, and matches the sync per-pair and al
     [`Cl`, [0.5, 0.5, 0.5]],
   ])
   crystal.sites[0].properties.on_click = () => {}
-  const result = await calc_rdfs_async(crystal, { cutoff: 5, n_bins: 50 })
+  const result = await compute_rdfs_async(crystal, { cutoff: 5, n_bins: 50 })
   expect_module_worker(stub.instances, `src/lib/rdf/rdf-worker.ts`)
   const { input: payload } = stub.posted[0].message
   expect(Object.keys(payload).toSorted()).toEqual([`lattice`, `species`, `xyz`])
@@ -43,10 +43,10 @@ test(`ships positions, lattice and species, and matches the sync per-pair and al
     [`Cl`, `Na`],
     [`Na`, `Na`],
   ])
-  expect(result).toEqual(calculate_all_pair_rdfs(crystal, { cutoff: 5, n_bins: 50 }))
+  expect(result).toEqual(compute_all_pair_rdfs(crystal, { cutoff: 5, n_bins: 50 }))
   // the same workers serve the one all-atom g(r), so RdfPlot's `full` mode leaves the main thread
-  const full = await calc_rdfs_async(crystal, { cutoff: 5, n_bins: 50, mode: `full` })
-  expect(full).toEqual([calculate_rdf(crystal, { cutoff: 5, n_bins: 50 })])
+  const full = await compute_rdfs_async(crystal, { cutoff: 5, n_bins: 50, mode: `full` })
+  expect(full).toEqual([compute_rdf(crystal, { cutoff: 5, n_bins: 50 })])
   expect(stub.posted[1].message.options.mode).toBe(`full`)
 })
 
@@ -56,9 +56,9 @@ test(`dispatches each request to the least-loaded pool worker, which idles until
   const crystal = make_crystal(4, [[`Na`, [0, 0, 0]]])
   const options = { cutoff: 4, n_bins: 10 }
   const posted_per_worker = () => stub.instances.map((worker) => worker.posted.length)
-  for (let request = 0; request < 3; request++) await calc_rdfs_async(crystal, options)
+  for (let request = 0; request < 3; request++) await compute_rdfs_async(crystal, options)
   expect(posted_per_worker()).toEqual([3])
-  await Promise.all([0, 1].map(() => calc_rdfs_async(crystal, options)))
+  await Promise.all([0, 1].map(() => compute_rdfs_async(crystal, options)))
   expect(posted_per_worker()).toEqual([4, 1])
   const { default: RdfPlot } = await import(`#lib/rdf/RdfPlot.svelte`)
   const plots = [0, 1].map(() => mount(RdfPlot, { target: document.body }))

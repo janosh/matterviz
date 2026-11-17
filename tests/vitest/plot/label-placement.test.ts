@@ -345,6 +345,12 @@ describe(`compute_delta_energy`, () => {
     expect(Math.sign(delta)).toBe(sign)
   })
 
+  // deterministic LCG in [0, 1] so the randomized scenes below are reproducible
+  const seeded_random = (seed: number) => () => {
+    seed = (seed * 1_664_525 + 1_013_904_223) & 0x7fffffff
+    return seed / 0x7fffffff
+  }
+
   // Same energy as compute_delta_energy but scoring every marker and label, i.e. without its
   // bounding-box rejection. `all_weights` throughout so every term is exercised.
   const mid = (rect: LabelState) => [rect.x + rect.w / 2, rect.y + rect.h / 2] as const
@@ -407,11 +413,7 @@ describe(`compute_delta_energy`, () => {
   test.each(
     [2, 8, 25].flatMap((count) => [40, 300].map((spread) => [count, spread] as const)),
   )(`matches a full pairwise evaluation (%i labels, spread %i)`, (label_count, spread) => {
-    let seed = 12_345
-    const random = () => {
-      seed = (seed * 1_664_525 + 1_013_904_223) & 0x7fffffff
-      return seed / 0x7fffffff
-    }
+    const random = seeded_random(12_345)
 
     for (let trial = 0; trial < 60; trial++) {
       const anchors = Array.from({ length: label_count }, () => ({
@@ -444,11 +446,7 @@ describe(`compute_delta_energy`, () => {
   // score a long chain of moves through a single index: a move left un-bucketed, or a stale
   // bucket, drops neighbours that the full evaluation still counts
   test.each([40, 300])(`stays exact across accepted moves (spread %i)`, (spread) => {
-    let seed = 777
-    const random = () => {
-      seed = (seed * 1_664_525 + 1_013_904_223) & 0x7fffffff
-      return seed / 0x7fffffff
-    }
+    const random = seeded_random(777)
     const anchors = Array.from({ length: 30 }, () => ({
       x: 200 + (random() - 0.5) * spread,
       y: 150 + (random() - 0.5) * spread,
@@ -795,6 +793,7 @@ describe(`compute_label_positions`, () => {
     const points = Array.from({ length: 10 }, (_, idx) =>
       labeled(idx * 40, idx * 30, `P${idx}`),
     )
+    points.push(labeled(380, 150, `RR`)) // its label (380 + 8 + ~22px > max_x=390) clamps
     const result = place_and_expect_finite(points, { ...default_config, max_labels: 5 })
     // Positions are label centres, like solved ones: every whole label stays within the plot
     // bounds (pad=10 each side), the one at the left edge included
@@ -810,16 +809,8 @@ describe(`compute_label_positions`, () => {
     const mid_key = Object.keys(result)[3]
     expect(result[mid_key].x).toBe(points[3].x + 8 + estimate_label_width(`P3`) / 2)
     expect(result[mid_key].y).toBe(points[3].y - label_h / 2 + 4)
-  })
-
-  test(`fallback clamps right-edge point to keep label within bounds`, () => {
-    // max_labels=1 forces the fallback; the right-edge label (380 + 8 + ~22px > max_x=390)
-    // clamps to end at max_x
-    const points = [labeled(50, 50, `OK`), labeled(380, 150, `RR`)]
-    const result = place_and_expect_finite(points, { ...default_config, max_labels: 1 })
-    const edge_key = Object.keys(result)[1]
-    const label_w = estimate_label_width(`RR`)
-    expect(result[edge_key].x).toBe(390 - label_w / 2)
+    // the right-edge label ends exactly at max_x
+    expect(result[`0-10`].x).toBe(390 - estimate_label_width(`RR`) / 2)
   })
 
   test(`candidate_gap controls candidate distance from marker radius`, () => {

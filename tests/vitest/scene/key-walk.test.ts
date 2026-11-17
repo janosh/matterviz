@@ -19,9 +19,8 @@ const keydown = (key: string, init: KeyboardEventInit = {}) =>
   new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true, ...init })
 
 describe(`KeyWalk`, () => {
-  // keys pressed in turn, whether each was taken, then the cursor's target and the replayed
-  // pointer handlers (each step leaves the last target, then enters the next), optionally with
-  // the pointer resting on a target
+  // keys pressed in turn, whether each was taken, the cursor's target, the replayed pointer
+  // handlers (leave the last target, enter the next) and optionally the pointer's hover
   // oxfmt-ignore
   test.each<[string, string[], boolean[], string | null, string[], string?]>([
     [`first step forward`, [`ArrowRight`], [true], `a`, [`hover a`]],

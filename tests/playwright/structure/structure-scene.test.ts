@@ -46,7 +46,7 @@ async function load_centered_scene(
     page,
     {
       sites: species.map(({ element, occu }) => ({
-        species: [{ element, occu, oxidation_state: 0 }],
+        species: [{ element, occu }],
         abc: [0.25, 0.25, 0.5],
         xyz: [0, 0, 0],
         label: element,
@@ -101,7 +101,7 @@ test(
       page,
       {
         sites: Array.from({ length: 2197 }, (_unused, idx) => ({
-          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `Si`, occu: 1 }],
           xyz: [(idx % 13) * 3, (Math.floor(idx / 13) % 13) * 3, Math.floor(idx / 169) * 3],
           abc: [0, 0, 0],
           properties: {},
@@ -235,7 +235,7 @@ test.describe(`StructureScene Component Tests`, { tag: `@webgl` }, () => {
         page,
         {
           sites: symbols.map((element, idx) => ({
-            species: [{ element, occu: 1, oxidation_state: 0 }],
+            species: [{ element, occu: 1 }],
             xyz: [
               [0, 0, 0],
               [1.2, 0, 0],

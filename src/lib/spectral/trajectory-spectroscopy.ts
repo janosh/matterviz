@@ -1,8 +1,7 @@
-import { clamp } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
-import type { PeriodogramResult, WindowType } from '#lib/fft.js'
+import type { WindowType } from '#lib/fft.js'
 import {
   fft_in_place,
   next_power_of_two,
@@ -22,11 +21,11 @@ import {
   IDENTITY_3X3,
   is_finite_vec3_like,
   is_pbc,
-  mat3x3_vec3_multiply,
+  mul_3x3_vec3,
   median,
   partition_point,
   same_values,
-  transpose_3x3_matrix,
+  transpose_3x3,
 } from '#lib/math.js'
 import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
 import {
@@ -34,11 +33,10 @@ import {
   validate_position_stream_layout,
 } from '#lib/trajectory/positions.js'
 import type { VelocitySource } from '#lib/vacf/index.js'
-import { central_difference_velocities } from '#lib/vacf/calc-vacf.js'
+import { central_difference_velocities } from '#lib/vacf/compute-vacf.js'
 
-// `1/step` is cycles per MD step (the signals carry their own step axes), the honest axis
-// when the run records no timestep. Distinct from the VACF's `1/frame`, which counts
-// collected frames.
+// `1/step`: cycles per MD step, the honest axis without a recorded timestep (unlike the
+// VACF's `1/frame`, which counts collected frames)
 export type TrajectoryFrequencyUnit = MdFrequencyUnit | `1/step`
 const TRAJECTORY_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/step`] as const
 type SpectralActivity = `active` | `inactive` | `unknown`
@@ -81,7 +79,7 @@ export interface TrajectorySpectroscopyOptions {
   raman_channel?: RamanChannel
 }
 
-// The resolved options every FFT path reads, as calc_trajectory_spectroscopy defaults them
+// The resolved options every FFT path reads, as compute_trajectory_spectroscopy defaults them
 type SpectrumOptions = Required<
   Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
 > &
@@ -141,7 +139,7 @@ export interface TrajectorySpectroscopyResult {
 }
 
 const fail = (message: string): never => {
-  throw new Error(`calc_trajectory_spectroscopy: ${message}`)
+  throw new Error(`compute_trajectory_spectroscopy: ${message}`)
 }
 
 const require_one_of = <Allowed extends string>(
@@ -214,19 +212,17 @@ export function validate_trajectory_signal(
   require_strict_steps(signal.steps, label)
 }
 
-// The shared layout check covers counts and buffer length (a fractional n_atoms or n_frames
-// fails it too, since element and step counts are integers); the step axis, value and
-// lattice finiteness and pbc shape are spectroscopy's own
+// The shared layout check covers (integer) counts and buffer length; the step axis, value
+// and lattice finiteness and pbc shape are spectroscopy's own
 const validate_position_stream = (stream: TrajectoryPositionStream): void => {
-  validate_position_stream_layout(stream, `calc_trajectory_spectroscopy`, 1)
+  validate_position_stream_layout(stream, `compute_trajectory_spectroscopy`, 1)
   require_finite(stream.positions, `position`, `value`)
   if (stream.steps.length !== stream.n_frames) {
     fail(`positions have ${stream.n_frames} frames but ${stream.steps.length} steps`)
   }
   require_strict_steps(stream.steps, `position`)
   for (const [frame_idx, lattice] of stream.lattice_matrices?.entries() ?? []) {
-    if (lattice === null) continue
-    if (lattice.length !== 3 || !lattice.every(is_finite_vec3_like)) {
+    if (lattice && (lattice.length !== 3 || !lattice.every(is_finite_vec3_like))) {
       fail(`lattice matrix ${frame_idx} must be a finite 3 × 3 matrix`)
     }
   }
@@ -235,22 +231,13 @@ const validate_position_stream = (stream: TrajectoryPositionStream): void => {
 }
 
 const uniform_step_delta = (steps: number[], label: string): number => {
-  if (steps.length < 2) fail(`${label} needs at least 2 steps`)
   const delta = steps[1] - steps[0]
   for (let step_idx = 2; step_idx < steps.length; step_idx++) {
     const next_delta = steps[step_idx] - steps[step_idx - 1]
-    // This second finite difference touches three recorded steps. Eight f64 epsilons at
-    // their largest magnitude cover its input and subtraction roundoff without admitting
-    // a physically meaningful cadence change.
-    const tolerance =
-      8 *
-      Number.EPSILON *
-      Math.max(
-        1,
-        Math.abs(steps[step_idx]),
-        Math.abs(steps[step_idx - 1]),
-        Math.abs(steps[step_idx - 2]),
-      )
+    // Eight f64 epsilons at the largest of the three (strictly increasing, so an outer one)
+    // steps cover this second difference's roundoff without admitting a real cadence change
+    const magnitude = Math.max(1, Math.abs(steps[step_idx]), Math.abs(steps[step_idx - 2]))
+    const tolerance = 8 * Number.EPSILON * magnitude
     if (Math.abs(next_delta - delta) > tolerance) {
       fail(
         `${label} is not uniformly sampled: first step delta is ${delta}, but steps ` +
@@ -299,16 +286,11 @@ const frequency_factor = (
   time_unit: string | undefined,
 ): number => {
   if (frequency_unit === `1/step`) return 1
-  if (!time_unit) {
-    return fail(
-      `frequency_unit '${frequency_unit}' requires time_unit; use '1/step' otherwise`,
-    )
-  }
-  const factor = md_frequency_factor(time_unit, frequency_unit)
-  if (factor === null) {
-    return fail(`time_unit '${time_unit}' cannot be converted to ${frequency_unit}`)
-  }
-  return factor
+  // a physical unit has passed sample_interval's time_step check, and time_unit comes with it
+  return (
+    md_frequency_factor(time_unit ?? ``, frequency_unit) ??
+    fail(`time_unit '${time_unit}' cannot be converted to ${frequency_unit}`)
+  )
 }
 
 const sample_interval = (
@@ -325,46 +307,20 @@ const sample_interval = (
   return step_delta * time_step
 }
 
-const curve_from_periodogram = (
-  periodogram: PeriodogramResult,
-  interval: number,
-  frequency_unit: TrajectoryFrequencyUnit,
-  factor: number,
-): TrajectorySpectrumCurve => {
-  const frequencies = Array.from(periodogram.frequencies, (value) => value * factor)
-  // one_sided_periodogram returns a density per source-frequency unit. When the
-  // frequency coordinate is scaled by factor, the density must carry the inverse
-  // Jacobian so its integral remains invariant.
-  const power = Array.from(periodogram.power, (value) => value / factor)
-  return {
-    frequencies,
-    power,
-    normalized_power: normalize_power(power),
-    frequency_unit,
-    sample_interval: interval,
-    frequency_spacing: periodogram.frequency_spacing * factor,
-    rayleigh_resolution: periodogram.rayleigh_resolution * factor,
-    nyquist: periodogram.nyquist * factor,
-  }
-}
-
 const combine_curves = (
   left: TrajectorySpectrumCurve,
   right: TrajectorySpectrumCurve,
   left_factor: number,
   right_factor: number,
 ): TrajectorySpectrumCurve => {
-  if (!arrays_equal(left.frequencies, right.frequencies)) {
-    return fail(`cannot combine Raman channels with different frequency grids`)
-  }
   const power = left.power.map(
     (value, frequency_idx) => left_factor * value + right_factor * right.power[frequency_idx],
   )
   return { ...left, power, normalized_power: normalize_power(power) }
 }
 
-// Unit vector of a molecular axis; math's normalize_vec returns zeros for a degenerate input,
-// which here would silently drop the rotation instead of reporting the degenerate geometry
+// Unlike math's normalize_vec (zeros), a degenerate molecular axis throws instead of
+// silently dropping the rotation
 const unit_axis = (vector: ArrayLike<number>): Vec3 => {
   const norm = Math.hypot(vector[0], vector[1], vector[2])
   if (!(norm > 0)) fail(`molecular axis must be non-zero`)
@@ -374,9 +330,6 @@ const unit_axis = (vector: ArrayLike<number>): Vec3 => {
 const RAMAN_ANISOTROPIC_WEIGHTS = Float64Array.from([0.5, 0.5, 0.5, 3, 3, 3])
 const identity_rotations = (count: number): Matrix3x3[] =>
   Array.from({ length: count }, () => IDENTITY_3X3)
-
-const rotate_vec = (rotation: Matrix3x3, vector: ArrayLike<number>): Vec3 =>
-  mat3x3_vec3_multiply(rotation, [vector[0], vector[1], vector[2]])
 
 const rotation_from_quaternion = (quaternion: number[]): Matrix3x3 => {
   const quaternion_norm = Math.hypot(...quaternion)
@@ -423,42 +376,27 @@ const symmetric_eigensystem = (
       }
     }
     if (off_diagonal <= 1e-14) break
-    const angle =
-      0.5 *
-      Math.atan2(
-        2 * matrix[row_max][col_max],
-        matrix[col_max][col_max] - matrix[row_max][row_max],
-      )
+    const [top, bottom] = [matrix[row_max], matrix[col_max]]
+    const angle = 0.5 * Math.atan2(2 * top[col_max], bottom[col_max] - top[row_max])
     const cosine = Math.cos(angle)
     const sine = Math.sin(angle)
-    for (let matrix_idx = 0; matrix_idx < size; matrix_idx++) {
-      if (matrix_idx === row_max || matrix_idx === col_max) continue
-      const left = matrix[matrix_idx][row_max]
-      const right = matrix[matrix_idx][col_max]
-      matrix[matrix_idx][row_max] = cosine * left - sine * right
-      matrix[row_max][matrix_idx] = matrix[matrix_idx][row_max]
-      matrix[matrix_idx][col_max] = sine * left + cosine * right
-      matrix[col_max][matrix_idx] = matrix[matrix_idx][col_max]
+    // Givens rotation J in the (row_max, col_max) plane: A <- JᵀAJ, V <- VJ
+    const rotate_columns = (target: number[][]) => {
+      for (const row of target) {
+        const [left, right] = [row[row_max], row[col_max]]
+        row[row_max] = cosine * left - sine * right
+        row[col_max] = sine * left + cosine * right
+      }
     }
-    const diagonal_left = matrix[row_max][row_max]
-    const diagonal_right = matrix[col_max][col_max]
-    const cross = matrix[row_max][col_max]
-    matrix[row_max][row_max] =
-      cosine * cosine * diagonal_left -
-      2 * sine * cosine * cross +
-      sine * sine * diagonal_right
-    matrix[col_max][col_max] =
-      sine * sine * diagonal_left +
-      2 * sine * cosine * cross +
-      cosine * cosine * diagonal_right
-    matrix[row_max][col_max] = 0
-    matrix[col_max][row_max] = 0
-    for (let vector_idx = 0; vector_idx < size; vector_idx++) {
-      const left = vectors[vector_idx][row_max]
-      const right = vectors[vector_idx][col_max]
-      vectors[vector_idx][row_max] = cosine * left - sine * right
-      vectors[vector_idx][col_max] = sine * left + cosine * right
+    rotate_columns(matrix)
+    for (let col_idx = 0; col_idx < size; col_idx++) {
+      const [left, right] = [top[col_idx], bottom[col_idx]]
+      top[col_idx] = cosine * left - sine * right
+      bottom[col_idx] = sine * left + cosine * right
     }
+    top[col_max] = 0
+    bottom[row_max] = 0
+    rotate_columns(vectors)
   }
   return { values: matrix.map((row, idx) => row[idx]), vectors }
 }
@@ -468,25 +406,16 @@ const center_frame = (
   frame_idx: number,
   n_atoms: number,
   masses: Float64Array,
-): { centered: Float64Array; center: [number, number, number] } => {
+): { centered: Float64Array; center: Vec3 } => {
   const total_mass = masses.reduce((total, mass) => total + mass, 0)
-  const center: [number, number, number] = [0, 0, 0]
-  const frame_base = frame_idx * n_atoms * 3
-  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-    const component_base = frame_base + atom_idx * 3
-    for (let axis = 0; axis < 3; axis++) {
-      center[axis] += masses[atom_idx] * positions[component_base + axis]
-    }
+  const frame = positions.subarray(frame_idx * n_atoms * 3, (frame_idx + 1) * n_atoms * 3)
+  const center: Vec3 = [0, 0, 0]
+  for (let idx = 0; idx < frame.length; idx++) {
+    center[idx % 3] += masses[Math.floor(idx / 3)] * frame[idx]
   }
   for (let axis = 0; axis < 3; axis++) center[axis] /= total_mass
-  const centered = new Float64Array(n_atoms * 3)
-  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-    const input_base = frame_base + atom_idx * 3
-    const output_base = atom_idx * 3
-    for (let axis = 0; axis < 3; axis++) {
-      centered[output_base + axis] = positions[input_base + axis] - center[axis]
-    }
-  }
+  const centered = new Float64Array(frame.length)
+  for (let idx = 0; idx < frame.length; idx++) centered[idx] = frame[idx] - center[idx % 3]
   return { centered, center }
 }
 
@@ -513,13 +442,9 @@ const horn_rotation = (
     [szx - sxz, sxy + syx, -sxx + syy - szz, syz + szy],
     [sxy - syx, szx + sxz, syz + szy, -sxx - syy + szz],
   ]
-  const eigensystem = symmetric_eigensystem(horn)
-  let largest_idx = 0
-  for (let idx = 1; idx < eigensystem.values.length; idx++) {
-    if (eigensystem.values[idx] > eigensystem.values[largest_idx]) largest_idx = idx
-  }
-  const quaternion = eigensystem.vectors.map((row) => row[largest_idx])
-  return rotation_from_quaternion(quaternion)
+  const { values, vectors } = symmetric_eigensystem(horn)
+  const largest_idx = values.indexOf(Math.max(...values))
+  return rotation_from_quaternion(vectors.map((row) => row[largest_idx]))
 }
 
 const solve_inertia = (inertia: number[][], angular_momentum: number[]): number[] => {
@@ -544,82 +469,48 @@ interface PreparedMotion {
   lab_positions: Float64Array
   rotations: Matrix3x3[]
   reference_positions: number[][]
+  preprocessing: SpectroscopyPreprocessing
+  frame_by_step: Map<number, number>
 }
 
+// The outermost atom's axis when every atom sits on it (a linear molecule), else null
 const linear_anchor = (
   centered: Float64Array,
   n_atoms: number,
-): { atom_idx: number; axis: [number, number, number] } | null => {
-  let atom_idx = 0
-  let radius = 0
-  for (let candidate_idx = 0; candidate_idx < n_atoms; candidate_idx++) {
-    const base = candidate_idx * 3
-    const candidate_radius = Math.hypot(centered[base], centered[base + 1], centered[base + 2])
-    if (candidate_radius > radius) {
-      atom_idx = candidate_idx
-      radius = candidate_radius
-    }
-  }
-  if (!(radius > 0)) return null
-  const base = atom_idx * 3
-  const axis = unit_axis(centered.subarray(base, base + 3))
-  let maximum_perpendicular = 0
-  for (let candidate_idx = 0; candidate_idx < n_atoms; candidate_idx++) {
-    const candidate_base = candidate_idx * 3
-    const perpendicular = cross_3d(centered.subarray(candidate_base, candidate_base + 3), axis)
-    maximum_perpendicular = Math.max(maximum_perpendicular, Math.hypot(...perpendicular))
-  }
-  return maximum_perpendicular <= 1e-8 * radius ? { atom_idx, axis } : null
-}
-
-const axis_rotation = (
-  source: [number, number, number],
-  target: [number, number, number],
-): Matrix3x3 => {
-  const cosine = clamp(dot(source, target), -1, 1)
-  let rotation_axis: number[] = cross_3d(source, target)
-  let sine = Math.hypot(...rotation_axis)
-  if (sine <= 1e-14) {
-    if (cosine > 0) return IDENTITY_3X3
-    const helper: [number, number, number] = Math.abs(source[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
-    rotation_axis = unit_axis(cross_3d(source, helper))
-    sine = 0
-  } else rotation_axis = rotation_axis.map((value) => value / sine)
-  const [axis_x, axis_y, axis_z] = rotation_axis
-  const one_minus_cosine = 1 - cosine
-  return [
-    [
-      cosine + axis_x * axis_x * one_minus_cosine,
-      axis_x * axis_y * one_minus_cosine - axis_z * sine,
-      axis_x * axis_z * one_minus_cosine + axis_y * sine,
-    ],
-    [
-      axis_y * axis_x * one_minus_cosine + axis_z * sine,
-      cosine + axis_y * axis_y * one_minus_cosine,
-      axis_y * axis_z * one_minus_cosine - axis_x * sine,
-    ],
-    [
-      axis_z * axis_x * one_minus_cosine - axis_y * sine,
-      axis_z * axis_y * one_minus_cosine + axis_x * sine,
-      cosine + axis_z * axis_z * one_minus_cosine,
-    ],
-  ]
-}
-
-const mean_geometry = (
-  positions: Float64Array,
-  n_frames: number,
-  n_atoms: number,
-): number[][] =>
-  Array.from({ length: n_atoms }, (_atom, atom_idx) =>
-    Array.from({ length: 3 }, (_component, axis) => {
-      let total = 0
-      for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-        total += positions[(frame_idx * n_atoms + atom_idx) * 3 + axis]
-      }
-      return total / n_frames
-    }),
+): { atom_idx: number; axis: Vec3 } | null => {
+  const atoms = Array.from({ length: n_atoms }, (_, idx) =>
+    centered.subarray(idx * 3, idx * 3 + 3),
   )
+  const radii = atoms.map((atom) => Math.hypot(...atom))
+  const radius = Math.max(...radii)
+  if (!(radius > 0)) return null
+  const atom_idx = radii.indexOf(radius)
+  const axis = unit_axis(atoms[atom_idx])
+  const perpendicular = Math.max(...atoms.map((atom) => Math.hypot(...cross_3d(atom, axis))))
+  return perpendicular <= 1e-8 * radius ? { atom_idx, axis } : null
+}
+
+// Shortest rotation taking unit `source` onto unit `target`: the quaternion (1 + s·t, s × t),
+// or half a turn about any perpendicular when the axes are antiparallel
+const axis_rotation = (source: Vec3, target: Vec3): Matrix3x3 => {
+  const cosine = dot(source, target)
+  const rotation_axis = cross_3d(source, target)
+  if (cosine < 0 && Math.hypot(...rotation_axis) <= 1e-14) {
+    const helper: Vec3 = Math.abs(source[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
+    return rotation_from_quaternion([0, ...unit_axis(cross_3d(source, helper))])
+  }
+  return rotation_from_quaternion([1 + cosine, ...rotation_axis])
+}
+
+const mean_geometry = (positions: Float64Array, n_atoms: number): number[][] => {
+  const n_frames = positions.length / (n_atoms * 3)
+  const totals = new Float64Array(n_atoms * 3)
+  for (let idx = 0; idx < positions.length; idx++)
+    totals[idx % totals.length] += positions[idx]
+  return Array.from({ length: n_atoms }, (_, atom_idx) =>
+    Array.from(totals.subarray(atom_idx * 3, atom_idx * 3 + 3), (total) => total / n_frames),
+  )
+}
 
 const prepare_positions = (
   stream: TrajectoryPositionStream,
@@ -641,31 +532,30 @@ const prepare_positions = (
           pbc,
         )
       : stream.positions
-  // Nothing downstream writes to the prepared buffers, so the raw frame shares one
-  // unwrapped copy instead of holding three
-  if (preprocessing === `raw`) {
-    return {
-      positions: unwrapped,
-      lab_positions: unwrapped,
-      rotations: identity_rotations(stream.n_frames),
-      reference_positions: mean_geometry(unwrapped, stream.n_frames, stream.n_atoms),
-    }
-  }
+  const motion = (positions: Float64Array, rotations: Matrix3x3[]): PreparedMotion => ({
+    positions,
+    lab_positions: unwrapped,
+    rotations,
+    reference_positions: mean_geometry(positions, stream.n_atoms),
+    preprocessing,
+    frame_by_step: new Map(stream.steps.map((step, frame_idx) => [step, frame_idx])),
+  })
+  // Nothing downstream writes the prepared buffers, so raw shares one unwrapped copy
+  if (preprocessing === `raw`) return motion(unwrapped, identity_rotations(stream.n_frames))
   const prepared = new Float64Array(unwrapped.length)
   const rotations: Matrix3x3[] = []
   const first_frame = center_frame(unwrapped, 0, stream.n_atoms, masses)
   const first_centered = first_frame.centered
   const reference_center: Vec3 = periodic ? first_frame.center : [0, 0, 0]
-  const linear =
-    preprocessing === `body_fixed` && !periodic
-      ? linear_anchor(first_centered, stream.n_atoms)
-      : null
+  // periodic body_fixed input was rejected upfront
+  const body_fixed = preprocessing === `body_fixed`
+  const linear = body_fixed ? linear_anchor(first_centered, stream.n_atoms) : null
   let previous_axis = linear?.axis
   let previous_rotation: Matrix3x3 = IDENTITY_3X3
   for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
     const centered = center_frame(unwrapped, frame_idx, stream.n_atoms, masses).centered
     let rotation: Matrix3x3 = IDENTITY_3X3
-    if (preprocessing === `body_fixed` && !periodic) {
+    if (body_fixed) {
       if (linear && previous_axis) {
         const base = linear.atom_idx * 3
         const current_axis = unit_axis(centered.subarray(base, base + 3))
@@ -692,46 +582,40 @@ const prepare_positions = (
       prepared[out + 2] = rot_zx * pos_x + rot_zy * pos_y + rot_zz * pos_z + center_z
     }
   }
-  return {
-    positions: prepared,
-    lab_positions: unwrapped,
-    rotations,
-    reference_positions: mean_geometry(prepared, stream.n_frames, stream.n_atoms),
-  }
+  return motion(prepared, rotations)
 }
 
-const step_index_map = (steps: number[]) =>
-  new Map(steps.map((step, step_idx) => [step, step_idx]))
-
-// Body-frame rotation for every sample of a signal (looked up by MD step in the position
-// frames); identity when the preprocessing keeps the laboratory frame
-const signal_rotations = (
-  preprocessing: SpectroscopyPreprocessing,
-  position_steps: number[],
-  rotations: Matrix3x3[],
-  signal_steps: number[],
+// Index of the position frame recorded at a signal sample's MD step
+const position_frame = (
+  prepared: PreparedMotion,
+  step: number,
   label: string,
-): Matrix3x3[] => {
-  if (preprocessing !== `body_fixed`) return identity_rotations(signal_steps.length)
-  const positions_by_step = step_index_map(position_steps)
-  return signal_steps.map((step) => {
-    const frame_idx = positions_by_step.get(step)
-    if (frame_idx === undefined) {
-      return fail(
-        `${label} has a sample at MD step ${step}, but body-frame processing has no ` +
-          `position at that step`,
+  purpose: string,
+): number =>
+  prepared.frame_by_step.get(step) ??
+  fail(`${label} has a sample at MD step ${step}, but ${purpose} has no position at that step`)
+
+// Body-frame rotation for every sample of a signal; identity when the preprocessing keeps
+// the laboratory frame
+const signal_rotations = (
+  prepared: PreparedMotion,
+  signal: TrajectorySignal,
+  label: string,
+): Matrix3x3[] =>
+  prepared.preprocessing === `body_fixed`
+    ? signal.steps.map(
+        (step) =>
+          prepared.rotations[position_frame(prepared, step, label, `body-frame processing`)],
       )
-    }
-    return rotations[frame_idx]
-  })
-}
+    : identity_rotations(signal.steps.length)
 
 // One rotation per sample (signal_rotations), so it applies to its 3-vector
 const rotate_vector_signal = (values: Float64Array, rotations: Matrix3x3[]): Float64Array => {
   const rotated = new Float64Array(values.length)
   for (const [sample_idx, rotation] of rotations.entries()) {
     const base = sample_idx * 3
-    rotated.set(rotate_vec(rotation, values.subarray(base, base + 3)), base)
+    const [vec_x, vec_y, vec_z] = values.subarray(base, base + 3)
+    rotated.set(mul_3x3_vec3(rotation, [vec_x, vec_y, vec_z]), base)
   }
   return rotated
 }
@@ -744,82 +628,111 @@ const rotate_tensor_signal = (values: Float64Array, rotations: Matrix3x3[]): Flo
     const entry = (row: number, col: number) =>
       (values[base + 3 * row + col] + values[base + 3 * col + row]) / 2
     const symmetric = [0, 1, 2].map((row) => [0, 1, 2].map((col) => entry(row, col)))
-    rotated.set(dot(dot(rotation, symmetric), transpose_3x3_matrix(rotation)).flat(), base)
+    rotated.set(dot(dot(rotation, symmetric), transpose_3x3(rotation)).flat(), base)
   }
   return rotated
 }
 
 const remove_rigid_velocity = (
-  velocities: Float64Array,
-  velocity_steps: number[],
-  stream: TrajectoryPositionStream,
+  { values: velocities, steps }: TrajectorySignal,
   masses: Float64Array,
   prepared: PreparedMotion,
-  preprocessing: SpectroscopyPreprocessing,
 ): Float64Array => {
+  const { preprocessing, lab_positions } = prepared
   if (preprocessing === `raw`) return new Float64Array(velocities)
-  const position_by_step = step_index_map(stream.steps)
   const output = new Float64Array(velocities.length)
   const total_mass = masses.reduce((total, mass) => total + mass, 0)
-  for (let sample_idx = 0; sample_idx < velocity_steps.length; sample_idx++) {
-    const position_frame_idx = position_by_step.get(velocity_steps[sample_idx])
-    if (position_frame_idx === undefined) {
-      return fail(
-        `stored velocities have a sample at MD step ${velocity_steps[sample_idx]}, but ` +
-          `rigid-motion removal has no position at that step`,
-      )
-    }
-    const center_velocity = [0, 0, 0]
-    for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
-      const base = (sample_idx * stream.n_atoms + atom_idx) * 3
-      for (let axis = 0; axis < 3; axis++) {
-        center_velocity[axis] += masses[atom_idx] * velocities[base + axis]
-      }
-    }
-    for (let axis = 0; axis < 3; axis++) center_velocity[axis] /= total_mass
-    const sample_base = sample_idx * stream.n_atoms * 3
-    // this sample's velocities relative to the centre of mass
-    const relative = velocities.slice(sample_base, sample_base + stream.n_atoms * 3)
-    for (const [idx, value] of relative.entries())
-      relative[idx] = value - center_velocity[idx % 3]
-    const centered_positions = center_frame(
-      prepared.lab_positions,
-      position_frame_idx,
-      stream.n_atoms,
-      masses,
-    ).centered
-    // remove_com only subtracts the centre-of-mass velocity; the inertia tensor and angular
-    // momentum are only ever consumed by the body-fixed solve
-    let angular_velocity: number[] = [0, 0, 0]
-    if (preprocessing === `body_fixed`) {
-      const inertia = Array.from({ length: 3 }, () => [0, 0, 0])
-      const angular_momentum = [0, 0, 0]
-      for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
-        const base = atom_idx * 3
-        const position = Array.from(centered_positions.subarray(base, base + 3))
-        const radius_squared = position.reduce((total, value) => total + value * value, 0)
-        for (let row_idx = 0; row_idx < 3; row_idx++) {
-          for (let col_idx = 0; col_idx < 3; col_idx++) {
-            inertia[row_idx][col_idx] +=
-              masses[atom_idx] *
-              ((row_idx === col_idx ? radius_squared : 0) -
-                position[row_idx] * position[col_idx])
-          }
-        }
-        const contribution = cross_3d(position, relative.subarray(base, base + 3))
-        for (let axis = 0; axis < 3; axis++) {
-          angular_momentum[axis] += masses[atom_idx] * contribution[axis]
-        }
-      }
-      angular_velocity = solve_inertia(inertia, angular_momentum)
-    }
-    const rotation = prepared.rotations[position_frame_idx]
-    for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
+  const n_atoms = masses.length
+  const body_fixed = preprocessing === `body_fixed`
+  // Scalar arithmetic and two per-sample scratch buffers only: this runs once per atom of every
+  // velocity sample, where per-atom vectors and iterators cost more than the physics
+  // (1024 samples x 300 atoms: 96 -> 2.7 ms for remove_com, 378 -> 7 ms for body_fixed)
+  const relative = new Float64Array(n_atoms * 3) // velocities relative to the centre of mass
+  const centered = new Float64Array(n_atoms * 3) // positions relative to the centre of mass
+  for (const [sample_idx, step] of steps.entries()) {
+    const position_frame_idx = position_frame(
+      prepared,
+      step,
+      `stored velocity signal`,
+      `rigid-motion removal`,
+    )
+    const sample_base = sample_idx * n_atoms * 3
+    const frame_base = position_frame_idx * n_atoms * 3
+    let [velocity_x, velocity_y, velocity_z] = [0, 0, 0]
+    let [center_x, center_y, center_z] = [0, 0, 0]
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
       const base = atom_idx * 3
-      const position = centered_positions.subarray(base, base + 3)
-      const rotation_velocity = cross_3d(angular_velocity, position)
-      const residual = [0, 1, 2].map((axis) => relative[base + axis] - rotation_velocity[axis])
-      output.set(rotate_vec(rotation, residual), sample_base + base)
+      const mass = masses[atom_idx]
+      velocity_x += mass * velocities[sample_base + base]
+      velocity_y += mass * velocities[sample_base + base + 1]
+      velocity_z += mass * velocities[sample_base + base + 2]
+      center_x += mass * lab_positions[frame_base + base]
+      center_y += mass * lab_positions[frame_base + base + 1]
+      center_z += mass * lab_positions[frame_base + base + 2]
+    }
+    ;[velocity_x, velocity_y, velocity_z] = [velocity_x, velocity_y, velocity_z].map(
+      (sum) => sum / total_mass,
+    )
+    ;[center_x, center_y, center_z] = [center_x, center_y, center_z].map(
+      (sum) => sum / total_mass,
+    )
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+      const base = atom_idx * 3
+      relative[base] = velocities[sample_base + base] - velocity_x
+      relative[base + 1] = velocities[sample_base + base + 1] - velocity_y
+      relative[base + 2] = velocities[sample_base + base + 2] - velocity_z
+      centered[base] = lab_positions[frame_base + base] - center_x
+      centered[base + 1] = lab_positions[frame_base + base + 1] - center_y
+      centered[base + 2] = lab_positions[frame_base + base + 2] - center_z
+    }
+    // remove_com stops at the centre-of-mass velocity; only body_fixed removes rotation
+    let [omega_x, omega_y, omega_z] = [0, 0, 0]
+    if (body_fixed) {
+      let [inertia_xx, inertia_yy, inertia_zz, inertia_xy, inertia_xz, inertia_yz] = [
+        0, 0, 0, 0, 0, 0,
+      ]
+      let [momentum_x, momentum_y, momentum_z] = [0, 0, 0]
+      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+        const base = atom_idx * 3
+        const mass = masses[atom_idx]
+        const [pos_x, pos_y, pos_z] = [centered[base], centered[base + 1], centered[base + 2]]
+        const [rel_x, rel_y, rel_z] = [relative[base], relative[base + 1], relative[base + 2]]
+        const radius_squared = pos_x * pos_x + pos_y * pos_y + pos_z * pos_z
+        inertia_xx += mass * (radius_squared - pos_x * pos_x)
+        inertia_yy += mass * (radius_squared - pos_y * pos_y)
+        inertia_zz += mass * (radius_squared - pos_z * pos_z)
+        inertia_xy -= mass * (pos_x * pos_y)
+        inertia_xz -= mass * (pos_x * pos_z)
+        inertia_yz -= mass * (pos_y * pos_z)
+        // angular momentum m r x v
+        momentum_x += mass * (pos_y * rel_z - pos_z * rel_y)
+        momentum_y += mass * (pos_z * rel_x - pos_x * rel_z)
+        momentum_z += mass * (pos_x * rel_y - pos_y * rel_x)
+      }
+      const inertia = [
+        [inertia_xx, inertia_xy, inertia_xz],
+        [inertia_xy, inertia_yy, inertia_yz],
+        [inertia_xz, inertia_yz, inertia_zz],
+      ]
+      ;[omega_x, omega_y, omega_z] = solve_inertia(inertia, [
+        momentum_x,
+        momentum_y,
+        momentum_z,
+      ])
+    }
+    const [[rot_xx, rot_xy, rot_xz], [rot_yx, rot_yy, rot_yz], [rot_zx, rot_zy, rot_zz]] =
+      prepared.rotations[position_frame_idx]
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+      const base = atom_idx * 3
+      const [pos_x, pos_y, pos_z] = [centered[base], centered[base + 1], centered[base + 2]]
+      // residual after the rigid rotation omega x r, turned into the body frame
+      const res_x = relative[base] - (omega_y * pos_z - omega_z * pos_y)
+      const res_y = relative[base + 1] - (omega_z * pos_x - omega_x * pos_z)
+      const res_z = relative[base + 2] - (omega_x * pos_y - omega_y * pos_x)
+      const out = sample_base + base
+      output[out] = rot_xx * res_x + rot_xy * res_y + rot_xz * res_z
+      output[out + 1] = rot_yx * res_x + rot_yy * res_y + rot_yz * res_z
+      output[out + 2] = rot_zx * res_x + rot_zy * res_y + rot_zz * res_z
     }
   }
   return output
@@ -829,7 +742,7 @@ const remove_rigid_velocity = (
 // frequency axis. `frequency_squared` multiplies by (2πν)² and is IR-dipole only: the
 // classical IR absorption α(ω)n(ω) ∝ ω·tanh(βħω/2)·FT⟨μ(0)μ(t)⟩ → (βħ/2)·ω²·FT⟨μμ⟩, i.e.
 // the power spectrum of μ̇. A `current` IR signal is already μ̇ so it skips the factor, and
-// Raman never applies it (see calculate_raman). The VDOS is a velocity power spectrum.
+// Raman never applies it (see compute_raman). The VDOS is a velocity power spectrum.
 const build_curve = (
   values: Float64Array,
   n_components: number,
@@ -849,23 +762,34 @@ const build_curve = (
     zero_pad_factor: options.zero_pad_factor,
     component_weights,
   })
-  const curve = curve_from_periodogram(periodogram, interval, options.frequency_unit, factor)
   // Absolute floor, since everything downstream is relative: normalize_power puts the maximum
   // at 1 and prominence and activity are fractions of it, so pure cancellation residue reads
   // as full-scale modes (rigid tumbling water gave a 2.4e-29 VDOS maximum with 25 peaks)
-  const variation = max_component_variation(values, n_components)
-  if (variation <= ROUNDOFF_RATIO * Math.max(max_abs(values), source_scale)) {
-    const zeros = () => curve.power.map(() => 0)
-    return { ...curve, power: zeros(), normalized_power: zeros() }
-  }
-  if (!frequency_squared) return curve
+  const below_roundoff =
+    max_component_variation(values, n_components) <=
+    ROUNDOFF_RATIO * Math.max(max_abs(values), source_scale)
   const physical_factor =
-    options.frequency_unit === `1/step` ? 1 : frequency_factor(`THz`, options.time_unit)
-  const power = curve.power.map((value, frequency_idx) => {
+    frequency_squared && options.frequency_unit !== `1/step`
+      ? frequency_factor(`THz`, options.time_unit)
+      : 1
+  // A density per source-frequency unit: rescaling the axis by `factor` divides it by the
+  // same Jacobian so its integral stays invariant
+  const power = Array.from(periodogram.power, (value, frequency_idx) => {
+    if (below_roundoff) return 0
+    if (!frequency_squared) return value / factor
     const physical_frequency = periodogram.frequencies[frequency_idx] * physical_factor
-    return value * (2 * Math.PI * physical_frequency) ** 2
+    return (value / factor) * (2 * Math.PI * physical_frequency) ** 2
   })
-  return { ...curve, power, normalized_power: normalize_power(power) }
+  return {
+    frequencies: Array.from(periodogram.frequencies, (value) => value * factor),
+    power,
+    normalized_power: normalize_power(power),
+    frequency_unit: options.frequency_unit,
+    sample_interval: interval,
+    frequency_spacing: periodogram.frequency_spacing * factor,
+    rayleigh_resolution: periodogram.rayleigh_resolution * factor,
+    nyquist: periodogram.nyquist * factor,
+  }
 }
 
 // Classical Placzek Raman spectrum: the power spectrum FT⟨α(0)α(t)⟩ of the (body-frame)
@@ -877,22 +801,14 @@ const build_curve = (
 // the classical-limit Bose×1/ω factor k_BT/(ħω²) cancels the ω² exactly, so no ω² weighting
 // is applied (unlike IR from a dipole). The (ω_L−ω)⁴ excitation factor (≲10% over
 // 0–3000 cm⁻¹ at visible ω_L) and the Bose factor are omitted.
-const calculate_raman = (
-  input: TrajectorySpectroscopyInput,
+const compute_raman = (
   polarizability: TrajectorySignal,
   prepared: PreparedMotion,
-  options: SpectrumOptions &
-    Required<Pick<TrajectorySpectroscopyOptions, `preprocessing` | `raman_channel`>>,
+  options: SpectrumOptions & Required<Pick<TrajectorySpectroscopyOptions, `raman_channel`>>,
 ): RamanSpectrumResult => {
   const label = `Raman polarizability`
   validate_trajectory_signal(polarizability, [3, 3], label)
-  const rotations = signal_rotations(
-    options.preprocessing,
-    input.positions.steps,
-    prepared.rotations,
-    polarizability.steps,
-    label,
-  )
+  const rotations = signal_rotations(prepared, polarizability, label)
   const rotated = rotate_tensor_signal(polarizability.values, rotations)
   const n_samples = polarizability.steps.length
   const isotropic_values = new Float64Array(n_samples)
@@ -914,20 +830,10 @@ const calculate_raman = (
       sample_idx * 6,
     )
   }
-  const raman_curve = (
-    values: Float64Array,
-    n_components: number,
-    component_weights?: Float64Array,
-  ) =>
-    build_curve(
-      values,
-      n_components,
-      polarizability.steps,
-      options,
-      label,
-      max_abs(polarizability.values),
-      component_weights,
-    )
+  const { steps } = polarizability
+  const source_scale = max_abs(polarizability.values)
+  const raman_curve = (values: Float64Array, n_components: number, weights?: Float64Array) =>
+    build_curve(values, n_components, steps, options, label, source_scale, weights)
   const isotropic = raman_curve(isotropic_values, 1)
   const anisotropic = raman_curve(anisotropic_values, 6, RAMAN_ANISOTROPIC_WEIGHTS)
   return {
@@ -955,28 +861,21 @@ const curve_candidates = (
   const { normalized_power, frequencies, rayleigh_resolution, frequency_spacing } = curve
   const search_bins = Math.max(1, Math.ceil((2 * rayleigh_resolution) / frequency_spacing))
   const candidates: PeakCandidate[] = []
-  for (let frequency_idx = 1; frequency_idx < normalized_power.length - 1; frequency_idx++) {
-    const value = normalized_power[frequency_idx]
-    const is_local_max =
-      value > normalized_power[frequency_idx - 1] &&
-      value >= normalized_power[frequency_idx + 1]
-    if (!is_local_max) continue
-    let left_minimum = value
-    let right_minimum = value
-    for (let offset = 1; offset <= search_bins; offset++) {
-      left_minimum = Math.min(
-        left_minimum,
-        normalized_power[Math.max(0, frequency_idx - offset)],
-      )
-      right_minimum = Math.min(
-        right_minimum,
-        normalized_power[Math.min(normalized_power.length - 1, frequency_idx + offset)],
-      )
-    }
+  for (let bin_idx = 1; bin_idx < normalized_power.length - 1; bin_idx++) {
+    const value = normalized_power[bin_idx]
+    // local maxima only
+    if (value <= normalized_power[bin_idx - 1] || value < normalized_power[bin_idx + 1])
+      continue
+    const left_minimum = Math.min(
+      ...normalized_power.slice(Math.max(0, bin_idx - search_bins), bin_idx + 1),
+    )
+    const right_minimum = Math.min(
+      ...normalized_power.slice(bin_idx, bin_idx + search_bins + 1),
+    )
     const prominence = value - Math.max(left_minimum, right_minimum)
     if (prominence >= PEAK_PROMINENCE) {
       candidates.push({
-        frequency: frequencies[frequency_idx],
+        frequency: frequencies[bin_idx],
         prominence,
         source,
         resolution: rayleigh_resolution,
@@ -986,80 +885,59 @@ const curve_candidates = (
   return candidates
 }
 
-interface CurveActivityStats {
-  background_median: number
-  threshold: number
+interface PeakScore {
+  score: number | null
+  activity: SpectralActivity
+  prominence: number
 }
 
-const curve_activity_stats = (
-  curve: TrajectorySpectrumCurve | null,
-): CurveActivityStats | null => {
-  if (!curve) return null
-  const background_median = median(curve.normalized_power)
-  const mad = median(
-    curve.normalized_power.map((value) => Math.abs(value - background_median)),
+// Scores a peak frequency on a response curve: its strongest normalized power within two
+// Rayleigh widths, against the curve's robust background (median + MAD)
+const curve_scorer = (curve: TrajectorySpectrumCurve | null) => {
+  const unknown: PeakScore = { score: null, activity: `unknown`, prominence: 0 }
+  if (!curve) return () => unknown
+  const { frequencies, normalized_power, rayleigh_resolution, nyquist } = curve
+  const background_median = median(normalized_power)
+  const mad = median(normalized_power.map((value) => Math.abs(value - background_median)))
+  const threshold = Math.max(
+    ACTIVITY_RELATIVE_THRESHOLD,
+    background_median + ACTIVITY_SNR * mad,
   )
-  return {
-    background_median,
-    threshold: Math.max(ACTIVITY_RELATIVE_THRESHOLD, background_median + ACTIVITY_SNR * mad),
-  }
-}
-
-const curve_score = (
-  curve: TrajectorySpectrumCurve | null,
-  frequency: number,
-  stats: CurveActivityStats | null,
-): { score: number | null; activity: SpectralActivity; prominence: number } => {
-  if (
-    !(curve && stats) ||
-    frequency < (curve.frequencies[0] ?? 0) ||
-    frequency > curve.nyquist
-  ) {
-    return { score: null, activity: `unknown`, prominence: 0 }
-  }
-  const radius = 2 * curve.rayleigh_resolution
-  let score = 0
-  const start_idx = partition_point(curve.frequencies, (value) => value < frequency - radius)
-  for (
-    let frequency_idx = start_idx;
-    frequency_idx < curve.frequencies.length;
-    frequency_idx++
-  ) {
-    if (curve.frequencies[frequency_idx] > frequency + radius) break
-    score = Math.max(score, curve.normalized_power[frequency_idx])
-  }
-  return {
-    score,
-    activity: score > stats.threshold ? `active` : `inactive`,
-    prominence: Math.max(0, score - stats.background_median),
+  const radius = 2 * rayleigh_resolution
+  return (frequency: number): PeakScore => {
+    if (frequency < (frequencies[0] ?? 0) || frequency > nyquist) return unknown
+    const start_idx = partition_point(frequencies, (value) => value < frequency - radius)
+    const end_idx = partition_point(frequencies, (value) => value <= frequency + radius)
+    const score = Math.max(0, ...normalized_power.slice(start_idx, end_idx))
+    return {
+      score,
+      activity: score > threshold ? `active` : `inactive`,
+      prominence: Math.max(0, score - background_median),
+    }
   }
 }
 
 const extract_displacements = (
-  positions: Float64Array,
+  prepared: PreparedMotion,
   frequencies: number[],
   stream: TrajectoryPositionStream,
   options: SpectrumOptions,
   interval: number,
   factor: number,
 ): Complex[][][] => {
+  const { positions } = prepared
   const weights = time_series_window(stream.n_frames, options.window)
   const weight_sum = weights.reduce((total, value) => total + value, 0)
   const n_components = stream.n_atoms * 3
-  const component_means = new Float64Array(n_components)
-  for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
-    const base = frame_idx * n_components
-    for (let component_idx = 0; component_idx < n_components; component_idx++) {
-      component_means[component_idx] += positions[base + component_idx] / stream.n_frames
-    }
-  }
+  // the reference geometry is the mean of the prepared positions
+  const component_means = prepared.reference_positions.flat()
   const windowed = (frame_idx: number, component_idx: number) =>
     ((positions[frame_idx * n_components + component_idx] - component_means[component_idx]) *
       weights[frame_idx]) /
     weight_sum
 
-  const spectra: Complex[][] = frequencies.map(() =>
-    Array.from({ length: n_components }, () => [0, 0] satisfies Complex),
+  const spectra = frequencies.map(() =>
+    Array.from({ length: n_components }, (): Complex => [0, 0]),
   )
 
   // One FFT per component serves every on-bin peak, vs a full-length DFT per (peak, component):
@@ -1116,21 +994,16 @@ const extract_displacements = (
 
   // Rotate by the phase of the largest component so patterns are real-valued and comparable
   return spectra.map((flat) => {
-    let anchor_idx = 0
-    for (let component_idx = 1; component_idx < flat.length; component_idx++) {
-      if (Math.hypot(...flat[component_idx]) > Math.hypot(...flat[anchor_idx]))
-        anchor_idx = component_idx
-    }
-    const phase = Math.atan2(flat[anchor_idx][1], flat[anchor_idx][0])
+    const [anchor_re, anchor_im] = flat.reduce((best, value) =>
+      Math.hypot(value[0], value[1]) > Math.hypot(best[0], best[1]) ? value : best,
+    )
+    const phase = Math.atan2(anchor_im, anchor_re)
     const phase_cosine = Math.cos(-phase)
     const phase_sine = Math.sin(-phase)
-    const anchored = flat.map(
-      ([real, imaginary]) =>
-        [
-          real * phase_cosine - imaginary * phase_sine,
-          real * phase_sine + imaginary * phase_cosine,
-        ] satisfies Complex,
-    )
+    const anchored = flat.map(([real, imaginary]): Complex => [
+      real * phase_cosine - imaginary * phase_sine,
+      real * phase_sine + imaginary * phase_cosine,
+    ])
     return Array.from({ length: stream.n_atoms }, (_, atom_idx) =>
       anchored.slice(atom_idx * 3, atom_idx * 3 + 3),
     )
@@ -1141,7 +1014,7 @@ const detect_peaks = (
   vdos: TrajectorySpectrumCurve,
   infrared: TrajectorySpectrumCurve | null,
   raman: TrajectorySpectrumCurve | null,
-  prepared_positions: Float64Array,
+  prepared: PreparedMotion,
   input: TrajectorySpectroscopyInput,
   options: SpectrumOptions,
 ): TrajectorySpectralPeak[] => {
@@ -1153,15 +1026,13 @@ const detect_peaks = (
   const groups: PeakCandidate[][] = []
   for (const candidate of candidates) {
     const group = groups.at(-1)
-    const previous = group?.at(-1)
-    if (
-      group &&
-      previous &&
-      candidate.frequency - previous.frequency <=
-        2 * Math.max(candidate.resolution, ...group.map(({ resolution }) => resolution))
-    ) {
-      group.push(candidate)
-    } else groups.push([candidate])
+    const previous = group?.[group.length - 1].frequency ?? -Infinity
+    const max_resolution = Math.max(
+      candidate.resolution,
+      ...(group ?? []).map(({ resolution }) => resolution),
+    )
+    if (group && candidate.frequency - previous <= 2 * max_resolution) group.push(candidate)
+    else groups.push([candidate])
   }
   const frequencies = groups.map(
     (group) =>
@@ -1179,7 +1050,7 @@ const detect_peaks = (
     (frequency) => frequency <= position_nyquist,
   )
   const displacements = extract_displacements(
-    prepared_positions,
+    prepared,
     frequencies_with_displacements,
     input.positions,
     options,
@@ -1189,22 +1060,22 @@ const detect_peaks = (
   const displacement_by_frequency = new Map(
     frequencies_with_displacements.map((freq, freq_idx) => [freq, displacements[freq_idx]]),
   )
-  const ir_stats = curve_activity_stats(infrared)
-  const raman_stats = curve_activity_stats(raman)
+  const [score_ir, score_raman] = [curve_scorer(infrared), curve_scorer(raman)]
   return groups.map((group, group_idx) => {
     const frequency = frequencies[group_idx]
     const displacement = displacement_by_frequency.get(frequency)
-    const ir_score = curve_score(infrared, frequency, ir_stats)
-    const raman_score = curve_score(raman, frequency, raman_stats)
-    const vdos_group = group.filter(({ source }) => source === `vdos`)
-    const vdos_prominence = Math.max(0, ...vdos_group.map(({ prominence }) => prominence))
+    const ir_score = score_ir(frequency)
+    const raman_score = score_raman(frequency)
     return {
       frequency,
       ir_activity: ir_score.activity,
       raman_activity: raman_score.activity,
       ir_score: ir_score.score,
       raman_score: raman_score.score,
-      vdos_prominence,
+      vdos_prominence: Math.max(
+        0,
+        ...group.flatMap(({ source, prominence }) => (source === `vdos` ? [prominence] : [])),
+      ),
       ir_prominence: ir_score.prominence,
       raman_prominence: raman_score.prominence,
       potentially_mixed: new Set(group.map(({ source }) => source)).size < group.length,
@@ -1229,11 +1100,11 @@ export function standard_masses_for_elements(elements: string[]): Float64Array {
   })
 }
 
-export const calc_trajectory_spectroscopy = (
+export const compute_trajectory_spectroscopy = (
   input: TrajectorySpectroscopyInput,
   options: TrajectorySpectroscopyOptions = {},
 ): TrajectorySpectroscopyResult => {
-  const { positions: stream, masses } = input
+  const { positions: stream, masses, infrared_signal } = input
   if (stream.n_atoms < 1 || stream.n_frames < 3) {
     fail(
       `need at least 1 atom and 3 position frames, got ${stream.n_atoms} atoms and ${stream.n_frames} frames`,
@@ -1275,41 +1146,31 @@ export const calc_trajectory_spectroscopy = (
     [`stored`, `central_difference`, `auto`],
     `velocity_source`,
   )
-  if (input.infrared_signal) {
-    require_one_of(
-      input.infrared_signal.kind,
-      [`dipole`, `polarization`, `current`],
-      `IR signal kind`,
-    )
-  }
-  if (input.raman_signal) {
-    require_one_of(input.raman_signal.kind, [`polarizability`], `Raman signal kind`)
-  }
+  const ir_kind = infrared_signal?.kind
+  if (ir_kind) require_one_of(ir_kind, [`dipole`, `polarization`, `current`], `IR signal kind`)
+  const raman_kind = input.raman_signal?.kind
+  if (raman_kind) require_one_of(raman_kind, [`polarizability`], `Raman signal kind`)
   if (periodic && preprocessing === `body_fixed`) {
     fail(`body_fixed preprocessing is only valid for non-periodic systems`)
   }
-  if (input.infrared_signal?.kind === `current` && preprocessing === `body_fixed`) {
+  if (ir_kind === `current` && preprocessing === `body_fixed`) {
     fail(
       `body_fixed current IR requires the time derivative of the rotating frame; ` +
         `use dipole/polarization, raw, or remove_com analysis`,
     )
   }
-  if (input.infrared_signal?.kind === `dipole` && periodic) {
+  if (ir_kind === `dipole` && periodic) {
     fail(
       `total dipole is not a valid periodic IR signal; provide continuous polarization or current`,
     )
   }
-  if (
-    input.infrared_signal?.kind === `polarization` &&
-    !input.infrared_signal.branch_continuous
-  ) {
+  if (infrared_signal?.kind === `polarization` && !infrared_signal.branch_continuous) {
     fail(`polarization must be explicitly marked branch_continuous`)
   }
   const calculation_options = {
     time_step,
     time_unit,
     frequency_unit,
-    preprocessing,
     window: require_one_of(options.window ?? `hann`, WINDOW_TYPES, `window`),
     zero_pad_factor: options.zero_pad_factor ?? 4,
     raman_channel: require_one_of(
@@ -1320,80 +1181,60 @@ export const calc_trajectory_spectroscopy = (
   }
   const prepared = prepare_positions(stream, masses, preprocessing)
 
-  // `auto`: stored velocities win whenever the input carries them; otherwise the prepared
-  // positions are differentiated
-  let velocity_source: VelocitySource
-  let velocity_values: Float64Array
-  let velocity_steps: number[]
-  // What the velocities were subtracted out of, in velocity units (see build_curve source_scale)
-  let velocity_source_scale: number
-  if (requested_velocity_source === `stored` && !input.velocities) {
+  const stored = requested_velocity_source === `central_difference` ? null : input.velocities
+  if (requested_velocity_source === `stored` && !stored) {
     fail(`velocity_source 'stored' was requested but no velocity signal was supplied`)
   }
-  if (requested_velocity_source !== `central_difference` && input.velocities) {
-    validate_trajectory_signal(input.velocities, [stream.n_atoms, 3], `velocities`)
-    velocity_source = `stored`
-    velocity_steps = input.velocities.steps
-    velocity_values = remove_rigid_velocity(
-      input.velocities.values,
-      velocity_steps,
-      stream,
-      masses,
-      prepared,
-      preprocessing,
+  if (!stored && stream.n_frames < 4) {
+    fail(
+      `central_difference velocities need at least 4 position frames, got ${stream.n_frames}`,
     )
-    velocity_source_scale = max_abs(input.velocities.values)
-  } else {
-    velocity_source = `central_difference`
-    if (stream.n_frames < 4) {
-      fail(
-        `central_difference velocities need at least 4 position frames, got ${stream.n_frames}`,
-      )
-    }
-    const derivative_interval = sample_interval(
-      stream.steps,
-      frequency_unit,
-      time_step,
-      `positions`,
-    )
-    velocity_values = central_difference_velocities(
-      prepared.positions,
-      stream.n_frames,
-      stream.n_atoms,
-      derivative_interval,
-    )
-    velocity_steps = stream.steps.slice(1, -1)
-    velocity_source_scale = max_abs(stream.positions) / derivative_interval
   }
+  if (stored) validate_trajectory_signal(stored, [stream.n_atoms, 3], `velocities`)
+  const derivative_interval = stored
+    ? 1
+    : sample_interval(stream.steps, frequency_unit, time_step, `positions`)
+  // source_scale: what the velocities were subtracted out of, in velocity units (see build_curve)
+  const velocity = stored
+    ? {
+        source: `stored` as const,
+        values: remove_rigid_velocity(stored, masses, prepared),
+        steps: stored.steps,
+        source_scale: max_abs(stored.values),
+      }
+    : {
+        source: `central_difference` as const,
+        values: central_difference_velocities(
+          prepared.positions,
+          stream.n_frames,
+          stream.n_atoms,
+          derivative_interval,
+        ),
+        steps: stream.steps.slice(1, -1),
+        source_scale: max_abs(stream.positions) / derivative_interval,
+      }
   const total_mass = masses.reduce((total, mass) => total + mass, 0)
   const component_weights = Float64Array.from(
     { length: stream.n_atoms * 3 },
     (_, component_idx) => masses[Math.floor(component_idx / 3)] / total_mass,
   )
   const vdos = build_curve(
-    velocity_values,
+    velocity.values,
     stream.n_atoms * 3,
-    velocity_steps,
+    velocity.steps,
     calculation_options,
     `velocities`,
-    velocity_source_scale,
+    velocity.source_scale,
     component_weights,
   )
 
   let infrared: TrajectorySpectrumCurve | null = null
-  if (input.infrared_signal) {
-    const { series, kind } = input.infrared_signal
+  if (infrared_signal) {
+    const { series, kind } = infrared_signal
     const label = `IR ${kind}`
     validate_trajectory_signal(series, [3], label)
-    const rotations = signal_rotations(
-      preprocessing,
-      stream.steps,
-      prepared.rotations,
-      series.steps,
-      label,
-    )
-    // dipole/polarization spectra get the ω² of the classical absorption coefficient; a
-    // current signal is already the time derivative and must not be weighted again
+    const rotations = signal_rotations(prepared, series, label)
+    // ω² for dipole/polarization only: a current is already the time derivative
     infrared = build_curve(
       rotate_vector_signal(series.values, rotations),
       3,
@@ -1407,13 +1248,13 @@ export const calc_trajectory_spectroscopy = (
   }
 
   const raman = input.raman_signal
-    ? calculate_raman(input, input.raman_signal.series, prepared, calculation_options)
+    ? compute_raman(input.raman_signal.series, prepared, calculation_options)
     : null
   const peaks = detect_peaks(
     vdos,
     infrared,
     raman ? raman[raman.selected_channel] : null,
-    prepared.positions,
+    prepared,
     input,
     calculation_options,
   )
@@ -1424,7 +1265,7 @@ export const calc_trajectory_spectroscopy = (
     peaks,
     frequency_unit,
     preprocessing,
-    velocity_source,
+    velocity_source: velocity.source,
     reference_positions: prepared.reference_positions,
     elements: [...stream.elements],
     masses: Array.from(masses),

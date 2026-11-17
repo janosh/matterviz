@@ -8,6 +8,7 @@ import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
 import type { GasSpecies, HullMark } from '#lib/convex-hull/types.js'
 import { solve_linear_program } from '#lib/math.js'
 import type { PlannerPhase } from './phases'
+import { format_mev } from './format-mev'
 import { ENERGY_TOL, to_phase_ref } from './phases'
 import type {
   CompetingPhase,
@@ -66,14 +67,13 @@ export const reaction_energy_per_fu = (
 
 // Balance `precursors → product + gases` with non-negative precursor coefficients and free-signed
 // gas exchange, choosing the solution with the least total gas exchange when several exist.
-// `require_all` rejects solutions where a precursor has zero coefficient.
-export function balance_reaction(
+// `require_all` rejects solutions where a precursor has zero coefficient. The LP's constraint
+// matrix and objective depend only on the reactants, so they are built once per reactant set:
+// competitor searches balance hundreds of products against the same precursors.
+function reaction_balancer(
   precursors: PlannerPhase[],
-  product: PlannerPhase,
   gases: PlannerPhase[],
-  require_all: boolean,
-): BalancedReaction | BalanceFailure {
-  const product_counts = fu_counts(product)
+): (product: PlannerPhase, require_all: boolean) => BalancedReaction | BalanceFailure {
   // Columns: precursors | gas released (moved to the reactant side, hence negative) | gas consumed
   const columns = [
     ...precursors.map(fu_counts),
@@ -81,29 +81,43 @@ export function balance_reaction(
     ...gases.map(fu_counts),
   ]
   const objective = [...precursors.map(() => 0), ...gases.map(() => 1), ...gases.map(() => 1)]
-  const result = solve_linear_program(
-    objective,
-    element_rows(columns, product_counts.length),
-    product_counts,
-  )
-  if (result.status !== `optimal`) return `unbalanced`
+  // One equality row per element of the phase set, shared by every product of that set
+  let constraints: number[][] = []
+  let n_el = -1
+  return (product, require_all) => {
+    const product_counts = fu_counts(product)
+    if (product_counts.length !== n_el) {
+      n_el = product_counts.length
+      constraints = element_rows(columns, n_el)
+    }
+    const result = solve_linear_program(objective, constraints, product_counts)
+    if (result.status !== `optimal`) return `unbalanced`
 
-  const coefficients = result.solution.slice(0, precursors.length)
-  if (require_all && coefficients.some((coeff) => coeff <= COEFF_TOL))
-    return `redundant_precursor`
-  const released = result.solution.slice(precursors.length, precursors.length + gases.length)
-  const consumed = result.solution.slice(precursors.length + gases.length)
-  const gas_exchange = released.map((amount, idx) => amount - consumed[idx])
-  const energy_per_fu = reaction_energy_per_fu(precursors, product, gases, {
-    coefficients,
-    gas_exchange,
-  })
-  const reactant_atoms = precursors.reduce(
-    (sum, phase, idx) => sum + coefficients[idx] * phase.n_atoms_per_fu,
-    gases.reduce((sum, gas, idx) => sum + consumed[idx] * gas.n_atoms_per_fu, 0),
-  )
-  return { coefficients, gas_exchange, energy_per_fu, reactant_atoms }
+    const coefficients = result.solution.slice(0, precursors.length)
+    if (require_all && coefficients.some((coeff) => coeff <= COEFF_TOL))
+      return `redundant_precursor`
+    const released = result.solution.slice(precursors.length, precursors.length + gases.length)
+    const consumed = result.solution.slice(precursors.length + gases.length)
+    const gas_exchange = released.map((amount, idx) => amount - consumed[idx])
+    const energy_per_fu = reaction_energy_per_fu(precursors, product, gases, {
+      coefficients,
+      gas_exchange,
+    })
+    const reactant_atoms = precursors.reduce(
+      (sum, phase, idx) => sum + coefficients[idx] * phase.n_atoms_per_fu,
+      gases.reduce((sum, gas, idx) => sum + consumed[idx] * gas.n_atoms_per_fu, 0),
+    )
+    return { coefficients, gas_exchange, energy_per_fu, reactant_atoms }
+  }
 }
+
+export const balance_reaction = (
+  precursors: PlannerPhase[],
+  product: PlannerPhase,
+  gases: PlannerPhase[],
+  require_all: boolean,
+): BalancedReaction | BalanceFailure =>
+  reaction_balancer(precursors, gases)(product, require_all)
 
 // Smallest multiplier (≤ 200) that makes every coefficient integral, else 1
 function integer_multiplier(values: number[]): number {
@@ -225,12 +239,13 @@ function find_competitors(
     (mask, phase) => mask.map((has, el_idx) => has || phase.fractions[el_idx] > 0),
     target.fractions.map(() => false),
   )
+  const balance = reaction_balancer(precursors, gases)
   const competitors: Competitor[] = []
   for (const phase of phases) {
     if (excluded.has(phase.id) || phase.is_gas) continue
     if (phase.fractions.some((fraction, el_idx) => fraction > 0 && !available[el_idx]))
       continue
-    const balanced = balance_reaction(precursors, phase, gases, false)
+    const balanced = balance(phase, false)
     if (typeof balanced === `string`) continue
     const driving_force = driving_force_of(balanced)
     if (driving_force < -ENERGY_TOL) competitors.push({ phase, balanced, driving_force })
@@ -309,9 +324,51 @@ function inverse_hull_energy(
     element_rows(columns, target_counts.length),
     target_counts,
   )
+  if (result.status === `unbounded`) {
+    throw new Error(
+      `Open gases are not in equilibrium at these conditions: ${reservoir_reaction(solids, gases)}, so ${target.formula} has no open-system hull. Close one of these gases or set partial pressures at which they coexist.`,
+    )
+  }
   if (result.status !== `optimal`)
     throw new Error(`Inverse hull LP ${result.status} for ${target.formula}`)
   return (result.objective - fu_energy(target)) / target.n_atoms_per_fu
+}
+
+// The most downhill reaction (per atom reacted) the open gases can run on their own, among
+// themselves or into `solids` made of their elements, e.g. `2 H2 + O2 → 2 H2O releases 825
+// meV/atom`. Only called when one exists: a reservoir that is a free-energy source of its own
+// is what leaves the inverse hull LP unbounded.
+function reservoir_reaction(solids: PlannerPhase[], gases: PlannerPhase[]): string {
+  const products = [...solids, ...gases]
+  const columns = [...products.map(fu_counts), ...gases.map((gas) => negate(fu_counts(gas)))]
+  const objective = [...products.map(fu_energy), ...gases.map((gas) => -fu_energy(gas))]
+  const n_el = columns[0].length
+  // Element balance of gases consumed → products, normalized to one atom on each side
+  const atoms = [...products, ...gases].map((phase) => phase.n_atoms_per_fu)
+  const result = solve_linear_program(
+    objective,
+    [...element_rows(columns, n_el), atoms],
+    [...Array.from({ length: n_el }, () => 0), 2],
+  )
+  if (result.status !== `optimal`) throw new Error(`Reservoir reaction LP ${result.status}`)
+  const consumed = result.solution.slice(products.length)
+  // Net amount of each species: gases appear on both sides of the LP
+  const net = products.map((phase, idx) => {
+    const gas_idx = idx - solids.length
+    return { phase, amount: result.solution[idx] - (gas_idx >= 0 ? consumed[gas_idx] : 0) }
+  })
+  const factor = integer_multiplier(
+    net.flatMap(({ amount }) => (Math.abs(amount) > COEFF_TOL ? [Math.abs(amount)] : [])),
+  )
+  const side = (sign: 1 | -1): string =>
+    format_side(
+      net.flatMap(({ phase, amount }) =>
+        sign * amount > COEFF_TOL
+          ? [{ phase: to_phase_ref(phase), coefficient: sign * amount * factor }]
+          : [],
+      ),
+    )
+  return `${side(-1)} → ${side(1)} releases ${format_mev(-result.objective)}`
 }
 
 export function analyze_selectivity(
@@ -401,9 +458,10 @@ export function reaction_energy_at_temperature(
       n_atoms_per_fu: gas.n_atoms_per_fu,
     }
   })
-  return (temperature) =>
-    solid_part +
-    terms.reduce((sum, { species, pressure, grid, exchange, n_atoms_per_fu }) => {
+  // Bare loop: the 1 K window scan calls this 2001 times per gas-exchanging route
+  return (temperature) => {
+    let gas_part = 0
+    for (const { species, pressure, grid, exchange, n_atoms_per_fu } of terms) {
       // typed arrays read undefined at, and ignore writes to, off-grid (fractional or out of
       // range) indices, so only integer temperatures in the scan range are cached
       let mean = grid?.[temperature] ?? NaN
@@ -411,8 +469,10 @@ export function reaction_energy_at_temperature(
         mean = compute_gas_chemical_potential(provider, species, temperature, pressure)
         if (grid) grid[temperature] = mean
       }
-      return sum + exchange * mean * n_atoms_per_fu
-    }, 0)
+      gas_part += exchange * mean * n_atoms_per_fu
+    }
+    return solid_part + gas_part
+  }
 }
 
 // Inclusive temperature intervals (1 K grid, 0..MAX_SCAN_TEMPERATURE) where the reaction energy

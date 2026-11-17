@@ -212,12 +212,17 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const has_lookups =
     (min_fraction > 0 || max_children > 0) &&
     (zoom_root_id != null || Boolean(expanded_parents?.size))
+  // Stable id: explicit, else slash-joined label path (e.g. "cubic/Fm-3m")
+  const node_id = (
+    node: Node,
+    parent_id: string | number,
+    segment: string,
+    label = node.data.label,
+  ): string | number =>
+    node.data.id ??
+    (node.depth === 0 ? (label ?? ``) : `${parent_id !== `` ? `${parent_id}/` : ``}${segment}`)
   const resolve_ids = (node: Node, parent_id: string | number, segment: string): void => {
-    const own =
-      node.data.id ??
-      (node.depth === 0
-        ? (node.data.label ?? ``)
-        : `${parent_id !== `` ? `${parent_id}/` : ``}${segment}`)
+    const own = node_id(node, parent_id, segment)
     node_ids.set(node, own)
     if (own === zoom_root_id) {
       zoom_node = node
@@ -248,18 +253,12 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   // keeps its data verbatim; a merged group is synthetic (no metadata, color/pattern only
   // where members agree). Every node carries its summed value, so no re-aggregation.
   const merge_children = (members: Node[]): SunburstNode<Metadata>[] | undefined => {
-    const groups = new Map<string | number, Node[]>()
-    let child_idx = 0
-    for (const member of members) {
-      for (const kid of member.children ?? []) {
-        const key = kid.data.label ?? kid.data.id ?? `#${child_idx}`
-        child_idx++
-        const group = groups.get(key)
-        if (group) group.push(kid)
-        else groups.set(key, [kid])
-      }
-    }
-    if (groups.size === 0) return undefined
+    const kids = members.flatMap((member) => member.children ?? [])
+    if (kids.length === 0) return undefined
+    const groups = Map.groupBy(
+      kids,
+      (kid, kid_idx): string | number => kid.data.label ?? kid.data.id ?? `#${kid_idx}`,
+    )
     return [...groups.values()].map((group) => {
       const value = group.reduce((sum, kid) => sum + (kid.value ?? 0), 0)
       const children = merge_children(group)
@@ -348,7 +347,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const root_value = root.value ?? 0
   const palette_len = PLOT_COLORS.length
   let depth1_count = 0 // running index among depth-1 nodes, for palette cycling
-  const inherited_colors = new Map<string, Map<number, string>>()
+  const lightened_colors = new Map<string, string>() // keyed by `${depth}:${base}`
 
   // Resolved fill for a node: explicit > depth-1 palette > inherited, optionally
   // lightened by depth. base = unlightened color descendants inherit.
@@ -364,14 +363,13 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         : (parent_base ?? `transparent`))
     let color = base
     if (!explicit && depth > 1 && level_lighten > 0) {
-      let colors = inherited_colors.get(base)
-      if (!colors) inherited_colors.set(base, (colors = new Map()))
+      const key = `${depth}:${base}`
       color =
-        colors.get(depth) ??
+        lightened_colors.get(key) ??
         hsl(base)
           .brighter(level_lighten * (depth - 1))
           .formatHex()
-      colors.set(depth, color)
+      lightened_colors.set(key, color)
     }
     return { base, color }
   }
@@ -413,8 +411,6 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     const explicit = node.data.color
     const { base, color } = resolve_color(depth, explicit, parent_base)
 
-    // Stable id: explicit, else slash-joined label path (e.g. "cubic/Fm-3m")
-    const parent_prefix = parent && parent.id !== `` ? `${parent.id}/` : ``
     const other_count = buckets.get(node)
     let { label, label_short } = node.data
     let segment = label ?? `${child_idx}`
@@ -428,11 +424,8 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       // Generated names rarely fit thin rings, hence the compact form
       label_short = callable ? OTHER_ID_SEGMENT : undefined
     }
-    const identifier =
-      node.data.id ?? (depth === 0 ? (label ?? ``) : `${parent_prefix}${segment}`)
-
     const arc = push_arc(parent, {
-      id: identifier,
+      id: node_id(node, parent?.id ?? ``, segment, label),
       label,
       label_short,
       value,
@@ -565,28 +558,17 @@ export function sunburst_from_labels_parents<Metadata = Record<string, unknown>>
     return found
   })
 
-  // O(n) cycle detection: walk each unvisited parent chain once; reaching an in-progress
-  // node means a cycle, a done one means the chain is already verified acyclic
-  const state = new Uint8Array(nodes.length) // 0 = unvisited, 1 = in progress, 2 = done
-  for (let idx = 0; idx < nodes.length; idx++) {
-    if (state[idx] !== 0) continue
-    let cur: number | null = idx
-    while (cur != null && state[cur] === 0) {
-      state[cur] = 1
-      cur = parent_idxs[cur]
-    }
-    if (cur != null && state[cur] === 1) {
-      throw new Error(
-        `sunburst_from_labels_parents: cycle detected involving node "${
-          ids?.[cur] ?? labels[cur]
-        }"`,
-      )
-    }
-    // Mark the walked chain as verified
-    for (let mark: number | null = idx; mark != null && state[mark] === 1;) {
-      state[mark] = 2
-      mark = parent_idxs[mark]
-    }
+  // Parent links (child -> parent) must not loop
+  const parent_links = parent_idxs.flatMap((parent, idx) =>
+    parent == null ? [] : [{ source: idx, target: parent }],
+  )
+  const [cycle_start] = find_cycle(parent_links, nodes.length) ?? []
+  if (cycle_start !== undefined) {
+    throw new Error(
+      `sunburst_from_labels_parents: cycle detected involving node "${
+        ids?.[cycle_start] ?? labels[cycle_start]
+      }"`,
+    )
   }
 
   const roots: SunburstNode<Metadata>[] = []
@@ -596,4 +578,45 @@ export function sunburst_from_labels_parents<Metadata = Record<string, unknown>>
     else (nodes[parent].children ??= []).push(node)
   })
   return roots
+}
+
+// Iterative DFS over directed links between node indices. Returns the first cycle found as a
+// closed node-index walk (first === last), or null for a DAG. Names the offenders for
+// Sankey (d3-sankey only reports "circular link") and parent chains of labels/parents input.
+export function find_cycle(
+  links: readonly { source: number; target: number }[],
+  n_nodes: number,
+): number[] | null {
+  const out_edges: number[][] = Array.from({ length: n_nodes }, () => [])
+  for (const { source, target } of links) out_edges[source].push(target)
+  const state = new Uint8Array(n_nodes) // 0 = unvisited, 1 = on stack, 2 = done
+  const parent = new Int32Array(n_nodes).fill(-1)
+  for (let root = 0; root < n_nodes; root++) {
+    if (state[root] !== 0) continue
+    const stack: [number, number][] = [[root, 0]] // [node, next out-edge position]
+    state[root] = 1
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]
+      const [node, edge_pos] = frame
+      if (edge_pos === out_edges[node].length) {
+        state[node] = 2
+        stack.pop()
+        continue
+      }
+      frame[1] += 1
+      const next = out_edges[node][edge_pos]
+      if (state[next] === 1) {
+        const cycle = [next]
+        for (let cur = node; cur !== next; cur = parent[cur]) cycle.push(cur)
+        cycle.push(next)
+        return cycle.toReversed()
+      }
+      if (state[next] === 0) {
+        state[next] = 1
+        parent[next] = node
+        stack.push([next, 0])
+      }
+    }
+  }
+  return null
 }

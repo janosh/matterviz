@@ -1,7 +1,8 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
-  import type { Crystal, FileInfo } from '#lib'
+  import type { Crystal } from '#lib'
+  import type { FileInfo } from '#lib/io/index.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import { plot_color, PLOT_COLORS } from '#lib/colors/index.js'
@@ -10,7 +11,13 @@
   import type { LatticePlane } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
   import { memo_by_identity } from '#lib/utils.js'
-  import type { SaedSpot, XrdOptions, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
+  import type {
+    RadiationKey,
+    SaedSpot,
+    XrdOptions,
+    XrdPattern,
+    XrdPeak,
+  } from '#lib/xrd/index.js'
   import {
     compute_saed_pattern_async,
     compute_xrd_pattern_async,
@@ -80,18 +87,28 @@
   // Memoize fixture calculations; consumers stay lazy until their demo becomes visible: the
   // first read of a structure requests its pattern and returns null, and consumers recompute
   // once it (or its failure) lands here.
+  // X-ray source of the computed patterns: an anode's Kα1/Kα2 doublet or a single line
+  const xray_sources: [RadiationKey, string][] = [
+    [`CuKa`, `Cu Kα1 + Kα2`],
+    [`CuKa1`, `Cu Kα1`],
+    [`MoKa`, `Mo Kα1 + Kα2`],
+    [`CoKa`, `Co Kα1 + Kα2`],
+    [`CrKa`, `Cr Kα1 + Kα2`],
+  ]
+  let xray_source = $state<RadiationKey>(`CuKa`)
   const patterns_by_id = new SvelteMap<string, XrdPattern | Error>()
   const requested_ids = new Set<string>()
   const ensure_pattern = (struct_id: string): XrdPattern | null => {
     const struct = structure_map.get(struct_id)
-    if (struct && !requested_ids.has(struct_id)) {
-      requested_ids.add(struct_id)
-      pattern_of(struct).then(
-        (pattern) => patterns_by_id.set(struct_id, pattern),
-        (exc: unknown) => patterns_by_id.set(struct_id, to_error(exc)),
+    const key = `${xray_source}|${struct_id}`
+    if (struct && !requested_ids.has(key)) {
+      requested_ids.add(key)
+      pattern_of(struct, { wavelength: xray_source }).then(
+        (pattern) => patterns_by_id.set(key, pattern),
+        (exc: unknown) => patterns_by_id.set(key, to_error(exc)),
       )
     }
-    const pattern = patterns_by_id.get(struct_id)
+    const pattern = patterns_by_id.get(key)
     if (pattern instanceof Error) throw pattern
     return pattern ?? null
   }
@@ -227,6 +244,20 @@
 
 <div class="bleed-1400">
   <StructurePicker bind:selected={compute_id} />
+  <div class="demo-controls">
+    <label>
+      X-ray source
+      <select bind:value={xray_source}>
+        {#each xray_sources as [key, text] (key)}
+          <option value={key}>{text}</option>
+        {/each}
+      </select>
+    </label>
+    <small>
+      Anode sources emit the Kα1/Kα2 doublet at 2:1, so every reflection appears twice, split
+      by Δ2θ = 2·Δλ/λ·tanθ (0.12° for Si 220 at Cu Kα). Peak labels stay on the Kα1 lines.
+    </small>
+  </div>
   <section class="demo-2col">
     <LazyDemo label="xrd" height="600px">
       <XrdPlot

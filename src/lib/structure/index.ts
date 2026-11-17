@@ -46,9 +46,18 @@ export * from './material'
 export { StructureSession, type StructureSessionInputs } from './session.svelte'
 export * from './pbc'
 export * from './polyhedra'
-export * from './polyhedra-render'
 export * from './export'
-export * from './site'
+// site construction and provenance reads; the columnar site storage behind them stays internal
+export {
+  get_image_source_idx,
+  get_orig_site_idx,
+  get_site,
+  is_image_site,
+  make_site,
+  merge_site_properties,
+  site_count,
+  structure_json_data,
+} from './site'
 export { default as Structure } from './Structure.svelte'
 export type { StructureSettings, StructureOptions } from './settings'
 export { default as StructureGallery } from './StructureGallery.svelte'
@@ -99,10 +108,11 @@ export const DEFAULT_STRUCTURE_VIEWS: StructureView[] = [
   { label: `Right`, projection: `orthographic`, direction: [1, 0, 0] },
 ]
 
+// oxidation_state is absent for undecorated species (plain `Fe`); 0 is a real charge (`Fe0+`)
 export type Species = {
   element: ElementSymbol
   occu: number
-  oxidation_state: number
+  oxidation_state?: number
 }
 export type Site = {
   species: Species[]
