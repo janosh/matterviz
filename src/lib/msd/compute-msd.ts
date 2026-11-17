@@ -99,12 +99,16 @@ export function fit_einstein_diffusion(
 }
 
 // Coordinates relative to each frame's centre of mass, as a new buffer (the input may be the
-// stream's cached unwrap). By standard atomic masses: a position stream carries symbols only.
+// stream's cached unwrap) kept with that input, so an options edit does not redo it. By
+// standard atomic masses: a position stream carries symbols only.
+const drift_free_cache = new WeakMap<Float64Array, Float64Array>()
 function without_com_drift(coords: Float64Array, elements: ElementSymbol[]): Float64Array {
+  const cached = drift_free_cache.get(coords)
+  if (cached) return cached
   const masses = elements.map((element, atom_idx) => {
     const mass = element_by_symbol.get(element)?.atomic_mass
     if (mass) return mass
-    throw new Error(`calc_msd: remove_com_drift: no mass for atom ${atom_idx} (${element})`)
+    throw new Error(`compute_msd: remove_com_drift: no mass for atom ${atom_idx} (${element})`)
   })
   const total_mass = masses.reduce((total, mass) => total + mass, 0)
   const drift_free = new Float64Array(coords.length)
@@ -120,19 +124,20 @@ function without_com_drift(coords: Float64Array, elements: ElementSymbol[]): Flo
       }
     }
   }
+  drift_free_cache.set(coords, drift_free)
   return drift_free
 }
 
-export function calc_msd(
+export function compute_msd(
   input: TrajectoryPositionStream,
   options: MsdOptions = {},
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
   const { max_lag_fraction = 0.5, max_lags = 200, remove_com_drift = false } = options
 
-  validate_position_stream_layout(input, `calc_msd`, 2)
+  validate_position_stream_layout(input, `compute_msd`, 2)
   // Up front so a bad dt/time_unit fails before the analysis; with_lag_time_axis applies them
-  resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
+  resolve_lag_time_unit(`compute_msd`, options.dt, options.time_unit, `ps`)
 
   // Honours the parser's already-unwrapped flag and the cell's own pbc flags: re-applying
   // the minimum image convention to LAMMPS xu/yu/zu coordinates silently truncates real
@@ -140,9 +145,9 @@ export function calc_msd(
   const { coords: raw_coords, unwrapped } = unwrapped_positions_of(input)
   const coords = remove_com_drift ? without_com_drift(raw_coords, elements) : raw_coords
 
-  const max_lag = lag_range(`calc_msd`, n_frames, max_lag_fraction)
+  const max_lag = lag_range(`compute_msd`, n_frames, max_lag_fraction)
   if (!Number.isInteger(max_lags) || max_lags < 1) {
-    throw new Error(`calc_msd: max_lags must be a positive integer, got ${max_lags}`)
+    throw new Error(`compute_msd: max_lags must be a positive integer, got ${max_lags}`)
   }
   const lag_stride = Math.max(1, Math.ceil(max_lag / max_lags))
   // Evenly spaced lags 1..max_lag, thinned so at most `max_lags` are reported
@@ -229,12 +234,12 @@ export function calc_msd(
 }
 
 // dt and time_unit only label the lag axis, so relabelling a finished result lets a dt edit
-// skip the displacement analysis (seconds at 10k frames x 1k atoms); calc_msd uses it as well
+// skip the displacement analysis (seconds at 10k frames x 1k atoms); compute_msd uses it as well
 export function with_lag_time_axis(
   result: Omit<MsdResult, 'times' | 'dt' | 'time_unit' | 'x_label'>,
   { dt, time_unit }: Pick<MsdOptions, 'dt' | 'time_unit'>,
 ): MsdResult {
-  const unit = resolve_lag_time_unit(`calc_msd`, dt, time_unit, `ps`)
+  const unit = resolve_lag_time_unit(`compute_msd`, dt, time_unit, `ps`)
   const delta_time = dt ?? 1
   return {
     ...result,
@@ -246,7 +251,7 @@ export function with_lag_time_axis(
 }
 
 // Einstein fit of every curve of an MSD result, index-aligned with result.curves. Separate
-// from calc_msd so moving the fit window doesn't re-run the displacement analysis.
+// from compute_msd so moving the fit window doesn't re-run the displacement analysis.
 export const fit_msd_curves = (
   { lags, times, curves, time_unit }: MsdResult,
   options: EinsteinFitOptions = {},

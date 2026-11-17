@@ -10,7 +10,7 @@
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import { series_hover_props } from '#lib/plot/core/interactions.js'
   import { compute_msd_async } from './async-compute.svelte'
-  import { fit_msd_curves, with_lag_time_axis } from './calc-msd'
+  import { fit_msd_curves, with_lag_time_axis } from './compute-msd'
   import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
 
   let {

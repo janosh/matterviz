@@ -1,9 +1,9 @@
 import { element_by_symbol } from '#lib/element/data.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { calc_msd, fit_einstein_diffusion, fit_msd_curves } from '#lib/msd/calc-msd.js'
+import { compute_msd, fit_einstein_diffusion, fit_msd_curves } from '#lib/msd/compute-msd.js'
 import { compute_msd_async } from '#lib/msd/async-compute.svelte.js'
 import type { Pbc } from '#lib/structure/index.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { cubic_matrix } from '../test-fixtures'
 import {
   ballistic_frames,
@@ -24,7 +24,7 @@ describe(`analytic MSD limits`, () => {
     [`tiny drift`, [1e-4, 2e-4, -3e-4] as [number, number, number], 50],
   ])(`ballistic atom (%s) gives MSD = (|v| * lag)^2`, (_label, velocity, n_frames) => {
     const speed_sq = velocity[0] ** 2 + velocity[1] ** 2 + velocity[2] ** 2
-    const result = calc_msd(ballistic(velocity, n_frames))
+    const result = compute_msd(ballistic(velocity, n_frames))
     const [total] = result.curves
     const expected = result.lags.map((lag) => speed_sq * lag * lag)
 
@@ -37,7 +37,7 @@ describe(`analytic MSD limits`, () => {
   it(`averages every time origin at a lag`, () => {
     // One atom at x = 0, 1, 3 gives exactly two lag-1 origins with squared displacements
     // 1 and 4: mean 2.5
-    const result = calc_msd(build_positions([[[0, 0, 0]], [[1, 0, 0]], [[3, 0, 0]]]))
+    const result = compute_msd(build_positions([[[0, 0, 0]], [[1, 0, 0]], [[3, 0, 0]]]))
     expect(result.curves[0].n_origins).toEqual([2])
     expect(result.curves[0].msd[0]).toBeCloseTo(2.5, 14)
   })
@@ -49,7 +49,7 @@ describe(`analytic MSD limits`, () => {
     // oxfmt-ignore
     const stationary = [[1.5, -2.25, 0.75], [4, 4, 4]]
     const frames = Array.from({ length: 30 }, () => stationary)
-    const result = calc_msd(build_positions(frames, { lattice }))
+    const result = compute_msd(build_positions(frames, { lattice }))
     for (const curve of result.curves) {
       expect(curve.msd.every((value) => value === 0)).toBe(true)
     }
@@ -71,7 +71,7 @@ describe(`analytic MSD limits`, () => {
       frames.push(current.map((xyz) => [...xyz]))
     }
 
-    const result = calc_msd(build_positions(frames))
+    const result = compute_msd(build_positions(frames))
     const [total] = result.curves
     const expected_d = step_amplitude ** 2 / 6
 
@@ -108,7 +108,7 @@ describe(`FFT origin average`, () => {
       return current.map((xyz) => [...xyz])
     })
     const stream = build_positions(frames, { elements })
-    const result = calc_msd(stream, { max_lag_fraction: 1 })
+    const result = compute_msd(stream, { max_lag_fraction: 1 })
     // Brute-force <|r(t + lag) - r(t)|^2> summand of one atom and origin
     const { positions } = stream
     const squared_disp = (from: number, to: number): number => {
@@ -154,7 +154,7 @@ describe(`periodic unwrapping`, () => {
     const crossings = Math.floor((drift * (n_frames - 1)) / box_length)
     expect(crossings).toBeGreaterThan(8) // the atom really does leave the box repeatedly
 
-    const result = calc_msd(build_positions(wrapped_frames, { lattice: box }))
+    const result = compute_msd(build_positions(wrapped_frames, { lattice: box }))
     expect(result.unwrapped).toBe(true)
     const expected = result.lags.map((lag) => (drift * lag) ** 2)
     expect(max_rel_error(result.curves[0].msd, expected)).toBeLessThan(1e-12)
@@ -162,7 +162,7 @@ describe(`periodic unwrapping`, () => {
 
   it(`sawtooths without unwrapping (flagged or lattice-free), bounded by the box`, () => {
     // Flagging the coordinates as already unwrapped is the one way to skip the unwrap
-    const result = calc_msd(
+    const result = compute_msd(
       build_positions(wrapped_frames, { lattice: box, coords_unwrapped: true }),
     )
     expect(result.unwrapped).toBe(false)
@@ -172,7 +172,7 @@ describe(`periodic unwrapping`, () => {
     expect(max_wrapped).toBeLessThan(box_length ** 2)
     expect((drift * result.lags[result.lags.length - 1]) ** 2).toBeGreaterThan(50)
     // frames without a lattice are never unwrapped either
-    expect(calc_msd(build_positions(wrapped_frames)).unwrapped).toBe(false)
+    expect(compute_msd(build_positions(wrapped_frames)).unwrapped).toBe(false)
   })
 
   // The unwrap decision is global, but the per-frame step used to fall back to a plain
@@ -198,11 +198,11 @@ describe(`periodic unwrapping`, () => {
   ])(`a null lattice at %s does not corrupt the unwrap`, (_label, frames, null_idx) => {
     expect(null_idx).toBeGreaterThan(0)
     expect(frames[null_idx][0][0]).toBeLessThan(frames[null_idx - 1][0][0]) // wrapped here
-    const reference = calc_msd(build_positions(frames, { lattice: box }))
+    const reference = compute_msd(build_positions(frames, { lattice: box }))
     const with_gap = build_positions(frames, { lattice: box })
     if (!with_gap.lattice_matrices) throw new Error(`expected per-frame lattices`)
     with_gap.lattice_matrices[null_idx] = null
-    const gapped = calc_msd(with_gap)
+    const gapped = compute_msd(with_gap)
     expect(gapped.unwrapped).toBe(true)
     expect(max_rel_error(gapped.curves[0].msd, reference.curves[0].msd)).toBeLessThan(1e-12)
   })
@@ -216,7 +216,7 @@ describe(`periodic unwrapping`, () => {
     [`pbc from the collected stream`, { pbc: slab_pbc }, 36],
     [`fully periodic cell`, {}, 16],
   ])(`honours %s`, (_label, input_options, expected) => {
-    const result = calc_msd(
+    const result = compute_msd(
       build_positions(slab_frames, { lattice: cubic_matrix(10), ...input_options }),
     )
     expect(result.unwrapped).toBe(true)
@@ -228,7 +228,7 @@ describe(`periodic unwrapping`, () => {
   const long_step = 1.5
   const long_step_frames = ballistic_frames([long_step, 0, 0], 30)
   const stepped = (coords_unwrapped: boolean) =>
-    calc_msd(build_positions(long_step_frames, { lattice: box, coords_unwrapped }))
+    compute_msd(build_positions(long_step_frames, { lattice: box, coords_unwrapped }))
 
   it.each([
     [`flagged unwrapped`, true, long_step],
@@ -244,7 +244,7 @@ describe(`periodic unwrapping`, () => {
 describe(`time-origin averaging`, () => {
   it(`origin counts fall off as n_frames - lag`, () => {
     const n_frames = 41
-    const result = calc_msd(ballistic([0.1, 0, 0], n_frames))
+    const result = compute_msd(ballistic([0.1, 0, 0], n_frames))
     const [total] = result.curves
     expect(result.lags[0]).toBe(1)
     expect(result.lags[result.lags.length - 1]).toBe(Math.floor((n_frames - 1) * 0.5))
@@ -259,14 +259,16 @@ describe(`time-origin averaging`, () => {
 
   it.each([0.25, 0.5, 1])(`max_lag_fraction %s caps the longest lag`, (fraction) => {
     const n_frames = 101
-    const result = calc_msd(ballistic([0.1, 0, 0], n_frames), { max_lag_fraction: fraction })
+    const result = compute_msd(ballistic([0.1, 0, 0], n_frames), {
+      max_lag_fraction: fraction,
+    })
     expect(result.lags[result.lags.length - 1]).toBe(Math.floor((n_frames - 1) * fraction))
   })
 
   it(`caps the evaluated lags at max_lags by widening the lag spacing`, () => {
     // 400 frames give 199 candidate lags; max_lags 50 thins them to every 4th
-    const full = calc_msd(ballistic([0.2, 0, 0], 400))
-    const thinned = calc_msd(ballistic([0.2, 0, 0], 400), { max_lags: 50 })
+    const full = compute_msd(ballistic([0.2, 0, 0], 400))
+    const thinned = compute_msd(ballistic([0.2, 0, 0], 400), { max_lags: 50 })
     expect(full.lag_stride).toBe(1)
     expect(thinned.lag_stride).toBe(4)
     expect(thinned.lags).toEqual(full.lags.filter((lag) => lag % 4 === 0))
@@ -285,7 +287,7 @@ describe(`per-element decomposition`, () => {
       [slow * frame_idx, 0, 0],
     ])
     const elements = [`Li`, `O`, `O`] as ElementSymbol[]
-    const result = calc_msd(build_positions(frames, { elements }))
+    const result = compute_msd(build_positions(frames, { elements }))
 
     expect(result.curves.map((curve) => curve.label)).toEqual([`Total`, `Li`, `O`])
     const by_label = Object.fromEntries(result.curves.map((curve) => [curve.label, curve]))
@@ -330,9 +332,9 @@ describe(`centre-of-mass drift removal`, () => {
     const wrap = (value: number) => (lattice ? ((value % 5) + 5) % 5 : value)
     const frames = recoil(0.03).map((frame) => frame.map((xyz) => xyz.map(wrap)))
     const drifting = build_positions(frames, { elements, lattice })
-    const reference = calc_msd(build_positions(recoil(0), { elements })) // nothing to remove
-    const kept = calc_msd(drifting)
-    const removed = calc_msd(drifting, { remove_com_drift: true })
+    const reference = compute_msd(build_positions(recoil(0), { elements })) // nothing to remove
+    const kept = compute_msd(drifting)
+    const removed = compute_msd(drifting, { remove_com_drift: true })
     expect([kept.com_drift_removed, removed.com_drift_removed]).toEqual([false, true])
     expect(removed.curves.map(({ label }) => label)).toEqual([`Total`, `Li`, `O`, `Si`])
     // O stays put: off by default its curve is the drift (0.41 A^2 at lag 1), removed it is the
@@ -344,6 +346,14 @@ describe(`centre-of-mass drift removal`, () => {
     )
     // ulp(40 A) = 7e-15 A over Si's 0.07 A steps: ~1e-13 per displacement (measured 4.5e-13)
     expect(Math.max(...errors)).toBeLessThan(1e-11)
+    // an options edit reuses the stream's drift-free coordinates, where an equal new stream
+    // looks every atom's mass up again
+    const mass_lookups = vi.spyOn(element_by_symbol, `get`)
+    compute_msd(drifting, { remove_com_drift: true, max_lags: 2 })
+    const n_cached = mass_lookups.mock.calls.length
+    compute_msd(build_positions(frames, { elements, lattice }), { remove_com_drift: true })
+    expect(mass_lookups.mock.calls.length - n_cached).toBe(n_cached + elements.length)
+    mass_lookups.mockRestore()
   })
 })
 
@@ -413,7 +423,7 @@ describe(`Einstein fit`, () => {
 
   it(`respects a user-adjusted fit window`, () => {
     // Ballistic (quadratic) MSD: a late window has a steeper local slope than an early one
-    const result = calc_msd(ballistic([0.3, 0, 0], 200))
+    const result = compute_msd(ballistic([0.3, 0, 0], 200))
     const [early_fit] = fit_msd_curves(result, { start_fraction: 0.05, end_fraction: 0.25 })
     const [late_fit] = fit_msd_curves(result, { start_fraction: 0.7, end_fraction: 1 })
     expect(early_fit).not.toBeNull()
@@ -431,7 +441,7 @@ describe(`time axis`, () => {
   ])(
     `labels the time axis and D units when %s`,
     (_label, options, delta_time, unit, x_label) => {
-      const result = calc_msd(ballistic([0.1, 0, 0], 20), options)
+      const result = compute_msd(ballistic([0.1, 0, 0], 20), options)
       expect(result.dt).toBe(delta_time)
       expect(result.time_unit).toBe(unit)
       expect(result.x_label).toBe(x_label)
@@ -446,21 +456,21 @@ describe(`input validation`, () => {
 
   // oxfmt-ignore
   it.each([
-    [`single frame`, () => calc_msd(build_positions([[[0, 0, 0]]])), /at least 2 frames/],
-    [`element/atom mismatch`, () => calc_msd({ ...drifting(5), elements: [`H`, `H`] as ElementSymbol[] }),
+    [`single frame`, () => compute_msd(build_positions([[[0, 0, 0]]])), /at least 2 frames/],
+    [`element/atom mismatch`, () => compute_msd({ ...drifting(5), elements: [`H`, `H`] as ElementSymbol[] }),
       /element labels for 1 atoms/],
-    [`truncated position buffer`, () => calc_msd({ ...drifting(5), positions: new Float64Array(6) }),
+    [`truncated position buffer`, () => compute_msd({ ...drifting(5), positions: new Float64Array(6) }),
       /positions has 6 entries/],
-    [`lattice count mismatch`, () => calc_msd({ ...drifting(5), lattice_matrices: [cubic_matrix(3)] }),
+    [`lattice count mismatch`, () => compute_msd({ ...drifting(5), lattice_matrices: [cubic_matrix(3)] }),
       /1 lattice matrices for 5 frames/],
-    [`out-of-range max_lag_fraction`, () => calc_msd(drifting(5), { max_lag_fraction: 2 }),
+    [`out-of-range max_lag_fraction`, () => compute_msd(drifting(5), { max_lag_fraction: 2 }),
       /max_lag_fraction must be in/],
     // A fractional cap would make the derived lag stride non-integer and index the flat
     // buffer at non-integer frame offsets
-    [`fractional max_lags`, () => calc_msd(drifting(20), { max_lags: 1.5 }), /max_lags must be a positive integer/],
+    [`fractional max_lags`, () => compute_msd(drifting(20), { max_lags: 1.5 }), /max_lags must be a positive integer/],
     // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
-    [`dt without a time unit`, () => calc_msd(drifting(20), { dt: 0.5 }), /dt was supplied .* without time_unit/],
-    [`drift removal without a standard atomic mass`, () => calc_msd({ ...drift_positions(5), elements: [`H`, `Xx`] as ElementSymbol[] }, { remove_com_drift: true }),
+    [`dt without a time unit`, () => compute_msd(drifting(20), { dt: 0.5 }), /dt was supplied .* without time_unit/],
+    [`drift removal without a standard atomic mass`, () => compute_msd({ ...drift_positions(5), elements: [`H`, `Xx`] as ElementSymbol[] }, { remove_com_drift: true }),
       /remove_com_drift: no mass for atom 1 \(Xx\)/],
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)
@@ -474,5 +484,5 @@ it(`compute_msd_async matches the synchronous result without a Worker`, async ()
   expect(typeof Worker).toBe(`undefined`)
   const positions = drift_positions(40)
   const async_result = await compute_msd_async(positions)
-  expect(async_result).toEqual(calc_msd(positions))
+  expect(async_result).toEqual(compute_msd(positions))
 })

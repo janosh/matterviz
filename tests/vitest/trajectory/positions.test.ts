@@ -85,11 +85,11 @@ describe(`resolve_lag_time_unit`, () => {
     [undefined, `frame`, `frame`],
     [0.5, `fs`, `fs`],
   ])(`dt=%s time_unit=%s labels the lag axis %s`, (delta_time, time_unit, expected) => {
-    expect(resolve_lag_time_unit(`calc_msd`, delta_time, time_unit, `fs`)).toBe(expected)
+    expect(resolve_lag_time_unit(`compute_msd`, delta_time, time_unit, `fs`)).toBe(expected)
   })
 
   it.each([
-    [0, `fs`, /calc_msd: dt must be positive, got 0/],
+    [0, `fs`, /compute_msd: dt must be positive, got 0/],
     [-1, `fs`, /dt must be positive, got -1/],
     [Number.NaN, `fs`, /dt must be positive, got NaN/],
     [0.5, undefined, /dt was supplied \(0\.5\) without time_unit; pass e.g. time_unit: 'fs'/],
@@ -97,7 +97,7 @@ describe(`resolve_lag_time_unit`, () => {
     [0.5, `frame`, /time_unit 'frame' cannot be combined with dt/],
     [undefined, `ps`, /time_unit .ps. was supplied without dt/],
   ])(`rejects dt=%s with time_unit=%s`, (delta_time, time_unit, expected) => {
-    expect(() => resolve_lag_time_unit(`calc_msd`, delta_time, time_unit, `fs`)).toThrow(
+    expect(() => resolve_lag_time_unit(`compute_msd`, delta_time, time_unit, `fs`)).toThrow(
       expected,
     )
   })
@@ -133,11 +133,11 @@ describe(`validate_position_stream_layout`, () => {
     )
 
   it(`accepts a consistent stream, with or without lattices`, () => {
-    expect(() => validate_position_stream_layout(two_atoms(3), `calc_msd`, 2)).not.toThrow()
+    expect(() => validate_position_stream_layout(two_atoms(3), `compute_msd`, 2)).not.toThrow()
     expect(() =>
       validate_position_stream_layout(
         two_atoms(3, { lattice_matrices: null, pbc: null }),
-        `calc_msd`,
+        `compute_msd`,
         2,
       ),
     ).not.toThrow()
@@ -145,7 +145,7 @@ describe(`validate_position_stream_layout`, () => {
 
   // oxfmt-ignore
   it.each([
-    [`too few frames`, two_atoms(1), /calc_msd: need at least 2 frames, got 1/],
+    [`too few frames`, two_atoms(1), /compute_msd: need at least 2 frames, got 1/],
     [`no atoms`, two_atoms(3, { n_atoms: 0 }), /need at least 1 atom, got 0/],
     [`element count`, two_atoms(3, { elements: [`Li`] }),
       /got 1 element labels for 2 atoms; atom order is the atom identity/],
@@ -153,7 +153,7 @@ describe(`validate_position_stream_layout`, () => {
       /positions has 17 entries but 3 frames x 2 atoms x 3 requires 18/],
     [`lattice count`, two_atoms(3, { lattice_matrices: [null] }), /got 1 lattice matrices for 3 frames/],
   ])(`rejects %s`, (_label, stream, expected) => {
-    expect(() => validate_position_stream_layout(stream, `calc_msd`, 2)).toThrow(expected)
+    expect(() => validate_position_stream_layout(stream, `compute_msd`, 2)).toThrow(expected)
   })
 })
 
