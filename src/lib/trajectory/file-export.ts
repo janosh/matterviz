@@ -5,6 +5,7 @@ import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
+import { is_finite_matrix3x3 } from '#lib/math.js'
 import { yield_turn } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import { rows_to_csv } from 'svelte-widgets/format'
@@ -12,6 +13,7 @@ import { zipSync } from 'fflate'
 import { full_data_extractor } from './extract'
 import type { TrajectoryFrame, TrajectoryMetadata } from './index'
 import { extract_label_and_unit } from './plotting'
+import { ASE_3X3_KEYS } from './parse/xyz'
 import type { TrajectoryRun } from './run'
 
 // Resolve one frame by index; null when the index is out of range or the load failed.
@@ -49,16 +51,14 @@ export function poscar_frame_filename(
 // comment would duplicate or contradict the file.
 const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 
-// Finite numbers of a flat vector or 3x3 matrix, in the column-major order ASE reads a 9-value
-// array in; undefined for anything else
-function numeric_values(value: unknown): number[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const is_matrix =
-    value.length === 3 && value.every((row) => Array.isArray(row) && row.length === 3)
-  const values: unknown[] = is_matrix
-    ? [0, 1, 2].flatMap((col) => value.map((row) => row[col]))
-    : value
-  return values.length > 0 && values.every(Number.isFinite) ? (values as number[]) : undefined
+// A finite flat vector as its values, or a 3x3 matrix as ASE writes one: column-major for its
+// 3x3 keys (stress, virial), JSON for any other; undefined for anything else
+function extxyz_array_value(key: string, value: unknown): string | undefined {
+  if (Array.isArray(value) && value.length > 0 && value.every(Number.isFinite))
+    return value.join(` `)
+  if (!is_finite_matrix3x3(value)) return undefined
+  if (!ASE_3X3_KEYS.has(key)) return `_JSON ${JSON.stringify(value)}`
+  return [0, 1, 2].flatMap((col) => value.map((row) => row[col])).join(` `)
 }
 
 // Serialize one frame as an extXYZ block, preserving the metadata that lives on the frame
@@ -74,16 +74,17 @@ export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
   for (let [key, value] of Object.entries(metadata)) {
     if (SKIP_METADATA_KEYS.has(key)) continue
     if (key === `stress`) {
-      if (typeof metadata.stress_frobenius !== `number`) continue
-      value = numeric_values(value)?.map((gpa) => -gpa / EV_PER_A3_TO_GPA)
+      if (typeof metadata.stress_frobenius !== `number` || !is_finite_matrix3x3(value))
+        continue
+      value = value.map((row) => row.map((gpa) => -gpa / EV_PER_A3_TO_GPA))
     }
     const name = key.replaceAll(/[^A-Za-z0-9_]/g, `_`)
     // Number.isFinite, not typeof: a NaN or Infinity would emit `energy=NaN` into the comment,
     // which every downstream extXYZ reader parses back as a number that isn't one.
     if (typeof value === `boolean` || Number.isFinite(value)) extra.push(`${name}=${value}`)
     else {
-      const values = numeric_values(value)
-      if (values) extra.push(`${name}="${values.join(` `)}"`)
+      const array_value = extxyz_array_value(name, value)
+      if (array_value) extra.push(`${name}="${array_value}"`)
     }
   }
   // Only the header changes; keep atom rows intact instead of splitting and joining them all.

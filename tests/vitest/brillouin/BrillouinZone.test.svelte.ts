@@ -2,7 +2,7 @@ import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath.js'
 import type { BrillouinZoneData } from '#lib/brillouin/types.js'
-import { cross_3d, dot, reciprocal_lattice, subtract } from '#lib/math.js'
+import { cross_3d, dot, type Matrix3x3, reciprocal_lattice, subtract } from '#lib/math.js'
 import type * as symmetry from '#lib/symmetry/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
@@ -525,11 +525,16 @@ test.each([
   // a load publishes the input cell's zone, then once more the primitive one it switched to
   expect(on_file_load.mock.calls.map(([data]) => data.bz_data)).toEqual([own_zone, rendered()])
   // a supplied zone gets the IBZ rotations in its own basis (the primitive one still cuts 1/48),
-  // and one of another cell rejects the standard path rather than drawing it outside the zone
+  // and one of another lattice (even of equal volume) rejects the standard path rather than
+  // drawing it outside the zone
   const primitive_zone = rendered()
+  const equal_volume = primitive_zone?.k_lattice.map((row, idx) =>
+    row.map((val) => val * [2, 0.5, 1][idx]),
+  ) as Matrix3x3
   for (const [bz_data, path] of [
     [primitive_zone, false],
     [own_zone, true],
+    [compute_brillouin_zone(equal_volume, 1), true],
   ] as const) {
     await unmount(mounted_component)
     analyze_structure_symmetry.mockImplementationOnce(analyze)
@@ -555,4 +560,24 @@ test.each([
         ),
       )
   }
+  // a throw from the delayed primitive-zone notification reaches on_error like the first one's
+  await unmount(mounted_component)
+  analyze_structure_symmetry.mockImplementationOnce(analyze)
+  const on_error = vi.fn()
+  const throw_second = vi
+    .fn()
+    .mockReturnValueOnce(undefined)
+    .mockImplementationOnce(() => {
+      throw new Error(`host exploded`)
+    })
+  const loader = { source, default_k_path: true, on_file_load: throw_second, on_error }
+  mounted_component = mount(BrillouinZone, { target: document.body, props: loader })
+  await vi.waitFor(() =>
+    expect(on_error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: `cell.json`,
+        error_msg: `on_file_load failed for cell.json: host exploded`,
+      }),
+    ),
+  )
 })

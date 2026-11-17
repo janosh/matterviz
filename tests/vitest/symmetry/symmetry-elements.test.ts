@@ -860,6 +860,20 @@ describe(`tile_symmetry_elements`, () => {
     const two_fold = { ...centre, kind: `rotation`, order: 2, label: `2`, axis: [1, 0, 0] }
     const [far] = tile_symmetry_elements([two_fold as SymmetryElement], far_shear).elements
     expect(far.axis).toEqual([big_n + 1, big_n, 0])
+    // cofactors like N² pass 2^53 and must stay exact: M⁻ᵀ·(1, N, 0) = (1, 0, 0)
+    const huge_n = 100_000_001
+    // oxfmt-ignore
+    const huge_shear: Matrix3x3 = [[1, huge_n, 0], [0, 1, huge_n], [0, 0, 1]]
+    const huge_axis = { ...two_fold, axis: [1, huge_n, 0] } as SymmetryElement
+    const [exact] = tile_symmetry_elements([huge_axis], huge_shear).elements
+    expect(exact.axis).toEqual([1, 0, 0])
+    // the 4001 base-cell translates of an a-axis 2-fold are one line family of this supercell
+    // oxfmt-ignore
+    const tall_shear: Matrix3x3 = [[1, 1, 0], [0, 4001, 0], [0, 0, 1]]
+    expect(tile_symmetry_elements([two_fold as SymmetryElement], tall_shear)).toMatchObject({
+      elements: [{ axis: [4001, -1, 0] }],
+      unavailable_reason: null,
+    })
     const unimodular = math.IDENTITY_3X3.with(0, [1, 1, 0]) as Matrix3x3
     const [moved] = tile_symmetry_elements(
       [{ ...centre, point: [0.5, 0.5, 0.5] }],

@@ -487,17 +487,22 @@ describe(`BarPlot`, () => {
 
   // NaN colour/size values are missing like null: d3 scales map NaN to undefined, which
   // painted the marker and legend swatch black at the default radius
+  // the global `line` style (here its dash) is the fallback for series without their own
   test(`line markers and legend keep the series style for NaN color/size values`, async () => {
     const values = [NaN, 1, 2, 3, 4]
     const line = { render_mode: `line`, markers: `line+points` } as const
     const plot = await mount_sized_bar_plot({
       series: [{ ...basic, ...line, color_values: values, size_values: values }],
       show_legend: true,
+      line: { dash: `4,2` },
     })
     const marker = query(plot, `.line-points .marker`)
     expect(marker.getAttribute(`fill`)).toContain(`steelblue`)
     expect(marker.getAttribute(`d`)).toMatch(/^M4,0A4,4/) // the default radius
-    expect(query(plot, `.legend-marker`).innerHTML).toContain(`steelblue`)
+    expect(query(plot, `.line-series polyline`).getAttribute(`stroke-dasharray`)).toBe(`4,2`)
+    const swatch = query(plot, `.legend-marker`).innerHTML
+    expect(swatch).toContain(`steelblue`)
+    expect(swatch).toMatch(/stroke-dasharray="4,2"/)
   })
 
   test(`markerless line series emit point callbacks, with no hit target when no vertex is in range`, async () => {

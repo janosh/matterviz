@@ -506,10 +506,11 @@ export function normalize_band_structure(
   assert_band_lengths(bands, n_qpts)
   const { spin_down_bands } = band_struct
   if (spin_down_bands != null) assert_band_lengths(spin_down_bands, n_qpts, bands.length)
-  const bad_branch = branches.find((branch) => !is_valid_branch(branch, n_qpts))
-  if (bad_branch)
+  // findIndex: a falsy malformed entry (0, false, ``) must not read as "none found"
+  const bad_idx = branches.findIndex((branch) => !is_valid_branch(branch, n_qpts))
+  if (bad_idx !== -1)
     throw new Error(
-      `branch ${JSON.stringify(bad_branch)} is out of range for ${n_qpts} q-points`,
+      `branch ${JSON.stringify(branches[bad_idx])} is out of range for ${n_qpts} q-points`,
     )
   const type = is_electronic_band_struct(band_struct) ? `electronic` : `phonon`
   const to_data_unit = band_unit_converter(band_struct.unit, type)

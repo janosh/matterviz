@@ -640,6 +640,10 @@ describe(`normalize_band_structure`, () => {
     [`a ragged spin-down band`, one_qpt({ spin_down_bands: [[0, 1]] }), `spin-down band 0 of 1 has 2 values`],
     [`a branch past the last q-point`, one_qpt({ branches: [make_branch(0, 5, `t`)] }), `out of range for 1 q-points`],
     [`a branch with a NaN start index`, one_qpt({ branches: [make_branch(NaN, 0, `t`)] }), `out of range`],
+    // falsy entries must not read as "no invalid branch found"
+    [`a zero branch`, one_qpt({ branches: [0] }), `branch 0 is out of range`],
+    [`a false branch`, one_qpt({ branches: [false] }), `branch false is out of range`],
+    [`an empty-string branch`, one_qpt({ branches: [``] }), `branch "" is out of range`],
     [`an unparsable pymatgen q-point`, pmg({ qpoints: [[0, 0, 0], `X`, [1, 0, 0]], bands: [[0, 1, 2]] }), `q-point 1 of 3 is not a 3-vector or k-point: "X"`],
     [`a pymatgen band of the wrong length`, pmg({ qpoints: line(3), bands: [[0, 1, 2], [0, 1]] }), `band 1 of 2 has 2 values, expected one per q-point (3)`],
     [`a ragged pymatgen spin-down band`, { ...identity_rec, kpoints: line(2), bands: { '1': [[0, 1], [2, 3]], '-1': [[0.1], [2.1, 3.1]] } }, `spin-down band 0 of 2 has 1 values`],

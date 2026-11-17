@@ -363,9 +363,17 @@
     try {
       if (!data) throw symmetry.error
       const kpath = high_symmetry_kpath(lattice, data)
-      // a supplied zone of another cell (e.g. the conventional one) would leave path points out
-      const volume = (cell: Matrix3x3) => Math.abs(det_3x3(cell))
-      if (bz_data && Math.abs(volume(bz_data.k_lattice) / volume(kpath.k_lattice) - 1) > 1e-6)
+      // a supplied zone of another lattice (e.g. the conventional cell's) would leave path
+      // points out: its rows must be a unimodular integer recombination of the path's
+      const transform =
+        bz_data && (dot(bz_data.k_lattice, inverse_3x3(kpath.k_lattice)) as Matrix3x3)
+      const near_int = (val: number) => Math.abs(val - Math.round(val)) < 1e-6
+      if (
+        transform &&
+        !(
+          transform.flat().every(near_int) && Math.abs(Math.abs(det_3x3(transform)) - 1) < 1e-6
+        )
+      )
         throw new Error(`bz_data is not the primitive zone the standard path is defined in`)
       return { ...kpath, data: kpath_to_k_path_data(kpath) }
     } catch (err) {
@@ -383,8 +391,16 @@
     const loaded = pending_load
     if (!path_k_lattice || !loaded) return
     pending_load = undefined
-    if (loaded.structure === structure)
-      untrack(() => on_file_load?.({ ...loaded, bz_order, bz_data: zone }))
+    if (loaded.structure !== structure) return
+    // the loader's error path no longer wraps this call, so report a throw the way it does
+    untrack(() => {
+      try {
+        on_file_load?.({ ...loaded, bz_order, bz_data: zone })
+      } catch (err) {
+        error_msg = `on_file_load failed for ${loaded.filename}: ${to_error(err).message}`
+        on_error?.({ ...loaded, bz_order, error_msg })
+      }
+    })
   })
 
   let ibz_error = $state<string | undefined>()

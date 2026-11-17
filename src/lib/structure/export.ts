@@ -1,5 +1,7 @@
 import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { ase_velocity } from '#lib/trajectory/parse/ase.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -242,7 +244,8 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 // Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
 // site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data.
 // ASE momenta (the extXYZ reader's `momentum`) go back out as `momenta`, which ASE reads as
-// Atoms momenta, without the `velocity` the reader derived from them.
+// Atoms momenta, without the `velocity` the reader derived from them (an explicit velocity
+// that differs from the derived one is kept: on reimport it wins over the momenta).
 function numeric_site_columns(
   structure: AnyStructure,
 ): { key: string; name: string; ncols: 1 | 3 }[] {
@@ -259,7 +262,20 @@ function numeric_site_columns(
     return fits ? [{ key, name: key === `momentum` ? `momenta` : key, ncols }] : []
   })
   const has_momenta = columns.some(({ key }) => key === `momentum`)
-  return has_momenta ? columns.filter(({ key }) => key !== `velocity`) : columns
+  const derived = has_momenta && structure.sites.every(velocity_is_momentum_derived)
+  return derived ? columns.filter(({ key }) => key !== `velocity`) : columns
+}
+
+// Whether a site's velocity is exactly the one the extXYZ reader derives from its momentum
+const velocity_is_momentum_derived = ({ species, properties }: Site): boolean => {
+  const { velocity, momentum, mass } = properties ?? {}
+  if (!Array.isArray(velocity) || !Array.isArray(momentum)) return velocity === undefined
+  const recorded = typeof mass === `number` ? mass : undefined
+  const atomic_mass = recorded ?? element_by_symbol.get(species[0]?.element)?.atomic_mass
+  if (!atomic_mass) return false
+  return velocity.every(
+    (component, idx) => component === ase_velocity(momentum[idx], atomic_mass),
+  )
 }
 
 // A written column the extXYZ readers would take for another: they match names

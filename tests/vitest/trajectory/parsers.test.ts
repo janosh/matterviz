@@ -1869,14 +1869,18 @@ describe(`XYZ`, () => {
   })
 
   it(`preserves quoted extXYZ dipoles and polarizability tensors`, async () => {
-    const comment = `step=4 lattice="10 0 0 0 10 0 0 0 10" dipole="1 2 3" polarizability="1 4 0 0 2 0 0 0 3"`
+    const comment = `step=4 lattice="10 0 0 0 10 0 0 0 10" dipole="1 2 3" polarizability="1 4 0 0 2 0 0 0 3" virial="1 4 0 0 2 0 0 0 3" alpha="_JSON [[1, 4, 0], [0, 2, 0], [0, 0, 3]]"`
     const frame = xyz_frame([`H 0 0 0`], comment)
     const { metadata } = (await open(`${frame}\n${frame}`, `signals.extxyz`)).preview
     expect(metadata?.lattice).toBeUndefined()
     expect(metadata?.dipole).toEqual([1, 2, 3])
-    // 9 values are column-major as ASE writes them, so the 4 is row 2, column 1
+    // like ASE: generic 9 values stay flat in their listed order, only its 3x3 keys (virial,
+    // stress) are column-major, and other matrices come as JSON rows
+    expect(metadata?.polarizability).toEqual([1, 4, 0, 0, 2, 0, 0, 0, 3])
     // oxfmt-ignore
-    expect(metadata?.polarizability).toEqual([[1, 0, 0], [4, 2, 0], [0, 0, 3]])
+    expect(metadata?.virial).toEqual([[1, 0, 0], [4, 2, 0], [0, 0, 3]])
+    // oxfmt-ignore
+    expect(metadata?.alpha).toEqual([[1, 4, 0], [0, 2, 0], [0, 0, 3]])
   })
 
   it(`round-trips exported forces to the same site key through both readers`, async () => {

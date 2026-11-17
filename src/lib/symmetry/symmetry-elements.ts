@@ -665,8 +665,9 @@ export const MAX_TILED_SYM_ELEMENTS = 4000
 const MAX_TILING_VISITS = 1_000_000
 
 // Deduplicate translations along planes/axes, but retain every translated center marker.
-// A plane moves by the integer plane_normal · offset (mod its supercell period) and a line by offset × axis (parallelism
-// is affine), so both keys are exact and independent of the metric. Identity keeps different
+// A plane moves by the integer plane_normal · offset and a line by the offset modulo its axis
+// (parallelism is affine), each modulo the supercell lattice, so both keys are exact and
+// independent of the metric. Identity keeps different
 // operations sharing a locus distinct.
 const tiled_element_key = (element: SymmetryElement, supercell: Matrix3x3) => {
   const identity = `${element.kind}|${element.label}|${element.order}|${element.locus}`
@@ -680,7 +681,18 @@ const tiled_element_key = (element: SymmetryElement, supercell: Matrix3x3) => {
     key = (offset) => String(((math.dot(plane_normal, offset) % period) + period) % period)
     changes = plane_normal.map((component) => component !== 0)
   } else if (axis && (kind === `rotation` || kind === `screw`)) {
-    key = (offset) => math.cross_3d(offset, axis).join(`,`)
+    // a line moves by its offset's coordinates (n₁·o, n₂·o) for covectors annihilating the
+    // axis, taken modulo the supercell rows' coordinates (a triangular 2D basis), so lines one
+    // supercell translation apart are one family, as for planes
+    const [, first, second] = math.unimodular_completion(axis)
+    const coords = (vec: Vec3): Vec3 => [math.dot(first, vec), math.dot(second, vec), 0]
+    const [[h11, h12], [, h22]] = triangular_basis(supercell.map(coords) as Matrix3x3)
+    key = (offset) => {
+      const [x_coord, y_coord] = coords(offset)
+      const wraps = Math.floor(x_coord / h11)
+      const y_wrapped = y_coord - wraps * h12
+      return `${x_coord - wraps * h11},${((y_wrapped % h22) + h22) % h22}`
+    }
     changes = axis.map((_, idx) =>
       axis.some((component, other) => other !== idx && component !== 0),
     )
@@ -735,16 +747,21 @@ function symmetry_tiling(
   // for a diagonal M; an offset is reduced by the whole supercells it spans, so the
   // supercell holds every image of a center inside the input cell (others stay outside)
   const det = Math.round(math.det_3x3(supercell))
-  // det · M⁻ᵀ is M's cofactor matrix: integer minors, no ill-conditioned float inverse
+  // det · M⁻ᵀ is M's cofactor matrix: integer minors, no ill-conditioned float inverse, and
+  // exact in BigInt (Number products of large entries round past 2^53); entries round to
+  // integers like `det` (fractional repeat counts are whole tiles)
   const others = (idx: number) => [0, 1, 2].filter((other) => other !== idx)
-  const numerators = [0, 1, 2].map((row) => {
-    const [r0, r1] = others(row)
+  const big_cofactors = [0, 1, 2].map((row) => {
+    const [m0, m1] = others(row).map((idx) =>
+      supercell[idx].map((val) => BigInt(Math.round(val))),
+    )
     return [0, 1, 2].map((col) => {
       const [c0, c1] = others(col)
-      const [m0, m1] = [supercell[r0], supercell[r1]]
-      return (-1) ** (row + col) * (m0[c0] * m1[c1] - m0[c1] * m1[c0])
+      const minor = m0[c0] * m1[c1] - m0[c1] * m1[c0]
+      return (row + col) % 2 ? -minor : minor
     })
-  }) as Matrix3x3
+  })
+  const numerators = big_cofactors.map((row) => row.map(Number)) as Matrix3x3
   const shrink = (vec: Vec3): Vec3 =>
     math.mul_3x3_vec3(numerators, vec).map((val) => val / det) as Vec3
   const supercell_t = math.transpose_3x3(supercell)
@@ -761,9 +778,9 @@ function symmetry_tiling(
   const big_gcd = (val_a: bigint, val_b: bigint): bigint =>
     val_b === 0n ? (val_a < 0n ? -val_a : val_a) : big_gcd(val_b, val_a % val_b)
   const block_axis = (axis: Vec3): Vec3 => {
-    const dir = numerators.map(
+    const dir = big_cofactors.map(
       (row) =>
-        row.reduce((sum, val, col) => sum + BigInt(val) * BigInt(axis[col]), 0n) *
+        row.reduce((sum, val, col) => sum + val * BigInt(axis[col]), 0n) *
         BigInt(Math.sign(det)),
     )
     const divisor = dir.reduce(big_gcd, 0n) || 1n

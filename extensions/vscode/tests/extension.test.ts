@@ -33,6 +33,7 @@ import {
   LARGE_FILE_THRESHOLD,
   read_file,
   render,
+  webview_file_paths,
   webview_run_streams,
 } from '../src/extension'
 
@@ -169,6 +170,7 @@ describe(`MatterViz Extension`, () => {
       auto_render_timers,
       active_auto_render_panels,
       webview_run_streams,
+      webview_file_paths,
     ])
       state.clear()
 
@@ -317,9 +319,10 @@ describe(`MatterViz Extension`, () => {
     onDidReceiveMessage: vi.fn(() => ({ dispose })),
     options: undefined as WebviewOptions | undefined,
   })
-  // the host only serves request_large_file/request_frame for files a panel is subscribed to
-  const subscribe = (file_path: string, ...webviews: Parameters<typeof handle_msg>[1][]) =>
-    active_watcher_subscribers.set(file_path, new Set(webviews))
+  // the host only serves request_large_file/request_frame for the file a panel was opened on
+  const subscribe = (file_path: string, ...webviews: Parameters<typeof handle_msg>[1][]) => {
+    for (const webview of webviews) webview_file_paths.set(webview, file_path)
+  }
   const mock_context = {
     extensionUri: { fsPath: `/test` },
     subscriptions: [],
@@ -611,10 +614,7 @@ describe(`MatterViz Extension`, () => {
 
   test.each([
     [``, `Invalid request_id`],
-    [
-      `unsubscribed`,
-      `Refusing to serve /test/movie.extxyz: this panel is not subscribed to it`,
-    ],
+    [`unsubscribed`, `Refusing to serve /test/movie.extxyz: this panel was not opened on it`],
   ])(`large-file request %j is rejected before reading`, async (request_id, error) => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
     await handle_msg(large_file_msg(`/test/movie.extxyz`, request_id), mock_webview)
@@ -643,7 +643,7 @@ describe(`MatterViz Extension`, () => {
   test.each([
     [`negative frame index`, `/test/movie.extxyz`, -1, `Invalid request_id or frame_index`],
     [`missing run`, `/test/missing.extxyz`, 0, `No indexed trajectory is open`],
-    [`unsubscribed path`, `/etc/passwd`, 0, `this panel is not subscribed to it`],
+    [`unsubscribed path`, `/etc/passwd`, 0, `this panel was not opened on it`],
   ])(`request_frame reports %s`, async (label, file_path, frame_index, error) => {
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     if (label !== `unsubscribed path`) subscribe(file_path, mock_webview)
@@ -1261,6 +1261,15 @@ describe(`MatterViz Extension`, () => {
         expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
           expect.objectContaining({ command: `error` }),
         )
+        // the panel may still request its own file without a watcher, until it closes
+        vi.spyOn(console, `error`).mockImplementation(() => {})
+        const request = large_file_msg(`/test/large-file.cif`, `no-watcher`)
+        const refused = expect.objectContaining({ error: expect.stringContaining(`Refusing`) })
+        await handle_msg(request, panel.webview)
+        expect(panel.webview.postMessage).not.toHaveBeenLastCalledWith(refused)
+        fire_event(panel.onDidDispose)
+        await handle_msg(request, panel.webview)
+        expect(panel.webview.postMessage).toHaveBeenLastCalledWith(refused)
       })
     })
   })

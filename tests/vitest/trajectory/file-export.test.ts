@@ -148,23 +148,47 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
 
   // ASE writes momenta (read back as momentum + derived velocity) and a 9-value stress in
   // eV/Å³: export restores both as ASE wrote them, without a stray velocity column
+  // (non-symmetric, so a transposed stress or polarizability would show)
   test(`re-exports ASE momenta and stress as ASE writes them`, () => {
-    const stress = `0.01 0.002 0 0.002 -0.03 0.004 0 0.004 0.05`
+    const stress = `0.01 0.002 0 0.007 -0.03 0.004 0 0.001 0.05`
     const source = [
       `1`,
-      `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:momenta:R:3 stress="${stress}" pbc="T T T"`,
+      `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:momenta:R:3 stress="${stress}" polarizability="_JSON [[1, 4, 0], [0, 2, 0], [0, 0, 3]]" pbc="T T T"`,
       `Cu 0 0 0 1 -2 3`,
     ].join(`\n`)
     const comment = trajectory_frame_to_extxyz_str(parse_exported_frames(source)[0]).split(
       `\n`,
     )[1]
     expect(comment).toContain(`Properties=species:S:1:pos:R:3:momenta:R:3 `)
+    expect(comment).toContain(`polarizability="_JSON [[1,4,0],[0,2,0],[0,0,3]]"`)
     const written = /stress="(?<values>[^"]+)"/
       .exec(comment)
       ?.groups?.values.split(` `)
       .map(Number)
+    expect(written).toHaveLength(9)
     expect(max_abs_error(written ?? [], stress.split(` `).map(Number))).toBeLessThan(1e-15)
   })
+
+  // the reader takes an explicit velocity column over the momenta, so one that differs from
+  // the momentum-derived velocity must be written, and one that matches it must not
+  test.each([
+    [`differs from`, `1 0 0`, [1, 0, 0]],
+    [`matches`, null, [0, 0, 0]],
+  ])(
+    `keeps an explicit velocity only when it %s the momenta`,
+    (_label, velocity, expected) => {
+      const columns = velocity ? `velocities:R:3:momenta:R:3` : `momenta:R:3`
+      const source = [
+        `1`,
+        `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:${columns} pbc="T T T"`,
+        `Cu 0 0 0 ${velocity ?? ``} 0 0 0`,
+      ].join(`\n`)
+      const exported = trajectory_frame_to_extxyz_str(parse_exported_frames(source)[0])
+      expect(exported.includes(`velocity:R:3`)).toBe(velocity !== null)
+      const site = parse_exported_frames(exported)[0].structure.sites[0]
+      expect(site.properties?.velocity).toEqual(expected)
+    },
+  )
 })
 
 describe(`serialize_extxyz_frame_range`, () => {

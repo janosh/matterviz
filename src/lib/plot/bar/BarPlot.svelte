@@ -579,7 +579,7 @@
     const first_color_value = srs.color_values?.[0]
     return {
       ...(has_marker(srs, `line`)
-        ? { line_color: color, line_dash: srs.line_style?.dash }
+        ? { line_color: color, line_dash: srs.line_style?.dash ?? line_state.dash }
         : {}),
       ...(has_marker(srs, `points`)
         ? {
@@ -789,7 +789,7 @@
             {#if is_line}
               {@const color = series_color(srs)}
               {@const stroke_width = srs.line_style?.width ?? line_state.width}
-              {@const line_dash = srs.line_style?.dash ?? `none`}
+              {@const line_dash = srs.line_style?.dash ?? line_state.dash ?? `none`}
               {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
               {@const x_scale = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
               {@const show_line = has_marker(srs, `line`)}
