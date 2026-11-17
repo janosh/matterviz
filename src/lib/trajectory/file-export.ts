@@ -5,7 +5,7 @@ import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
-import { is_finite_matrix3x3 } from '#lib/math.js'
+import { is_finite_matrix3x3, transpose_3x3 } from '#lib/math.js'
 import { yield_turn } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import { rows_to_csv } from 'svelte-widgets/format'
@@ -51,17 +51,17 @@ export function poscar_frame_filename(
 // comment would duplicate or contradict the file.
 const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 
-// A finite flat vector as its values (JSON for a 1-vector, which plain text reads back as a
-// scalar, as ASE writes one), or a 3x3 matrix as ASE writes one: column-major for its 3x3 keys
-// (stress, virial), JSON for any other; undefined for anything else
+// A finite flat vector or 3x3 matrix as ASE writes it: plain values, or JSON where plain text
+// would read back as something else (a 1-vector as a scalar, a 9-vector of a 3x3 key as a
+// matrix, any other key's matrix as a flat 9-vector); 3x3 keys (stress, virial) column-major
 function extxyz_array_value(key: string, value: unknown): string | undefined {
-  // plain text would read back as a scalar (1 value) or as a 3x3 matrix (9 values of a 3x3 key)
-  const ambiguous = (length: number) => length === 1 || (length === 9 && ASE_3X3_KEYS.has(key))
-  if (Array.isArray(value) && value.length > 0 && value.every(Number.isFinite))
-    return ambiguous(value.length) ? `_JSON ${JSON.stringify(value)}` : value.join(` `)
+  const is_3x3_key = ASE_3X3_KEYS.has(key)
+  if (Array.isArray(value) && value.length > 0 && value.every(Number.isFinite)) {
+    const ambiguous = value.length === 1 || (value.length === 9 && is_3x3_key)
+    return ambiguous ? `_JSON ${JSON.stringify(value)}` : value.join(` `)
+  }
   if (!is_finite_matrix3x3(value)) return undefined
-  if (!ASE_3X3_KEYS.has(key)) return `_JSON ${JSON.stringify(value)}`
-  return [0, 1, 2].flatMap((col) => value.map((row) => row[col])).join(` `)
+  return is_3x3_key ? transpose_3x3(value).flat().join(` `) : `_JSON ${JSON.stringify(value)}`
 }
 
 // Serialize one frame as an extXYZ block, preserving the metadata that lives on the frame

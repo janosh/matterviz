@@ -345,8 +345,8 @@ describe(`pbc_dist`, () => {
     const frac_to_cart = math.create_frac_to_cart(lattice)
     const cart_to_frac = math.create_cart_to_frac(lattice)
     const converters = math.create_lattice_converters(lattice)
-    let seed = 7
-    const rand = () => ((seed = (seed * 1664525 + 1013904223) % 2 ** 32) / 2 ** 32) * 20 - 10
+    const rng = math.mulberry32(7)
+    const rand = () => rng() * 20 - 10
     const masks: Pbc3[] = [[true, true, true], [true, false, true], [false, true, false]]
     for (let trial = 0; trial < 25; trial++) {
       const from: Vec3 = [rand(), rand(), rand()]
@@ -382,10 +382,7 @@ describe(`pbc_dist`, () => {
   // Off-diagonals <= 1e-12 of the row norm (parser round-off) take the diagonal fast path and
   // must match the full candidate search (forced by clearing `diagonal`; measured max |a-b| = 0)
   test(`near-diagonal lattices take the fast path and match the full search`, () => {
-    const rng = (() => {
-      let seed = 3
-      return () => (seed = (seed * 1664525 + 1013904223) % 2 ** 32) / 2 ** 32
-    })()
+    const rng = math.mulberry32(3)
     for (let trial = 0; trial < 200; trial++) {
       const lattice = [0, 1, 2].map((row) =>
         [0, 1, 2].map((col) => (row === col ? 2 + 20 * rng() : (rng() - 0.5) * 1e-12)),

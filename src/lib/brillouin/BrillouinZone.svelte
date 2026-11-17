@@ -341,9 +341,7 @@
     // rotations act on input-fractional coords; the shown zone's own cell (rows 2π K⁻ᵀ = P·L,
     // e.g. the default k-path's primitive cell or a supplied zone's) wants x_zone = P⁻ᵀ·x_input
     const lattice = structure?.lattice?.matrix
-    const zone_cell = transpose_3x3(inverse_3x3(zone.k_lattice)).map((row) =>
-      row.map((val) => val * 2 * Math.PI),
-    ) as Matrix3x3
+    const zone_cell = reciprocal_lattice(zone.k_lattice, { two_pi: true })
     const prim_t = lattice && transpose_3x3(dot(zone_cell, inverse_3x3(lattice)) as Matrix3x3)
     const to_zone = (rot: Matrix3x3) =>
       prim_t ? dot(dot(inverse_3x3(prim_t), rot), prim_t) : rot
@@ -367,13 +365,10 @@
       // points out: its rows must be a unimodular integer recombination of the path's
       const transform =
         bz_data && (dot(bz_data.k_lattice, inverse_3x3(kpath.k_lattice)) as Matrix3x3)
-      const near_int = (val: number) => Math.abs(val - Math.round(val)) < 1e-6
-      if (
-        transform &&
-        !(
-          transform.flat().every(near_int) && Math.abs(Math.abs(det_3x3(transform)) - 1) < 1e-6
-        )
-      )
+      const near = (val: number, target = Math.round(val)) => Math.abs(val - target) < 1e-6
+      const unimodular = (mat: Matrix3x3) =>
+        mat.flat().every((val) => near(val)) && near(Math.abs(det_3x3(mat)), 1)
+      if (transform && !unimodular(transform))
         throw new Error(`bz_data is not the primitive zone the standard path is defined in`)
       return { ...kpath, data: kpath_to_k_path_data(kpath) }
     } catch (err) {

@@ -9,6 +9,8 @@ import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '#lib/constants.js'
 import {
   cell_to_lattice_matrix,
   is_finite_matrix3x3,
+  mat3x3_from_flat_col_major,
+  mat3x3_from_flat_row_major,
   is_finite_vec3,
   type Matrix3x3,
   transpose_3x3,
@@ -55,7 +57,7 @@ function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
-  return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as Matrix3x3
+  return mat3x3_from_flat_row_major(vals)
 }
 
 // i-PI heads each frame `# CELL(abcABC): a b c alpha beta gamma Step: 4 Bead: 0
@@ -260,9 +262,8 @@ const comment_scalar = (raw: string): number | boolean | undefined => {
 // matrix as `_JSON [[...], ...]`, while other 9-value arrays stay flat in their listed order
 export const ASE_3X3_KEYS = new Set([`stress`, `virial`])
 
-// A quoted multi-value comment payload as ASE reads it: a flat vector of any length (9 values
-// stay flat), an ASE 3x3 key's column-major matrix, or a JSON vector (ASE's encoding of a
-// 1-vector, which plain `7` would read back as a scalar) or matrix; undefined otherwise
+// A quoted multi-value payload as ASE reads it: a flat vector (9 values stay flat), a 3x3 key's
+// column-major matrix, or a `_JSON` vector (ASE's 1-vector, as plain `7` is a scalar) or matrix
 function comment_signal(raw: string, key: string): number[] | Matrix3x3 | undefined {
   if (raw.startsWith(`_JSON `)) {
     const parsed: unknown = JSON.parse(raw.slice(`_JSON `.length))
@@ -272,8 +273,7 @@ function comment_signal(raw: string, key: string): number[] | Matrix3x3 | undefi
   }
   const values = raw.split(/[\s,]+/u).map(parse_float_token)
   if (!values.every(Number.isFinite)) return undefined
-  if (values.length === 9 && ASE_3X3_KEYS.has(key))
-    return [0, 1, 2].map((row) => [values[row], values[row + 3], values[row + 6]]) as Matrix3x3
+  if (values.length === 9 && ASE_3X3_KEYS.has(key)) return mat3x3_from_flat_col_major(values)
   // A 6-value stress is Voigt order (ASE's own writer), which ase_stress_metadata expands
   if (key === `stress`) return values.length === 6 ? values : undefined
   return values

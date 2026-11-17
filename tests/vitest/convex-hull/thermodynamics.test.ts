@@ -729,9 +729,7 @@ describe(`process_hull_for_stats`, () => {
       const all = result?.entries ?? []
       const compounds = all
         .filter((entry) => !entry.is_element)
-        .toSorted(
-          (left_value, right_value) => (left_value.energy ?? 0) - (right_value.energy ?? 0),
-        )
+        .toSorted((left, right) => (left.energy ?? 0) - (right.energy ?? 0))
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
       expect(compute_e_above_hull(entries, entries).slice(-2)).toEqual([0, 0.5])
     },

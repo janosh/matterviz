@@ -539,14 +539,10 @@ export function dot(
   throw new Error(`Unsupported input types for dot product`)
 }
 
-const assert_flat_3x3 = (flat: readonly number[]): void => {
-  if (flat.length !== 9)
-    throw new Error(`Expected 9-element array, got ${flat.length} elements`)
-}
-
 // 3x3 matrix from a flat 9-element array in row-major order ([a00, a01, a02, a10, ...])
 export function mat3x3_from_flat_row_major(flat: readonly number[]): Matrix3x3 {
-  assert_flat_3x3(flat)
+  if (flat.length !== 9)
+    throw new Error(`Expected 9-element array, got ${flat.length} elements`)
   return [
     [flat[0], flat[1], flat[2]],
     [flat[3], flat[4], flat[5]],
@@ -556,14 +552,8 @@ export function mat3x3_from_flat_row_major(flat: readonly number[]): Matrix3x3 {
 
 // 3x3 matrix from a flat 9-element array in column-major order ([a00, a10, a20, a01, ...]),
 // how moyo-wasm serializes nalgebra matrices
-export function mat3x3_from_flat_col_major(flat: readonly number[]): Matrix3x3 {
-  assert_flat_3x3(flat)
-  return [
-    [flat[0], flat[3], flat[6]],
-    [flat[1], flat[4], flat[7]],
-    [flat[2], flat[5], flat[8]],
-  ]
-}
+export const mat3x3_from_flat_col_major = (flat: readonly number[]): Matrix3x3 =>
+  transpose_3x3(mat3x3_from_flat_row_major(flat))
 
 // Shared instance, aliased not copied by callers: never mutate, build a literal instead
 // oxfmt-ignore

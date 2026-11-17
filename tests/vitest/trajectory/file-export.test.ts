@@ -90,6 +90,12 @@ describe(`poscar_frame_filename`, () => {
 })
 
 describe(`trajectory_frame_to_extxyz_str`, () => {
+  // one atom in a periodic 5 A cube with extra Properties columns and comment pairs
+  const parse_one_atom = (columns: string, row: string, comment = ``) =>
+    parse_exported_frames(
+      `1\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:${columns} ${comment} pbc="T T T"\n${row}`,
+    )[0]
+
   // Frame-level fields (step, energy, …) live outside the structure the single-structure
   // exporter sees; scalars/booleans join the comment, numeric vectors as quoted arrays, while
   // strings, non-finites and a stress of unknown units (no stress_frobenius) do not.
@@ -158,14 +164,12 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
   // (non-symmetric, so a transposed stress or polarizability would show)
   test(`re-exports ASE momenta and stress as ASE writes them`, () => {
     const stress = `0.01 0.002 0 0.007 -0.03 0.004 0 0.001 0.05`
-    const source = [
-      `1`,
-      `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:momenta:R:3 stress="${stress}" polarizability="_JSON [[1, 4, 0], [0, 2, 0], [0, 0, 3]]" pbc="T T T"`,
+    const frame = parse_one_atom(
+      `momenta:R:3`,
       `Cu 0 0 0 1 -2 3`,
-    ].join(`\n`)
-    const comment = trajectory_frame_to_extxyz_str(parse_exported_frames(source)[0]).split(
-      `\n`,
-    )[1]
+      `stress="${stress}" polarizability="_JSON [[1, 4, 0], [0, 2, 0], [0, 0, 3]]"`,
+    )
+    const comment = trajectory_frame_to_extxyz_str(frame).split(`\n`)[1]
     expect(comment).toContain(`Properties=species:S:1:pos:R:3:momenta:R:3 `)
     expect(comment).toContain(`polarizability="_JSON [[1,4,0],[0,2,0],[0,0,3]]"`)
     const written = /stress="(?<values>[^"]+)"/
@@ -185,12 +189,8 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     `keeps an explicit velocity only when it %s the momenta`,
     (_label, velocity, expected) => {
       const columns = velocity ? `velocities:R:3:momenta:R:3` : `momenta:R:3`
-      const source = [
-        `1`,
-        `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:${columns} pbc="T T T"`,
-        `Cu 0 0 0 ${velocity ?? ``} 0 0 0`,
-      ].join(`\n`)
-      const exported = trajectory_frame_to_extxyz_str(parse_exported_frames(source)[0])
+      const frame = parse_one_atom(columns, `Cu 0 0 0 ${velocity ?? ``} 0 0 0`)
+      const exported = trajectory_frame_to_extxyz_str(frame)
       expect(exported.includes(`velocity:R:3`)).toBe(velocity !== null)
       const site = parse_exported_frames(exported)[0].structure.sites[0]
       expect(site.properties?.velocity).toEqual(expected)
@@ -200,13 +200,9 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
   // a mass on only some sites isn't written, so the reader divides by standard masses: the
   // velocity derived from a recorded mass then differs from what reimport derives
   test(`keeps a velocity derived from a mass the file will not hold`, () => {
-    const parse_h = (columns: string, row: string) =>
-      parse_exported_frames(
-        `1\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:${columns} pbc="T T T"\nH ${row}`,
-      )[0]
-    const frame = parse_h(`masses:R:1:momenta:R:3`, `0 0 0 2 1 0 0`)
+    const frame = parse_one_atom(`masses:R:1:momenta:R:3`, `H 0 0 0 2 1 0 0`)
     // second site: no recorded mass, velocity derived from the standard mass
-    const second = parse_h(`momenta:R:3`, `1 1 1 1 0 0`).structure.sites[0]
+    const second = parse_one_atom(`momenta:R:3`, `H 1 1 1 1 0 0`).structure.sites[0]
     frame.structure.sites.push(second)
     const velocity = frame.structure.sites[0].properties?.velocity
     const exported = trajectory_frame_to_extxyz_str(frame)
@@ -512,9 +508,12 @@ describe(`TrajectoryExportPane property export`, () => {
   }
 
   // download() also takes Blobs (the POSCAR zip); a CSV/JSON export handing one over would
-  // stringify to `[object Blob]` in the saved file
-  const downloaded_text = (): string[] => {
-    const content = vi.mocked(download).mock.calls[0][0]
+  // stringify to `[object Blob]` in the saved file. Waits for the single download and checks
+  // its filename and MIME type when given.
+  const downloaded_text = async (...file: [name: string, mime: string] | []) => {
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+    const [content, ...saved_as] = vi.mocked(download).mock.calls[0]
+    if (file.length) expect(saved_as).toEqual(file)
     if (typeof content !== `string`)
       throw new TypeError(`expected text, got ${typeof content}`)
     return content.split(`\n`)
@@ -567,8 +566,7 @@ describe(`TrajectoryExportPane property export`, () => {
     expect(poscar.disabled).toBe(false)
     expect(xyz.disabled).toBe(false)
     await click(`Download extXYZ`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    const exported = parse_exported_frames(downloaded_text().join(`\n`))
+    const exported = parse_exported_frames((await downloaded_text()).join(`\n`))
     expect(exported.map(({ step }) => step)).toEqual([5, 9])
   })
 
@@ -889,12 +887,8 @@ describe(`TrajectoryExportPane property export`, () => {
       expect(document.querySelector(reset_selector)).toBeNull()
 
       await click(`Download CSV`)
-      await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-      const [, name, mime] = vi.mocked(download).mock.calls[0]
-      expect(name).toBe(`run_frames_1-3.csv`)
-      expect(mime).toBe(`text/csv`)
+      const lines = await downloaded_text(`run_frames_1-3.csv`, `text/csv`)
       expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
-      const lines = downloaded_text()
       expect(lines).toHaveLength(4)
       expect(lines[0]).toContain(`energy (eV)`)
       expect(lines.slice(1).map((line) => line.split(`,`)[0])).toEqual([`1`, `2`, `3`])
@@ -913,11 +907,8 @@ describe(`TrajectoryExportPane property export`, () => {
     await tick()
 
     await click(`Download extXYZ`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    const [, name, mime] = vi.mocked(download).mock.calls[0]
-    expect(name).toBe(`run.extxyz`)
-    expect(mime).toBe(`chemical/x-xyz`)
-    const exported = parse_exported_frames(downloaded_text().join(`\n`))
+    const lines = await downloaded_text(`run.extxyz`, `chemical/x-xyz`)
+    const exported = parse_exported_frames(lines.join(`\n`))
     expect(exported.map(({ step }) => step)).toEqual([0, 5])
   })
 

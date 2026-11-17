@@ -453,9 +453,7 @@ test.each(lattices)(
       ({ site_idx, abc }) => site_idx === 1 && Math.abs(abc[0]) < 1e-8,
     )
     if (!wrapped) throw new Error(`no wrapped a-face image found`)
-    expect(wrapped.abc[0]).toBe(0)
-    expect(wrapped.abc[1]).toBeCloseTo(0.5, 12)
-    expect(wrapped.abc[2]).toBeCloseTo(0, 12)
+    expect(wrapped.abc).toEqual([0, expect.closeTo(0.5, 12), expect.closeTo(0, 12)])
 
     const image_sites = get_pbc_image_sites(structure, image_options()).sites.slice(
       structure.sites.length,

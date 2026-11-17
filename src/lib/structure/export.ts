@@ -243,9 +243,8 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 
 // Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
 // site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data.
-// ASE momenta (the extXYZ reader's `momentum`) go back out as `momenta`, which ASE reads as
-// Atoms momenta, without the `velocity` the reader derived from them (an explicit velocity
-// that differs from the derived one is kept: on reimport it wins over the momenta).
+// The reader's `momentum` goes back out as ASE's `momenta`, minus the `velocity` the reader
+// derived from it (a differing explicit velocity is kept: on reimport it wins).
 function numeric_site_columns(
   structure: AnyStructure,
 ): { key: string; name: string; ncols: 1 | 3 }[] {
@@ -546,6 +545,7 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     (site) => {
       const adp = site_adp(site)
       if (!adp) return null
+      // only when needed: a singular lattice can still write its sites' abc
       const units = math
         .reciprocal_lattice(lattice.matrix)
         .map((vec) => math.normalize_vec(vec))

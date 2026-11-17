@@ -517,10 +517,14 @@ test.each([
   const props = $state({ source, default_k_path: true, children, ...ibz })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   // the point group, carried into the primitive basis, still cuts the 1/48 wedge
+  const wedge_ratio = (wedge?: typeof ibz_data, zone?: BrillouinZoneData) =>
+    ((wedge?.volume ?? 0) * 48) / (zone?.volume ?? 1)
   await vi.waitFor(() => {
     const zone = rendered()
-    const ibz_ratio = ((props.ibz_data?.volume ?? 0) * 48) / (zone?.volume ?? 1)
-    expect([zone && n_outside(zone), ibz_ratio]).toEqual([0, expect.closeTo(1, 9)])
+    expect([zone && n_outside(zone), wedge_ratio(props.ibz_data, zone)]).toEqual([
+      0,
+      expect.closeTo(1, 9),
+    ])
   })
   // a load publishes the input cell's zone, then once more the primitive one it switched to
   expect(on_file_load.mock.calls.map(([data]) => data.bz_data)).toEqual([own_zone, rendered()])
@@ -538,38 +542,22 @@ test.each([
   ] as const) {
     await unmount(mounted_component)
     analyze_structure_symmetry.mockImplementationOnce(analyze)
-    const supplied = $state({
-      structure,
-      bz_data,
-      default_k_path: path,
-      show_ibz: true,
-      ibz_data,
-    })
+    const supplied = $state({ structure, bz_data, default_k_path: path, ...ibz })
     mounted_component = mount(BrillouinZone, { target: document.body, props: supplied })
-    if (path)
-      await vi.waitFor(() =>
-        expect(document.body.querySelector(`.k-path-error`)?.textContent).toMatch(
-          /not the primitive zone/,
-        ),
-      )
-    else
-      await vi.waitFor(() =>
-        expect(((supplied.ibz_data?.volume ?? 0) * 48) / (bz_data?.volume ?? 1)).toBeCloseTo(
-          1,
-          9,
-        ),
-      )
+    const path_error = () => document.body.querySelector(`.k-path-error`)?.textContent
+    await vi.waitFor(() =>
+      path
+        ? expect(path_error()).toMatch(/not the primitive zone/)
+        : expect(wedge_ratio(supplied.ibz_data, bz_data)).toBeCloseTo(1, 9),
+    )
   }
   // a throw from the delayed primitive-zone notification reaches on_error like the first one's
   await unmount(mounted_component)
   analyze_structure_symmetry.mockImplementationOnce(analyze)
   const on_error = vi.fn()
-  const throw_second = vi
-    .fn()
-    .mockReturnValueOnce(undefined)
-    .mockImplementationOnce(() => {
-      throw new Error(`host exploded`)
-    })
+  const throw_second = vi.fn(() => {
+    if (throw_second.mock.calls.length > 1) throw new Error(`host exploded`)
+  })
   const loader = { source, default_k_path: true, on_file_load: throw_second, on_error }
   mounted_component = mount(BrillouinZone, { target: document.body, props: loader })
   await vi.waitFor(() =>
