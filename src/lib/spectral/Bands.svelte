@@ -111,7 +111,7 @@
       ComponentProps<typeof BrillouinZonePopup>,
       `width` | `height` | `bz_props` | `style` | `class` | `on_close`
     >
-    // Band line style (stroke, stroke_width): one for all bands, `{ acoustic, optical }`, or a function of band index, spin and structure label.
+    // Band line style (color, width): one for all bands, `{ acoustic, optical }`, or a function of band index, spin and structure label.
     line_kwargs?: LineKwargs
     // How to compare band structures with different q-point paths: `strict` errors, `union` plots every segment, `intersection` only the shared ones.
     path_mode?: PathMode
@@ -161,18 +161,18 @@
   function get_line_style(color: string, ...line: helpers.BandLine): DataSeries[`line_style`] {
     const [band_idx, spin, is_acoustic] = line
     const custom = helpers.band_line_style(line_kwargs, ...line)
-    let stroke = custom.stroke ?? color
-    let stroke_width = custom.stroke_width ?? (is_acoustic ? 1.5 : 1)
+    let stroke = custom.color ?? color
+    let width = custom.width ?? (is_acoustic ? 1.5 : 1)
     if (highlighted_band_index !== null) {
       const selected = highlighted_band_index === band_idx
       // a caller-coloured band keeps its colour while emphasised
       stroke = selected
-        ? (custom.stroke ?? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`)
+        ? (custom.color ?? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`)
         : helpers.BANDS_CSS_COLORS.muted
-      stroke_width = selected ? Math.max(3, stroke_width * 2) : Math.min(1, stroke_width)
+      width = selected ? Math.max(3, width * 2) : Math.min(1, width)
     }
-    if (spin === `up`) return { stroke, stroke_width }
-    return { stroke, line_dash: `4,2`, stroke_width: Math.max(1, stroke_width - 0.1) }
+    if (spin === `up`) return { color: stroke, width }
+    return { color: stroke, dash: `4,2`, width: Math.max(1, width - 0.1) }
   }
 
   // Material labels are stable identities; use an empty label for an unnamed dataset.

@@ -138,7 +138,7 @@
             y: response.normalized_power,
             label: kind === `ir` ? `Relative IR intensity` : `Raman ${raman_channel}`,
             markers: `line` as const,
-            line_style: { stroke: PLOT_COLORS[0], stroke_width: 2 },
+            line_style: { color: PLOT_COLORS[0], width: 2 },
           },
         ]),
     {
@@ -147,7 +147,7 @@
       y: result.vdos.normalized_power,
       label: `Mass-weighted VDOS`,
       markers: `line` as const,
-      line_style: { stroke: PLOT_COLORS[1], stroke_width: 2, line_dash: `6 4` },
+      line_style: { color: PLOT_COLORS[1], width: 2, dash: `6 4` },
     },
     peak_series(response),
   ] satisfies DataSeries[]}

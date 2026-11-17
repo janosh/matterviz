@@ -21,12 +21,12 @@ describe(`data-transform utility functions`, () => {
     const fallback = DEFAULTS.scatter.point.color
     // oxfmt-ignore
     test.each([
-      [`extracts color from line_style.stroke`, { line_style: { stroke: `red` } }, `red`],
+      [`extracts color from line_style.color`, { line_style: { color: `red` } }, `red`],
       [`extracts color from point_style.fill when no line_style`, { point_style: { fill: `blue` } }, `blue`],
       [`extracts color from first point_style when array`, { point_style: [{ fill: `green` }, { fill: `yellow` }] }, `green`],
-      [`line_style.stroke takes precedence over point_style.fill`, { line_style: { stroke: `red` }, point_style: { fill: `blue` } }, `red`],
+      [`line_style.color takes precedence over point_style.fill`, { line_style: { color: `red` }, point_style: { fill: `blue` } }, `red`],
       [`returns default color when no styles defined`, {}, fallback],
-      [`returns default color when styles exist but no color`, { line_style: { stroke_width: 2 }, point_style: { radius: 5 } }, fallback],
+      [`returns default color when styles exist but no color`, { line_style: { width: 2 }, point_style: { radius: 5 } }, fallback],
       [`handles empty point_style array`, { point_style: [] }, fallback],
     ])(`%s`, (_name, styles, expected) => {
       const series: DataSeries = { x: [1, 2, 3], y: [1, 2, 3], ...styles }
@@ -61,7 +61,7 @@ describe(`data-transform utility functions`, () => {
         name: `falls back to generated labels and visible=true`,
         series: [
           { x: [1, 2], y: [1, 2], point_style: { fill: `red` } },
-          { x: [3, 4], y: [3, 4], line_style: { stroke: `blue` } },
+          { x: [3, 4], y: [3, 4], line_style: { color: `blue` } },
           { x: [5, 6], y: [5, 6] },
         ],
         expected: [

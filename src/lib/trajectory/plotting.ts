@@ -449,7 +449,7 @@ export function generate_plot_series(
         series_label: unit ? `${label} (${unit})` : label,
         property_key: key, // original property key for robust lookups
       },
-      line_style: { stroke: color, stroke_width: 2 },
+      line_style: { color, width: 2 },
       point_style: { fill: color, stroke: color, stroke_width: 1 },
     })
   }
@@ -573,7 +573,7 @@ export function prepare_trajectory_scatter_series(
     assert_series_lengths(data_series, series_idx)
     if (data_series.x.length <= limit || data_series.visible === false) return data_series
     const source_raw_y = data_series.raw_y ?? data_series.y
-    const color = data_series.line_style?.stroke ?? `currentColor`
+    const color = data_series.line_style?.color ?? `currentColor`
     const key = [data_series.x, source_raw_y, limit, color]
     const cached = scatter_cache.get(data_series.y)
     let prepared = cached?.key.every((part, idx) => part === key[idx]) && cached.prepared
@@ -592,7 +592,7 @@ export function prepare_trajectory_scatter_series(
           {
             x: sampled_x,
             y: sampled_raw_y,
-            line_style: { stroke: underlay_stroke, stroke_width: 1, curve: `linear` },
+            line_style: { color: underlay_stroke, width: 1, curve: `linear` },
           },
         ],
       }
@@ -602,7 +602,7 @@ export function prepare_trajectory_scatter_series(
       ...data_series,
       ...prepared,
       markers: `line`,
-      line_style: { stroke: color, stroke_width: 2.5, curve: `monotone` },
+      line_style: { color, width: 2.5, curve: `monotone` },
     }
   })
 }

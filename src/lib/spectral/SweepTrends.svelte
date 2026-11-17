@@ -105,7 +105,7 @@
         markers: `line+points`,
         metadata: line_points.map(({ idx }) => ({ series_id: id, frame_idx: idx })),
         point_style,
-        ...(line_idx > 0 && { line_style: { line_dash: `6 4` } }),
+        ...(line_idx > 0 && { line_style: { dash: `6 4` } }),
         ...(ranged && {
           y_error: {
             lower: line_points.map(({ value, lower }) => (lower === null ? 0 : value - lower)),

@@ -120,7 +120,7 @@
         markers: show_spline ? `points` : `line+points`,
         metadata: energies.map((_energy, image_idx) => ({ path_key: key, image_idx })),
         point_style: { fill: color, radius: key === active.key ? 6 : 4 },
-        line_style: { stroke: color, stroke_width: 2 },
+        line_style: { color, width: 2 },
         ...axis,
       }
       if (!show_spline) return [points]
@@ -132,7 +132,7 @@
         markers: `line`,
         // the path key, so hovering this curve selects an image of THIS path
         metadata: spline.coords.map(() => ({ path_key: key })),
-        line_style: { stroke: color, stroke_width: 1.5, curve: `linear` },
+        line_style: { color, width: 1.5, curve: `linear` },
         ...axis,
       }
       return [curve, points]

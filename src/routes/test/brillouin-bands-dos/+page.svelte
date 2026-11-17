@@ -43,7 +43,7 @@
 <TestSection title="Custom bands styling">
   <BandsAndDos
     {...shared_props}
-    bands_props={{ line_kwargs: { stroke: `red`, stroke_width: 3 } }}
+    bands_props={{ line_kwargs: { color: `red`, width: 3 } }}
     data-testid="bz-bands-dos-bands-styling"
   />
 </TestSection>

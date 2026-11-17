@@ -1452,7 +1452,7 @@ describe(`ScatterPlot`, () => {
             color_values,
             markers: `line`,
             x_axis: `x2`,
-            line_style: { line_dash: `4 2` },
+            line_style: { dash: `4 2` },
             line_underlays: [{ x: x_values, y: y_values }],
           },
         ],
@@ -1525,7 +1525,7 @@ describe(`ScatterPlot`, () => {
           label: `Repeated`,
           markers,
           point_style: { fill: `red` },
-          line_style: { stroke: `red` },
+          line_style: { color: `red` },
           color_values: [NaN, Infinity],
           size_values: [NaN, Infinity],
         })),
@@ -1635,7 +1635,7 @@ describe(`ScatterPlot`, () => {
           x: [0, 1],
           y: [0, 1],
           markers,
-          line_style: { stroke_width: 7 },
+          line_style: { width: 7 },
           point_style: { radius: 9 },
         },
       ]
@@ -1665,12 +1665,12 @@ describe(`ScatterPlot`, () => {
               y: [0, 1, 0],
               label: `Energy`,
               markers: `line+points`,
-              line_style: { stroke: `red`, stroke_width: 3 },
+              line_style: { color: `red`, width: 3 },
               line_underlays: [
                 {
                   x: [0, 1, 2],
                   y: [100, 100, 100],
-                  line_style: { stroke: `blue`, stroke_width: 1 },
+                  line_style: { color: `blue`, width: 1 },
                 },
               ],
             },
@@ -1976,7 +1976,7 @@ describe(`ScatterPlot`, () => {
 
   test(`input warnings fire once, not on every data update that keeps them`, async () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const line_style = { stroke: `red` }
+    const line_style = { color: `red` }
     const bands = (): DataSeries[] =>
       [0, 1].map(() => ({ x: [0, 1], y: [0, 1], label: `Band`, markers: `line`, line_style }))
     const state = $state({ series: bands() })

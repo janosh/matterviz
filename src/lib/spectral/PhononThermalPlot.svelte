@@ -71,7 +71,7 @@
       unit: axis_units[axis].label,
       y_axis: axis,
       markers: `line`,
-      line_style: { stroke: plot_color(idx), stroke_width: 2 },
+      line_style: { color: plot_color(idx), width: 2 },
     }))
   })
 </script>

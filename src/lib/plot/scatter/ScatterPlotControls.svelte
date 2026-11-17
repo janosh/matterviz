@@ -99,9 +99,9 @@
             stroke_opacity: point?.stroke_opacity,
           }
         : {
-            width: line?.stroke_width,
-            color: line?.stroke ?? point?.fill,
-            dash: line?.line_dash,
+            width: line?.width,
+            color: line?.color ?? point?.fill,
+            dash: line?.dash,
           }
     const values = { ...DEFAULTS.scatter[kind] }
     for (const [key, value] of Object.entries(authored))

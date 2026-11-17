@@ -318,7 +318,7 @@
         y: is_horizontal ? profile.x : y_values,
         ...series_style(pattern_entries[entry_idx], entry_idx),
         markers: `line`,
-        line_style: { stroke_width: 2 },
+        line_style: { width: 2 },
         visible: true,
       } as DataSeries
     })

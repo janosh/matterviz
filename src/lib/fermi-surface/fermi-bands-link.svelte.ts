@@ -157,9 +157,9 @@ export class FermiBandsLink {
       const style = band_line_style(kwargs ?? {}, band_idx, spin, false, structure)
       return {
         ...style,
-        stroke: grid_bands.has(band_idx)
+        color: grid_bands.has(band_idx)
           ? sheet_color(band_idx, sheet_spin(spin), color_property)
-          : (style.stroke ?? BANDS_CSS_COLORS.muted),
+          : (style.color ?? BANDS_CSS_COLORS.muted),
       }
     }
   })

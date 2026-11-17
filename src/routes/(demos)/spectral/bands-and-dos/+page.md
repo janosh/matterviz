@@ -38,8 +38,8 @@ This example uses bands and DOS from different materials.
   doses={{ '': phonon_dos['mp-2758-Sr4Se4-pbe'] }}
   bands_props={{
     line_kwargs: {
-      acoustic: { stroke: '#e74c3c', stroke_width: 2 },
-      optical: { stroke: '#3498db', stroke_width: 1.5 },
+      acoustic: { color: '#e74c3c', width: 2 },
+      optical: { color: '#3498db', width: 1.5 },
     },
   }}
   dos_props={{ normalize: 'max', sigma: 0.15 }}

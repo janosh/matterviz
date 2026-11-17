@@ -56,7 +56,7 @@ const create_series = (
   y_axis,
   markers: `line` as const,
   metadata: [],
-  line_style: { stroke: `blue`, stroke_width: 2 },
+  line_style: { color: `blue`, width: 2 },
   point_style: { fill: `blue`, radius: 4, stroke: `blue`, stroke_width: 1 },
 })
 
@@ -308,10 +308,10 @@ describe(`generate_plot_series`, () => {
     expect(raw_y).toEqual(
       Array.from(smoothed.x, (frame_num) => raw_series[0].y[frame_num - 1]),
     )
-    expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
+    expect(smoothed.line_style).toMatchObject({ width: 2.5, curve: `monotone` })
     expect(underlay.line_style).toEqual({
-      stroke: `color-mix(in srgb, #4e79a7 18%, transparent)`,
-      stroke_width: 1,
+      color: `color-mix(in srgb, #4e79a7 18%, transparent)`,
+      width: 1,
       curve: `linear`,
     })
 

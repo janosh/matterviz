@@ -101,7 +101,7 @@ test(`spin mode and colouring chosen in the controls survive unrelated prop chan
   const { link, host } = make_link()
   link.band_spin_mode = `up_only`
   link.color_property = `spin`
-  host.bands_props = { line_kwargs: { stroke: `red` } }
+  host.bands_props = { line_kwargs: { color: `red` } }
   host.fermi_props = {}
   flushSync()
   expect([link.band_spin_mode, link.color_property]).toEqual([`up_only`, `spin`])
@@ -201,24 +201,24 @@ test(`band lines take their sheet's colour unless sheets are coloured by vertex`
   const style = (band_idx: number, spin: `up` | `down` = `up`) =>
     typeof link.line_kwargs === `function` ? link.line_kwargs(band_idx, spin, `Cu`) : undefined
   expect([style(1, `down`), style(5)]).toEqual([
-    { stroke: sheet_color(1, `down`, `band`) },
-    { stroke: BANDS_CSS_COLORS.muted },
+    { color: sheet_color(1, `down`, `band`) },
+    { color: BANDS_CSS_COLORS.muted },
   ])
   for (const line_kwargs of [
-    { stroke: `#123456`, stroke_width: 2.5 },
-    (band: number) => ({ stroke: `#123456`, stroke_width: band === 1 ? 2.5 : 1 }),
+    { color: `#123456`, width: 2.5 },
+    (band: number) => ({ color: `#123456`, width: band === 1 ? 2.5 : 1 }),
   ] satisfies LineKwargs[]) {
     host.bands_props = { line_kwargs }
     flushSync()
-    expect([style(1), style(5)?.stroke]).toEqual([
-      { stroke: sheet_color(1, `up`, `band`), stroke_width: 2.5 },
+    expect([style(1), style(5)?.color]).toEqual([
+      { color: sheet_color(1, `up`, `band`), width: 2.5 },
       `#123456`,
     ])
   }
   // property colouring without grid properties keeps flat sheets, and so the band lines
   host.fermi_props = { color_property: `property` }
   flushSync()
-  expect(style(1)?.stroke).toBe(sheet_color(1, `up`, `property`))
+  expect(style(1)?.color).toBe(sheet_color(1, `up`, `property`))
   const { line_kwargs } = host.bands_props
   host.band_data = { ...band_data, properties: { v_F: band_data.energies } }
   flushSync()
@@ -230,7 +230,7 @@ test(`band lines take their sheet's colour unless sheets are coloured by vertex`
   expect(link.line_kwargs).toBe(line_kwargs)
   link.color_property = `band`
   flushSync()
-  expect(style(1)?.stroke).toBe(sheet_color(1, `up`, `band`))
+  expect(style(1)?.color).toBe(sheet_color(1, `up`, `band`))
 })
 
 // Ten electronic bands along Γ → X (each case sets band 8); bands 8 and 9 have a sheet. Band 9

@@ -722,13 +722,14 @@ export const to_color_scale_config = (
   return config.scheme || !default_scheme ? config : { ...config, scheme: default_scheme }
 }
 
-// Set value_range ends win; unset ends fall back to the lazily computed auto_range. Log
-// scales treat a non-positive end as unset (LOG_EPS would squash colors into the ramp's top).
+// A color or size scale's set value_range ends win; unset ends fall back to the lazily
+// computed auto_range. Log scales treat a non-positive end as unset (LOG_EPS would squash
+// colors into the ramp's top, radii onto the smallest marker).
 export const resolve_value_range = (
-  color_scale: ColorScale,
+  scale: D3InterpolateName | Pick<ColorScaleConfig | SizeScaleConfig, `type` | `value_range`>,
   auto_range: Vec2 | (() => Vec2),
 ): Vec2 => {
-  const { type, value_range = [null, null] } = to_color_scale_config(color_scale)
+  const { type, value_range = [null, null] } = typeof scale === `string` ? {} : scale
   const is_log = get_scale_type_name(type) === `log`
   const [lower, upper] = value_range.map((end) =>
     is_log && end != null && end <= 0 ? null : end,
@@ -792,7 +793,7 @@ export function resolve_color_scale(
 
 export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
   const [min_radius, max_radius] = config.radius_range ?? SCALE_DEFAULTS.radius
-  const [min_val, max_val] = config.value_range ?? auto_range
+  const [min_val, max_val] = resolve_value_range(config, auto_range)
 
   const type_name = get_scale_type_name(config.type)
 

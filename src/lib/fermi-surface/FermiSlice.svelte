@@ -115,9 +115,9 @@
           label: `Band ${iso.band_index + 1}${spin}${carrier ? ` · ${carrier}` : ``}`,
           // spin-down dashed as in Bands, so a band's two spin rows tell apart
           line_style: {
-            stroke: band_colors[iso.band_index % band_colors.length],
-            stroke_width: line_width,
-            ...(iso.spin === `down` && { line_dash: `4,2` }),
+            color: band_colors[iso.band_index % band_colors.length],
+            width: line_width,
+            ...(iso.spin === `down` && { dash: `4,2` }),
           },
         }
       }) ?? [],

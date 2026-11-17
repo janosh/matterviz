@@ -145,7 +145,7 @@
   )
 
   // 1.5 like Dos curves and acoustic bands, the plots it shares a pane with
-  const line_style = { stroke: `var(--ir-raman-line-color, #4c78a8)`, stroke_width: 1.5 }
+  const line_style = { color: `var(--ir-raman-line-color, #4c78a8)`, width: 1.5 }
   let series_data = $derived.by((): DataSeries[] => {
     if (curve_y.length === 0) return []
     const label = `${kind_label} spectrum`

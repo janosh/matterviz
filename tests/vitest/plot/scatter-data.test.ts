@@ -16,7 +16,6 @@ import {
   pick_tooltip_bg,
   project_line_points,
   strict_x_direction,
-  scatter_line_style,
 } from '#lib/plot/scatter/scatter-data.js'
 import { describe, expect, test } from 'vite-plus/test'
 import { index_read_counter } from '../setup'
@@ -269,7 +268,7 @@ describe(`build_series_legend_items and build_fill_legend_items`, () => {
     const series: DataSeries = { x: [1, 2], y: [1, 2], markers: `line+points`, point_style }
     const [row] = build_series_legend_items([series], color_scale)
     expect(row.display_style.symbol_color).toBe(symbol_color)
-    expect(scatter_line_style(series, 0, color_scale).color).toBe(line_color)
+    expect(row.display_style.line_color).toBe(line_color)
   })
 
   test(`multi-series with fills: labels, default styles, fill entries`, () => {
@@ -335,7 +334,7 @@ describe(`build_series_legend_items and build_fill_legend_items`, () => {
   test(`markers control which styles appear; line color cascades`, () => {
     const series: DataSeries[] = [
       { x: [1], y: [1], markers: `points`, point_style: { fill: `red` } },
-      { x: [2], y: [2], markers: `line`, line_style: { stroke: `green`, line_dash: `4 2` } },
+      { x: [2], y: [2], markers: `line`, line_style: { color: `green`, dash: `4 2` } },
       // no line stroke -> first non-null color_value through the scale
       { x: [3], y: [3], markers: `line`, color_values: [null, 0.5] },
     ]
@@ -412,7 +411,7 @@ describe(`pick_tooltip_bg`, () => {
     [`point_style fill wins when no color_value`, { point_style: { fill: `red` } }, base, `red`],
     [`transparent fill falls through to point stroke`, see_thru, base, `blue`],
     [`line-only markers skip point stroke`, see_thru, { ...base, markers: `line` }, neutral],
-    [`line cascade: series stroke`, {}, { ...base, line_style: { stroke: `green` } }, `green`],
+    [`line cascade: series line color`, {}, { ...base, line_style: { color: `green` } }, `green`],
     [`line cascade: first point fill`, {}, { ...base, point_style: [{ fill: `gold` }] }, `gold`],
     [`line cascade: first color value`, {}, { ...base, color_values: [0.2] }, `scale(0.2)`],
     [`line cascade: first point stroke`, {}, { ...base, point_style: { stroke: `navy` } }, `navy`],

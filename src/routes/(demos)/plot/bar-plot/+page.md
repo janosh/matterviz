@@ -416,7 +416,7 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
       render_mode: `line`,
       y_axis: `y2`,
       markers: `line+points`, // Show both line and marker points
-      line_style: { stroke_width: 2, line_dash: `5,5` },
+      line_style: { width: 2, dash: `5,5` },
       point_style: { radius: 5, stroke: `white`, stroke_width: 2 },
     },
     {
@@ -426,7 +426,7 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
       color: `#ffd43b`,
       render_mode: `line`,
       markers: `line+points`, // Show both line and marker points
-      line_style: { stroke_width: 2 },
+      line_style: { width: 2 },
       point_style: { radius: 6, symbol_type: `Diamond` },
     },
   ]
@@ -469,7 +469,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
       render_mode: `line`,
       y_axis: `y2`,
       markers: `line+points`,
-      line_style: { stroke_width: 2 },
+      line_style: { width: 2 },
       point_style: {
         radius: 6,
         symbol_type: `Triangle`,
@@ -726,8 +726,8 @@ Bar plots handle negative values automatically and keep a value-axis zero line f
       render_mode: `line`,
       markers: `line`, // Line only, no marker points
       line_style: {
-        stroke_width: 2,
-        line_dash: `8,4`,
+        width: 2,
+        dash: `8,4`,
       },
     },
   ]
@@ -764,8 +764,8 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
       render_mode: `line`,
       y_axis: `y2`,
       line_style: {
-        stroke_width: 3,
-        line_dash: `6,3`,
+        width: 3,
+        dash: `6,3`,
       },
     },
   ]
@@ -841,7 +841,7 @@ Zoom and pan on a larger dataset: drag (mouse or touch) to zoom, pinch or Ctrl+s
       markers: `line+points`,
       // Color each point by its y-value using color_values
       color_values: theoretical_data,
-      line_style: { stroke_width: 2 },
+      line_style: { width: 2 },
       point_style: { radius: 5, stroke: `white`, stroke_width: 1 },
     },
   ]
@@ -898,7 +898,7 @@ Line series support full marker customization including symbol types, sizes, col
       label: `Model Prediction`,
       color: `#f783ac`,
       render_mode: `line`,
-      line_style: { stroke_width: 2 },
+      line_style: { width: 2 },
       // Size each point by sample count (more samples = larger marker)
       size_values: [10, 25, 50, 75, 100, 150],
       point_hover: { scale: 1.5, brightness: 1.2 },
@@ -1495,7 +1495,7 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
       render_mode: `line`,
       y_axis: `y2`,
       markers: `line+points`,
-      line_style: { stroke_width: 2 },
+      line_style: { width: 2 },
       point_style: {
         radius: 6,
         symbol_type: `Triangle`,

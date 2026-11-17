@@ -609,28 +609,46 @@ function compute_cdf(positions: number[], weights: number[] | undefined): Margin
 const smallest_positive = (vals: number[]): number =>
   vals.reduce((min, val) => (val > 0 && val < min ? val : min), Infinity)
 
+// On a log axis the density is estimated in log10 space (bin_transform's fwd, as BoxPlot
+// violins do), so a numeric bandwidth is in decades there: a data-unit kernel wide enough for
+// the top decade flattened every lower one. The curve returns to data units through the
+// Jacobian d(log10 x)/dx = 1/(x ln 10). Other axes estimate in data units on a grid spaced
+// evenly in the axis' bin space.
 function compute_kde(
   positions: number[],
   config: ResolvedMarginalConfig,
   positional_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  let clip: [number | null, number | null] | undefined
-  if (get_scale_type_name(scale_type) === `log` && positional_range[0] <= 0) {
-    const min_pos = smallest_positive(positions)
-    if (Number.isFinite(min_pos)) clip = [min_pos, null]
-  }
-  const kde = gaussian_kde(positions, {
-    bandwidth: config.bandwidth,
-    n_points: 100,
-    range: positional_range,
-    clip,
-    max_samples: 5000,
-    // Grid uniform in the axis' bin space, or a log axis' lower decades draw as one segment
-    grid_transform: bin_transform(scale_type),
+  const transform = bin_transform(scale_type)
+  const log = get_scale_type_name(scale_type) === `log`
+  const [lower, upper] = positional_range
+  // a degenerate log lower bound (<= 0) starts the grid at the smallest positive sample
+  const log_lower = lower > 0 ? lower : smallest_positive(positions)
+  const kde = log
+    ? gaussian_kde(positions.map(transform.fwd), {
+        bandwidth: config.bandwidth,
+        n_points: 100,
+        range: [transform.fwd(log_lower), transform.fwd(upper)],
+        max_samples: 5000,
+      })
+    : gaussian_kde(positions, {
+        bandwidth: config.bandwidth,
+        n_points: 100,
+        range: positional_range,
+        max_samples: 5000,
+        grid_transform: transform,
+      })
+  const points = kde.grid.map((grid_pos, idx) => {
+    if (!log) return { pos: grid_pos, value: kde.density[idx] }
+    const pos = transform.inv(grid_pos)
+    return { pos, value: kde.density[idx] / (pos * Math.LN10) }
   })
-  const points = kde.grid.map((pos, idx) => ({ pos, value: kde.density[idx] }))
-  return { kind: `line`, points, max: Math.max(0, array_max(kde.density)) }
+  return {
+    kind: `line`,
+    points,
+    max: Math.max(0, array_max(points.map((point) => point.value))),
+  }
 }
 
 // Summarize 1-D values into a renderable curve per the marginal type. Filters non-finite

@@ -83,7 +83,7 @@
           label,
           color,
           markers: `line+points` as const,
-          line_style: { stroke: color, stroke_width: 2 },
+          line_style: { color, width: 2 },
           point_style: {
             fill: color,
             radius: point_radius,

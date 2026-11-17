@@ -535,7 +535,7 @@ describe(`Bands component`, () => {
       await mount_plot({
         band_structs: { '': spin_polarized_electronic },
         line_kwargs: (band_idx: number, spin: string) => ({
-          stroke: own_stroke(band_idx, spin),
+          color: own_stroke(band_idx, spin),
         }),
         get highlighted_band_index() {
           return highlight.current
@@ -566,7 +566,7 @@ describe(`Bands component`, () => {
     await mount_plot({
       band_structs: { PBE: spin_polarized_electronic, HSE: spin_polarized_electronic },
       line_kwargs: (_band_idx: number, _spin: string, structure: string) => ({
-        stroke: strokes[structure],
+        color: strokes[structure],
       }),
     })
     const series = [...document.querySelectorAll(`g[data-series-id]`)].map((group) => {

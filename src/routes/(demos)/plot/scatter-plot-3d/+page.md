@@ -211,7 +211,7 @@ Display 3D trajectories as connected lines with markers at each data point. Each
       return Math.sin(5 * angle)
     }),
     point_style: { fill: `#e74c3c`, radius: 4 },
-    line_style: { stroke: `#e74c3c`, stroke_width: 3 },
+    line_style: { color: `#e74c3c`, width: 3 },
     label: `Lissajous (3:4:5)`,
   }
 
@@ -229,7 +229,7 @@ Display 3D trajectories as connected lines with markers at each data point. Each
       return Math.cos(2 * angle)
     }),
     point_style: { fill: `#3498db`, radius: 4 },
-    line_style: { stroke: `#3498db`, stroke_width: 3 },
+    line_style: { color: `#3498db`, width: 3 },
     label: `Lissajous (2:3:2)`,
   }
 
@@ -247,7 +247,7 @@ Display 3D trajectories as connected lines with markers at each data point. Each
       return (idx / n_points) * 2 - 1
     }),
     point_style: { fill: `#2ecc71`, radius: 3 },
-    line_style: { stroke: `#2ecc71`, stroke_width: 3, line_dash: `3 2` },
+    line_style: { color: `#2ecc71`, width: 3, dash: `3 2` },
     label: `Helix`,
   }
 </script>

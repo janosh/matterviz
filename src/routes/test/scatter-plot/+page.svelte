@@ -235,8 +235,8 @@
       },
       markers: `line+points`,
       line_style: {
-        stroke: `limegreen`,
-        stroke_width: 4, // Explicitly thick line
+        color: `limegreen`,
+        width: 4, // Explicitly thick line
       },
     },
   ]
@@ -267,7 +267,7 @@
           x: [1],
           y: [1],
           point_style: { fill: `transparent`, stroke: `transparent`, radius: 8 },
-          line_style: { stroke: `green`, stroke_width: 3 },
+          line_style: { color: `green`, width: 3 },
           markers: `line+points`, // Need line+points for hover to work on the point
         },
       ],
@@ -282,7 +282,7 @@
       label: `Color Mapped Line`,
       point_style: { radius: 5 },
       markers: `line+points`,
-      // Intentionally no line_style.stroke - should use color scale
+      // Intentionally no line_style.color - should use color scale
     },
   ]
 
