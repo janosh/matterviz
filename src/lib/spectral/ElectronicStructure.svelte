@@ -178,7 +178,8 @@
     band_data?: BandGridData | BandGridJson // band grid: energy previews and band colours
     // the first band structure's k-path is drawn through the Fermi surface's zone
     band_structs?: Record<string, BaseBandStructure>
-    doses?: Record<string, DosData> // keyed by label, replaced by dropped DOS files
+    // Densities of states keyed by label. Dropped DOS files replace them.
+    doses?: Record<string, DosData>
     phonon?: PhononSpectra // phonon bands and DOS, on their own frequency axis
     // a sweep along one axis: while set, the panes show its selected frame, not the props above
     sweep?: Sweep
@@ -186,7 +187,8 @@
     frame_idx?: number // the shown frame of that series
     // a series shown beside it, at its frame nearest the shown frame's axis value (none: unset)
     compare_series?: string
-    // the trends pane's descriptor key (default: the first), reset by a sweep without it
+    // the descriptor key the trends pane plots (default: the first), reset when a new sweep
+    // has none of that key
     descriptor?: string
     fps?: number // frames per second when playing the sweep
     panes?: ElectronicPane[] // shown panes, default: those with data
@@ -196,8 +198,8 @@
     layout?: `auto` | `horizontal` | `vertical` // the 3D scenes' split, auto by their row's shape
     pane_ratio?: number // the structure's share of the scenes' row
     row_ratio?: number // the scenes' share of the viewer height above the spectra
-    // the bands' share of the spectra's row beside the DOS (unset: the phonon pane's DOS
-    // width, lining up both DOS columns with room for the legend)
+    // the bands' share of the spectra's row beside the DOS; unset, the DOS takes the phonon
+    // pane's DOS width, so the two DOS columns line up and the legend fits beside the plot
     spectra_ratio?: number
     trends_ratio?: number // the trends pane's share of the lower row beside the spectra
     phonon_ratio?: number // the electronic spectra's share of their column above the phonons
@@ -206,11 +208,15 @@
     show_controls?: ShowControlsProp<
       `panes` | `sync-rotation` | `fullscreen` | `series` | `compare` | `nav` | `step` | `fps`
     >
-    fullscreen?: boolean // true while the viewer is fullscreen
-    fullscreen_toggle?: boolean // show the fullscreen button (also needs `show_controls`)
+    // True while the viewer is fullscreen.
+    fullscreen?: boolean
+    // Show the fullscreen button (also needs `show_controls` to show it).
+    fullscreen_toggle?: boolean
     allow_file_drop?: boolean // one drop zone for all panes: theirs are off
-    loading?: boolean // true while a dropped file is being read
-    error_msg?: string // the last failed drop's or invalid data's error, dismissible
+    // True while a dropped file is being read.
+    loading?: boolean
+    // Error text of the last failed drop or invalid data, shown in a dismissible notice.
+    error_msg?: string
     on_file_load?: (data: { filename: string; panes: ElectronicPane[] }) => void // panes filled
     // Called with `error_msg` (and the filename for a dropped file) when loading fails.
     on_error?: (data: { error_msg: string; filename?: string }) => void

@@ -38,16 +38,23 @@ export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e
 
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
-const GREEK_LETTERS: Record<string, string> = { GAMMA: `Γ`, DELTA: `Δ`, SIGMA: `Σ`, LAMBDA: `Λ` }
 // Pretty-print a symmetry point symbol: Greek names (plain GAMMA or LaTeX \Gamma) become
 // Greek letters and trailing digits become subscripts (S_0 and S0 both give S₀). LaTeX math
 // wrapping as in phonopy's BAND_LABELS (`$\Gamma$`, `$\mathrm{X}$`, `S_{0}`) is stripped.
-export const pretty_sym_point = (symbol: string): string =>
-  symbol
+export function pretty_sym_point(symbol: string): string {
+  if (!symbol) return ``
+  return symbol
     .replaceAll(/\\mathrm\{(?<text>[^}]*)\}/g, `$<text>`)
     .replaceAll(/[${}_]/g, ``)
-    .replaceAll(/\\?(GAMMA|DELTA|SIGMA|LAMBDA)/gi, (_, name: string) => GREEK_LETTERS[name.toUpperCase()])
-    .replaceAll(/(\p{L})(\d+)/gu, (_, letter: string, num: string) => letter + subscript_digits(num))
+    .replaceAll(/\\?GAMMA/gi, `Γ`)
+    .replaceAll(/\\?DELTA/gi, `Δ`)
+    .replaceAll(/\\?SIGMA/gi, `Σ`)
+    .replaceAll(/\\?LAMBDA/gi, `Λ`)
+    .replaceAll(
+      /(?<letter>\p{L})(?<num>\d+)/gu,
+      (_, letter: string, num: string) => letter + subscript_digits(num),
+    )
+}
 
 // One key per branch, aligned with `bs.branches`. Labels identify the same path across
 // structures; a repeated labeled pair gets `#n` and unlabeled branches are keyed by
@@ -274,17 +281,18 @@ const is_vec3 = (val: unknown): val is Vec3 =>
 const is_kpoint = (val: unknown): val is { frac_coords: Vec3; label?: string | null } =>
   val !== null && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
 
+const is_filled_array = (val: unknown): val is unknown[] =>
+  Array.isArray(val) && val.length > 0
+
 const has_pymatgen_marker = (obj: Record<string, unknown>): boolean =>
   typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string`
 
+// pymatgen markers, or pymatgen-style qpoints (phonon) or kpoints (electronic) without branches
 const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
-  if (has_pymatgen_marker(obj)) return true
-  // Check for pymatgen-style qpoints (phonon) or kpoints (electronic) without branches
   const points = obj.qpoints ?? obj.kpoints
-  if (Array.isArray(points) && points.length > 0 && !Array.isArray(obj.branches)) {
-    return is_vec3(points[0]) || is_kpoint(points[0])
-  }
-  return false
+  if (has_pymatgen_marker(obj)) return true
+  if (!is_filled_array(points) || Array.isArray(obj.branches)) return false
+  return is_vec3(points[0]) || is_kpoint(points[0])
 }
 
 // Extract frac_coords/label from pymatgen qpoint, matching label from labels_dict if needed.
@@ -320,13 +328,10 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
 }
 
-// pymatgen's `as_dict()` stores the reciprocal lattice as `lattice_rec` in the physics
-// convention (2π included), the phonon JSON dumped by phonopy/atomate2-style workflows as
-// `recip_lattice` in phonopy's crystallographic convention (no 2π). Both are producer formats,
-// so both are read, and the latter is scaled so the returned matrix always includes 2π. A band
-// structure that is recognisably pymatgen-shaped but lacks either cannot measure its k-path:
-// unlike an unrecognised shape (null) this is a named, fixable defect in the input, so it
-// throws and Bands shows the message in place of the generic empty state.
+// pymatgen's `lattice_rec` includes 2π, phonopy/atomate2's `recip_lattice` does not and is
+// scaled so the result always does. A pymatgen-shaped band structure lacking both cannot
+// measure its k-path: a named, fixable input defect, so it throws (Bands shows the message)
+// where an unrecognised shape gives null.
 const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   const scale = is_plain_object(pmg.lattice_rec) ? 1 : 2 * Math.PI
   const lattice = [pmg.lattice_rec, pmg.recip_lattice].find(is_plain_object)
@@ -360,13 +365,8 @@ const band_unit_converter = (
 function convert_pymatgen_band_structure(
   pmg: Record<string, unknown>,
 ): types.BaseBandStructure | null {
-  // Support both qpoints (phonon) and kpoints (electronic)
-  const raw_qpts = (pmg.qpoints ?? pmg.kpoints) as unknown[] | undefined
-
-  // Handle bands in multiple formats:
-  // 1. Standard pymatgen: bands as dict with spin keys {1: [[...], ...]}
-  // 2. Custom phonon format: frequencies_cm as 2D array [[...], ...]
-  // 3. Already normalized: bands as 2D array [[...], ...]
+  const raw_qpts = pmg.qpoints ?? pmg.kpoints // phonon or electronic
+  // bands as spin-keyed dict {1: [[...]]} or plain 2D array, else phonon frequencies_cm
   const spin_channels = extract_spin_channels<number[][]>(pmg.bands)
   let raw_bands = spin_channels?.up ?? null
   let raw_spin_down_bands = spin_channels?.down ?? null
@@ -388,14 +388,7 @@ function convert_pymatgen_band_structure(
   const to_data_unit = band_unit_converter(pmg.unit, type, has_frequencies_cm)
   if (!to_data_unit) return null
 
-  if (
-    !Array.isArray(raw_qpts) ||
-    !Array.isArray(raw_bands) ||
-    raw_qpts.length === 0 ||
-    raw_bands.length === 0
-  )
-    return null
-
+  if (!is_filled_array(raw_qpts) || !is_filled_array(raw_bands)) return null
   const label_entries = Object.entries(labels_dict ?? {})
   const qpoints = raw_qpts
     .map((qpoint) => parse_qpoint(qpoint, label_entries))
@@ -411,11 +404,9 @@ function convert_pymatgen_band_structure(
     .map((qpoint, idx) =>
       Math.hypot(...frac_to_cart(subtract(qpoint.frac_coords, qpoints[idx].frac_coords))),
     )
-  // Like pymatgen, any step between two labelled q-points is a segment boundary, not path: a
-  // jump (`Z|X`) or the zero-length duplicate at a junction (`X, X`). Step size is no signal:
-  // paths put a fixed point count per segment, so in anisotropic cells every step of a long
-  // segment can exceed any multiple of the median.
-  // Indices of the q-points that start a new segment after a boundary
+  // Indices of q-points starting a new segment: like pymatgen, a step between two labelled
+  // q-points is a boundary (a `Z|X` jump or a junction duplicate `X, X`). Step size is no
+  // signal: in anisotropic cells every step of a long segment can exceed any median multiple.
   const disc_set = new Set(
     steps.flatMap((_step, idx) =>
       qpoints[idx].label && qpoints[idx + 1].label ? [idx + 1] : [],
@@ -429,9 +420,8 @@ function convert_pymatgen_band_structure(
   }
 
   // Use pymatgen's branches if valid; otherwise infer them from the path itself
-  const pmg_branches = pmg.branches as types.Branch[] | undefined
-  let branches = (Array.isArray(pmg_branches) ? pmg_branches : []).filter((branch) =>
-    is_valid_branch(branch, qpoints.length),
+  let branches = (Array.isArray(pmg.branches) ? (pmg.branches as types.Branch[]) : []).filter(
+    (branch) => is_valid_branch(branch, qpoints.length),
   )
   // No valid branches is the normal case, not a degraded one: pymatgen's phonon band
   // structures never serialise `branches` (only the electronic one does), so infer them.
@@ -449,9 +439,10 @@ function convert_pymatgen_band_structure(
     branches = boundaries.slice(1).flatMap((end_index, idx) => {
       const start_index = boundaries[idx]
       if (disc_set.has(end_index)) return []
-      const start_label = qpoints[start_index].label ?? `?`
-      const end_label = qpoints[end_index].label ?? `?`
-      return [{ start_index, end_index, name: `${start_label}-${end_label}` }]
+      const name = [start_index, end_index]
+        .map((q_idx) => qpoints[q_idx].label ?? `?`)
+        .join(`-`)
+      return [{ start_index, end_index, name }]
     })
   }
 
@@ -586,18 +577,12 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   if (!is_plain_object(dos)) return null
 
   const { frequencies, energies, spin_polarized } = dos
-
-  // Handle densities as either array or dict with spin keys (pymatgen format)
-  // Pymatgen stores densities as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
+  // densities as an array or pymatgen's spin-keyed {1: [...], -1: [...]} / {"Spin.up": [...]}
   const spin_channels = extract_spin_channels<number[]>(dos.densities)
-  if (!spin_channels) return null
-
-  const densities = spin_channels.up
-  // Use extracted spin-down or fallback to explicit field (for already-normalized DosData)
-  const spin_down_densities =
-    spin_channels.down ?? (dos.spin_down_densities as number[] | undefined) ?? null
-
+  const densities = spin_channels?.up
   if (!Array.isArray(densities)) return null
+  // an already-normalized DosData carries spin-down as its own field
+  const spin_down_densities = spin_channels?.down ?? dos.spin_down_densities ?? null
 
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
@@ -623,13 +608,10 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     })
   }
 
-  if (has_pymatgen_marker(dos)) {
+  if (has_pymatgen_marker(dos))
     console.warn(
-      `Pymatgen DOS format detected but missing required fields. ` +
-        `Expected 'frequencies' (phonon) or 'energies' (electronic) arrays.`,
+      `pymatgen DOS without a 'frequencies' (phonon) or 'energies' (electronic) array`,
     )
-  }
-
   return null
 }
 
@@ -662,11 +644,8 @@ export function extract_k_path_points(
   recip_lattice_matrix: Matrix3x3,
   { wrap_to_bz = true }: { wrap_to_bz?: boolean } = {},
 ): Vec3[] {
-  if (
-    recip_lattice_matrix.length !== 3 ||
-    recip_lattice_matrix.some((row) => row?.length !== 3)
-  )
-    throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
+  if (!is_finite_matrix3x3(recip_lattice_matrix))
+    throw new Error(`reciprocal_lattice_matrix must be a finite 3×3 matrix`)
 
   const points = band_struct.qpoints.map(({ frac_coords }) =>
     frac_k_to_cartesian(frac_coords, recip_lattice_matrix, false),
@@ -877,8 +856,7 @@ export function branch_qpoint_range(
   return branch ? [branch.start_index, branch.end_index] : null
 }
 
-// Find q-point index from rescaled x-coordinate (used in band structure plots)
-// This handles the case where the plot uses custom x-axis scaling per segment
+// Q-point index at a plot x (each branch rescaled to its x-range): qpoint_x_position's inverse
 export function find_qpoint_at_rescaled_x(
   band_struct: types.BaseBandStructure,
   rescaled_x: number,
@@ -893,13 +871,11 @@ export function find_qpoint_at_rescaled_x(
       if (Math.abs(rescaled_x - x_start) < 1e-6) return start_idx
       continue
     }
-    // Check if x is within this segment (with small tolerance for edges)
     if (rescaled_x >= x_start - 1e-6 && rescaled_x <= x_end + 1e-6) {
-      // Map from rescaled x back to original distance
+      // invert branch_x's rescaling back to path distance
       const dist_min = band_struct.distance[start_idx]
       const dist_range = band_struct.distance[end_idx] - dist_min
       if (dist_range === 0) return start_idx
-      // Inverse of the scaling: x = x_start + ((dist - dist_min) / dist_range) * (x_end - x_start)
       const target_dist = dist_min + ((rescaled_x - x_start) / (x_end - x_start)) * dist_range
       // Closest q-point in this branch to the target distance
       let [closest_idx, min_diff] = [start_idx, Infinity]
@@ -925,14 +901,10 @@ export function find_qpoint_at_rescaled_x(
   return closest_idx
 }
 
-// Type definitions for pymatgen DOS formats
-// Densities can be spin-keyed: {1: number[], -1: number[]} or {"Spin.up": number[], ...}
+// pymatgen Dos: densities spin-keyed, {1: number[], -1: number[]} or {"Spin.up": number[], ...}
 type SpinDensities = Record<string, number[]>
-
-// Pymatgen Dos base class format
 interface PymatgenDos {
-  // pymatgen MSONable markers - optional since hand-built/partial DOS may omit them,
-  // but the format detectors (normalize_dos, is_pymatgen_format) key on them
+  // MSONable markers: hand-built DOS may omit them, but the format detectors key on them
   '@class'?: string
   '@module'?: string
   energies: number[]
@@ -940,7 +912,7 @@ interface PymatgenDos {
   efermi: number
 }
 
-// Pymatgen CompleteDos format (includes projected DOS)
+// pymatgen CompleteDos (with projected DOS)
 export interface PymatgenCompleteDos extends PymatgenDos {
   '@class'?: `CompleteDos` | `LobsterCompleteDos`
   structure?: Record<string, unknown>
@@ -949,9 +921,8 @@ export interface PymatgenCompleteDos extends PymatgenDos {
   spd_dos?: Record<string, PymatgenDos>
 }
 
-// Extract projected DOS from pymatgen CompleteDos format.
-// Returns a dict of label → DosData for each atom or orbital.
-// filter_keys: optional list of keys to include (e.g., ["Fe", "O"] for atoms or ["s", "p", "d"] for orbitals)
+// Projected DOS (label → DOS per atom or orbital) of a pymatgen CompleteDos, optionally only
+// `filter_keys` (e.g. ["Fe", "O"] for atoms or ["s", "p", "d"] for orbitals)
 export function extract_pdos(
   dos: unknown,
   pdos_type: types.PdosType,
@@ -987,19 +958,14 @@ const shift_dos_energies = <T extends PymatgenDos>(dos: T, shift: number): T => 
   energies: dos.energies.map((energy) => energy - shift),
 })
 
-// Shift DOS energies relative to Fermi energy so E_F = 0
-// Recursively shifts nested DOS in atom_dos and spd_dos for consistency
+// DOS energies relative to E_F (so E_F = 0), nested atom_dos and spd_dos too
 export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   const shift = dos.efermi
   const shift_nested = (nested?: Record<string, PymatgenDos>) =>
     nested &&
     Object.fromEntries(
-      Object.entries(nested).map(([key, nested_dos]) => [
-        key,
-        shift_dos_energies(nested_dos, shift),
-      ]),
+      Object.entries(nested).map(([key, inner]) => [key, shift_dos_energies(inner, shift)]),
     )
-
   const atom_dos = shift_nested(dos.atom_dos)
   const spd_dos = shift_nested(dos.spd_dos)
   return {
@@ -1267,9 +1233,8 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
   if (band_struct.type === `electronic`) return true
   if (band_struct.type === `phonon`) return false
   if (typeof band_struct.efermi === `number`) return true
-  if (Array.isArray(band_struct.kpoints) && band_struct.kpoints.length > 0) return true
-  const py_class = band_struct[`@class`]
-  const py_module = band_struct[`@module`]
+  if (is_filled_array(band_struct.kpoints)) return true
+  const { '@class': py_class, '@module': py_module } = band_struct
   return (
     (typeof py_class === `string` &&
       py_class.startsWith(`BandStructure`) &&
@@ -1469,7 +1434,7 @@ export function classify_acoustic(
   )
 }
 
-// Build per-point metadata array for a band series in the tooltip.
+// Per-point tooltip metadata of a band series
 export function build_point_metadata(opts: {
   x_vals: number[]
   y_vals: number[]

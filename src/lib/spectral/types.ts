@@ -1,5 +1,4 @@
-// TypeScript type definitions for band structures and density of states
-
+// Types of band structures, densities of states and vibrational spectra
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/index.js'
 import type { ElectronEnergyUnit } from './frequency-units'
@@ -25,10 +24,9 @@ export interface Branch {
   name: string
 }
 
-// Base band structure interface. q-points are fractional and path distances precomputed; the
-// reciprocal lattice (rows b_i, 2π included) is kept when the input carries one (pymatgen's
-// `lattice_rec`, phonopy's `recip_lattice`) so Cartesian k and the Brillouin zone follow from
-// the band data alone. Without it, consumers derive k from a structure's lattice.
+// Fractional q-points with precomputed path distances. The reciprocal lattice (rows b_i, 2π
+// included) is kept when the input has one (pymatgen's `lattice_rec`, phonopy's
+// `recip_lattice`), so Cartesian k and the BZ follow from the bands alone; else from a structure.
 export interface BaseBandStructure {
   type: BandStructureType
   efermi?: number
@@ -115,10 +113,10 @@ export type SpinMode = `mirror` | `overlay` | `up_only` | `down_only` | null
 // Spin display mode for band structure visualization (no mirror mode)
 export type BandsSpinMode = Exclude<SpinMode, `mirror`>
 
-// Projected DOS type for pymatgen CompleteDos extraction
+// Projection of a pymatgen CompleteDos
 export type PdosType = `atom` | `orbital`
 
-// Type for stacked area fill data in DOS visualization
+// Stacked area fill of a DOS
 export interface StackedAreaData {
   x_values: number[] // frequencies or energies
   upper_densities: number[] // current cumulative

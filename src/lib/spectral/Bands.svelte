@@ -93,12 +93,14 @@
     children: user_children,
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
-    // Keyed by legend label (`""` if unlabelled), parsed by normalize_band_structure. hidden_series
-    // keys: JSON.stringify([key, 'up' | 'down']), plus `mode-values` for the mode_values markers
+    // Keyed by legend label (`""` for an unlabelled series); parse raw input once with
+    // normalize_band_structure. hidden_series keys are JSON.stringify([key, 'up' | 'down']),
+    // plus `mode-values` for the mode_values markers.
     band_structs: Record<string, BaseBandStructure>
     wrapper?: HTMLDivElement // the plot's root, as ScatterPlot binds it
-    // Symmetry-point ticks become buttons popping up a Brillouin zone marking the clicked point
-    // given a reciprocal lattice: this crystal's, else the band data's (pymatgen, phonopy)
+    // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
+    // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
+    // and phonopy inputs carry one) or, overriding it, from this crystal's lattice
     structure?: Crystal
     // Size, style and `bz_props` of the Brillouin zone popup opened by clicking a symmetry-point tick, plus an `on_close` callback.
     bz_popup_props?: Pick<
@@ -109,8 +111,9 @@
     line_kwargs?: LineKwargs
     // How to compare band structures with different q-point paths: `strict` errors, `union` plots every segment, `intersection` only the shared ones.
     path_mode?: PathMode
-    // x length of the plotted path, segments keeping their proportions (default: its reciprocal
-    // distance). A sweep fixes it so frames whose cell changes share one x axis.
+    // x length the plotted path spans, its segments keeping their proportions (default: its own
+    // reciprocal-space distance). A sweep fixes it, so frames whose cell (and so path length)
+    // changes share one x axis instead of rescaling ticks and lines on every frame.
     path_length?: number
     // Plot x-range of every plotted path segment, keyed by segment key (read-only output)
     x_positions?: Record<string, Vec2>
@@ -124,8 +127,9 @@
     highlighted_qpoint_range?: Vec2 | null
     // Band index to emphasize together with the selected q-point marker
     highlighted_band_index?: number | null
-    // hover_links() channel joined by the first band structure's q-point index, e.g. a
-    // BrillouinZone drawing its k_path: hovers there mark line and branch here, and vice versa
+    // Channel of an enclosing hover_links() the plot's hover joins by q-point index of the first
+    // band structure, e.g. a BrillouinZone's whose k_path it draws: a q-point hovered there
+    // marks its line and branch here, and the hovered band point's q-point there
     link_hover?: string
     // Fat-band ribbon style: `color`, `opacity` (default 0.3), `max_width` (half-width in px, default 6) and width `scale`.
     ribbon_config?: RibbonConfig
@@ -142,8 +146,9 @@
     }[]
     shade_imaginary_modes?: boolean // Shade y<0 region for phonon plots with imaginary modes
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
-    // Per-mode values (e.g. λ_qν) as markers at their modes' frequencies where their q-points lie
-    // on the first band structure's path, coloured and sized by value, colour bar titled by label
+    // Per-mode values (e.g. λ_qν) drawn as markers at their modes' frequencies, coloured and
+    // sized by value with a colour bar titled by their label, wherever their q-points lie on
+    // the first band structure's path
     mode_values?: ModeValues
   } = $props()
 

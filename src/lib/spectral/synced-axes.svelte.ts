@@ -43,17 +43,10 @@ export function shared_resolved_padding_floor(size: () => Vec2) {
     },
     raise(resolved: Required<Sides> | undefined): void {
       if (!resolved) return
-      const value = current()
-      const next = {
-        t: Math.max(value.t ?? 0, resolved.t),
-        b: Math.max(value.b ?? 0, resolved.b),
-      }
-      if (
-        !vec2_equal(floor.size, size()) ||
-        next.t > (value.t ?? 0) + 0.5 ||
-        next.b > (value.b ?? 0) + 0.5
-      )
-        floor = { size: size(), value: next }
+      const { t = 0, b = 0 } = current()
+      const next = { t: Math.max(t, resolved.t), b: Math.max(b, resolved.b) }
+      const rises = next.t > t + 0.5 || next.b > b + 0.5
+      if (rises || !vec2_equal(floor.size, size())) floor = { size: size(), value: next }
     },
   }
 }

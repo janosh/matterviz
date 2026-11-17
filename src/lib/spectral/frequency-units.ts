@@ -48,15 +48,10 @@ export function convert_frequencies(
 }
 
 // Accepts the spellings found in the wild (cm-1, cm^-1, cm⁻¹, hartree, …); null when unknown
+// oxfmt-ignore
 const UNIT_ALIASES: Record<string, FrequencyUnit> = {
-  thz: `THz`,
-  ev: `eV`,
-  mev: `meV`,
-  ha: `Ha`,
-  hartree: `Ha`,
-  'cm-1': `cm^-1`,
-  'cm^-1': `cm^-1`,
-  'cm⁻¹': `cm^-1`,
+  thz: `THz`, ev: `eV`, mev: `meV`, ha: `Ha`, hartree: `Ha`,
+  'cm-1': `cm^-1`, 'cm^-1': `cm^-1`, 'cm⁻¹': `cm^-1`,
 }
 // Own keys only: an inherited one (`constructor`, `toString`) would come back as a function
 export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null => {

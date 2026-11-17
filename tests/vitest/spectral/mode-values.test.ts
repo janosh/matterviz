@@ -1,14 +1,12 @@
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { branch_segment_keys } from '#lib/spectral/helpers.js'
+import { branch_segment_keys, branch_x, plotted_branches } from '#lib/spectral/helpers.js'
 import {
   mode_value_markers,
   MODE_MARKER_BINS,
   thin_mode_markers,
   normalize_mode_values,
-  path_segments,
   project_qpoints_onto_path,
 } from '#lib/spectral/mode-values.js'
-import type { PathProjection } from '#lib/spectral/mode-values.js'
 import type { BaseBandStructure } from '#lib/spectral/types.js'
 import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -96,8 +94,11 @@ describe(`project_qpoints_onto_path`, () => {
   })
 
   test(`keeps q-point indices, skips unplotted branches and scales with rel_tol`, () => {
-    // oxfmt-ignore
-    const qpoints: Vec3[] = [[0.3, 0.1, 0], [0.2, 0, 0], [0.4, 0.4, 0]]
+    const qpoints: Vec3[] = [
+      [0.3, 0.1, 0],
+      [0.2, 0, 0],
+      [0.4, 0.4, 0],
+    ]
     const x_positions = x_positions_of(jump_path)
     const [first_key] = Object.keys(x_positions)
     const project = (positions: Record<string, Vec2>, rel_tol?: number) =>
@@ -161,35 +162,72 @@ describe(`project_qpoints_onto_path`, () => {
 })
 
 // The projection as one scan of every q-point against every path segment (the reference for
-// the pruned version above; it shares only the path's segmentation)
+// the pruned version above)
 function all_pairs_projection(
   band_struct: BaseBandStructure,
   lattice: Matrix3x3,
   qpoints: readonly Vec3[],
   x_positions: Record<string, Vec2>,
   rel_tol: number,
-): PathProjection[] {
+): { q_idx: number; x: number }[] {
   const to_cart = (frac: readonly number[]): Vec3 =>
     [0, 1, 2].map((col) =>
       frac.reduce((sum, coord, row) => sum + coord * lattice[row][col], 0),
     ) as Vec3
   const path = band_struct.qpoints.map(({ frac_coords }) => frac_coords)
-  const segments = path_segments(band_struct, x_positions).map((segment) => {
-    const origin = path[segment.start]
-    const vec = to_cart(path[segment.end].map((coord, axis) => coord - origin[axis]))
-    return { ...segment, origin, vec, len_sq: vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2 }
-  })
+  const segments: {
+    origin: Vec3
+    end: number
+    vec: Vec3
+    len_sq: number
+    x_range: Vec2
+    continues: boolean
+  }[] = []
+  const branches = plotted_branches(band_struct, x_positions).toSorted(
+    ([, [start_a]], [, [start_b]]) => start_a - start_b,
+  )
+  for (const [branch, x_range] of branches) {
+    const prev = segments.at(-1)
+    let continues =
+      prev !== undefined &&
+      Math.abs(prev.x_range[1] - x_range[0]) <= 1e-9 * (1 + Math.abs(x_range[0])) &&
+      path[prev.end].every(
+        (coord, axis) => Math.abs(coord - path[branch.start_index][axis]) <= 1e-9,
+      )
+    for (
+      let idx = branch.start_index;
+      idx <= Math.max(branch.start_index, branch.end_index - 1);
+      idx++
+    ) {
+      const end = Math.min(idx + 1, branch.end_index)
+      const vec = to_cart(path[end].map((coord, axis) => coord - path[idx][axis]))
+      segments.push({
+        origin: path[idx],
+        end,
+        vec,
+        len_sq: vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2,
+        x_range: [idx, end].map((q_idx) =>
+          branch_x(band_struct, branch, x_range, q_idx),
+        ) as Vec2,
+        continues,
+      })
+      continues = true
+    }
+  }
   const steps = segments
     .map(({ len_sq }) => Math.sqrt(len_sq))
     .filter((step) => step > 0)
     .toSorted((a, b) => a - b)
   const tol_sq = (rel_tol * (steps[Math.floor(steps.length / 2)] ?? 0)) ** 2
-  const projections: PathProjection[] = []
+  const projections: { q_idx: number; x: number }[] = []
   for (const [q_idx, qpoint] of qpoints.entries()) {
     let [best_sq, best_x] = [Infinity, NaN]
     for (const { origin, vec, len_sq, x_range, continues } of segments) {
       const rel = to_cart(
-        qpoint.map((coord, axis) => coord - origin[axis] - Math.round(coord - origin[axis])),
+        qpoint.map((coord, axis) => {
+          const diff = coord - origin[axis]
+          return diff - Math.round(diff)
+        }),
       )
       const along = rel[0] * vec[0] + rel[1] * vec[1] + rel[2] * vec[2]
       const frac = len_sq > 0 ? Math.min(1, Math.max(0, along / len_sq)) : 0
@@ -212,17 +250,27 @@ function all_pairs_projection(
 }
 
 describe(`normalize_mode_values`, () => {
-  // oxfmt-ignore
   const valid = {
     label: `λ_qν`,
-    qpoints: [[0, 0, 0], [0.5, 0, 0]],
-    frequencies: [[0, 1], [-0.5, 2]],
-    values: [[null, 0.3], [NaN, 0.1]],
+    qpoints: [
+      [0, 0, 0],
+      [0.5, 0, 0],
+    ],
+    frequencies: [
+      [0, 1],
+      [-0.5, 2],
+    ],
+    values: [
+      [null, 0.3],
+      [NaN, 0.1],
+    ],
   }
   test(`accepts NaN and null (JSON's NaN) as no value, imaginary frequencies`, () => {
     const parsed = normalize_mode_values(valid)
-    // oxfmt-ignore
-    expect(parsed.values).toEqual([[NaN, 0.3], [NaN, 0.1]])
+    expect(parsed.values).toEqual([
+      [NaN, 0.3],
+      [NaN, 0.1],
+    ])
     expect(parsed.frequencies).toEqual(valid.frequencies)
     // NaN values draw no marker
     const projections = [
@@ -271,7 +319,12 @@ describe(`thin_mode_markers`, () => {
       marker(1.5 * bin, 0, 0.1), // the next stretch
       marker(1, 0, 0.4), // the path's end falls in the last stretch
     ]
-    expect(thin_mode_markers(markers, [0, 1])).toEqual([1, 3, 4, 5].map((idx) => markers[idx]))
+    expect(thin_mode_markers(markers, [0, 1])).toEqual([
+      markers[1],
+      markers[3],
+      markers[4],
+      markers[5],
+    ])
   })
   test(`thins a dense mesh to one marker per mode and stretch`, () => {
     const dense = Array.from({ length: 1000 }, (_, idx) => marker(idx / 999, idx % 3, idx))

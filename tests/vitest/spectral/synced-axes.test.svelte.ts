@@ -14,6 +14,7 @@ afterEach(() => {
   for (const destroy of roots.splice(0)) destroy()
 })
 
+// oxfmt-ignore
 const band_structs: BaseBandStructure = {
   type: `phonon`,
   qpoints: [
@@ -24,12 +25,29 @@ const band_structs: BaseBandStructure = {
   labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
   distance: [0, 1],
   nb_bands: 2,
-  bands: [
-    [0, 1],
-    [2, 4],
-  ],
+  bands: [[0, 1], [2, 4]],
 }
 const doses: PhononDos = { type: `phonon`, frequencies: [0, 2, 4], densities: [0, 1, 0] }
+// a mounted sync of the phonon bands and DOS, side by side in THz unless overridden
+const mount_sync = (inputs: Partial<Parameters<typeof create_bands_dos_sync>[0]> = {}) => {
+  let sync: ReturnType<typeof create_bands_dos_sync> | undefined
+  roots.push(
+    $effect.root(() => {
+      sync = create_bands_dos_sync({
+        band_structs: () => ({ '': band_structs }),
+        doses: () => ({ '': doses }),
+        units: () => `THz`,
+        side_by_side: () => true,
+        size: () => [600, 400],
+        base_padding: DEFAULT_PLOT_PADDING, // as the viewers pass it: only t and b count
+        ...inputs,
+      })
+    }),
+  )
+  flushSync()
+  if (!sync) throw new Error(`sync not created`)
+  return sync
+}
 
 // Each panel binds its `view`; the sync mirrors the y view of whichever panel moved into
 // the other, so a zoom or reset in either panel reaches both
@@ -38,32 +56,16 @@ test.each([`phonon`, `electronic`] as const)(
   (type) => {
     const inputs = $state({ side_by_side: true, sync_zoom: true })
     let units = $state<FrequencyUnit>(`meV`)
-    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
-    roots.push(
-      $effect.root(() => {
-        sync = create_bands_dos_sync({
-          band_structs: () => ({ '': { ...band_structs, type } }),
-          doses: () => ({
-            '':
-              type === `phonon`
-                ? doses
-                : {
-                    type,
-                    energy_unit: `eV`,
-                    energies: doses.frequencies,
-                    densities: doses.densities,
-                  },
-          }),
-          units: () => units,
-          side_by_side: () => inputs.side_by_side,
-          size: () => [600, 400],
-          sync_zoom: () => inputs.sync_zoom,
-          base_padding: DEFAULT_PLOT_PADDING, // as the viewers pass it: only t and b count
-        })
-      }),
-    )
-    flushSync()
-    if (!sync) throw new Error(`sync not created`)
+    const { frequencies: energies, densities } = doses
+    const dos =
+      type === `phonon` ? doses : { type, energy_unit: `eV` as const, energies, densities }
+    const sync = mount_sync({
+      band_structs: () => ({ '': { ...band_structs, type } }),
+      doses: () => ({ '': dos }),
+      units: () => units,
+      side_by_side: () => inputs.side_by_side,
+      sync_zoom: () => inputs.sync_zoom,
+    })
     expect(sync.shared_range?.[1]).toBeCloseTo(type === `phonon` ? 16.8735242034493 : 4.08, 12)
     units = `THz`
     flushSync()
@@ -145,23 +147,11 @@ test.each<
 ])(
   `side_by_side=%s bands range %j, DOS props %j: shared range %j`,
   (side, bands, dos, expected) => {
-    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
-    roots.push(
-      $effect.root(() => {
-        sync = create_bands_dos_sync({
-          band_structs: () => ({ '': band_structs }),
-          doses: () => ({ '': doses }),
-          units: () => `THz`,
-          bands_props: () => ({ y_axis: { range: bands } }),
-          dos_props: () => dos,
-          side_by_side: () => side,
-          size: () => [600, 400],
-          base_padding: { t: 20, b: 50 },
-        })
-      }),
-    )
-    flushSync()
-    const shared = sync?.shared_range
+    const { shared_range: shared } = mount_sync({
+      bands_props: () => ({ y_axis: { range: bands } }),
+      dos_props: () => dos,
+      side_by_side: () => side,
+    })
     if (expected) expect(shared).toEqual(expected)
     else expect(shared?.[1]).toBeGreaterThan(4) // the data's padded extent
   },
@@ -198,19 +188,6 @@ test.each([
 ] satisfies [Vec2, string | undefined][])(
   `a %j pair shares tick_font_size %s`,
   (size, expected) => {
-    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
-    roots.push(
-      $effect.root(() => {
-        sync = create_bands_dos_sync({
-          band_structs: () => ({ '': band_structs }),
-          doses: () => ({ '': doses }),
-          units: () => `THz`,
-          side_by_side: () => true,
-          size: () => size,
-          base_padding: DEFAULT_PLOT_PADDING,
-        })
-      }),
-    )
-    expect(sync?.tick_font_size).toBe(expected)
+    expect(mount_sync({ size: () => size }).tick_font_size).toBe(expected)
   },
 )

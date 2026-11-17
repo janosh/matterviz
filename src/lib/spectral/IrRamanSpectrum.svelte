@@ -72,14 +72,17 @@
     // Intensity scaling: `max` (peak = 1), `sum`, `integral` (area = 1) or null for raw activities.
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
-    show_sticks?: boolean // one clickable stick per mode at its frequency, scaled to the curve
+    // Draw one clickable stick per mode at its frequency, scaled to the curve.
+    show_sticks?: boolean
     orientation?: Orientation // horizontal: frequency on y, to sit beside a band structure
     hovered_frequency?: number | null // THz, like every frequency the spectral module passes
     hovered_mode_indices?: number[] // modes behind the hovered peak (read-only output)
     reference_frequency?: number | null // THz, dashed line across the frequency axis
     highlighted_mode_indices?: number[] // sticks to emphasize, e.g. a band hovered at Γ
-    selected_mode_idx?: number | null // mode whose stick is highlighted (set by click or Enter)
-    on_mode_select?: (mode_idx: number) => void // called when a stick is clicked or activated
+    // Index of the mode whose stick is highlighted, set by clicking or pressing Enter on a stick.
+    selected_mode_idx?: number | null
+    // Called with the mode index when a stick is clicked or activated by keyboard.
+    on_mode_select?: (mode_idx: number) => void
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)

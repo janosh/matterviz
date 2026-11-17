@@ -61,16 +61,19 @@
     resolved_padding = $bindable(),
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
-    // Keyed by legend label (`""` if unlabelled), parsed by normalize_dos or, projections, by
-    // extract_pdos(raw, 'atom' | 'orbital', filter)
+    // Keyed by legend label (`""` for an unlabelled series); parse raw input once with
+    // normalize_dos, projections with extract_pdos(raw, 'atom' | 'orbital', filter)
     doses: Record<string, DosData>
     // Eliashberg functions α²F(ω), dimensionless: dashed on their own density axis (top beside
-    // bands, else right), never rescaled with units, normalized or stacked
+    // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
+    // stacked
     a2f?: Record<string, PhononDos>
     // Stack the curves cumulatively as filled areas instead of overlaying them.
     stack?: boolean
-    // In the data unit (THz or eV) like sigma_range and both frequencies, whatever `units` shows.
-    // Every curve is smoothed by sigma or, if wider, the display width (see display_smoother)
+    // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
+    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer.
+    // Every curve (α²F too) is smoothed by sigma or, if wider, the display width that only
+    // removes detail finer than the plot draws (see display_smoother), so 0 draws that.
     sigma?: number
     // Frequency unit displayed for phonon DOS (data stays in THz); electronic energies are never converted.
     units?: FrequencyUnit
