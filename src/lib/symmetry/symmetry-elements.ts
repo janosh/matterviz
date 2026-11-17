@@ -665,17 +665,19 @@ export const MAX_TILED_SYM_ELEMENTS = 4000
 const MAX_TILING_VISITS = 1_000_000
 
 // Deduplicate translations along planes/axes, but retain every translated center marker.
-// A plane moves by the integer plane_normal · offset and a line by offset × axis (parallelism
+// A plane moves by the integer plane_normal · offset (mod its supercell period) and a line by offset × axis (parallelism
 // is affine), so both keys are exact and independent of the metric. Identity keeps different
 // operations sharing a locus distinct.
-const tiled_element_key = (element: SymmetryElement) => {
+const tiled_element_key = (element: SymmetryElement, supercell: Matrix3x3) => {
   const identity = `${element.kind}|${element.label}|${element.order}|${element.locus}`
   const { axis, kind, plane_normal } = element
   let key = (offset: Vec3): string =>
     (kind === `rotoinversion` ? math.add(element.point, offset) : offset).join(`,`)
   let changes = [true, true, true]
   if (plane_normal) {
-    key = (offset) => String(math.dot(plane_normal, offset))
+    // levels n·offset that differ by a multiple of gcd(M·n) are one family in the supercell
+    const period = math.gcd_all(math.mul_3x3_vec3(supercell, plane_normal))
+    key = (offset) => String(((math.dot(plane_normal, offset) % period) + period) % period)
     changes = plane_normal.map((component) => component !== 0)
   } else if (axis && (kind === `rotation` || kind === `screw`)) {
     key = (offset) => math.cross_3d(offset, axis).join(`,`)
@@ -763,7 +765,7 @@ function symmetry_tiling(
   const seen = new Set<string>()
   let visits = 0
   for (const element of elements) {
-    const { identity, key, changes } = tiled_element_key(element)
+    const { identity, key, changes } = tiled_element_key(element, supercell)
     let offsets: Vec3[] = [[0, 0, 0]]
     // Exact keys only gain distinct values as axes are added, so the cap holds after each axis
     for (const axis of [2, 1, 0].filter((dim) => counts[dim] > 1 && changes[dim])) {
