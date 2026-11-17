@@ -16,37 +16,66 @@ import type { Crystal } from '#lib/structure/index.js'
 import { clamp, to_error } from 'svelte-widgets/utils'
 import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
-// XRD wavelengths in Angstrom (Å)
+// Characteristic X-ray lines in Angstrom (Å). Cu Kα1/Kα2 are Hölzer et al., Phys. Rev. A 56,
+// 4554 (1997), the values NIST SRM certificates calibrate against; the other anodes keep
+// pymatgen's table (Bearden-era, within ~1e-5 Å of Hölzer where both exist).
 export const WAVELENGTHS = {
-  CuKa: 1.54184,
-  CuKa2: 1.54439,
-  CuKa1: 1.54056,
+  CuKa1: 1.5405929,
+  CuKa2: 1.544414,
   CuKb1: 1.39222,
-  MoKa: 0.71073,
-  MoKa2: 0.71359,
   MoKa1: 0.7093,
+  MoKa2: 0.71359,
   MoKb1: 0.63229,
-  CrKa: 2.291,
-  CrKa2: 2.29361,
   CrKa1: 2.2897,
+  CrKa2: 2.29361,
   CrKb1: 2.08487,
-  FeKa: 1.93735,
-  FeKa2: 1.93998,
   FeKa1: 1.93604,
+  FeKa2: 1.93998,
   FeKb1: 1.75661,
-  CoKa: 1.79026,
-  CoKa2: 1.79285,
   CoKa1: 1.78896,
+  CoKa2: 1.79285,
   CoKb1: 1.63079,
-  AgKa: 0.560885,
-  AgKa2: 0.563813,
   AgKa1: 0.559421,
+  AgKa2: 0.563813,
   AgKb1: 0.497082,
 } as const
 
-export type RadiationKey = keyof typeof WAVELENGTHS
+export type XrayLineKey = keyof typeof WAVELENGTHS
+// Lab anodes whose unfiltered Kα radiation reaches the sample as the Kα1/Kα2 doublet
+export const XRAY_ANODES = [`Cu`, `Mo`, `Cr`, `Fe`, `Co`, `Ag`] as const
+export type AnodeKey = `${(typeof XRAY_ANODES)[number]}Ka`
+// `CuKa` names the doublet, `CuKa1` (`CuKa2`, `CuKb1`) one line of it
+export type RadiationKey = XrayLineKey | AnodeKey
 
-const is_radiation_key = (key: string): key is RadiationKey => key in WAVELENGTHS
+// One wavelength of a (possibly polychromatic) source and its share of the intensity
+export type XrayLine = { wavelength: number; weight: number }
+// What options.wavelength accepts: one wavelength in Å, a named line or anode, or explicit
+// lines (relative weights, normalized to sum to 1)
+export type XrdWavelength = number | RadiationKey | readonly XrayLine[]
+
+// I(Kα2) / I(Kα1): the 2p3/2 : 2p1/2 occupancy ratio, which measured doublets match to a few %
+export const KA2_KA1_INTENSITY_RATIO = 0.5
+
+const is_line_key = (key: string): key is XrayLineKey => key in WAVELENGTHS
+const is_anode_key = (key: string): key is AnodeKey =>
+  XRAY_ANODES.some((anode) => key === `${anode}Ka`)
+
+// Lines of a named source: the Kα1 + Kα2 doublet for an anode key (weights summing to 1), a
+// single line for a line key
+export function xray_source_lines(key: string): XrayLine[] {
+  if (is_anode_key(key)) {
+    const total = 1 + KA2_KA1_INTENSITY_RATIO
+    return [
+      { wavelength: WAVELENGTHS[`${key}1`], weight: 1 / total },
+      { wavelength: WAVELENGTHS[`${key}2`], weight: KA2_KA1_INTENSITY_RATIO / total },
+    ]
+  }
+  if (is_line_key(key)) return [{ wavelength: WAVELENGTHS[key], weight: 1 }]
+  const anodes = XRAY_ANODES.map((anode) => `${anode}Ka`).join(`, `)
+  throw new Error(
+    `Unknown radiation key: ${key}. Expected an anode doublet (${anodes}) or one line (e.g. CuKa1, CuKb1).`,
+  )
+}
 
 // CODATA 2018, the vintage the frozen Mott-Bethe prefactor in #lib/scattering was evaluated at
 const ELECTRON_REST_MASS_KG = 9.1093837015e-31
@@ -71,27 +100,42 @@ export function electron_wavelength(voltage_kv: number): number {
   return (PLANCK_J_S / momentum) * 1e10 // m → Å
 }
 
-// Wavelength in Å for a radiation type, rejecting nonsensical combinations (e.g. neutrons
-// with a Cu anode wavelength)
-export function resolve_wavelength(
+// Explicit lines validated, normalized to weights summing to 1 and ordered strongest first
+// (stable), so line 0 is the main line as for an anode doublet
+function normalize_lines(lines: readonly XrayLine[]): XrayLine[] {
+  if (lines.length === 0) throw new Error(`options.wavelength lists no lines`)
+  for (const { wavelength, weight } of lines) {
+    require_positive(`wavelength`, wavelength)
+    require_positive(`line weight`, weight, ` (relative intensity)`)
+  }
+  const total = lines.reduce((sum, { weight }) => sum + weight, 0)
+  return lines
+    .map(({ wavelength, weight }) => ({ wavelength, weight: weight / total }))
+    .toSorted((line_1, line_2) => line_2.weight - line_1.weight)
+}
+
+// Source lines for a radiation type (one unless an anode doublet or explicit lines were asked
+// for), rejecting nonsensical combinations (e.g. neutrons with a Cu anode wavelength)
+export function resolve_lines(
   radiation: RadiationType,
-  wavelength: number | RadiationKey | undefined,
+  wavelength: XrdWavelength | undefined,
   accelerating_voltage: number | undefined,
-): number {
+): XrayLine[] {
+  const explicit = (input: number | readonly XrayLine[]): XrayLine[] =>
+    typeof input === `number`
+      ? [{ wavelength: require_positive(`wavelength`, input), weight: 1 }]
+      : normalize_lines(input)
+  if (radiation !== `electron` && accelerating_voltage !== undefined) {
+    throw new Error(
+      `accelerating_voltage is only meaningful for radiation: 'electron', not '${radiation}'.${radiation === `xray` ? ` Pass a wavelength or an anode key instead.` : ``}`,
+    )
+  }
   if (radiation === `xray`) {
-    if (accelerating_voltage !== undefined) {
-      throw new Error(
-        `accelerating_voltage is only meaningful for radiation: 'electron', not 'xray'. ` +
-          `Pass a wavelength or an anode key instead.`,
-      )
-    }
     const wl_input = wavelength ?? `CuKa`
-    if (typeof wl_input === `number`) return require_positive(`wavelength`, wl_input)
-    if (!is_radiation_key(wl_input)) throw new Error(`Unknown radiation key: ${wl_input}`)
-    return WAVELENGTHS[wl_input]
+    return typeof wl_input === `string` ? xray_source_lines(wl_input) : explicit(wl_input)
   }
 
-  // WAVELENGTHS lists X-ray tube anodes only, so an anode key is always a user mistake here
+  // WAVELENGTHS lists X-ray tube lines only, so a key is always a user mistake here
   if (typeof wavelength === `string`) {
     const voltage_hint =
       radiation === `electron` ? `, or options.accelerating_voltage in kV.` : `.`
@@ -102,29 +146,26 @@ export function resolve_wavelength(
   }
 
   if (radiation === `neutron`) {
-    if (accelerating_voltage !== undefined) {
-      throw new Error(
-        `accelerating_voltage is only meaningful for radiation: 'electron', not 'neutron'.`,
-      )
-    }
     if (wavelength === undefined) {
       throw new Error(
         `Neutron patterns require an explicit options.wavelength in Angstrom (e.g. 1.548 for ` +
           `a typical constant-wavelength reactor instrument). There is no default anode.`,
       )
     }
-    return require_positive(`wavelength`, wavelength)
+    return explicit(wavelength)
   }
 
   if (radiation === `electron`) {
     if (wavelength !== undefined && accelerating_voltage !== undefined) {
       throw new Error(
-        `Pass either options.wavelength (${wavelength} Å) or options.accelerating_voltage ` +
-          `(${accelerating_voltage} kV) for electron radiation, not both.`,
+        `Pass either options.wavelength (${JSON.stringify(wavelength)} Å) or ` +
+          `options.accelerating_voltage (${accelerating_voltage} kV) for electron radiation, not both.`,
       )
     }
-    if (wavelength !== undefined) return require_positive(`wavelength`, wavelength)
-    if (accelerating_voltage !== undefined) return electron_wavelength(accelerating_voltage)
+    if (wavelength !== undefined) return explicit(wavelength)
+    if (accelerating_voltage !== undefined) {
+      return [{ wavelength: electron_wavelength(accelerating_voltage), weight: 1 }]
+    }
     throw new Error(
       `Electron patterns require options.accelerating_voltage in kV (e.g. 200) or an ` +
         `explicit options.wavelength in Angstrom.`,
@@ -160,7 +201,7 @@ function reciprocal_rotations(rotations: readonly math.Matrix3x3[]): number[] {
       )
     }
     const inv_transposed = math
-      .transpose_3x3_matrix(math.matrix_inverse_3x3(rotation))
+      .transpose_3x3(math.inverse_3x3(rotation))
       .flat()
       .map(Math.round)
     const key = inv_transposed.join(`,`)
@@ -232,10 +273,9 @@ export function enumerate_reciprocal_points(
   const [h_max, k_max, l_max] = direct_rows.map(
     (row) => Math.ceil(max_radius * Math.hypot(...row)) + 1,
   )
-  // Cap the point count, not max(h,k,l): rocksalt TiC at 200 kV over [0, 90]° has h_max 246
-  // but 6.1e7 points (~8.5 GB). A Laue bound keeps only the 2·⌊max_laue⌋ + 1 reciprocal
-  // planes n = h·u + k·v + l·w, each 1/|uvw| apart (V/|uvw| points per unit area), so a
-  // 40 Å cell's SAED stores ~1% of its 2e6-point sphere
+  // Cap the point count, not max(h,k,l) (TiC at 200 kV over [0, 90]°: h_max 246, 6.1e7 points).
+  // A Laue bound keeps only the 2·⌊max_laue⌋ + 1 planes h·u + k·v + l·w = n, each holding
+  // V/|uvw| points per unit area (~1% of a 40 Å cell's 2e6-point sphere)
   const cell_volume = Math.abs(math.det_3x3(direct_rows))
   const sphere_points = (4 / 3) * Math.PI * max_radius ** 3 * cell_volume
   // |u·a + v·b + w·c|
@@ -260,8 +300,7 @@ export function enumerate_reciprocal_points(
         )
       : sphere_points
   const MAX_POINTS = 2e6
-  // The loops sweep the enclosing box (|a||b||c| / V times the sphere), so oblique cells need
-  // their own cap
+  // the loops sweep the enclosing box (|a||b||c| / V times the sphere): oblique cells need a cap
   const box_points = (2 * h_max + 1) * (2 * k_max + 1) * (2 * l_max + 1)
   const MAX_BOX_POINTS = 10 * MAX_POINTS
   if (estimated_points > MAX_POINTS || box_points > MAX_BOX_POINTS) {
@@ -396,9 +435,8 @@ export function structure_factors_squared(
   // exp(−0·s²) is exactly 1, so skip the per-element Math.exp without Debye-Waller factors
   const has_debye_waller = elements.some((coeffs) => coeffs.debye_waller !== 0)
 
-  // exp(2πi·hkl·r) factorizes per axis: tabulating the three factors per species turns the
-  // inner loop's cos + sin into complex multiplies (2x faster for 444 sites). Occupancy rides
-  // on the h table.
+  // exp(2πi·hkl·r) factorizes per axis: per-species tables of the three factors turn cos + sin
+  // into complex multiplies (2x faster for 444 sites). Occupancy rides on the h table.
   let [h_max, k_max, l_max] = [0, 0, 0]
   for (const { hkl } of reflections) {
     if (!hkl.every(Number.isInteger)) {
@@ -430,10 +468,9 @@ export function structure_factors_squared(
   const l_span = 2 * l_max + 1
 
   // Reflections by (h, k) row. A row's per-element sums S_e(l) = Σ occu·exp(2πi·hkl·r) take the
-  // hk factor once per species instead of once per reflection, and serve its Friedel partner
-  // row (−h, −k) too: its sums are the conjugates at −l (cos even, sin odd, so bit for bit),
-  // and |F|² ignores the sign of Im F. Sums per l still add species in order, so every
-  // reflection's |F|² matches summing it on its own.
+  // hk factor once per species and serve the Friedel row (−h, −k) too: its sums are the exact
+  // conjugates at −l, and |F|² ignores the sign of Im F. Species still add in order, so every
+  // |F|² matches summing that reflection on its own.
   const k_span = 2 * k_max + 1
   const row_key = (h_idx: number, k_idx: number): number =>
     (h_idx + h_max) * k_span + k_idx + k_max
@@ -534,11 +571,7 @@ export function structure_factors_squared(
 
 export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}): XrdPattern {
   const radiation: RadiationType = options.radiation ?? `xray`
-  const wavelength = resolve_wavelength(
-    radiation,
-    options.wavelength,
-    options.accelerating_voltage,
-  )
+  const lines = resolve_lines(radiation, options.wavelength, options.accelerating_voltage)
   // Without rotations, families fall back to Friedel pairs (recorded in family_grouping)
   const { symmetry_rotations } = options
   const recip_rotations = symmetry_rotations
@@ -548,9 +581,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const recip_rows = math.reciprocal_lattice(structure.lattice.matrix)
 
   // Bragg bound |g| = 2 sin(θ) / λ. Default 90° like pymatgen: the Lorentz factor diverges as
-  // 2θ → 180°, so a reflection just short of it (a = 1.000000001·λ puts one at 179.995°) takes
-  // the normalization max and scales real peaks to ~0.04. Electrons default to [0, 5]: at
-  // 200 kV, 90° is 6.1e7 reflections for TiC whose [200] sits at 0.68°.
+  // 2θ → 180°, where a near-miss reflection would take the normalization max. Electrons
+  // default to [0, 5]: at 200 kV, 90° is 6.1e7 reflections for TiC (its [200] sits at 0.68°).
   const default_range: Vec2 = radiation === `electron` ? [0, 5] : [0, 90]
   const two_theta_range: Vec2 | null =
     options.two_theta_range === null ? null : (options.two_theta_range ?? default_range)
@@ -563,16 +595,20 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
       )
     }
   }
-  const [min_radius, max_radius] =
+  // |g| window of each line; the reflections of all of them are enumerated once since |F|²
+  // depends on |g| alone, not on the wavelength that brings it into reflection
+  const line_radii = lines.map(({ wavelength }) =>
     two_theta_range === null
       ? [0, 2 / wavelength]
-      : two_theta_range.map((angle) => (2 * Math.sin(math.to_radians(angle / 2))) / wavelength)
-
+      : two_theta_range.map(
+          (angle) => (2 * Math.sin(math.to_radians(angle / 2))) / wavelength,
+        ),
+  )
   const recip_points = enumerate_reciprocal_points(
     recip_rows,
     structure.lattice.matrix,
-    max_radius,
-    min_radius,
+    Math.max(...line_radii.map(([, max_radius]) => max_radius)),
+    Math.min(...line_radii.map(([min_radius]) => min_radius)),
   )
 
   const f_squared = structure_factors_squared(
@@ -582,40 +618,63 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     recip_points,
   )
 
-  // Merge 2θs within tolerance. Reflections arrive sorted by |g|, so 2θ is non-decreasing and
-  // a reflection can only merge into the last peak (scanning all peaks cost 50 of 275 ms).
-  const peaks: { two_theta: number; intensity: number; hkls: Hkl[]; d_hkl: number }[] = []
-  const merge_tol = options.peak_merge_tol ?? TWO_THETA_TOL
+  // One reflection per line it satisfies Bragg's law for. Each line's reflections arrive sorted
+  // by |g|, hence by 2θ; a stable sort interleaves several lines and leaves one line's order
+  // (so a monochromatic pattern) exactly as enumerated.
+  type Reflection = {
+    two_theta: number
+    intensity: number
+    hkl: Hkl
+    g_norm: number
+    line: number
+  }
+  const reflections: Reflection[] = []
   let max_f_squared = 0
+  for (const [line_idx, { wavelength, weight }] of lines.entries()) {
+    const [min_radius, max_radius] = line_radii[line_idx]
+    for (let point_idx = 0; point_idx < recip_points.length; point_idx++) {
+      const { hkl, g_norm } = recip_points[point_idx]
+      if (g_norm === 0 || g_norm < min_radius || g_norm > max_radius) continue
+
+      // clamp: FP error can push the asin argument past 1
+      const clamped_asin_arg = clamp((wavelength * g_norm) / 2, -1, 1)
+      // exact back-reflection (zero Lorentz denominator) would take the normalization max
+      if (clamped_asin_arg >= 1) continue
+      if (f_squared[point_idx] > max_f_squared) max_f_squared = f_squared[point_idx]
+      const theta = Math.asin(clamped_asin_arg)
+
+      const sin_theta = Math.sin(theta)
+      // Never zero: θ = 0 and 90° are skipped above, leaving a denominator of at least 1.5e-8
+      const denom = sin_theta * sin_theta * Math.abs(Math.cos(theta))
+      // Only X-rays get the polarization term (1 + cos²2θ): nuclear neutron and Coulomb
+      // electron scattering use the bare powder Lorentz factor 1/(sin²θ·|cosθ|)
+      const polarization = radiation === `xray` ? 1 + Math.cos(2 * theta) ** 2 : 1
+      const intensity = weight * f_squared[point_idx] * (polarization / denom)
+      const two_theta = math.to_degrees(2 * theta)
+      reflections.push({ two_theta, intensity, hkl, g_norm, line: line_idx })
+    }
+  }
+  if (lines.length > 1)
+    reflections.sort((refl_1, refl_2) => refl_1.two_theta - refl_2.two_theta)
+
+  // Merge 2θs within tolerance. Reflections are sorted by 2θ, so one can only merge into the
+  // last peak (scanning all peaks cost 50 of 275 ms). A peak's line is that of its strongest
+  // reflection, so a plot can tell a Kα2 echo from a Kα1 peak.
+  type Peak = { two_theta: number; intensity: number; hkls: Hkl[]; d_hkl: number }
+  const peaks: (Peak & { line: number; line_intensity: number })[] = []
+  const merge_tol = options.peak_merge_tol ?? TWO_THETA_TOL
   const scaled_tol = options.scaled_intensity_tol ?? SCALED_INTENSITY_TOL
-
-  for (let point_idx = 0; point_idx < recip_points.length; point_idx++) {
-    const { hkl, g_norm } = recip_points[point_idx]
-    if (g_norm === 0) continue
-
-    // clamp: FP error can push the asin argument past 1
-    const clamped_asin_arg = clamp((wavelength * g_norm) / 2, -1, 1)
-    // Exact back-reflection is unobservable with a zero Lorentz denominator: keeping it would
-    // invent a huge intensity that takes the normalization max
-    if (clamped_asin_arg >= 1) continue
-    if (f_squared[point_idx] > max_f_squared) max_f_squared = f_squared[point_idx]
-    const theta = Math.asin(clamped_asin_arg)
-
-    const sin_theta = Math.sin(theta)
-    // Never zero: θ = 0 and 90° are skipped above, leaving a denominator of at least 1.5e-8
-    const denom = sin_theta * sin_theta * Math.abs(Math.cos(theta))
-    // Only X-rays get the polarization term (1 + cos²2θ): nuclear neutron and Coulomb electron
-    // scattering use the bare powder Lorentz factor 1/(sin²θ·|cosθ|)
-    const polarization = radiation === `xray` ? 1 + Math.cos(2 * theta) ** 2 : 1
-    const intensity_hkl = f_squared[point_idx] * (polarization / denom)
-    const two_theta = math.to_degrees(2 * theta)
-
+  for (const { two_theta, intensity, hkl, g_norm, line } of reflections) {
     // hkls stay 3-index even for hexagonal cells where pymatgen uses Miller–Bravais (hkil)
     const last = peaks.at(-1)
     if (last && Math.abs(last.two_theta - two_theta) < merge_tol) {
-      last.intensity += intensity_hkl
+      last.intensity += intensity
       last.hkls.push(hkl)
-    } else peaks.push({ two_theta, intensity: intensity_hkl, hkls: [hkl], d_hkl: 1 / g_norm })
+      if (intensity > last.line_intensity) [last.line, last.line_intensity] = [line, intensity]
+    } else {
+      const d_hkl = 1 / g_norm
+      peaks.push({ two_theta, intensity, hkls: [hkl], d_hkl, line, line_intensity: intensity })
+    }
   }
 
   // Filter and scaling are relative, so an all-extinct window would normalize cancellation
@@ -624,27 +683,18 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     return { x: [], y: [] }
 
   const max_intensity = math.array_max(peaks.map((peak) => peak.intensity))
-  const x_values: number[] = []
-  const y_values: number[] = []
-  const hkls_out: HklObj[][] = []
-  const d_out: number[] = []
-  for (const peak of peaks) {
-    if ((peak.intensity / max_intensity) * 100 <= scaled_tol) continue
-    x_values.push(peak.two_theta)
-    y_values.push(peak.intensity)
-    hkls_out.push(get_unique_families(peak.hkls, recip_rotations))
-    d_out.push(peak.d_hkl)
-  }
-
+  const kept = peaks.filter((peak) => (peak.intensity / max_intensity) * 100 > scaled_tol)
   // Divide by the true max, not max(1, ...): with fm² or Å² units every peak can sit under 1
   // (Mo Kα on a 2 Å H cell topped out at 43.6, not 100)
-  if (options.scaled ?? true) {
-    const max_y = math.array_max(y_values)
-    if (max_y > 0)
-      for (let idx = 0; idx < y_values.length; idx++)
-        y_values[idx] = (y_values[idx] / max_y) * 100
+  const max_y = math.array_max(kept.map((peak) => peak.intensity))
+  const scaled = (options.scaled ?? true) && max_y > 0
+  return {
+    x: kept.map((peak) => peak.two_theta),
+    y: kept.map(({ intensity }) => (scaled ? (intensity / max_y) * 100 : intensity)),
+    hkls: kept.map((peak) => get_unique_families(peak.hkls, recip_rotations)),
+    d_hkls: kept.map((peak) => peak.d_hkl),
+    lines,
+    peak_lines: kept.map((peak) => peak.line),
+    family_grouping: symmetry_rotations ? `symmetry` : `friedel`,
   }
-
-  const family_grouping = symmetry_rotations ? `symmetry` : `friedel`
-  return { x: x_values, y: y_values, hkls: hkls_out, d_hkls: d_out, family_grouping }
 }

@@ -1,6 +1,6 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // compute_xrd_pattern and compute_saed_pattern via persistent Web Workers (main-thread fallback
-// without Worker), plus what needs the main thread's symmetry worker: calc-xrd.ts stays free
+// without Worker), plus what needs the main thread's symmetry worker: compute-xrd.ts stays free
 // of Svelte for the worker bundles.
 import type { Matrix3x3 } from '#lib/math.js'
 import type { RadiationType } from '#lib/scattering/index.js'
@@ -9,7 +9,8 @@ import { is_crystal } from '#lib/structure/validation.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
 import { plain_copy } from '#lib/utils.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
-import { compute_xrd_pattern } from './calc-xrd'
+import type { XrdWavelength } from './compute-xrd'
+import { compute_xrd_pattern } from './compute-xrd'
 import type { XrdPattern } from './index'
 import { compute_saed_pattern } from './saed'
 
@@ -47,7 +48,8 @@ export async function xrd_symmetry_rotations(structure: Crystal): Promise<Matrix
 // Throws for anything without a lattice and sites.
 export async function structure_xrd_pattern(
   structure: AnyStructure,
-  wavelength: number | null, // Probe wavelength in Angstrom, null for the radiation's default
+  // Probe wavelength (see XrdOptions.wavelength), null for the radiation's default
+  wavelength: XrdWavelength | null,
   radiation: RadiationType = `xray`,
 ): Promise<XrdPattern> {
   if (!is_crystal(structure)) {

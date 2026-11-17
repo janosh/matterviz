@@ -11,7 +11,6 @@ import {
   clip_plane_family,
   dash_segments,
   frac_to_cart_direction,
-  mat3_from_flat_col_major,
   MAX_TILED_SYM_ELEMENTS,
   piece_key,
   symmetry_elements_from_ops,
@@ -111,6 +110,8 @@ describe(`classify_symmetry_op`, () => {
     [`b-glide`, [0, 0.5, 0], `b`, [0, 0.5, 0]],
     [`n-glide`, [0.5, 0.5, 0], `n`, [0.5, 0.5, 0]],
     [`d-glide`, [0.25, 0.25, 0], `d`, [0.25, 0.25, 0]],
+    // a quarter + a half is no diamond vector 1/4(±a ± b): ITA writes such glides g(1/4,1/2,0)
+    [`g-glide`, [0.25, 0.5, 0], `g`, [0.25, 0.5, 0]],
   ] as [string, Vec3, string, Vec3 | null][])(
     `%s normal to z`,
     (_, translation, label, glide_vec) => {
@@ -199,7 +200,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   const sheared_ops = (spg: number, primitive = false) =>
     operations_from_number(spg, { type: `Standard` }, primitive).map(
       ({ rotation, translation }) => {
-        const rot = math.dot(to_new, mat3_from_flat_col_major(rotation))
+        const rot = math.dot(to_new, math.mat3x3_from_flat_col_major(rotation))
         return {
           rotation: col_major(math.dot(rot, to_old)),
           translation: math.dot(to_new, translation),
@@ -266,7 +267,8 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
 
   // Tied glide vectors (a/2 vs b/2, c/2 vs (1/3,-1/3,1/6)) must not list a plane twice
   test.each([
-    [`Fm-3m`, 225, { a: 4, b: 2, d: 12 }],
+    // normal to ⟨110⟩ Fm-3m has g(-1/4,1/4,1/2) glides, no diamond glides (those need Fd-3m)
+    [`Fm-3m`, 225, { a: 4, b: 2, g: 12 }],
     [`R3c`, 161, { c: 3, g: 3 }],
   ])(`%s (#%i) glide labels`, (_, spg, expected) => {
     const glides = elements_for(spg).filter((elem) => elem.kind === `glide`)

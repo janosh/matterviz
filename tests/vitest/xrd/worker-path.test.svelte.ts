@@ -1,6 +1,6 @@
 // Web Worker branch of the XRD and SAED clients (a stub Worker is installed before the import,
 // as happy-dom has none); one stub plays both entries, told apart by the options only SAED takes
-import { compute_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+import { compute_xrd_pattern } from '#lib/xrd/compute-xrd.js'
 import type { SaedOptions, XrdOptions } from '#lib/xrd/index.js'
 import { compute_saed_pattern } from '#lib/xrd/saed.js'
 import type { Crystal } from '#lib/structure/index.js'

@@ -11,10 +11,10 @@ import {
   electron_wavelength,
   enumerate_reciprocal_points,
   require_positive,
-  resolve_wavelength,
+  resolve_lines,
   structure_factor_noise_floor,
   structure_factors_squared,
-} from './calc-xrd'
+} from './compute-xrd'
 import type { RecipPoint, SaedOptions, SaedPatternData, SaedSpot } from './index'
 
 // sin(πx)/(πx), the Fourier transform of a unit-thickness slab
@@ -43,7 +43,8 @@ export function compute_saed_pattern(
   const wavelength =
     options.wavelength === undefined && options.accelerating_voltage === undefined
       ? electron_wavelength(200)
-      : resolve_wavelength(`electron`, options.wavelength, options.accelerating_voltage)
+      : resolve_lines(`electron`, options.wavelength, options.accelerating_voltage)[0]
+          .wavelength
 
   const max_g = require_positive(`max_g`, options.max_g ?? 2, ` of 1/Angstrom`)
   const crystal_thickness = require_positive(

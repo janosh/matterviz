@@ -29,6 +29,7 @@
   import { is_xrd_data_file, parse_xrd_file } from './parse'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { BroadeningParams } from './broadening'
+  import type { XrdWavelength } from './compute-xrd'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import { decimate_pattern, format_hkl } from './index'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern, XrdPeak } from './index'
@@ -83,8 +84,8 @@
     hkl_format?: HklFormat
     // Append the 2θ angle to peak labels. null shows it only when at most two patterns are plotted.
     show_angles?: boolean | null
-    // Wavelength in Å for patterns computed from a dropped structure file. null uses the default anode for X-rays.
-    wavelength?: number | null
+    // Wavelength for patterns computed from a dropped structure file: Å, a line (`CuKa1`), an anode doublet (`CuKa`) or weighted lines. null uses the Cu Kα doublet for X-rays.
+    wavelength?: XrdWavelength | null
     // Probe used when recomputing a pattern from a dropped structure file. Neutron and
     // electron both require an explicit `wavelength` (no anode default exists for them).
     radiation?: RadiationType
@@ -189,9 +190,12 @@
         const threshold = annotate_peaks < 1 ? annotate_peaks * array_max(y_values) : -Infinity
         const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
         // Strongest first, so a crowded neighbourhood is won by its tallest peak
+        // A doublet source's weaker lines (Kα2) only echo the main line's reflections:
+        // labelling them would repeat each hkl beside its own peak
+        const { peak_lines } = entry.pattern
         const candidates = y_values
           .map((y_val, idx) => ({ y_val, idx }))
-          .filter(({ y_val }) => y_val > threshold)
+          .filter(({ y_val, idx }) => y_val > threshold && !peak_lines?.[idx])
           .toSorted((peak_a, peak_b) => peak_b.y_val - peak_a.y_val)
           .slice(0, max_peaks)
         // Drop a label sitting within 3% of the x-range of one already kept, else they

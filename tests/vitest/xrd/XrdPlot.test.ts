@@ -98,7 +98,8 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
     const main = await show(`xrd`)
     expect(analyze).toHaveBeenCalledOnce()
     await vi.waitFor(() => expect(compute).toHaveBeenCalledOnce())
-    expect(compute.mock.calls[0][1]).toEqual({ symmetry_rotations })
+    // the default source is the Cu Kα1/Kα2 doublet
+    expect(compute.mock.calls[0][1]).toEqual({ wavelength: `CuKa`, symmetry_rotations })
     await show(`Overlay multiple structures`)
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(4))
     const buttons = document.querySelectorAll<HTMLButtonElement>(
@@ -135,6 +136,20 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
       ([, options, request]) => `${options?.zone_axis?.join(``)} ${request?.signal?.aborted}`,
     )
     expect(requests).toEqual([`001 true`, `111 false`]) // the superseded request is aborted
+    // switching the X-ray source recomputes the shown patterns for that source
+    const source_select = document.querySelector<HTMLSelectElement>(`.demo-controls select`)
+    if (!source_select) throw new Error(`Missing X-ray source select`)
+    // Svelte's select binding reads `:checked`, which happy-dom never matches on options, and
+    // falls back to the first enabled option: leave only the chosen one enabled meanwhile
+    const others = [...source_select.options].filter(({ value }) => value !== `CuKa1`)
+    for (const option of others) option.disabled = true
+    source_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    for (const option of others) option.disabled = false
+    await vi.waitFor(() =>
+      expect(compute.mock.calls.some(([, options]) => options?.wavelength === `CuKa1`)).toBe(
+        true,
+      ),
+    )
   } finally {
     await unmount(component)
     compute.mockRestore()
@@ -227,10 +242,7 @@ describe(`XrdPlot`, () => {
       [...series.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim()),
     )
     // y >= 0.6 * max: 200 and 300 of [100, 200, 150, 300, 120], in either pattern
-    expect(labels).toEqual([
-      [`110`, `200`],
-      [`110`, `200`],
-    ])
+    expect(labels).toEqual([0, 1].map(() => [`110`, `200`]))
   })
 
   test(`children prop`, () => {
@@ -298,22 +310,18 @@ describe(`XrdPlot`, () => {
     },
   )
 
-  test(`peak label overlap filtering keeps only highest intensity`, async () => {
-    const target = await mount_xrd({
-      patterns: {
-        x: [10, 45.8, 45.81, 45.82, 45.83, 45.84, 60],
-        y: [10, 80, 85, 100, 90, 75, 20],
-      },
-      annotate_peaks: 5,
-      show_angles: true,
-      hkl_format: null,
-    })
-    const label_texts = Array.from(target.querySelectorAll(`.bar-label`))
-      .map((element) => element.textContent?.trim())
-      .filter(Boolean)
-    // The 5 most intense peaks are all in the 45.8x cluster, so overlap filtering leaves a
-    // single label: the tallest one (45.82°). The 10° and 60° peaks are outside the top 5.
-    expect(label_texts).toEqual([`45.82°`])
+  // The 5 tallest peaks all sit in the 45.8x cluster, so overlap filtering leaves only its
+  // tallest label. A Kα2 echo (peak_lines 1) repeats its Kα1 hkl nearby and is never labelled,
+  // even where it would outrank a weaker Kα1 peak (the 21.5° echo vs 110).
+  // oxfmt-ignore
+  test.each([
+    [`overlapping labels keep only the tallest`, { x: [10, 45.8, 45.81, 45.82, 45.83, 45.84, 60], y: [10, 80, 85, 100, 90, 75, 20] }, 5, null, [`45.82°`]],
+    [`doublet patterns label only main-line peaks`, { x: [20, 21.5, 50, 51.5], y: [100, 50, 40, 20], peak_lines: [0, 1, 0, 1],
+      hkls: [[1, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 0]].map((hkl) => [{ hkl: hkl as Hkl }]) }, 2, `compact`, [`100 @ 20°`, `110 @ 50°`]],
+  ] as [string, XrdPattern, number, XrdProps[`hkl_format`], string[]][])(`%s`, async (_desc, patterns, annotate_peaks, hkl_format, expected) => {
+    const target = await mount_xrd({ patterns, annotate_peaks, hkl_format, show_angles: true })
+    const labels = [...target.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim())
+    expect(labels.filter(Boolean)).toEqual(expected)
   })
 
   // Every reflection of a stick pattern is a peak, so sticks (even without hkls) are never
@@ -554,12 +562,8 @@ describe(`XrdPlot`, () => {
     expect(inputs.map((input) => input.value)).toEqual([`0.04`, `-0.02`, `0.02`, `0.5`])
     // U and W are floored at 0 (a negative FWHM² radicand throws), V is legitimately
     // negative, and only eta is bounded above since outside [0, 1] it is not a pseudo-Voigt
-    expect(inputs.map((input) => [input.min, input.max])).toEqual([
-      [`0`, ``],
-      [``, ``],
-      [`0`, ``],
-      [`0`, `1`],
-    ])
+    // oxfmt-ignore
+    expect(inputs.map((input) => [input.min, input.max])).toEqual([[`0`, ``], [``, ``], [`0`, ``], [`0`, `1`]])
 
     // V^2 <= 4UW couples all three, so no static `min` keeps the FWHM^2 radicand positive:
     // W at its own allowed minimum throws at 2theta = 10 deg, and the uncaught throw used to
