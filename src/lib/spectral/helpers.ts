@@ -132,21 +132,18 @@ export function trapezoid_weights(grid: readonly number[]): number[] {
   return weights
 }
 
-// One ±4σ-windowed Gaussian pass (contribution < 0.01% beyond). On an ascending grid the
-// window only moves forward, so two pointers bound the inner loop at O(n·w) not O(n²).
-// `measure` non-null gives the convolution ∫y(x')K(x−x')dx'; null the local average Σwy/Σw.
+// One ±4σ-windowed Gaussian local average Σ K·y / Σ K (contribution < 0.01% beyond). On an
+// ascending grid the window only moves forward, so two pointers bound the inner loop at O(n·w)
+// not O(n²).
 function gaussian_pass(
   grid: readonly number[],
   values: readonly number[],
   sigma: number,
-  measure: readonly number[] | null,
 ): number[] {
   const n_pts = grid.length
   const out = Array(values.length).fill(0)
   const cutoff = 4 * sigma
   const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
-  // a normalized Gaussian integrates to 1, so the convolution preserves ∫y dx on its own
-  const prefactor = measure ? 1 / (sigma * Math.sqrt(2 * Math.PI)) : 1
   const ascending = grid.every((value, idx) => idx === 0 || value >= grid[idx - 1])
 
   let window_start = 0
@@ -165,30 +162,13 @@ function gaussian_pass(
       // Exact bounds on ascending grids; the fallback range is the whole array
       if (Math.abs(delta) > cutoff) continue
       const kernel = Math.exp(-(delta ** 2) * inv_two_sigma_sq)
-      sum += values[jdx] * (measure ? measure[jdx] : 1) * kernel
+      sum += values[jdx] * kernel
       kernel_sum += kernel
     }
     // jdx = idx is always inside its own window, so kernel_sum ≥ 1
-    out[idx] = measure ? sum * prefactor : sum / kernel_sum
+    out[idx] = sum / kernel_sum
   }
   return out
-}
-
-// Gaussian smearing of DOS densities: the convolution ∫ g(E')·K(E − E') dE' over trapezoid
-// weights. Summing g(E')·K with no measure weights by POINT DENSITY instead, swinging a flat
-// DOS over 0.235-1.950 on a clustered grid. Mass leaks out at the grid ends, as the continuum
-// convolution does.
-export function apply_gaussian_smearing(
-  freqs_or_energies: number[],
-  densities: number[],
-  sigma: number,
-): number[] {
-  if (sigma <= 0) return densities
-  const weights = trapezoid_weights(freqs_or_energies)
-  // A grid with no extent (one point, or all-identical values) carries no trapezoid measure,
-  // so the convolution would return all zeros instead of leaving the input alone
-  if (weights.every((weight) => weight === 0)) return densities
-  return gaussian_pass(freqs_or_energies, densities, sigma, weights)
 }
 
 // Display width of a spectral density's smoothing as a share of the frequency span drawn: about
@@ -266,13 +246,13 @@ export function display_smoother(
   return { x: in_grid_order ? [...grid] : point_x, smooth }
 }
 
-// Nadaraya-Watson Gaussian smoother Σ w·y / Σ w for a scattered (x, y) series. Unlike the DOS
-// convolution above it estimates a FUNCTION, not a density: exact on constants, no end droop.
+// Nadaraya-Watson Gaussian smoother Σ w·y / Σ w for a scattered (x, y) series: it estimates a
+// FUNCTION, not a density, so it is exact on constants with no end droop.
 export const gaussian_kernel_smooth = (
   x_values: number[],
   y_values: number[],
   sigma: number,
-): number[] => (sigma <= 0 ? y_values : gaussian_pass(x_values, y_values, sigma, null))
+): number[] => (sigma <= 0 ? y_values : gaussian_pass(x_values, y_values, sigma))
 
 // Type guards for pymatgen qpoint formats
 const is_vec3 = (val: unknown): val is Vec3 =>
@@ -390,10 +370,17 @@ function convert_pymatgen_band_structure(
 
   if (!is_filled_array(raw_qpts) || !is_filled_array(raw_bands)) return null
   const label_entries = Object.entries(labels_dict ?? {})
-  const qpoints = raw_qpts
-    .map((qpoint) => parse_qpoint(qpoint, label_entries))
-    .filter((qpoint): qpoint is types.QPoint => qpoint !== null)
-  if (qpoints.length === 0) return null
+  // a dropped q-point would shift every later band value onto the wrong k
+  const qpoints = raw_qpts.map((qpoint, idx) => {
+    const parsed = parse_qpoint(qpoint, label_entries)
+    if (parsed) return parsed
+    throw new Error(
+      `q-point ${idx} of ${raw_qpts.length} is not a 3-vector or k-point: ${JSON.stringify(qpoint)}`,
+    )
+  })
+  assert_band_lengths(raw_bands, qpoints.length)
+  if (raw_spin_down_bands)
+    assert_band_lengths(raw_spin_down_bands, qpoints.length, raw_bands.length)
 
   // Step lengths are Cartesian reciprocal-space distances |Mᵀ·Δq| (like pymatgen/phonopy);
   // a fractional metric would distort every non-cubic path. Transpose once, not per step.
@@ -446,15 +433,6 @@ function convert_pymatgen_band_structure(
     })
   }
 
-  const valid_spin_down_bands =
-    Array.isArray(raw_spin_down_bands) &&
-    raw_spin_down_bands.length === raw_bands.length &&
-    raw_spin_down_bands.every(
-      (band, band_idx) => Array.isArray(band) && band.length === raw_bands[band_idx]?.length,
-    )
-      ? raw_spin_down_bands
-      : null
-
   return {
     type,
     ...(typeof pmg.efermi === `number` && { efermi: to_data_unit([pmg.efermi])[0] }),
@@ -463,7 +441,7 @@ function convert_pymatgen_band_structure(
     branches,
     distance,
     bands: raw_bands.map(to_data_unit),
-    spin_down_bands: valid_spin_down_bands?.map(to_data_unit),
+    spin_down_bands: raw_spin_down_bands?.map(to_data_unit),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
     ...(typeof pmg.has_nac === `boolean` && { has_nac: pmg.has_nac }),
@@ -481,8 +459,26 @@ const is_valid_branch = ({ start_index, end_index }: types.Branch, n_qpts: numbe
   start_index <= end_index &&
   end_index < n_qpts
 
-// Returns null for shapes that are not a band structure at all. A pymatgen-shaped input that
-// lacks its reciprocal lattice throws an Error naming the missing key (see read_recip_lattice).
+// Throws naming the first band (or spin-down band) whose length is not the q-point count, or a
+// spin-down channel whose band count differs from the spin-up one
+const assert_band_lengths = (bands: unknown, n_qpts: number, n_up_bands?: number): void => {
+  const kind = n_up_bands === undefined ? `band` : `spin-down band`
+  if (!Array.isArray(bands) || (n_up_bands !== undefined && bands.length !== n_up_bands))
+    throw new Error(
+      `spin-down channel has ${Array.isArray(bands) ? bands.length : typeof bands} bands, expected ${n_up_bands}`,
+    )
+  const bad_idx = bands.findIndex((band) => !Array.isArray(band) || band.length !== n_qpts)
+  if (bad_idx === -1) return
+  const band = bands[bad_idx]
+  const got = Array.isArray(band) ? `${band.length} values` : JSON.stringify(band)
+  throw new Error(
+    `${kind} ${bad_idx} of ${bands.length} has ${got}, expected one per q-point (${n_qpts})`,
+  )
+}
+
+// Returns null for shapes that are not a band structure at all. A band-structure-shaped input
+// whose parts disagree (unparsable q-point, band or distance length != q-point count, branch
+// out of range, missing pymatgen reciprocal lattice) throws an Error naming the mismatch.
 export function normalize_band_structure(
   band_struct: unknown,
 ): types.BaseBandStructure | null {
@@ -502,30 +498,34 @@ export function normalize_band_structure(
     return null
 
   const n_qpts = qpoints.length
-  if (
-    n_qpts === 0 ||
-    bands.length === 0 ||
-    distance.length !== n_qpts ||
-    bands.some((band) => !Array.isArray(band) || band.length !== n_qpts) ||
-    !branches.every((branch) => is_valid_branch(branch, n_qpts))
-  )
-    return null
+  if (n_qpts === 0 || bands.length === 0) return null
+  if (distance.length !== n_qpts)
+    throw new Error(
+      `distance has ${distance.length} values, expected one per q-point (${n_qpts})`,
+    )
+  assert_band_lengths(bands, n_qpts)
+  const { spin_down_bands } = band_struct
+  if (spin_down_bands != null) assert_band_lengths(spin_down_bands, n_qpts, bands.length)
+  // findIndex: a falsy malformed entry (0, false, ``) must not read as "none found"
+  const bad_idx = branches.findIndex((branch) => !is_valid_branch(branch, n_qpts))
+  if (bad_idx !== -1)
+    throw new Error(
+      `branch ${JSON.stringify(branches[bad_idx])} is out of range for ${n_qpts} q-points`,
+    )
   const type = is_electronic_band_struct(band_struct) ? `electronic` : `phonon`
   const to_data_unit = band_unit_converter(band_struct.unit, type)
   if (!to_data_unit) return null
 
   // Fill the defaults (labels_dict/nb_bands) not covered above so the cast below is sound;
   // `unit` is dropped once applied, so normalizing again does not convert twice
-  const { unit: _applied, spin_down_bands, ...rest } = band_struct
+  const { unit: _applied, spin_down_bands: _down, ...rest } = band_struct
   return {
     ...rest,
     type,
     ...(typeof rest.efermi === `number` && { efermi: to_data_unit([rest.efermi])[0] }),
     bands: bands.map(to_data_unit),
-    ...(Array.isArray(spin_down_bands) && {
-      spin_down_bands: spin_down_bands.map((band) =>
-        Array.isArray(band) ? to_data_unit(band) : band,
-      ),
+    ...(spin_down_bands != null && {
+      spin_down_bands: (spin_down_bands as number[][]).map(to_data_unit),
     }),
     nb_bands: typeof rest.nb_bands === `number` ? rest.nb_bands : bands.length,
     labels_dict: rest.labels_dict ?? {},

@@ -39,33 +39,31 @@ const diag_lattice = (lattice_a: number, lattice_b = lattice_a, lattice_c = latt
 
 // oxfmt-ignore
 const water_xyz_rows = [
-  `H 0.757000 0.586000 0.000000`, `O 0.000000 0.000000 0.000000`,
-  `H -0.757000 0.586000 0.000000`,
+  `H 0.75700000 0.58600000 0.00000000`, `O 0.00000000 0.00000000 0.00000000`,
+  `H -0.75700000 0.58600000 0.00000000`,
 ]
 
 // oxfmt-ignore
 const xyz_cases = [
   { name: `simple structure`, structure: simple_structure,
-    expected: [`3`, `test_h2o H2 O`, ...water_xyz_rows] },
+    expected: [`3`, ...water_xyz_rows] },
   { name: `complex structure`, structure: complex_structure,
     expected: [
-      `7`, `test_complex Li Fe P O4`, `Li 0.000000 0.000000 0.000000`,
-      `Fe 2.500000 0.000000 0.000000`, `P 0.000000 2.500000 0.000000`,
-      `O 1.250000 1.250000 0.000000`, `O 3.750000 1.250000 0.000000`,
-      `O 1.250000 3.750000 0.000000`, `O 3.750000 3.750000 0.000000`,
+      `7`, `Li 0.00000000 0.00000000 0.00000000`,
+      `Fe 2.50000000 0.00000000 0.00000000`, `P 0.00000000 2.50000000 0.00000000`,
+      `O 1.25000000 1.25000000 0.00000000`, `O 3.75000000 1.25000000 0.00000000`,
+      `O 1.25000000 3.75000000 0.00000000`, `O 3.75000000 3.75000000 0.00000000`,
     ] },
-  { name: `structure without ID`, structure: { ...simple_structure, id: undefined },
-    expected: [`3`, `H2 O`, ...water_xyz_rows] },
-  { name: `empty structure`, structure: { ...simple_structure, sites: [] },
-    expected: [`0`, `test_h2o`] },
+  { name: `empty structure`, structure: { ...simple_structure, sites: [] }, expected: [`0`] },
 ]
 
 describe(`Export functionality`, () => {
-  // the comment line continues with Lattice=/Properties= metadata, checked separately below
+  // the comment holds only key=value metadata (checked separately below): ASE reads bare
+  // words such as the id or formula as boolean flags
   it.each(xyz_cases)(`writes $name as XYZ`, ({ structure, expected }) => {
     const [count, comment, ...rows] = structure_to_xyz_str(structure).split(`\n`)
-    expect(comment.startsWith(expected[1])).toBe(true)
-    expect([count, ...rows]).toEqual([expected[0], ...expected.slice(2)])
+    expect(comment).toMatch(/^(?:Lattice|Properties)=/)
+    expect([count, ...rows]).toEqual(expected)
   })
 
   describe(`Round-trip exporters`, () => {
@@ -146,21 +144,6 @@ describe(`Export functionality`, () => {
       assert(reparsed && `lattice` in reparsed)
       expect(reparsed.lattice.pbc).toEqual([true, false, false])
     })
-
-    // `=`/`"` in a label would invent a key=value pair; a newline would split the comment,
-    // shifting every atom line down one and making the count a lie
-    it.each([
-      [`run=1 "trial"`, `run1 trial`],
-      [`line1\nline2`, `line1 line2`],
-    ])(`sanitizes id %j into the comment label %j`, (id, label) => {
-      const exported = structure_to_xyz_str({ id, sites: [make_site(`H`)] })
-      const lines = exported.split(`\n`)
-      expect(lines).toHaveLength(3) // count, comment, one atom
-      expect(lines[1].startsWith(label)).toBe(true)
-      // the only key=value pair left is the one this exporter meant to write
-      expect(lines[1].match(/=/g)).toHaveLength(1) // Properties=
-      expect(parse_xyz(exported)?.sites).toHaveLength(1)
-    })
   })
 
   describe(`Coordinate handling and conversion`, () => {
@@ -191,7 +174,7 @@ describe(`Export functionality`, () => {
 
         const lattice_T = math.transpose_3x3(lattice_matrix)
         const expected = math.mul_3x3_vec3(lattice_T, abc)
-        expect(lines[2]).toBe(`C ${expected.map((coord) => coord.toFixed(6)).join(` `)}`)
+        expect(lines[2]).toBe(`C ${expected.map((coord) => coord.toFixed(8)).join(` `)}`)
       },
     )
 
@@ -567,22 +550,25 @@ describe(`Export functionality`, () => {
     // CIF keeps only cell parameters, which readers rebuild as a right-handed cell, so a
     // left-handed lattice (det < 0) came back as its mirror image: the C->(H, F, Cl) triple
     // product flipped from +1.68 to -1.68 (pymatgen's CifWriter does the same). POSCAR and
-    // XYZ keep the matrix and +1.68.
+    // XYZ keep the matrix and +1.68. The C moment's projection on C->H (1) must survive too.
     it(`keeps the handedness of a left-handed lattice through CIF`, () => {
       const poscar = `left\n1.0\n0 6 0\n6 0 0\n0 0 6\nC H F Cl\n1 1 1 1\nCartesian\n0 0 0\n1 0 0\n0 1.2 0\n0 0 1.4`
       const original = parse_poscar(poscar)
       expect(math.det_3x3(original.lattice.matrix)).toBeCloseTo(-216, 10)
+      original.sites[0].properties.magmom = [1, 2, 3]
       // C->X minimum-image bond vectors, so wrapping a coordinate cannot move an atom
-      const triple_product = ({ sites, lattice }: typeof original): number => {
+      const invariants = ({ sites, lattice }: typeof original): number[] => {
         const [carbon, ...others] = sites.map((site) => site.abc)
         const [vec_h, vec_f, vec_cl] = others.map((abc) => {
           const delta = math.subtract(abc, carbon)
           const min_image = delta.map((coord) => coord - Math.round(coord)) as Vec3
           return math.mul_3x3_vec3(math.transpose_3x3(lattice.matrix), min_image)
         })
-        return math.dot(vec_h, math.cross_3d(vec_f, vec_cl))
+        const magmom = sites[0].properties.magmom as Vec3
+        return [math.dot(vec_h, math.cross_3d(vec_f, vec_cl)), math.dot(magmom, vec_h)]
       }
-      expect(triple_product(original)).toBeCloseTo(1.68, 12)
+      const close_to = (digits: number) => [1.68, 1].map((val) => expect.closeTo(val, digits))
+      expect(invariants(original)).toEqual(close_to(12))
       const exported = structure_to_cif_str(original)
       // the lattice matrix alone (no a/b/c/angles) is all the writer needs
       const matrix_only = { ...original, lattice: { matrix: original.lattice.matrix } }
@@ -590,7 +576,7 @@ describe(`Export functionality`, () => {
       const reparsed = parse_cif(exported)
       expect(math.det_3x3(reparsed.lattice.matrix)).toBeGreaterThan(0)
       // 8-decimal fractional coords in a 6 Å cell leave ~1e-8 Å per coordinate
-      expect(triple_product(reparsed)).toBeCloseTo(1.68, 6)
+      expect(invariants(reparsed)).toEqual(close_to(6))
     })
 
     describe(`disordered sites`, () => {
@@ -718,7 +704,7 @@ describe(`Export functionality`, () => {
       { name: `precision in all formats`, lattice: diag_lattice(2.123456789, 2.987654321, 2.555555555),
         sites: [make_site(`H`, [0.123456789, 0.987654321, 0.555555555], [1.23456789, 9.87654321, 5.55555555])],
         tests: [
-          { format: `xyz`, expected: `H 1.234568 9.876543 5.555556` },
+          { format: `xyz`, expected: `H 1.23456789 9.87654321 5.55555555` },
           { format: `cif`, expected: `0.12345679 0.98765432 0.55555555` },
           { format: `poscar`, expected: `0.12345679 0.98765432 0.55555555` },
         ] },
@@ -753,9 +739,9 @@ describe(`Export functionality`, () => {
     // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
     // oxfmt-ignore
     it.each([
-      { name: `with lattice information`, expected_comment: `lattice_test H Lattice="${cube2_lattice_str}" Properties=species:S:1:pos:R:3 pbc="T T T"`,
+      { name: `with lattice information`, expected_comment: `Lattice="${cube2_lattice_str}" Properties=species:S:1:pos:R:3 pbc="T T T"`,
         structure: { id: `lattice_test`, sites: [make_site(`H`)], lattice: diag_lattice(2) } },
-      { name: `without lattice information`, expected_comment: `no_lattice_test H Properties=species:S:1:pos:R:3`,
+      { name: `without lattice information`, expected_comment: `Properties=species:S:1:pos:R:3`,
         structure: { id: `no_lattice_test`, sites: [make_site(`H`)] } },
     ])(`handles XYZ $name correctly`, ({ structure, expected_comment }) => {
       expect(structure_to_xyz_str(structure).split(`\n`)[1]).toBe(expected_comment)
@@ -792,8 +778,8 @@ describe(`Export functionality`, () => {
       }
       const lines = structure_to_xyz_str(mixed_coords_structure).split(`\n`)
       expect(lines.slice(2, 4)).toEqual([
-        `H 1.000000 2.000000 3.000000`,
-        `O 1.000000 1.000000 1.000000`,
+        `H 1.00000000 2.00000000 3.00000000`,
+        `O 1.00000000 1.00000000 1.00000000`,
       ])
     })
   })

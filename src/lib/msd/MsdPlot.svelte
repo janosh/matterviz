@@ -96,7 +96,7 @@
           lag: lags[point_idx],
           n_origins: curve.n_origins[point_idx],
         })),
-        line_style: { stroke: color, stroke_width: 2 },
+        line_style: { color, width: 2 },
       }
       const fit = fitted.fits[idx]
       if (!show_fit || !fit) return [{ srs: msd_series, curve_label: curve.label }]
@@ -113,7 +113,7 @@
           legend_group: `Einstein fits`,
           visible,
           markers: `line` as const,
-          line_style: { stroke: color, stroke_width: 1, line_dash: `5,4` },
+          line_style: { color, width: 1, dash: `5,4` },
         },
       ].map((srs) => ({ srs, curve_label: curve.label }))
     })

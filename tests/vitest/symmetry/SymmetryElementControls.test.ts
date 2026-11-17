@@ -1,5 +1,6 @@
 // Tests for the per-kind symmetry-element visibility toggles (legend + checkboxes)
 import type { Vec3 } from '#lib/math.js'
+import { diagonal_matrix } from '#lib/structure/supercell.js'
 import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
 import {
   count_symmetry_elements,
@@ -127,13 +128,13 @@ describe(`SymmetryElementControls`, () => {
           return read_point()
         },
       }))
-      const tiling: Vec3 = [2, 2, 2]
-      const tiling_result = tile_symmetry_elements(elements, tiling)
+      const supercell = diagonal_matrix([2, 2, 2])
+      const tiling_result = tile_symmetry_elements(elements, supercell)
       const point_reads = read_point.mock.calls.length
       read_point.mockClear()
       mount_controls({
         elements,
-        tiling,
+        supercell,
         show_kinds: Object.fromEntries(elements.map(({ kind }) => [kind, true])),
         tiling_result: shared ? tiling_result : undefined,
       })
@@ -183,7 +184,8 @@ describe(`SymmetryElementControls`, () => {
   ])(
     `in_input_frame=$in_input_frame, repeats=$repeats explains unavailable toggles`,
     ({ in_input_frame, repeats, reason }) => {
-      mount_controls({ elements: SAMPLE_ELEMENTS, in_input_frame, tiling: [repeats, 1, 1] })
+      const supercell = diagonal_matrix([repeats, 1, 1])
+      mount_controls({ elements: SAMPLE_ELEMENTS, in_input_frame, supercell })
       const inputs = [...document.body.querySelectorAll(`input`)]
       expect(inputs).toHaveLength(6)
       expect(

@@ -33,6 +33,9 @@ const kpath_of = async (lattice: Matrix3x3, species: string[], frac_coords: Vec3
   return { kpath: high_symmetry_kpath(lattice, sym_data), sym_data }
 }
 
+// input-basis reciprocal coords in the path's primitive basis: f_prim = P·f_input (rows P)
+const in_prim = ({ primitive }: { primitive: Matrix3x3 }, frac: Vec3) =>
+  math.mul_3x3_vec3(primitive, frac)
 const max_abs_diff = (left: Vec3, right: Vec3): number =>
   Math.max(...left.map((val, idx) => Math.abs(val - right[idx])))
 
@@ -52,7 +55,10 @@ describe(`high_symmetry_kpath`, () => {
       expect(kpath.path).toEqual(path)
       expect(Object.keys(kpath.kpoints).toSorted()).toEqual(Object.keys(kpoints).toSorted())
       for (const [label, ref_coords] of Object.entries(kpoints))
-        expect(max_abs_diff(kpath.kpoints[label], ref_coords), label).toBeLessThan(1e-6)
+        expect(
+          max_abs_diff(kpath.kpoints[label], in_prim(kpath, ref_coords)),
+          label,
+        ).toBeLessThan(1e-6)
     },
   )
 
@@ -86,7 +92,7 @@ describe(`high_symmetry_kpath`, () => {
         return [1, -1].some((sign) =>
           Object.entries(ref_in_new).every(([label, frac]) => {
             const image = math.scale(math.mul_3x3_vec3(inv_rot_t, frac), sign)
-            const diff = math.subtract(kpath.kpoints[label], image)
+            const diff = math.subtract(kpath.kpoints[label], in_prim(kpath, image))
             return diff.every((val) => off_lattice(val) < 1e-6)
           }),
         )
@@ -115,16 +121,14 @@ describe(`kpath_to_k_path_data`, () => {
       [0, 3, 0],
       [0, 0, 4],
     ]
-    const k_path = kpath_to_k_path_data(
-      {
-        kpoints: { Γ: [0, 0, 0], X: [0.5, 0, 0], Y: [0, 0.5, 0], Z: [0, 0, 0.5] },
-        path: [
-          [`Γ`, `X`, `Y`],
-          [`Z`, `Γ`],
-        ],
-      },
+    const k_path = kpath_to_k_path_data({
+      kpoints: { Γ: [0, 0, 0], X: [0.5, 0, 0], Y: [0, 0.5, 0], Z: [0, 0, 0.5] },
+      path: [
+        [`Γ`, `X`, `Y`],
+        [`Z`, `Γ`],
+      ],
       k_lattice,
-    )
+    })
     expect(k_path.labels).toEqual([`Γ`, `X`, `Y`, `Z`, `Γ`])
     expect(k_path.points).toEqual([
       [0, 0, 0],
@@ -141,10 +145,11 @@ describe(`kpath_to_k_path_data`, () => {
 
   test(`throws on a path label without a k-point`, () => {
     expect(() =>
-      kpath_to_k_path_data(
-        { kpoints: { Γ: [0, 0, 0] }, path: [[`Γ`, `X`]] },
-        math.IDENTITY_3X3,
-      ),
+      kpath_to_k_path_data({
+        kpoints: { Γ: [0, 0, 0] },
+        path: [[`Γ`, `X`]],
+        k_lattice: math.IDENTITY_3X3,
+      }),
     ).toThrow(`k-path label X has no k-point`)
   })
 })

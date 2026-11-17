@@ -82,11 +82,13 @@ export interface BarStyle {
 // d3-shape curve used to connect series points; `linear` draws straight segments
 export type LineCurve = `linear` | `monotone` | `natural` | `step` | `basis` | `catmull-rom`
 
+// The one line vocabulary of every plot: series `line_style`, `styles.line` overrides, ternary
+// and pressure-temperature lines
 export interface LineStyle {
   color?: string
   width?: number
-  dash?: string
-  [key: string]: unknown
+  dash?: string // SVG stroke-dasharray
+  curve?: LineCurve // d3-shape curve for the connecting line; `linear` = straight segments
 }
 
 export type Markers = `line` | `points` | `line+points` | `none`
@@ -136,12 +138,7 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   // a distinct axis_group forces a separate axis (e.g. log-scaled convergence
   // residuals in eV must not share the linear energy axis).
   axis_group?: string
-  line_style?: {
-    stroke?: string
-    stroke_width?: number
-    line_dash?: string
-    curve?: LineCurve // d3-shape curve for the connecting line; `linear` = straight segments
-  }
+  line_style?: LineStyle
   // Point indices where the line lifts the pen and starts anew, ascending: many disjoint
   // stretches in one series draw as one path (a band across a path's branches)
   line_breaks?: readonly number[]
@@ -331,7 +328,7 @@ export type ColorScale = D3InterpolateName | ColorScaleConfig
 export type SizeScaleConfig = {
   type?: ScaleType
   radius_range?: Vec2
-  value_range?: Vec2
+  value_range?: [number | null, number | null] // null ends follow the data, like ColorScaleConfig
 }
 
 // Shared defaults for color/size scales and colorbar layout (scatter, bar, binned-scatter, …)
@@ -542,10 +539,7 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   x_axis?: `x` | `x2`
   // Specify which y-axis to use: 'y' (left, default) or 'y2' (right)
   y_axis?: `y` | `y2`
-  line_style?: {
-    stroke_width?: number
-    line_dash?: string
-  }
+  line_style?: Pick<LineStyle, `width` | `dash`>
   // Marker-related fields for line series (matching DataSeries)
   markers?: Markers // 'line' | 'points' | 'line+points' | 'none'
   color_values?: (number | null)[] | null
@@ -678,12 +672,7 @@ export interface StyleOverrides {
     // per-series symbol cycle; the VS Code `scatter.symbol_type` setting lands here)
     symbol_type?: D3SymbolName
   }
-  line?: {
-    width?: number
-    color?: string
-    opacity?: number
-    dash?: string
-  }
+  line?: Omit<LineStyle, `curve`> & { opacity?: number }
   show_points?: boolean
   show_lines?: boolean
 }

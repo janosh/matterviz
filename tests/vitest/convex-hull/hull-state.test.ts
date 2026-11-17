@@ -134,10 +134,10 @@ describe(`compute_hull_model`, () => {
   // E_form-only, precomputed mode left LiO without one and it vanished from the hull
   test(`precomputed mode computes a dropped E_form where references allow`, () => {
     const entries: PhaseData[] = [
-      { composition: { Na: 1 }, e_form_per_atom: 0 } as PhaseData,
+      { composition: { Na: 1 }, e_form_per_atom: 0 },
       make_phase({ Li: 1 }, -2),
       make_phase({ O: 1 }, -5),
-      { composition: { Na: 1, O: 1 }, e_form_per_atom: -1, entry_id: `NaO` } as PhaseData,
+      { composition: { Na: 1, O: 1 }, e_form_per_atom: -1, entry_id: `NaO` },
       make_phase({ Li: 1, O: 1 }, -6, {
         e_form_per_atom: -2.5,
         entry_id: `LiO`,
@@ -152,16 +152,11 @@ describe(`compute_hull_model`, () => {
     expect([e_form_of(`LiO`), e_form_of(`NaO`)]).toEqual([-3, -1])
   })
 
-  // E_form-only data (no energy, or a 0 eV placeholder) keeps its E_form in either mode:
-  // recomputing it from 0 eV energies put every entry at E_form = 0 on a flat stable hull
-  test.each([
-    [`no energy`, `precomputed`],
-    [`no energy`, `on-the-fly`],
-    [`0 eV placeholder`, `precomputed`],
-    [`0 eV placeholder`, `on-the-fly`],
-  ] as const)(
-    `E_form-only entries keep their E_form (%s, %s)`,
-    (energy, energy_source_mode) => {
+  // E_form-only data keeps its E_form in either mode: recomputing it from 0 eV energies put
+  // every entry at E_form = 0 on a flat stable hull
+  test.each([`precomputed`, `on-the-fly`] as const)(
+    `E_form-only entries keep their E_form (%s)`,
+    (energy_source_mode) => {
       const entries = (
         [
           [{ Li: 1 }, 0],
@@ -169,11 +164,7 @@ describe(`compute_hull_model`, () => {
           [{ Li: 2, O: 1 }, -2],
           [{ Li: 1, O: 1 }, -1],
         ] as const
-      ).map(([composition, e_form_per_atom]) =>
-        energy === `no energy`
-          ? ({ composition, e_form_per_atom } as PhaseData)
-          : { composition, e_form_per_atom, energy: 0 },
-      )
+      ).map(([composition, e_form_per_atom]): PhaseData => ({ composition, e_form_per_atom }))
       const model = compute_hull_model(entries, { energy_source_mode })
       // hull Li (0) → Li2O (−2 at x_O = 1/3) → O (0) is −1.5 at x_O = 1/2, so LiO sits 0.5 above
       expect(model.entries).toMatchObject([

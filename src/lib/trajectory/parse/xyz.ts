@@ -8,6 +8,9 @@ import type { ElementSymbol } from '#lib/element/types.js'
 import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '#lib/constants.js'
 import {
   cell_to_lattice_matrix,
+  is_finite_matrix3x3,
+  mat3x3_from_flat_col_major,
+  mat3x3_from_flat_row_major,
   is_finite_vec3,
   type Matrix3x3,
   transpose_3x3,
@@ -54,7 +57,7 @@ function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
-  return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as Matrix3x3
+  return mat3x3_from_flat_row_major(vals)
 }
 
 // i-PI heads each frame `# CELL(abcABC): a b c alpha beta gamma Step: 4 Bead: 0
@@ -255,6 +258,27 @@ const comment_scalar = (raw: string): number | boolean | undefined => {
   return Number.isFinite(num) ? num : EXTXYZ_BOOL.get(token.toLowerCase())
 }
 
+// ASE's 3x3 keys besides Lattice: it lists their 9 values column-major and writes every other
+// matrix as `_JSON [[...], ...]`, while other 9-value arrays stay flat in their listed order
+export const ASE_3X3_KEYS = new Set([`stress`, `virial`])
+
+// A quoted multi-value payload as ASE reads it: a flat vector (9 values stay flat), a 3x3 key's
+// column-major matrix, or a `_JSON` vector (ASE's 1-vector, as plain `7` is a scalar) or matrix
+function comment_signal(raw: string, key: string): number[] | Matrix3x3 | undefined {
+  if (raw.startsWith(`_JSON `)) {
+    const parsed: unknown = JSON.parse(raw.slice(`_JSON `.length))
+    const is_vector =
+      Array.isArray(parsed) && parsed.length > 0 && parsed.every(Number.isFinite)
+    return is_vector || is_finite_matrix3x3(parsed) ? parsed : undefined
+  }
+  const values = raw.split(/[\s,]+/u).map(parse_float_token)
+  if (!values.every(Number.isFinite)) return undefined
+  if (values.length === 9 && ASE_3X3_KEYS.has(key)) return mat3x3_from_flat_col_major(values)
+  // A 6-value stress is Voigt order (ASE's own writer), which ase_stress_metadata expands
+  if (key === `stress`) return values.length === 6 ? values : undefined
+  return values
+}
+
 // One pass over the comment's pairs yields every view a frame needs: scalars, flags, quoted
 // 3-/9-component signals and the step. Two passes had drifted apart on their reserved keys.
 export function parse_xyz_comment_metadata(comment: string): {
@@ -274,20 +298,10 @@ export function parse_xyz_comment_metadata(comment: string): {
     if (RESERVED_COMMENT_KEY_RE.test(lower)) continue
     const value = comment_scalar(raw)
     if (value === undefined) {
-      // Not a scalar: a quoted multi-value payload is a vec3 or a 3x3 matrix signal
-      if (quoted === undefined) continue
-      const values = raw
-        .trim()
-        .split(/[\s,]+/u)
-        .map(parse_float_token)
-      if (!values.every(Number.isFinite)) continue
-      // under `lower` like the scalars below: `Stress=` and `stress=` are one series. A
-      // 6-value stress is Voigt order (ASE's own writer), which ase_stress_metadata expands.
-      if (values.length === 3 || (values.length === 6 && lower === `stress`)) {
-        signals[lower] = values
-      } else if (values.length === 9) {
-        signals[lower] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
-      }
+      // Not a scalar: a quoted multi-value payload is a vector or 3x3 matrix signal, under
+      // `lower` like the scalars below: `Stress=` and `stress=` are one series
+      const signal = quoted === undefined ? undefined : comment_signal(raw.trim(), lower)
+      if (signal) signals[lower] = signal
       continue
     }
     // Lowercase, so `Free_Energy=` and `free_energy=` are one series, not two half-populated

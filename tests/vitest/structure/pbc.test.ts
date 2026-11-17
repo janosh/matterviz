@@ -52,7 +52,7 @@ const completion_counts = (
   options: ImageAtomOptions,
 ): Record<string, number> => {
   const counts: Record<string, number> = {}
-  for (const [idx, , , is_completion] of find_image_atoms(structure, options)) {
+  for (const { site_idx: idx, is_completion } of find_image_atoms(structure, options)) {
     const element = get_majority_element(structure.sites[idx]) ?? `?`
     if (is_completion) counts[element] = (counts[element] ?? 0) + 1
   }
@@ -114,7 +114,7 @@ function validate_image_tuples(
   { min_dist = 0.01, tol = 1e-8 } = {},
 ): void {
   const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
-  for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
+  for (const { site_idx: orig_idx, xyz: image_xyz, abc: image_abc } of image_atoms) {
     const { xyz, abc } = structure.sites[orig_idx]
     expect([...image_xyz, ...image_abc].every(Number.isFinite)).toBe(true)
     expect(euclidean_dist(xyz, image_xyz)).toBeGreaterThan(min_dist)
@@ -238,13 +238,13 @@ test(`completion images carry provenance, phase-1 face images do not`, () => {
   const image_atoms = find_image_atoms(structure, image_options())
   // the O copy at x=-0.5 completes the octahedron of the base corner Ti
   const completing = image_atoms.find(
-    ([site_idx, img_xyz]) =>
+    ({ site_idx, xyz: img_xyz }) =>
       site_idx === 2 && euclidean_dist(img_xyz, [-SRTIO3_A / 2, 0, 0]) < 1e-6,
   )
-  expect(completing?.[3]).toBe(true)
-  const boundary = image_atoms.filter(([site_idx]) => site_idx === 0)
+  expect(completing?.is_completion).toBe(true)
+  const boundary = image_atoms.filter(({ site_idx }) => site_idx === 0)
   expect(boundary).toHaveLength(7)
-  expect(boundary.map((img) => img[3])).toEqual(Array(7).fill(false))
+  expect(boundary.map((img) => img.is_completion)).toEqual(Array(7).fill(false))
   // Imported names remain ordinary data; only generated provenance identifies images.
   const source_properties = { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }
   for (const site of structure.sites) site.properties = { ...source_properties }
@@ -316,10 +316,10 @@ test.each(COMPLETIONS)(
     )
     const image_atoms = find_image_atoms(structure, image_options(completion))
     validate_image_tuples(structure, image_atoms)
-    expect(image_atoms.every(([idx, , , is_completion]) => idx === 4 && !is_completion)).toBe(
-      true,
-    )
-    expect(new Set(image_atoms.map(([, , abc]) => abc.join(`,`)))).toEqual(
+    expect(
+      image_atoms.every(({ site_idx, is_completion }) => site_idx === 4 && !is_completion),
+    ).toBe(true)
+    expect(new Set(image_atoms.map(({ abc }) => abc.join(`,`)))).toEqual(
       new Set([`1,0,0`, `0,1,0`, `1,1,0`, `0,0,1`, `1,0,1`, `0,1,1`, `1,1,1`]),
     )
   },
@@ -436,28 +436,30 @@ test.each(lattices)(
 
     // the corner atom has replicas in every +a/+b/+c combination; the center atom is beyond the
     // face tolerance so gets no boundary images (bond-completing ones are allowed)
-    const corner_xyz = image_atoms.filter(([idx]) => idx === 0).map(([, xyz]) => xyz)
+    const corner_xyz = image_atoms
+      .filter(({ site_idx }) => site_idx === 0)
+      .map(({ xyz }) => xyz)
     // oxfmt-ignore
     for (const shift of [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]]) {
       const expected = frac_to_cart(shift as Vec3)
       expect(corner_xyz.some((xyz) => euclidean_dist(xyz, expected) < 1e-8)).toBe(true)
     }
     expect(
-      image_atoms.filter(([idx, , , is_completion]) => idx === 2 && !is_completion),
+      image_atoms.filter(({ site_idx, is_completion }) => site_idx === 2 && !is_completion),
     ).toHaveLength(0)
 
     // the face atom at a=1 wraps to exactly a=0 (snapped, not 1e-16 noise) keeping b and c
-    const wrapped = image_atoms.find(([idx, , abc]) => idx === 1 && Math.abs(abc[0]) < 1e-8)
+    const wrapped = image_atoms.find(
+      ({ site_idx, abc }) => site_idx === 1 && Math.abs(abc[0]) < 1e-8,
+    )
     if (!wrapped) throw new Error(`no wrapped a-face image found`)
-    expect(wrapped[2][0]).toBe(0)
-    expect(wrapped[2][1]).toBeCloseTo(0.5, 12)
-    expect(wrapped[2][2]).toBeCloseTo(0, 12)
+    expect(wrapped.abc).toEqual([0, expect.closeTo(0.5, 12), expect.closeTo(0, 12)])
 
     const image_sites = get_pbc_image_sites(structure, image_options()).sites.slice(
       structure.sites.length,
     )
     expect(image_sites.map(({ xyz, abc }) => [xyz, abc])).toEqual(
-      image_atoms.map(([, xyz, abc]) => [xyz, abc]),
+      image_atoms.map(({ xyz, abc }) => [xyz, abc]),
     )
   },
 )
@@ -479,7 +481,7 @@ test.each([
     const image_atoms = find_image_atoms(
       make_crystal(5, [[`Na`, abc]]),
       image_options(),
-    ).filter(([, , , is_completion]) => !is_completion)
+    ).filter(({ is_completion }) => !is_completion)
     expect(image_atoms.length).toBeGreaterThanOrEqual(min_images)
     expect(image_atoms.length).toBeLessThanOrEqual(max_images)
   },
@@ -552,7 +554,7 @@ test.each([
   const images = find_image_atoms(mp_1204603_struct, image_options(completion))
   expect(images).toHaveLength(n_images)
   const heights = math.cell_heights(mp_1204603_struct.lattice.matrix)
-  const overhangs = images.flatMap(([, , abc]) =>
+  const overhangs = images.flatMap(({ abc }) =>
     abc.map((coord, axis) => Math.max(0, -coord, coord - 1) * heights[axis]),
   )
   expect(Math.max(...overhangs)).toBeCloseTo(max_overhang, 2)
@@ -565,7 +567,9 @@ test(`find_image_atoms uses a 0.1 Å physical tolerance along the cell heights`,
     [`C`, [0.002, 0.5, 0.5]], // 0.2 Å from the face: no image
     [`H`, [0.0005, 0.5, 0.5]], // 0.05 Å from the face: imaged
   ])
-  expect(find_image_atoms(structure, image_options()).map(([idx]) => idx)).toEqual([1])
+  expect(find_image_atoms(structure, image_options()).map(({ site_idx }) => site_idx)).toEqual(
+    [1],
+  )
   const hexagonal: Matrix3x3 = [
     [4, 0, 0],
     [-2, 2 * Math.sqrt(3), 0],
@@ -573,7 +577,7 @@ test(`find_image_atoms uses a 0.1 Å physical tolerance along the cell heights`,
   ]
   // 0.027 * cell height 2√3 Å = 0.094 Å from the face (0.108 Å if measured along |a| = 4 Å)
   const skewed = make_crystal(hexagonal, [[`C`, [0.027, 0.5, 0.5]]])
-  expect(find_image_atoms(skewed, image_options()).map(([, , abc]) => abc)).toEqual([
+  expect(find_image_atoms(skewed, image_options()).map(({ abc }) => abc)).toEqual([
     [1.027, 0.5, 0.5],
   ])
 })
@@ -622,7 +626,7 @@ describe(`wrap_to_unit_cell`, () => {
 test(`find_image_atoms skips image generation along non-periodic axes (slab)`, () => {
   // Corner atom in a fully periodic cell generates images along all 3 dims. Counts are of
   // phase-1 images: phase 2 also completes the drawn 5 Å Na-Na bonds, but never across vacuum.
-  const is_boundary_image = ([, , , is_completion]: ImageAtom) => !is_completion
+  const is_boundary_image = ({ is_completion }: ImageAtom) => !is_completion
   const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
   const periodic_images = find_image_atoms(periodic, image_options()).filter(is_boundary_image)
   expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images
@@ -633,7 +637,7 @@ test(`find_image_atoms skips image generation along non-periodic axes (slab)`, (
     const slab = make_crystal(5, [[`Na`, [0, 0, z_coord]]], { pbc: [true, true, false] })
     const slab_images = find_image_atoms(slab, image_options())
     expect(slab_images.filter(is_boundary_image)).toHaveLength(3) // 2^2 - 1 in-plane images
-    for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(z_coord)
+    for (const { abc } of slab_images) expect(abc[2]).toBe(z_coord)
   }
 
   // Fully non-periodic: no images at all
@@ -701,7 +705,7 @@ test.each([
   }
   const options = { completion: `boundary`, bonding_strategy: `explicit_only`, bonding_options: {} } as const
   const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-  const completed = find_image_atoms(structure, options).filter(([site_idx, , , completion]) => site_idx === 1 && completion)
+  const completed = find_image_atoms(structure, options).filter(({ site_idx, is_completion }) => site_idx === 1 && is_completion)
   expect(completed).toHaveLength(n_completed)
   expect(warn_spy).toHaveBeenCalledTimes(n_completed ? 0 : 1)
   if (!n_completed) expect(warn_spy).toHaveBeenCalledWith(`Bond cell shifts reach 100000 cells, too far to complete periodic images`)

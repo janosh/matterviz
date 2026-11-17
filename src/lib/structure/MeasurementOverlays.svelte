@@ -194,7 +194,7 @@
         <!-- the nearest image, unless the drawn pair already is one (an image atom's own
           lattice vector included) -->
         {@const pbc = Math.hypot(
-          ...measure.pick_displacement(pos_i, pos_j, lattice?.matrix, undefined, lattice?.pbc),
+          ...measure.pick_displacement(pos_i, pos_j, lattice?.matrix, { pbc: lattice?.pbc }),
         )}
         <SceneLabel center position={math.lerp_vec3(pos_i, pos_j, 0.5)}>
           <span class="measure-label">

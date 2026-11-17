@@ -535,7 +535,7 @@ describe(`Bands component`, () => {
       await mount_plot({
         band_structs: { '': spin_polarized_electronic },
         line_kwargs: (band_idx: number, spin: string) => ({
-          stroke: own_stroke(band_idx, spin),
+          color: own_stroke(band_idx, spin),
         }),
         get highlighted_band_index() {
           return highlight.current
@@ -566,7 +566,7 @@ describe(`Bands component`, () => {
     await mount_plot({
       band_structs: { PBE: spin_polarized_electronic, HSE: spin_polarized_electronic },
       line_kwargs: (_band_idx: number, _spin: string, structure: string) => ({
-        stroke: strokes[structure],
+        color: strokes[structure],
       }),
     })
     const series = [...document.querySelectorAll(`g[data-series-id]`)].map((group) => {
@@ -602,14 +602,22 @@ describe(`Bands component`, () => {
   })
 
   // Bands 0 and 1 of the fixture cross E_F = 0 (a metal). Occupations decide filling over E_F:
-  // a non-SCF line-mode VBM can rise above the SCF E_F (here by 30 meV)
+  // a non-SCF line-mode VBM can rise above the SCF E_F (here by 30 meV). The label sits in the
+  // right margin only when all of it fits (80 px would clip "(indirect)").
   const filled_below_band_2 = [1, 1, 0, 0].map((occupation) => Array(4).fill(occupation))
   it.each([
-    [`semiconductor`, -0.95, undefined, /Eg:\s*0\.25 eV/], // bands 0-1 top at -0.05, band 2 at 0.2
-    [`VBM above E_F but insulating occupations`, -0.87, filled_below_band_2, /Eg:\s*0\.17 eV/],
+    [`semiconductor`, -0.95, undefined, /Eg:\s*0\.25 eV/, 80, `end`], // bands 0-1 top at -0.05, band 2 at 0.2
+    [
+      `VBM above E_F but insulating occupations`,
+      -0.87,
+      filled_below_band_2,
+      /Eg:\s*0\.17 eV/,
+      200,
+      `start`,
+    ],
   ])(
     `electronic gap annotation for a %s ignores the units prop`,
-    async (_desc, shift, occupations, gap_label) => {
+    async (_desc, shift, occupations, gap_label, pad_r, anchor) => {
       const bands = spin_polarized_electronic.bands.map((band, band_idx) =>
         band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
       )
@@ -618,9 +626,11 @@ describe(`Bands component`, () => {
         band_spin_mode: `up_only`,
         units: `cm^-1`,
         show_gap_annotation: true,
+        padding: { r: pad_r },
       })
       expect(document.body.textContent).toContain(`Electron energy (eV)`)
       expect(document.body.textContent).toMatch(gap_label)
+      expect(doc_query(`.gap-label`).getAttribute(`text-anchor`)).toBe(anchor)
     },
   )
 
@@ -641,7 +651,7 @@ describe(`Bands component`, () => {
       show_gap_annotation: true,
       ...(spin_mode && { band_spin_mode: spin_mode }),
     })
-    expect(doc_query(`.gap-label .gap-kind`).textContent?.trim()).toBe(kind)
+    expect(doc_query(`.gap-label .gap-kind`).textContent?.trim()).toBe(`(${kind})`)
     const markers = [...document.querySelectorAll(`circle.band-edge`)]
     expect(markers.map((marker) => marker.classList.contains(`vbm`))).toEqual([true, false])
     const [vbm_x, cbm_x] = markers.map((marker) => Number(marker.getAttribute(`cx`)))

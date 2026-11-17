@@ -22,9 +22,8 @@ import { whole_tile_counts } from '#lib/structure/supercell.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 
-// All element kinds in display order (axes first, then planes, then point elements).
-// Single source of truth for ordering — both the controls legend and the element list
-// returned by symmetry_elements_from_ops follow this sequence.
+// All element kinds in display order (axes, planes, then point elements), followed by both
+// the controls legend and symmetry_elements_from_ops.
 export const SYM_ELEM_KINDS = [
   `rotation`,
   `screw`,
@@ -64,9 +63,8 @@ export type SymmetryElement = {
 // Per-kind overlay visibility. Kinds absent from the record are hidden.
 export type ShowSymmetryKinds = Partial<Record<SymmetryElementKind, boolean>>
 
-// Default overlay visibility: a SINGLE kind (proper rotation axes). High-symmetry
-// structures easily have 100+ distinct elements which, drawn all at once, bury the
-// structure entirely. Users opt into additional kinds individually via
+// Default overlay visibility: proper rotation axes only. High-symmetry structures have 100+
+// elements that, drawn at once, bury the structure; users opt into more kinds via
 // SymmetryElementControls (or the show_kinds prop).
 export const DEFAULT_SHOW_SYM_KINDS: ShowSymmetryKinds = { rotation: true }
 
@@ -113,10 +111,9 @@ export function count_symmetry_elements(
   return counts
 }
 
-// Whether the overlay would actually draw something: at least one PRESENT element whose
-// kind is ENABLED in show_kinds. Used to gate declutter so callers don't hide polyhedra /
-// shrink atoms when the enabled kinds match no present element (e.g. the rotation-only
-// default on an inversion-only P-1 cell).
+// Whether some present element's kind is enabled in show_kinds. Gates declutter so callers
+// don't hide polyhedra / shrink atoms when nothing draws (e.g. the rotation-only default on
+// an inversion-only P-1 cell).
 export const has_visible_symmetry_overlay = (
   elements: readonly SymmetryElement[],
   show_kinds: ShowSymmetryKinds = DEFAULT_SHOW_SYM_KINDS,
@@ -476,13 +473,10 @@ export function classify_symmetry_op(
   return info ? classify_with_rotation_info(info, translation as Vec3) : null
 }
 
-// Derive all distinct symmetry elements (modulo lattice translations) from a list of
-// space-group operations. Each operation is classified, then re-anchored with the
-// lattice offsets t ∈ ℤ³ to enumerate the distinct in-cell instances of its element
-// family (e.g. the inversion centers of P-1 sit at all 8 half-lattice points; 2-fold
-// axes recur at quarter positions). Elements sharing the same geometric locus but
-// different symbols (e.g. a 2-fold axis inside a 4-fold axis) are kept as separate
-// entries — filter by `order`/`label` downstream if desired.
+// Distinct symmetry elements (modulo lattice translations) of space-group operations. Each
+// operation is classified, then re-anchored with lattice offsets t ∈ ℤ³ to enumerate the
+// in-cell instances of its family (e.g. P-1's 8 inversion centers at half-lattice points).
+// Elements sharing a locus but not a symbol (a 2-fold inside a 4-fold) stay separate entries.
 export function symmetry_elements_from_ops(
   operations: MoyoDataset[`operations`],
 ): SymmetryElement[] {
@@ -547,11 +541,9 @@ export function symmetry_elements_from_ops(
     .map(({ elem }) => elem)
 }
 
-// Evenly-spaced dash layout along a segment of given length (Å): returns dash centers
-// (distance from the segment start) and lengths. Dashes touch both segment ends so
-// dashed axes still visually span the full cell; the gap stretches as needed. Used to
-// render screw axes dashed (vs solid pure rotations) — translation-carrying elements
-// are dashed, echoing the ITA plane-group convention.
+// Evenly spaced dashes (centers from the segment start, lengths) along a segment (Å) that
+// touch both ends, stretching the gap, so dashed (translation-carrying, as in ITA) screw axes
+// still span the full cell.
 export function dash_segments(
   length: number,
   dash: number,
@@ -569,15 +561,13 @@ export function dash_segments(
   }))
 }
 
-// Convert a fractional direction or point to Cartesian coordinates (lattice rows are
-// basis vectors). Valid for axis directions AND plane normals (eigenvectors of the
-// fractional operator map to eigenvectors of the orthogonal Cartesian operator).
+// Fractional direction or point to Cartesian (lattice rows are basis vectors). Valid for plane
+// normals too: fractional eigenvectors map to eigenvectors of the Cartesian operator.
 export const frac_to_cart_direction = (frac: Vec3, lattice: Matrix3x3): Vec3 =>
   math.create_frac_to_cart(lattice)(frac)
 
-// Clip the line (point + t·direction, fractional) to the unit cell [0,1]³ using the
-// slab method, returning the Cartesian segment endpoints (or null if the line misses
-// the cell). Used to draw rotation/screw axes spanning the rendered cell.
+// Cartesian endpoints of the fractional line point + t·direction clipped to [0,1]³ (slab
+// method), or null if it misses the cell.
 export function clip_line_to_cell(
   point: Vec3,
   direction: Vec3,
@@ -663,22 +653,36 @@ export function clip_plane_family(
 // Bound merged geometry allocation after removing redundant copies.
 export const MAX_TILED_SYM_ELEMENTS = 4000
 const MAX_TILING_VISITS = 1_000_000
+const MAX_CLIP_ATTEMPTS = 1_000_000
 
 // Deduplicate translations along planes/axes, but retain every translated center marker.
-// A plane moves by the integer plane_normal · offset and a line by offset × axis (parallelism
-// is affine), so both keys are exact and independent of the metric. Identity keeps different
-// operations sharing a locus distinct.
-const tiled_element_key = (element: SymmetryElement) => {
+// A plane moves by the integer plane_normal · offset and a line by the offset modulo its axis
+// (parallelism is affine), each modulo the supercell lattice, so both keys are exact and
+// independent of the metric. Identity keeps different operations sharing a locus distinct.
+const tiled_element_key = (element: SymmetryElement, supercell: Matrix3x3) => {
   const identity = `${element.kind}|${element.label}|${element.order}|${element.locus}`
   const { axis, kind, plane_normal } = element
   let key = (offset: Vec3): string =>
     (kind === `rotoinversion` ? math.add(element.point, offset) : offset).join(`,`)
   let changes = [true, true, true]
   if (plane_normal) {
-    key = (offset) => String(math.dot(plane_normal, offset))
+    // levels n·offset that differ by a multiple of gcd(M·n) are one family in the supercell
+    const period = math.gcd_all(math.mul_3x3_vec3(supercell, plane_normal))
+    key = (offset) => String(((math.dot(plane_normal, offset) % period) + period) % period)
     changes = plane_normal.map((component) => component !== 0)
   } else if (axis && (kind === `rotation` || kind === `screw`)) {
-    key = (offset) => math.cross_3d(offset, axis).join(`,`)
+    // a line moves by its offset's coordinates (n₁·o, n₂·o) for covectors annihilating the
+    // axis, taken modulo the supercell rows' coordinates (a triangular 2D basis), so lines one
+    // supercell translation apart are one family, as for planes
+    const [, first, second] = math.unimodular_completion(axis)
+    const coords = (vec: Vec3): Vec3 => [math.dot(first, vec), math.dot(second, vec), 0]
+    const [[h11, h12], [, h22]] = triangular_basis(supercell.map(coords) as Matrix3x3)
+    key = (offset) => {
+      const [x_coord, y_coord] = coords(offset)
+      const wraps = Math.floor(x_coord / h11)
+      const y_wrapped = y_coord - wraps * h12
+      return `${x_coord - wraps * h11},${((y_wrapped % h22) + h22) % h22}`
+    }
     changes = axis.map((_, idx) =>
       axis.some((component, other) => other !== idx && component !== 0),
     )
@@ -686,49 +690,117 @@ const tiled_element_key = (element: SymmetryElement) => {
   return { identity, key, changes }
 }
 
-// Translate elements through the block, then divide coordinates/directions by tile counts
-// to express them in the block basis. Deduplicate after each axis to avoid walking every tile.
+// Integer rows reduced (by Euclid row operations) to an upper-triangular basis of the same
+// lattice: the box ∏[0, |H_ii|) of integer vectors is then one set of coset representatives
+// of ℤ³ modulo the lattice, i.e. the cells a supercell M (any integer matrix) holds
+const triangular_basis = (matrix: Matrix3x3): number[][] => {
+  const rows = matrix.map((row) => [...row])
+  for (let col = 0; col < 3; col++) {
+    for (let row = col + 1; row < 3; row++) {
+      while (rows[row][col] !== 0) {
+        const quotient = Math.trunc(rows[col][col] / rows[row][col])
+        rows[col] = rows[col].map((val, idx) => val - quotient * rows[row][idx])
+        ;[rows[col], rows[row]] = [rows[row], rows[col]]
+      }
+    }
+  }
+  return rows
+}
+
+// Translate elements through the supercell M's cells, then map coordinates/directions by M⁻¹
+// into the supercell basis (centers wrapped into it; lines and planes are drawn as families
+// of supercell translates anyway). Deduplicate after each axis to avoid walking every tile.
 // Refusal returns a visible reason, never a partial overlay or a render-time exception.
 function symmetry_tiling(
   elements: SymmetryElement[],
-  tiling: Vec3,
+  supercell: Matrix3x3,
   collect_elements: boolean,
 ): { elements: SymmetryElement[]; unavailable_reason: string | null } {
-  const counts = whole_tile_counts(tiling)
+  const counts = whole_tile_counts(
+    triangular_basis(supercell).map((row, idx) => Math.abs(row[idx])) as Vec3,
+  )
   const n_tiles = counts[0] * counts[1] * counts[2]
   const unavailable = (reason: string) => ({
     elements: [],
     unavailable_reason: `Symmetry overlay for tiling ${counts.join(`x`)} ${reason}. Reduce the supercell or hide element kinds.`,
   })
+  const too_many = `exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`
+  const too_costly = `exceeds the axis and plane clipping work limit`
   if (!counts.every(Number.isFinite)) return unavailable(`needs finite repeat counts`)
-  if (!elements.length || (n_tiles === 1 && elements.length <= MAX_TILED_SYM_ELEMENTS))
-    return { elements, unavailable_reason: null }
-  // Below this upper bound, neither the element cap nor the traversal cap can be hit.
-  if (!collect_elements && elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS)
-    return { elements: [], unavailable_reason: null }
-  const shrink = (vec: Vec3): Vec3 => [
-    vec[0] / counts[0],
-    vec[1] / counts[1],
-    vec[2] / counts[2],
-  ]
+  if (!elements.length) return { elements, unavailable_reason: null }
+  // x · M⁻¹ as integer numerators (det · M⁻ᵀ = cof(M)) over det. Cofactors and det (row 0's
+  // expansion) are exact in BigInt, where Number products of large entries round past 2^53;
+  // entries round to integers (fractional repeat counts are whole tiles)
+  const big_dot = (big_row: bigint[], vec: number[]): bigint =>
+    big_row.reduce((sum, val, col) => sum + val * BigInt(Math.round(vec[col])), 0n)
+  const others = (idx: number) => [0, 1, 2].filter((other) => other !== idx)
+  const big_cofactors = [0, 1, 2].map((row) => {
+    const [m0, m1] = others(row).map((idx) =>
+      supercell[idx].map((val) => BigInt(Math.round(val))),
+    )
+    return [0, 1, 2].map((col) => {
+      const [c0, c1] = others(col)
+      const minor = m0[c0] * m1[c1] - m0[c1] * m1[c0]
+      return (row + col) % 2 ? -minor : minor
+    })
+  })
+  const det = Number(big_dot(big_cofactors[0], supercell[0]))
+  const numerators = big_cofactors.map((row) => row.map(Number)) as Matrix3x3
+  const shrink = (vec: Vec3): Vec3 =>
+    math.mul_3x3_vec3(numerators, vec).map((val) => val / det) as Vec3
+  const supercell_t = math.transpose_3x3(supercell)
+  // an offset is reduced by the whole supercells it spans, so the supercell holds every
+  // image of a center inside the input cell (others stay outside)
+  const supercell_point = (point: Vec3, offset: Vec3): Vec3 => {
+    const whole_cells = math.mul_3x3_vec3(supercell_t, shrink(offset).map(Math.floor) as Vec3)
+    const center = shrink(math.add(point, math.subtract(offset, whole_cells)))
+    // input-cell points wrap into the supercell; explicit outside-cell points stay as given
+    if (!point.every((val) => val >= 0 && val < 1)) return center
+    return center.map((val) => val - Math.floor(val)) as Vec3
+  }
   // Directions stay primitive integer vectors in the block basis, as the family clippers need:
-  // axis_i / counts_i times the lcm of its nonzero components' counts; plane indices × counts
+  // axis · M⁻¹ = cof(M)·axis / det: its direction sign(det)·cof(M)·axis reduced exactly in
+  // BigInt (huge diagonal supercells pass 2^53; a float ratio search merged near-parallel axes)
+  const big_gcd = (val_a: bigint, val_b: bigint): bigint =>
+    val_b === 0n ? (val_a < 0n ? -val_a : val_a) : big_gcd(val_b, val_a % val_b)
   const block_axis = (axis: Vec3): Vec3 => {
-    const lcm = axis.reduce(
-      (acc, val, idx) => (val === 0 ? acc : (acc / math.gcd(acc, counts[idx])) * counts[idx]),
-      1,
-    )
-    return math.reduce_miller_indices(
-      axis.map((val, idx) => (val * lcm) / counts[idx]) as Vec3,
-    )
+    const dir = big_cofactors.map((row) => big_dot(row, axis) * BigInt(Math.sign(det)))
+    const divisor = dir.reduce(big_gcd, 0n) || 1n
+    return dir.map((val) => Number(val / divisor)) as Vec3
   }
   const block_normal = (normal: Vec3): Vec3 =>
-    math.reduce_miller_indices(normal.map((val, idx) => val * counts[idx]) as Vec3)
+    math.reduce_miller_indices(math.mul_3x3_vec3(supercell, normal))
+  // Axes and planes are drawn by clipping every family translate that can cross the cell
+  // (clip_axis_family, clip_plane_family: L1 norm + 1 shifts per covector), bounded here
+  // where the block-basis directions are known
+  const shift_count = (covector: Vec3) =>
+    covector.reduce((sum, val) => sum + Math.abs(val), 0) + 1
+  const clip_attempts = ({ axis, plane_normal }: SymmetryElement): number => {
+    if (plane_normal) return shift_count(block_normal(plane_normal))
+    if (!axis) return 0
+    const [, first, second] = math.unimodular_completion(block_axis(axis))
+    return shift_count(first) * shift_count(second)
+  }
+  const attempts = elements.map(clip_attempts)
+  const total_attempts = attempts.reduce((sum, val) => sum + val, 0)
+  // an already-sheared input cell can hand over costly families even without a supercell
+  if (is_identity(supercell) && elements.length <= MAX_TILED_SYM_ELEMENTS)
+    return total_attempts <= MAX_CLIP_ATTEMPTS
+      ? { elements, unavailable_reason: null }
+      : unavailable(too_costly)
+  // Below these upper bounds, none of the element, traversal or clipping caps can be hit.
+  if (
+    !collect_elements &&
+    elements.length * n_tiles <= MAX_TILED_SYM_ELEMENTS &&
+    total_attempts * n_tiles <= MAX_CLIP_ATTEMPTS
+  )
+    return { elements: [], unavailable_reason: null }
   const tiled: SymmetryElement[] = []
   const seen = new Set<string>()
   let visits = 0
-  for (const element of elements) {
-    const { identity, key, changes } = tiled_element_key(element)
+  let clip_work = 0
+  for (const [element_idx, element] of elements.entries()) {
+    const { identity, key, changes } = tiled_element_key(element, supercell)
     let offsets: Vec3[] = [[0, 0, 0]]
     // Exact keys only gain distinct values as axes are added, so the cap holds after each axis
     for (const axis of [2, 1, 0].filter((dim) => counts[dim] > 1 && changes[dim])) {
@@ -740,8 +812,7 @@ function symmetry_tiling(
           shifted[axis] = step
           const locus = key(shifted)
           if (!unique.has(locus)) unique.set(locus, shifted)
-          if (unique.size > MAX_TILED_SYM_ELEMENTS)
-            return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
+          if (unique.size > MAX_TILED_SYM_ELEMENTS) return unavailable(too_many)
         }
       }
       offsets = [...unique.values()]
@@ -749,13 +820,14 @@ function symmetry_tiling(
     for (const offset of offsets) {
       const locus = `${identity}|${key(offset)}`
       if (seen.has(locus)) continue
-      if (seen.size >= MAX_TILED_SYM_ELEMENTS)
-        return unavailable(`exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`)
+      if (seen.size >= MAX_TILED_SYM_ELEMENTS) return unavailable(too_many)
       seen.add(locus)
+      if ((clip_work += attempts[element_idx]) > MAX_CLIP_ATTEMPTS)
+        return unavailable(too_costly)
       if (collect_elements)
         tiled.push({
           ...element,
-          point: shrink(element.point.map((coord, axis) => coord + offset[axis]) as Vec3),
+          point: supercell_point(element.point, offset),
           axis: element.axis && block_axis(element.axis),
           plane_normal: element.plane_normal && block_normal(element.plane_normal),
           translation: element.translation && shrink(element.translation),
@@ -768,11 +840,11 @@ function symmetry_tiling(
 // The controls can preflight candidates without allocating block-frame element copies.
 export const symmetry_tiling_reason = (
   elements: SymmetryElement[],
-  tiling: Vec3,
-): string | null => symmetry_tiling(elements, tiling, false).unavailable_reason
+  supercell: Matrix3x3,
+): string | null => symmetry_tiling(elements, supercell, false).unavailable_reason
 
 export const tile_symmetry_elements = (
   elements: SymmetryElement[],
-  tiling: Vec3,
+  supercell: Matrix3x3,
 ): { elements: SymmetryElement[]; unavailable_reason: string | null } =>
-  symmetry_tiling(elements, tiling, true)
+  symmetry_tiling(elements, supercell, true)

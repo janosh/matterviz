@@ -22,7 +22,7 @@ const is_matrix3x3 = (value: unknown): value is Matrix3x3 =>
   value.length === 3 &&
   value.every((row) => Array.isArray(row) && row.length === 3)
 
-const diagonal_matrix = (factors: Vec3): Matrix3x3 =>
+export const diagonal_matrix = (factors: Vec3): Matrix3x3 =>
   AXES.map((row) => AXES.map((col) => (row === col ? factors[row] : 0))) as Matrix3x3
 
 // The integer supercell matrix of any SupercellScaling form. Diagonal forms need positive

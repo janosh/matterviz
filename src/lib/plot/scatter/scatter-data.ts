@@ -307,28 +307,18 @@ export const legend_row_dedupe = () => {
   }
 }
 
-// Shared by drawing and legend swatches, including the fallback when no stroke is authored.
-export function scatter_line_style<Metadata>(
+// A line's colour when neither `styles.line` nor its `line_style` sets one: its shown point
+// fill, else its first colour value through the scale, else its palette slot. Shared by the
+// drawn line and its legend swatch.
+export function line_fallback_color<Metadata>(
   series: DataSeries<Metadata>,
   series_idx: number,
   color_scale: (value: number) => string,
-  override?: StyleOverrides[`line`],
-) {
+): string {
   const fill = shown_point_style(series)?.fill
-  let color =
-    override?.color ??
-    series.line_style?.stroke ??
-    (is_transparent_or_none(fill) ? undefined : fill)
-  if (color == null) {
-    const value = series.color_values?.find(is_finite_num)
-    color = value != null ? color_scale(value) : plot_color(series_idx)
-  }
-  return {
-    color,
-    width: override?.width ?? series.line_style?.stroke_width ?? 2,
-    dash: override?.dash ?? series.line_style?.line_dash,
-    opacity: override?.opacity,
-  }
+  if (fill && !is_transparent_or_none(fill)) return fill
+  const value = series.color_values?.find(is_finite_num)
+  return value != null ? color_scale(value) : plot_color(series_idx)
 }
 
 // Legend rows of the series, first matching identity wins. Their legend_key never collides
@@ -375,15 +365,14 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
     }
 
     if (has_marker(data_series, `line`) && styles.show_lines !== false) {
-      const line = scatter_line_style(
-        data_series,
-        series_idx,
-        color_scale_fn,
-        series_idx === selected_series_idx ? styles.line : undefined,
-      )
-      display_style.line_color = line.color
-      display_style.line_dash = line.dash
-      display_style.line_opacity = line.opacity
+      const override = series_idx === selected_series_idx ? styles.line : undefined
+      const { line_style } = data_series
+      display_style.line_color =
+        override?.color ??
+        line_style?.color ??
+        line_fallback_color(data_series, series_idx, color_scale_fn)
+      display_style.line_dash = override?.dash ?? line_style?.dash
+      display_style.line_opacity = override?.opacity
     }
 
     return display_style
@@ -453,7 +442,7 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
   if (has_marker(series, `line`)) {
     const series_style = shown_point_style(series)
     candidates.push(
-      series?.line_style?.stroke,
+      series?.line_style?.color,
       series_style?.fill,
       scale(series?.color_values?.[0]),
     )

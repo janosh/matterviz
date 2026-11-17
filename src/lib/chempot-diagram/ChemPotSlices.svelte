@@ -46,8 +46,8 @@
         markers: `line`,
         label: domain_formula_text(formula),
         line_style: {
-          stroke: colors(formula) ?? `currentColor`,
-          stroke_width: 1.5,
+          color: colors(formula) ?? `currentColor`,
+          width: 1.5,
           curve: `linear`,
         },
       }))

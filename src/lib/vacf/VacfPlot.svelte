@@ -77,7 +77,7 @@
       visible: idx < max_visible_curves,
       markers: `line`,
       ...(metadata ? { metadata: metadata(curve) } : {}),
-      line_style: { stroke: plot_color(idx), stroke_width: 2 },
+      line_style: { color: plot_color(idx), width: 2 },
     }))
 
   // n_origins per point so the tooltip can show how thin the tail is. The VDOS gets none:

@@ -5,7 +5,8 @@ import ColorFieldVolume from '#lib/structure/ColorFieldVolume.svelte'
 import type { AtomColorField } from '#lib/structure/atom-color-field.js'
 import { AtomFieldMaterial, ColorFieldTexture } from '#lib/structure/atom-color-field.js'
 import { flushSync, mount, unmount } from 'svelte'
-import type { Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import { useThrelte } from '@threlte/core'
 import type { InstancedBufferGeometry } from 'three/webgpu'
 import {
@@ -22,6 +23,7 @@ import {
   PerspectiveCamera,
   RepeatWrapping,
   SphereGeometry,
+  Vector3,
 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
@@ -99,12 +101,14 @@ const current_mesh = (): AtomInstances => threlte_stub.nodes.at(-1)?.props.is as
 const slot_color = (slot_idx: number): number[] =>
   Array.from(current_mesh().colors.array.slice(slot_idx * 3, slot_idx * 3 + 3))
 
-test(`volume cloud tiles periodic axes and reuses its mesh and texture across updates`, async () => {
+test(`volume cloud spans the supercell's periodic axes, reusing mesh and texture`, async () => {
   const update_texture = vi.spyOn(ColorFieldTexture.prototype, `update`)
   const encode = vi.spyOn(DataUtils, `toHalfFloat`)
   const dispose_texture = vi.spyOn(Data3DTexture.prototype, `dispose`)
   const field = make_field([1, 0, 0, 0.5, 0, 0, 0, 0], [2, 1, 1], [true, false, false])
-  const props = $state({ field, opacity: 0.35, tiling: [2, 3, 4] as Vec3 })
+  // oxfmt-ignore
+  const sheared: Matrix3x3 = [[2, 1, 0], [0, 3, 0], [1, 0, 4]]
+  const props = $state({ field, opacity: 0.35, supercell: sheared })
   const component = mount(ColorFieldVolume, { target: document.body, props })
   teardown = () => unmount(component)
   flushSync()
@@ -126,7 +130,11 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   expect(mesh.name).toBe(`ColorFieldVolume`)
   mesh.geometry.computeBoundingBox()
   expect(mesh.geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
-  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([2, 1, 1])
+  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 1, 1])
+  // the unit box's a/b/c edges map to M's rows, with non-periodic axes reset to identity
+  const edges = () =>
+    math.IDENTITY_3X3.flatMap((row) => new Vector3(...row).applyMatrix4(mesh.matrix).toArray())
+  expect(edges()).toEqual([2, 0, 0, 0, 1, 0, 0, 0, 1])
   expect(mesh.geometry.index?.count).toBe(36)
   expect(mesh.material).toMatchObject({
     transparent: true,
@@ -136,11 +144,9 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   expect(encode.mock.calls.map(([value]) => value)).toEqual([0.5, 0, 0, 0.5, 0, 0, 0, 0])
   encode.mockClear()
   dispose_texture.mockClear()
-  // Scaling changes only the proxy bounds; periodic sampling reuses the original grid.
-  flush_set(props, { tiling: [3, 2, 1] })
-  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([3, 1, 1])
-  flush_set(props, { tiling: [1, 1, 1] })
-  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 1, 1])
+  // A new supercell changes only the box transform; periodic sampling reuses the grid.
+  flush_set(props, { supercell: math.IDENTITY_3X3 })
+  expect(edges()).toEqual(math.IDENTITY_3X3.flat())
   expect(texture.version).toBe(texture_version)
   expect(encode).not.toHaveBeenCalled()
   expect(dispose_texture).not.toHaveBeenCalled()
@@ -175,8 +181,11 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   const periodic_texels = texture.image.data
   const periodic_version = texture.version
   encode.mockClear()
-  flush_set(props, { tiling: [2, 3, 4], field: { ...props.field, pbc: [false, true, false] } })
-  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 3, 1])
+  flush_set(props, {
+    supercell: sheared,
+    field: { ...props.field, pbc: [false, true, false] },
+  })
+  expect(edges()).toEqual([1, 0, 0, 0, 3, 0, 0, 0, 1])
   expect(texture).toMatchObject({
     wrapS: ClampToEdgeWrapping,
     wrapT: RepeatWrapping,
@@ -185,10 +194,23 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   })
   expect(texture.image.data).toBe(periodic_texels)
   expect(encode).not.toHaveBeenCalled()
+  // fully periodic, every shear term stays (edges are M's rows, not its columns)
+  flush_set(props, { field: { ...props.field, pbc: [true, true, true] } })
+  expect(edges()).toEqual(sheared.flat())
+  // a rotation of a into non-periodic b would mask to a singular map: draw the input cell
+  flush_set(props, {
+    field,
+    supercell: [
+      [0, 1, 0],
+      [-1, 0, 0],
+      [0, 0, 1],
+    ],
+  })
+  expect(edges()).toEqual(math.IDENTITY_3X3.flat())
   const dispose_geometry = vi.spyOn(mesh.geometry, `dispose`)
   await teardown?.()
   teardown = undefined
-  expect(dispose_texture).toHaveBeenCalledTimes(3)
+  expect(dispose_texture).toHaveBeenCalledTimes(4) // + the pbc changes above
   expect(dispose_geometry).toHaveBeenCalledTimes(1)
 })
 

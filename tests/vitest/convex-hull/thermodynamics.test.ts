@@ -6,6 +6,7 @@ import {
   compute_quickhull_nd,
   find_lowest_energy_unary_refs,
   get_convex_hull_stats,
+  has_absolute_energy,
   get_hull_decomposition,
   normalize_hull_composition_keys,
   process_hull_entries,
@@ -122,6 +123,18 @@ describe(`compute_e_form_per_atom`, () => {
       expected === null ? null : expect.closeTo(expected, 10),
     )
   })
+})
+
+// energy: 0 next to a nonzero E_form used to read as an E_form-only placeholder, though a
+// real total (e.g. on a shifted energy scale) can be exactly 0 eV
+test.each([
+  [{ energy: 0, e_form_per_atom: 0 }, true],
+  [{ energy: 0, e_form_per_atom: -0.5 }, true],
+  [{ energy_per_atom: 0, e_form_per_atom: 0.2 }, true],
+  [{ e_form_per_atom: -0.5 }, false],
+  [{}, false],
+])(`has_absolute_energy(%o) = %s`, (fields, expected) => {
+  expect(has_absolute_energy({ composition: { Li: 1 }, ...fields })).toBe(expected)
 })
 
 describe(`find_lowest_energy_unary_refs`, () => {
@@ -551,7 +564,6 @@ describe(`pymatgen cross-validation`, () => {
     (entry): PhaseData => ({
       composition: entry.composition,
       e_form_per_atom: entry.e_form_per_atom,
-      energy: 0,
       entry_id: entry.id,
       e_above_hull: entry.e_above_hull,
       is_stable: entry.is_stable,
@@ -717,7 +729,7 @@ describe(`process_hull_for_stats`, () => {
       const all = result?.entries ?? []
       const compounds = all
         .filter((entry) => !entry.is_element)
-        .toSorted((left_value, right_value) => left_value.energy - right_value.energy)
+        .toSorted((left, right) => (left.energy ?? 0) - (right.energy ?? 0))
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
       expect(compute_e_above_hull(entries, entries).slice(-2)).toEqual([0, 0.5])
     },

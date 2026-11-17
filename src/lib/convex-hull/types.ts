@@ -21,7 +21,7 @@ export interface StructurePopupContext {
 export interface PhaseData {
   // Core required fields
   composition: CompositionType
-  energy: number
+  energy?: number // total eV, absent for E_form-only entries
   entry_id?: string
 
   // Common computed fields

@@ -111,7 +111,7 @@ export function prepare_diagram(
   for (const element of missing) {
     normalized.push({
       composition: { [element]: 1 },
-      energy: 0,
+      e_form_per_atom: 0,
       entry_id: `synthetic-element:${element}`,
       reduced_formula: element,
     })
@@ -129,7 +129,6 @@ export function prepare_diagram(
   for (const gas of compound_gases) {
     normalized.push({
       composition: { ...GAS_STOICHIOMETRY[gas] },
-      energy: 0, // unused: a gas phase's energy is mu(T, p)
       gas,
       entry_id: `gas:${gas}`,
       reduced_formula: gas,

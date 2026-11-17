@@ -1,9 +1,11 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
+import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
+import { is_finite_matrix3x3, transpose_3x3 } from '#lib/math.js'
 import { yield_turn } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import { rows_to_csv } from 'svelte-widgets/format'
@@ -11,6 +13,7 @@ import { zipSync } from 'fflate'
 import { full_data_extractor } from './extract'
 import type { TrajectoryFrame, TrajectoryMetadata } from './index'
 import { extract_label_and_unit } from './plotting'
+import { ASE_3X3_KEYS } from './parse/xyz'
 import type { TrajectoryRun } from './run'
 
 // Resolve one frame by index; null when the index is out of range or the load failed.
@@ -48,18 +51,43 @@ export function poscar_frame_filename(
 // comment would duplicate or contradict the file.
 const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 
+// A finite flat vector or 3x3 matrix as ASE writes it: plain values, or JSON where plain text
+// would read back as something else (a 1-vector as a scalar, a 9-vector of a 3x3 key as a
+// matrix, any other key's matrix as a flat 9-vector); 3x3 keys (stress, virial) column-major
+function extxyz_array_value(key: string, value: unknown): string | undefined {
+  const is_3x3_key = ASE_3X3_KEYS.has(key)
+  if (Array.isArray(value) && value.length > 0 && value.every(Number.isFinite)) {
+    const ambiguous = value.length === 1 || (value.length === 9 && is_3x3_key)
+    return ambiguous ? `_JSON ${JSON.stringify(value)}` : value.join(` `)
+  }
+  if (!is_finite_matrix3x3(value)) return undefined
+  return is_3x3_key ? transpose_3x3(value).flat().join(` `) : `_JSON ${JSON.stringify(value)}`
+}
+
 // Serialize one frame as an extXYZ block, preserving the metadata that lives on the frame
 // rather than its structure. Single-structure export reads forces off site properties and
-// knows nothing about energy or step, so both are merged in here.
+// knows nothing about energy or step, so both are merged in here. Vectors go out as quoted
+// arrays; stress as ASE expects it (eV/Å³, tensile positive, 9 values), and only when it is
+// in the readers' shared convention (GPa, compressive positive), which stress_frobenius marks:
+// pymatgen's unitless raw stress is left out rather than mislabelled.
 export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
   const xyz = structure_to_xyz_str(frame.structure)
   const extra = [`step=${frame.step}`]
-  for (const [key, value] of Object.entries(frame.metadata ?? {})) {
+  const metadata = frame.metadata ?? {}
+  for (let [key, value] of Object.entries(metadata)) {
     if (SKIP_METADATA_KEYS.has(key)) continue
+    if (key === `stress`) {
+      if (typeof metadata.stress_frobenius !== `number` || !is_finite_matrix3x3(value))
+        continue
+      value = value.map((row) => row.map((gpa) => -gpa / EV_PER_A3_TO_GPA))
+    }
+    const name = key.replaceAll(/[^A-Za-z0-9_]/g, `_`)
     // Number.isFinite, not typeof: a NaN or Infinity would emit `energy=NaN` into the comment,
     // which every downstream extXYZ reader parses back as a number that isn't one.
-    if (typeof value === `boolean` || Number.isFinite(value)) {
-      extra.push(`${key.replaceAll(/[^A-Za-z0-9_]/g, `_`)}=${value}`)
+    if (typeof value === `boolean` || Number.isFinite(value)) extra.push(`${name}=${value}`)
+    else {
+      const array_value = extxyz_array_value(name, value)
+      if (array_value) extra.push(`${name}="${array_value}"`)
     }
   }
   // Only the header changes; keep atom rows intact instead of splitting and joining them all.

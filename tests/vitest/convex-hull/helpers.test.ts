@@ -23,7 +23,7 @@ const phase = (
   entry_id: string,
   composition: Record<string, number>,
   fields: Partial<PhaseData> = {},
-): PhaseData => ({ entry_id, composition, ...fields }) as PhaseData
+): PhaseData => ({ entry_id, composition, ...fields })
 
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale: null outside energy mode/empty, distinct colours otherwise, non-finite ignored`, () => {
@@ -487,7 +487,7 @@ describe(`helpers: batch polymorph stats computation`, () => {
       // Li:O ratio 1:2 and 2:4 are the same fractional composition
       phase(`mp-1`, { Li: 1, O: 2 }, { e_above_hull: 0 }),
       phase(`mp-2`, { Li: 2, O: 4 }, { e_above_hull: 0.1 }),
-      { composition: { Li: 1, O: 1 }, e_above_hull: 0 } as PhaseData, // no entry_id
+      { composition: { Li: 1, O: 1 }, e_above_hull: 0 }, // no entry_id
     ])
     expect([...stats_map.keys()]).toEqual([`mp-1`, `mp-2`]) // the id-less entry is skipped
     expect(stats_map.get(`mp-1`)?.total).toBe(1) // sees mp-2 as polymorph

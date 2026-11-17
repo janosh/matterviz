@@ -1,15 +1,16 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
-  import type { Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import type { Matrix3x3 } from '#lib/math.js'
   import { clamp01 } from '#lib/utils.js'
   import {
     BackSide,
     BoxGeometry,
+    Matrix3,
     Matrix4,
     Mesh,
     MeshBasicNodeMaterial,
     Vector2,
-    Vector3,
     Vector4,
   } from 'three/webgpu'
   import {
@@ -36,12 +37,12 @@
     field,
     opacity = 0.35,
     cutaway,
-    tiling = [1, 1, 1],
+    supercell = math.IDENTITY_3X3,
   }: {
     field: AtomColorField
     opacity?: number
     cutaway?: StructureCutaway
-    tiling?: Vec3
+    supercell?: Matrix3x3 // integer supercell matrix the cloud spans (periodic axes only)
   } = $props()
   const { invalidate } = useThrelte()
   // A single proxy box, independent of atom count. Transparent projection deliberately
@@ -57,7 +58,7 @@
   const density_texture = texture3D(texture)
   const alpha = uniform(0.35)
   const steps = uniform(48, `int`)
-  const box_size = uniform(new Vector3(1, 1, 1))
+  const to_input = uniform(new Matrix3()) // super_to_input below, for the shader
   const clip_enabled = uniform(false)
   const clip_coordinate = uniform(new Vector4())
   const clip_bounds = uniform(new Vector2())
@@ -76,7 +77,7 @@
       direction.z.abs().max(1e-7).mul(direction.z.lessThan(0).select(-1, 1)),
     )
     const first = origin.negate().div(safe_direction)
-    const last = box_size.sub(origin).div(safe_direction)
+    const last = float(1).sub(origin).div(safe_direction)
     const lower = min(first, last)
     const upper = max(first, last)
     const entry = max(max(lower.x, lower.y), max(lower.z, 0)).toVar()
@@ -96,14 +97,16 @@
     })
     exit.lessThanEqual(entry).discard()
     const step_length = exit.sub(entry).div(float(steps)).toVar()
+    const input_step = step_length.mul(to_input.mul(direction).length())
     const accumulated = vec4(0).toVar()
     Loop({ start: 0, end: steps, type: `int` }, ({ i: step_idx }) => {
       const distance = entry.add(float(step_idx).add(0.5).mul(step_length))
       const position = origin.add(direction.mul(distance))
       // Grid order is (a * nb + b) * nc + c. Premultiplied colors prevent dark
       // fringes when interpolating against unobserved (transparent) bins.
-      const sample = density_texture.sample(position.zyx).level(float(0)).toVar()
-      const absorption = sample.a.mul(step_length).mul(-3).exp().oneMinus()
+      const sample = density_texture.sample(to_input.mul(position).zyx).level(float(0)).toVar()
+      // absorb over the input-cell distance, as before supercells (a 2x cell is 2x as dense)
+      const absorption = sample.a.mul(input_step).mul(-3).exp().oneMinus()
       const weight = accumulated.a.oneMinus().mul(absorption)
       accumulated.rgb.addAssign(sample.rgb.div(max(sample.a, 1e-6)).mul(weight))
       accumulated.a.addAssign(weight)
@@ -118,22 +121,36 @@
   // The cloud is visual only; atom picking must reach the spheres underneath it.
   mesh.raycast = () => {}
   const visible = $derived(Number.isFinite(opacity) && opacity > 0)
+  // A non-periodic axis never repeats: its row and column of M become the identity's. An M
+  // mixing periodic and non-periodic axes so that this mask turns singular draws the input cell.
+  const matrix = $derived.by(() => {
+    const { pbc } = field
+    const masked = supercell.map((row, row_idx) =>
+      row.map((val, col_idx) =>
+        pbc[row_idx] && pbc[col_idx] ? val : Number(row_idx === col_idx),
+      ),
+    ) as Matrix3x3
+    return math.det_3x3(masked) === 0 ? math.IDENTITY_3X3 : masked
+  })
+  // The unit proxy box is the supercell in its own fractional coordinates; this maps them to
+  // the input cell's, where the (wrapping) texture lives: f_input = f_super · M, i.e. Mᵀ on
+  // column vectors, which is what a column-major fromArray of M's rows reads
+  const super_to_input = $derived.by(() => {
+    const transposed = new Matrix3().fromArray(matrix.flat())
+    return new Matrix4().setFromMatrix3(transposed)
+  })
 
   $effect(() => {
     if (!visible) return
     const { dims, cartesian_to_fractional } = field
     texture.update(field)
-    // Enlarge one proxy box, keeping both the texture and ray coordinates in the input cell.
-    const bounds = tiling.map((size, axis) => (field.pbc[axis] ? size : 1)) as Vec3
-    if (bounds.some((size, axis) => size !== box_size.value.getComponent(axis))) {
-      geometry.scale(
-        ...(bounds.map((size, axis) => size / box_size.value.getComponent(axis)) as Vec3),
-      )
-      box_size.value.set(...bounds)
-    }
-    const tiled_dims = dims.map((size, axis) => size * bounds[axis])
+    // input cells the ray crosses along each input axis set the step count
+    const tiled_dims = dims.map(
+      (size, axis) => size * matrix.reduce((sum, row) => sum + Math.abs(row[axis]), 0),
+    )
     steps.value = Math.min(192, Math.max(32, 3 * Math.max(...tiled_dims)))
-    mesh.matrix.copy(cartesian_to_fractional).invert()
+    to_input.value.setFromMatrix4(super_to_input)
+    mesh.matrix.copy(cartesian_to_fractional).invert().multiply(super_to_input)
     mesh.matrixWorldNeedsUpdate = true
     invalidate()
   })
@@ -145,10 +162,11 @@
   $effect(() => {
     clip_enabled.value = Boolean(cutaway && cutaway.mode !== `off`)
     if (cutaway && clip_enabled.value) {
-      // Convert the shared Cartesian cutaway to this volume's local fractional box.
+      // Convert the shared Cartesian cutaway to this volume's local (supercell) fractional box.
       const transform = new Matrix4()
         .copy(cutaway.cartesian_to_fractional)
         .multiply(field.cartesian_to_fractional.clone().invert())
+        .multiply(super_to_input)
       const values = transform.elements
       const { axis } = cutaway
       clip_coordinate.value.set(

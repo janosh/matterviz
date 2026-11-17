@@ -14,8 +14,8 @@ The symmetry-point labels on the x axis are clickable: each opens a small Brillo
   const band_structs = { '': phonon_bands['mp-2758-Sr4Se4-pbe'] }
 
   const line_kwargs = {
-    acoustic: { stroke: '#e74c3c', stroke_width: 2 },
-    optical: { stroke: '#3498db', stroke_width: 1.5 },
+    acoustic: { color: '#e74c3c', width: 2 },
+    optical: { color: '#3498db', width: 1.5 },
   }
 </script>
 
@@ -202,7 +202,7 @@ Customize the ribbon appearance with `ribbon_config`. You can set color, opacity
 <Bands
   band_structs={{ '': band_struct }}
   ribbon_config={{ color: '#e74c3c', opacity: 0.4, max_width: 10 }}
-  line_kwargs={{ stroke: '#2c3e50', stroke_width: 1.2 }}
+  line_kwargs={{ color: '#2c3e50', width: 1.2 }}
 />
 ```
 

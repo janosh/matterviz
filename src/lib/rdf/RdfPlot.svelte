@@ -229,7 +229,7 @@
       legend_group: entry.legend_group,
       visible: mode === `element_pairs` ? idx < 3 : true,
       markers: `line` as const,
-      line_style: { stroke: entry.color ?? plot_color(idx), stroke_width: 2 },
+      line_style: { color: entry.color ?? plot_color(idx), width: 2 },
     })),
   )
   const ref_lines = $derived<RefLine[]>([

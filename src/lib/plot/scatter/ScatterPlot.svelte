@@ -163,7 +163,7 @@
     pick_tooltip_bg,
     scatter_legend_rows,
     scatter_series_label,
-    scatter_line_style,
+    line_fallback_color,
   } from './scatter-data'
 
   // Marker-density threshold
@@ -966,10 +966,9 @@
         line: Pick<DataSeries, `x` | `y` | `line_style`>,
         direction: -1 | 0 | 1,
       ): ReturnType<typeof project_line_points> => {
-        const margin =
-          2 * Math.max(line.line_style?.stroke_width ?? 2, styles.line?.width ?? 2)
+        const margin = 2 * Math.max(line.line_style?.width ?? 2, styles.line?.width ?? 2)
         // Dashes and morph tweens need stable vertices, so they never crop
-        const dashed = [line.line_style?.line_dash, styles.line?.dash].some(
+        const dashed = [line.line_style?.dash, styles.line?.dash].some(
           (dash) => dash && dash !== `none` && dash !== `solid`,
         )
         const crop = !dashed && lines_snap
@@ -1039,8 +1038,8 @@
       series_data.y_axis,
       direction,
       style?.curve,
-      style?.stroke_width,
-      style?.line_dash,
+      style?.width,
+      style?.dash,
       layer.line_breaks,
     ]
     const hit = by_y.get(layer.y)
@@ -1940,12 +1939,8 @@
         {@const series_idx = series_data.orig_series_idx}
         {@const transform = line_transform(series_data)}
         {@const series_default_color = plot_color(series_idx)}
-        {@const line = scatter_line_style(
-          assigned_series[series_idx],
-          series_idx,
-          color_scale_fn,
-          series_idx === active_series_idx ? styles.line : undefined,
-        )}
+        {@const authored = assigned_series[series_idx]}
+        {@const override = series_idx === active_series_idx ? styles.line : undefined}
         <g
           data-series-id={series_data._id}
           clip-path="url(#{clip_path_id})"
@@ -1961,9 +1956,9 @@
                   underlay_directions.get(underlay.x) ?? 0,
                 )}
                 {transform}
-                line_color={underlay.line_style?.stroke ?? series_default_color}
-                line_width={underlay.line_style?.stroke_width ?? 1}
-                line_dash={underlay.line_style?.line_dash}
+                line_color={underlay.line_style?.color ?? series_default_color}
+                line_width={underlay.line_style?.width ?? 1}
+                line_dash={underlay.line_style?.dash}
                 curve={underlay.line_style?.curve}
                 line_tween={effective_line_tween}
               />
@@ -1972,10 +1967,12 @@
           <Line
             points={line_points(series_data, series_data, series_data.line_direction)}
             {transform}
-            line_color={line.color}
-            line_width={line.width}
-            line_dash={line.dash}
-            stroke-opacity={line.opacity}
+            line_color={override?.color ??
+              authored.line_style?.color ??
+              line_fallback_color(authored, series_idx, color_scale_fn)}
+            line_width={override?.width ?? authored.line_style?.width ?? 2}
+            line_dash={override?.dash ?? authored.line_style?.dash}
+            stroke-opacity={override?.opacity}
             curve={series_data.line_style?.curve}
             line_tween={effective_line_tween}
           />

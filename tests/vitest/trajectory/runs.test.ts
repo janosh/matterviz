@@ -34,7 +34,11 @@ import { frame_atom_batch } from '#lib/trajectory/atom-batches.js'
 // Every TrajectoryRun implementation against one contract table: frame_count, preview,
 // read_frame (sync vs async, range, abort), collect_positions parity with the memory run on
 // identical data, progressive properties and dispose semantics.
-import type { ParseProgress, TrajectoryFrame } from '#lib/trajectory/index.js'
+import type {
+  CollectPositionsOptions,
+  ParseProgress,
+  TrajectoryFrame,
+} from '#lib/trajectory/index.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import type { SyncRunSource, TrajectoryRun } from '#lib/trajectory/run.js'
@@ -948,7 +952,7 @@ describe(`worker-served run lifecycle`, () => {
   it(`rejects a throwing progress callback, aborts its work and preserves other requests`, async () => {
     const served = trajectory_from_frames(reference_frames)
     let collect_signal: AbortSignal | undefined
-    served.collect_positions = ({ signal, on_progress } = {}) =>
+    served.collect_positions = ({ signal, on_progress }: CollectPositionsOptions = {}) =>
       new Promise((_resolve, reject) => {
         collect_signal = signal
         signal?.addEventListener(`abort`, () => reject(new Error(`Collection aborted`)), {

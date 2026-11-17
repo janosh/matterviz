@@ -1,7 +1,8 @@
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
+import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath.js'
 import type { BrillouinZoneData } from '#lib/brillouin/types.js'
-import { reciprocal_lattice } from '#lib/math.js'
+import { cross_3d, dot, type Matrix3x3, reciprocal_lattice, subtract } from '#lib/math.js'
 import type * as symmetry from '#lib/symmetry/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
@@ -14,7 +15,13 @@ import {
   mock_parse_worker,
   expect_shortcuts_in_pane,
 } from '../setup'
-import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
+import {
+  cubic_matrix,
+  fcc_cell,
+  init_moyo_for_tests,
+  make_crystal,
+  type SimpleSite,
+} from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
 
@@ -470,4 +477,95 @@ test.each([
   if (n_calls)
     await vi.waitFor(() => expect(notice()).toMatch(/Default k-path failed: no space group/))
   else expect(notice()).toBeUndefined()
+})
+
+// On a conventional cell some standard path points (fcc X, bcc H) lie outside the cell's own
+// zone, so with the default path shown the zone and IBZ are its primitive cell's
+const bcc_sites: SimpleSite[] = [
+  [`Fe`, [0, 0, 0]],
+  [`Fe`, [0.5, 0.5, 0.5]],
+]
+test.each([
+  [`fcc`, fcc_cell(4)],
+  [`bcc`, make_crystal(4, bcc_sites)],
+])(`default k-path of a conventional %s cell lies in the zone`, async (_name, structure) => {
+  await init_moyo_for_tests()
+  const { analyze_structure_symmetry: analyze } =
+    await vi.importActual<typeof symmetry>(`#lib/symmetry/index.js`)
+  analyze_structure_symmetry.mockImplementationOnce(analyze)
+  const { matrix } = structure.lattice
+  const { points } = kpath_to_k_path_data(
+    high_symmetry_kpath(matrix, await analyze(structure)),
+  )
+  // path points outside a convex zone: in front of a face plane (Γ is inside) by over 1e-9
+  const n_outside = ({ vertices, faces }: BrillouinZoneData) =>
+    points.filter((point) =>
+      faces.some(([idx0, idx1, idx2]) => {
+        const [v0, v1, v2] = [idx0, idx1, idx2].map((idx) => vertices[idx])
+        const normal = cross_3d(subtract(v1, v0), subtract(v2, v0))
+        const height = Math.sign(dot(normal, v0)) * dot(normal, subtract(point, v0))
+        return height > 1e-9 * Math.hypot(...normal)
+      }),
+    ).length
+  const own_zone = compute_brillouin_zone(reciprocal_lattice(matrix, { two_pi: true }), 1)
+  expect(n_outside(own_zone)).toBeGreaterThan(0)
+  const { children, rendered } = zone_probe()
+  const ibz_data = null as ComponentProps<typeof BrillouinZone>[`ibz_data`]
+  const source = { data: JSON.stringify(structure), filename: `cell.json` }
+  const on_file_load = vi.fn()
+  const ibz = { show_ibz: true, ibz_data, on_file_load }
+  const props = $state({ source, default_k_path: true, children, ...ibz })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  // the point group, carried into the primitive basis, still cuts the 1/48 wedge
+  const wedge_ratio = (wedge?: typeof ibz_data, zone?: BrillouinZoneData) =>
+    ((wedge?.volume ?? 0) * 48) / (zone?.volume ?? 1)
+  await vi.waitFor(() => {
+    const zone = rendered()
+    expect([zone && n_outside(zone), wedge_ratio(props.ibz_data, zone)]).toEqual([
+      0,
+      expect.closeTo(1, 9),
+    ])
+  })
+  // a load publishes the input cell's zone, then once more the primitive one it switched to
+  expect(on_file_load.mock.calls.map(([data]) => data.bz_data)).toEqual([own_zone, rendered()])
+  // a supplied zone gets the IBZ rotations in its own basis (the primitive one still cuts 1/48),
+  // and one of another lattice (even of equal volume) rejects the standard path rather than
+  // drawing it outside the zone
+  const primitive_zone = rendered()
+  const equal_volume = primitive_zone?.k_lattice.map((row, idx) =>
+    row.map((val) => val * [2, 0.5, 1][idx]),
+  ) as Matrix3x3
+  for (const [bz_data, path] of [
+    [primitive_zone, false],
+    [own_zone, true],
+    [compute_brillouin_zone(equal_volume, 1), true],
+  ] as const) {
+    await unmount(mounted_component)
+    analyze_structure_symmetry.mockImplementationOnce(analyze)
+    const supplied = $state({ structure, bz_data, default_k_path: path, ...ibz })
+    mounted_component = mount(BrillouinZone, { target: document.body, props: supplied })
+    const path_error = () => document.body.querySelector(`.k-path-error`)?.textContent
+    await vi.waitFor(() =>
+      path
+        ? expect(path_error()).toMatch(/not the primitive zone/)
+        : expect(wedge_ratio(supplied.ibz_data, bz_data)).toBeCloseTo(1, 9),
+    )
+  }
+  // a throw from the delayed primitive-zone notification reaches on_error like the first one's
+  await unmount(mounted_component)
+  analyze_structure_symmetry.mockImplementationOnce(analyze)
+  const on_error = vi.fn()
+  const throw_second = vi.fn(() => {
+    if (throw_second.mock.calls.length > 1) throw new Error(`host exploded`)
+  })
+  const loader = { source, default_k_path: true, on_file_load: throw_second, on_error }
+  mounted_component = mount(BrillouinZone, { target: document.body, props: loader })
+  await vi.waitFor(() =>
+    expect(on_error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: `cell.json`,
+        error_msg: `on_file_load failed for cell.json: host exploded`,
+      }),
+    ),
+  )
 })

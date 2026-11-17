@@ -90,7 +90,7 @@
       y: curve_volumes.map((vol) => eos_energy(fit.kind, fit, vol)),
       label: `${EOS_KIND_LABELS[fit.kind]} fit`,
       markers: `line`,
-      line_style: { stroke: plot_color(idx + 1), stroke_width: 2 },
+      line_style: { color: plot_color(idx + 1), width: 2 },
     }))
     if (volumes.length !== energies.length) return fit_series
     const point_style = { fill: plot_color(0), radius: 4 }

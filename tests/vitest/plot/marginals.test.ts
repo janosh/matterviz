@@ -22,6 +22,7 @@ import type {
   ResolvedMarginalConfig,
 } from '#lib/plot/core/marginals.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
+import { make_rng } from '../numeric-helpers'
 
 const resolved = (over: Partial<ResolvedMarginalConfig> = {}): ResolvedMarginalConfig => ({
   ...MARGINAL_DEFAULTS,
@@ -655,6 +656,32 @@ describe(`log-axis marginals bin in the axis' own space`, () => {
     expect(lower_half).toBeGreaterThan(points.length * 0.4) // was 1 of 100
     expect(points[0].pos).toBeCloseTo(log_range[0], 12) // still spans the full range
     expect(points.at(-1)?.pos).toBeCloseTo(log_range[1], 12)
+  })
+
+  // estimated in log10 space like BoxPlot violins, then brought back to data units through the
+  // Jacobian 1/(x ln 10): a data-unit kernel wide enough for the top decades flattened the low
+  // tail of a log-normal to 0.27 at x = 0.01 where the true density is φ(-2) / (0.01 ln 10)
+  test(`log kde matches a log-normal density, with bandwidth in decades`, () => {
+    const rng = make_rng(0)
+    const log_normal = Array.from({ length: 2000 }, () => {
+      const radius = Math.sqrt(-2 * Math.log(1 - rng()))
+      return 10 ** (radius * Math.cos(2 * Math.PI * rng())) // σ = 1 decade
+    })
+    const density_at = (curve: MarginalCurve, x_val: number): number => {
+      const { points } = as_line(curve)
+      const idx = points.findIndex((point) => point.pos >= x_val)
+      const [lo, hi] = [points[idx - 1], points[idx]]
+      const frac = Math.log10(x_val / lo.pos) / Math.log10(hi.pos / lo.pos)
+      return lo.value + frac * (hi.value - lo.value)
+    }
+    const analytic = Math.exp(-2) / Math.sqrt(2 * Math.PI) / (0.01 * Math.LN10) // 2.345
+    const curve = compute(log_normal, { type: `kde` }, [1e-4, 1e4], `log`)
+    expect(density_at(curve, 0.01) / analytic).toBeCloseTo(1, 1) // measured 2.364
+    // a numeric bandwidth is in decades: 2 decades widen σ to √5, so the peak at x = 1 drops
+    // by √5 from φ(0) / ln 10
+    const wide = compute(log_normal, { type: `kde`, bandwidth: 2 }, [1e-4, 1e4], `log`)
+    const wide_peak = 1 / Math.sqrt(2 * Math.PI * 5) / Math.LN10
+    expect(density_at(wide, 1) / wide_peak).toBeCloseTo(1, 1)
   })
 
   test(`a linear axis bins in data units, unchanged`, () => {

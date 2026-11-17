@@ -133,6 +133,10 @@ describe(`Settings`, () => {
       expect(result.scatter.point.color).toBe(DEFAULTS.scatter.point.color)
       expect(result.scatter.line).toEqual(DEFAULTS.scatter.line)
       expect(result.plot).toEqual(DEFAULTS.plot)
+      // groups the user didn't touch are copies too: writing into them leaves DEFAULTS intact
+      result.plot.display.x_grid = !result.plot.display.x_grid
+      result.scatter.line.width = -1
+      result.convex_hull.binary.camera_zoom = -1
       expect(DEFAULTS).toEqual(original)
     })
 
@@ -150,8 +154,8 @@ describe(`Settings`, () => {
         ...DEFAULTS.convex_hull.ternary,
         camera_zoom: 3,
       })
-      expect(result.convex_hull.binary).toBe(DEFAULTS.convex_hull.binary)
-      expect(result.scatter.point).toBe(DEFAULTS.scatter.point)
+      expect(result.convex_hull.binary).toEqual(DEFAULTS.convex_hull.binary)
+      expect(result.scatter.point).toEqual(DEFAULTS.scatter.point)
       expect(result.scatter.line).toEqual({ ...DEFAULTS.scatter.line, color: `red` })
       expect(result.structure.vector_configs.force).toEqual({
         visible: false,

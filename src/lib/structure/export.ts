@@ -1,5 +1,7 @@
 import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { ase_velocity } from '#lib/trajectory/parse/ase.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -13,6 +15,7 @@ import { get_element_counts } from './density'
 import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
 import { structure_json_data } from './site'
+import { ADP_COMPONENTS, site_adp } from './thermal-ellipsoids'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
 // underscore runs condensed, no leading or trailing underscore
@@ -239,42 +242,64 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 ])
 
 // Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
-// site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data
-function numeric_site_columns(structure: AnyStructure): { key: string; ncols: 1 | 3 }[] {
+// site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data.
+// The reader's `momentum` goes back out as ASE's `momenta`, minus the `velocity` the reader
+// derived from it (a differing explicit velocity is kept: on reimport it wins).
+function numeric_site_columns(
+  structure: AnyStructure,
+): { key: string; name: string; ncols: 1 | 3 }[] {
   const first = structure.sites[0]?.properties ?? {}
-  return Object.keys(first).flatMap((key) => {
+  const columns = Object.keys(first).flatMap((key) => {
     if (XYZ_RESERVED_PROPERTIES.has(key) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return []
-    const ncols = typeof first[key] === `number` ? 1 : 3
+    const ncols: 1 | 3 = typeof first[key] === `number` ? 1 : 3
     const fits = structure.sites.every(({ properties }) => {
       const value = properties?.[key]
       return ncols === 1
         ? typeof value === `number` && Number.isFinite(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
-    return fits ? [{ key, ncols }] : []
+    return fits ? [{ key, name: key === `momentum` ? `momenta` : key, ncols }] : []
   })
+  const has_momenta = columns.some(({ key }) => key === `momentum`)
+  // the reader divides by the masses the file holds: recorded ones only if written
+  const mass_written = columns.some(({ key }) => key === `mass`)
+  const derived =
+    has_momenta &&
+    structure.sites.every((site) => velocity_is_momentum_derived(site, mass_written))
+  return derived ? columns.filter(({ key }) => key !== `velocity`) : columns
+}
+
+// Whether a site's velocity is exactly the one the extXYZ reader derives from its momentum
+// (with the recorded mass if the file holds a mass column, else the standard atomic mass)
+const velocity_is_momentum_derived = (
+  { species, properties }: Site,
+  mass_written: boolean,
+): boolean => {
+  const { velocity, momentum, mass } = properties ?? {}
+  if (!Array.isArray(velocity) || !Array.isArray(momentum)) return velocity === undefined
+  const recorded = mass_written && typeof mass === `number` ? mass : undefined
+  const atomic_mass = recorded ?? element_by_symbol.get(species[0]?.element)?.atomic_mass
+  if (!atomic_mass) return false
+  return velocity.every(
+    (component, idx) => component === ase_velocity(momentum[idx], atomic_mass),
+  )
 }
 
 // A written column the extXYZ readers would take for another: they match names
 // case-insensitively and reject a repeat, so `magmom` and `MAGMOM` make the file unreadable
 function xyz_column_clash(structure: AnyStructure): string | undefined {
   const taken = new Set(XYZ_RESERVED_PROPERTIES)
-  for (const { key } of numeric_site_columns(structure)) {
-    if (taken.has(key.toLowerCase()))
+  for (const { key, name } of numeric_site_columns(structure)) {
+    if (taken.has(name.toLowerCase()))
       return `Site property '${key}' clashes with another extXYZ column (names are case-insensitive); rename it`
-    taken.add(key.toLowerCase())
+    taken.add(name.toLowerCase())
   }
   return undefined
 }
 
-// Bare words in an extXYZ comment are read as valueless flags, and an `=` or `"` inside one
-// would be parsed as a key/value pair, silently inventing metadata. A newline is worse still:
-// it splits the comment in two, shifting every atom line and making the count line a lie.
-const sanitize_comment_label = (label: string): string =>
-  label.replaceAll(/["=]/g, ``).replaceAll(/\s+/g, ` `).trim()
-
 // Extended XYZ with a Properties= header so the columns beyond `species x y z` (forces,
-// motion constraints) and the cell survive a round trip
+// motion constraints) and the cell survive a round trip. The comment holds only key=value
+// pairs: readers (ASE) take bare words such as an id or formula for boolean flags.
 export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   const reason = xyz_export_unavailable_reason(structure)
@@ -291,9 +316,6 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   const extra_columns = numeric_site_columns(structure)
 
   const comment_parts: string[] = []
-  if (structure.id) comment_parts.push(sanitize_comment_label(structure.id))
-  const formula = plain_formula(structure)
-  if (formula) comment_parts.push(sanitize_comment_label(formula))
   if (lattice_matrix) {
     const values = lattice_matrix.flat().map((value) => value.toFixed(8))
     comment_parts.push(`Lattice="${values.join(` `)}"`)
@@ -304,7 +326,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // and reads back as one. The whole-atom `move_mask:L:1` cannot express a partial `T F T`:
   // ASE collapses it to "this atom may move" and yields FixAtoms([]), i.e. no constraint.
   if (move_flags) property_cols.push(`move_mask:L:3`)
-  for (const { key, ncols } of extra_columns) property_cols.push(`${key}:R:${ncols}`)
+  for (const { name, ncols } of extra_columns) property_cols.push(`${name}:R:${ncols}`)
   comment_parts.push(`Properties=${property_cols.join(`:`)}`)
   // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
   if (lattice_matrix) {
@@ -324,10 +346,10 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
         : undefined
     if (!coords || !math.is_finite_vec3_like(coords))
       throw new Error(coordinate_error(site_idx))
-    const columns = coords.map((coord) => coord.toFixed(6))
-    if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
+    const columns = coords.map((coord) => coord.toFixed(8))
+    if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(8)))
     columns.push(...flag_columns(move_flags?.[site_idx]))
-    // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
+    // full precision: arbitrary per-atom data, not coordinates on a 1e-8 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
     lines.push(`${site.species[0].element} ${columns.join(` `)}`)
@@ -497,6 +519,42 @@ export function structure_to_cif_str(input?: AnyStructure): string {
       lines.push(`${cif_token(label)} ${symbol} ${coords_str} ${occu}`)
     }
   }
+
+  // mCIF moments (μB along a/|a|, b/|b|, c/|c|) and U_ij ADPs (Å²), inverting parse_cif's
+  // reads: lattice-basis components f = cart_to_frac(m), and U_ij = ê*_i · U ê*_j with ê*_i
+  // the unit reciprocal vectors (U* = N⁻¹ A⁻¹ U A⁻ᵀ N⁻¹, A⁻¹'s rows being a*, b*, c*). The
+  // (-a, -b, -c) basis of a left-handed lattice negates f and keeps U.
+  const site_loop = (tags: string[], values_of: (site: Site) => number[] | null) => {
+    const rows = structure.sites.flatMap((site, idx) => {
+      const values = values_of(site)
+      return values ? [`${cif_token(site_labels[idx])} ${values.join(` `)}`] : []
+    })
+    if (rows.length > 0) lines.push(``, `loop_`, ...tags, ...rows)
+  }
+  const lengths = [params.a, params.b, params.c].map((len) => (left_handed ? -len : len))
+  const moment_keys = [`label`, `crystalaxis_x`, `crystalaxis_y`, `crystalaxis_z`]
+  site_loop(
+    moment_keys.map((key) => `_atom_site_moment_${key}`),
+    ({ properties: { magmom } }) =>
+      math.is_finite_vec3(magmom)
+        ? cart_to_frac(magmom).map((comp, axis) => comp * lengths[axis])
+        : null,
+  )
+  site_loop(
+    [`_atom_site_aniso_label`, ...ADP_COMPONENTS.map((ij) => `_atom_site_aniso_U_${ij}`)],
+    (site) => {
+      const adp = site_adp(site)
+      if (!adp) return null
+      // only when needed: a singular lattice can still write its sites' abc
+      const units = math
+        .reciprocal_lattice(lattice.matrix)
+        .map((vec) => math.normalize_vec(vec))
+      const along = (axis: string) => units[Number(axis) - 1]
+      return ADP_COMPONENTS.map(([row, col]) =>
+        math.dot(along(row), math.mul_3x3_vec3(adp, along(col))),
+      )
+    },
+  )
 
   return lines.join(`\n`)
 }

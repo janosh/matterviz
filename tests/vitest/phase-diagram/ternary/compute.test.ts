@@ -102,7 +102,7 @@ describe(`prepare_diagram`, () => {
       /No reference entry for K, while Li \(-1.9 eV\/atom\), Na \(-1.3 eV\/atom\) carry absolute energies/,
     ],
     [
-      [...toy_entries, { composition: { Li: 2, K: 1 }, entry_id: `bare` } as PhaseData],
+      [...toy_entries, { composition: { Li: 2, K: 1 }, entry_id: `bare` }],
       toy_elements,
       /bare has no energy, energy_per_atom or e_form_per_atom/,
     ],
@@ -112,11 +112,9 @@ describe(`prepare_diagram`, () => {
 })
 
 describe(`E_form-only entries`, () => {
-  // no `energy` (or a 0 eV placeholder): E_form is all the data carries; the lowest-E_form
-  // unary is the reference, whatever the entry order, and a polymorph sits at E_form + E_ref =
-  // 0.05 + 0 exactly. The placeholder used to be read as an absolute energy: dG_f = 0 for all.
-  // oxfmt-ignore
-  test.each([[`auto`, undefined], [`static`, undefined], [`auto`, 0], [`static`, 0]] as const)(`%s mode uses e_form_per_atom as dG_f (energy: %s)`, (mode, energy) => {
+  // no `energy`: E_form is all the data carries; the lowest-E_form unary is the reference,
+  // whatever the entry order, and a polymorph sits at E_form + E_ref = 0.05 + 0 exactly
+  test.each([`auto`, `static`] as const)(`%s mode uses e_form_per_atom as dG_f`, (mode) => {
     const entries = (
       [
         [{ Li: 1 }, 0.05, `Li-high`],
@@ -126,10 +124,11 @@ describe(`E_form-only entries`, () => {
         [{ Li: 1, Na: 1 }, -0.5, `LiNa`],
         [{ Na: 1, K: 1 }, -0.3, `NaK`],
       ] as const
-    ).map(
-      ([composition, e_form_per_atom, entry_id]) =>
-        ({ composition, e_form_per_atom, entry_id, energy }) as PhaseData,
-    )
+    ).map(([composition, e_form_per_atom, entry_id]): PhaseData => ({
+      composition,
+      e_form_per_atom,
+      entry_id,
+    }))
     const model = prepare_diagram(entries, { elements: toy_elements, free_energy: { mode } })
     const section = compute_section(model, 500)
     expect(Array.from(section.dg_form)).toEqual([0.05, 0, 0, 0, -0.5, -0.3])

@@ -221,7 +221,6 @@ export function assign_e_above_hull(phases: PlannerPhase[]): void {
   }
   const entries = phases.map(({ composition, energy_per_atom }) => ({
     composition,
-    energy: 0,
     e_form_per_atom: energy_per_atom,
   }))
   e_above_hull_distances(entries, entries).forEach((dist, idx) => {

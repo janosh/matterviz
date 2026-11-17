@@ -12,7 +12,6 @@ import {
   are_qpoints_equivalent,
   band_crossings,
   band_k_path,
-  apply_gaussian_smearing,
   display_smoother,
   gaussian_kernel_smooth,
   branch_path_label,
@@ -264,71 +263,38 @@ describe(`display_smoother`, () => {
   })
 })
 
-describe(`apply_gaussian_smearing`, () => {
-  const energies = [0, 1, 2, 3, 4]
-  const spike = [0, 0, 10, 0, 0]
-
-  it(`returns degenerate input untouched`, () => {
-    expect(apply_gaussian_smearing(energies, spike, 0)).toBe(spike)
-    expect(apply_gaussian_smearing(energies, [0, 0, 0, 0, 0], 0.5)).toEqual([0, 0, 0, 0, 0])
-    // a grid with no extent has zero trapezoid weights everywhere, so the convolution scaled
-    // every density to 0 rather than passing it through
-    expect(apply_gaussian_smearing([0], [5], 0.5)).toEqual([5]) // one-point grid
-    expect(apply_gaussian_smearing([1, 1, 1], [2, 2, 2], 0.5)).toEqual([2, 2, 2]) // no extent
-  })
-
-  it(`spreads a spike symmetrically with the normalized Gaussian shape`, () => {
-    const smeared = apply_gaussian_smearing(energies, spike, 0.5)
-    expect(smeared[1]).toBeCloseTo(smeared[3], 12)
-    expect(smeared[1]).toBeGreaterThan(0)
-    // Gaussian ratio exp(-1/(2·0.25)) = e^-2 between the first neighbour and the centre
-    expect(smeared[1] / smeared[2]).toBeCloseTo(Math.exp(-2), 12)
-    // the centre carries the spike's weight (1 wide here) times the kernel peak 1/(σ√2π)
-    expect(smeared[2]).toBeCloseTo(10 / (0.5 * Math.sqrt(2 * Math.PI)), 12)
-  })
-
-  // the old measure-free form weighted by POINT DENSITY: a flat DOS came out anywhere from
-  // 0.235 to 1.950 over this grid's interior. gaussian_kernel_smooth is its Nadaraya-Watson
-  // sibling: exact on constants everywhere, with no quadrature measure.
-  it(`leaves a flat density alone on a clustered grid, as does gaussian_kernel_smooth`, () => {
+describe(`gaussian_kernel_smooth`, () => {
+  it(`is exact on constants over a clustered grid and still smooths`, () => {
     const clustered = [
       ...Array.from({ length: 40 }, (_, idx) => -4 + idx * 0.1),
       ...Array.from({ length: 60 }, (_, idx) => idx * 0.005),
       ...Array.from({ length: 40 }, (_, idx) => 0.3 + idx * 0.1),
     ]
-    const ones = clustered.map(() => 1)
-    const smeared = apply_gaussian_smearing(clustered, ones, 0.3)
-    // interior only (the convolution loses mass past the grid ends); ±4σ truncation plus
-    // trapezoid error at the 0.005 → 0.1 spacing jump measures 3.21e-3
-    const errors = clustered.flatMap((x_val, idx) =>
-      Math.abs(x_val) > 2.5 ? [] : [Math.abs(smeared[idx] - 1)],
-    )
-    expect(Math.max(...errors)).toBeLessThan(5e-3)
-    for (const val of gaussian_kernel_smooth(clustered, ones, 0.3)) {
+    for (const val of gaussian_kernel_smooth(
+      clustered,
+      clustered.map(() => 1),
+      0.3,
+    )) {
       expect(val).toBeCloseTo(1, 12)
     }
-    // still an actual smoother, and sigma <= 0 passes straight through
     const alternating = clustered.map((_unused, idx) => (idx % 2 === 0 ? 1 : -1))
     const smoothed = gaussian_kernel_smooth(clustered, alternating, 0.3)
     for (const val of smoothed.slice(45, 55)) expect(Math.abs(val)).toBeLessThan(0.5)
-    expect(gaussian_kernel_smooth(clustered, alternating, 0)).toBe(alternating)
+    expect(gaussian_kernel_smooth(clustered, alternating, 0)).toBe(alternating) // sigma <= 0
   })
 
   // The two-pointer window is only valid on an ascending grid; anything else falls back to
-  // scanning every point. Pin that fallback to an unwindowed reference.
-  const brute_force = (x_values: number[], y_values: number[], sigma: number): number[] => {
-    const weights = trapezoid_weights(x_values)
-    const kernel = (delta: number) =>
-      Math.abs(delta) > 4 * sigma ? 0 : Math.exp(-(delta ** 2) / (2 * sigma ** 2))
-    const norm = sigma * Math.sqrt(2 * Math.PI)
-    return x_values.map(
-      (energy) =>
-        x_values.reduce(
-          (sum, other, jdx) => sum + y_values[jdx] * weights[jdx] * kernel(energy - other),
-          0,
-        ) / norm,
-    )
-  }
+  // scanning every point. Pin both to an unwindowed reference.
+  const brute_force = (x_values: number[], y_values: number[], sigma: number): number[] =>
+    x_values.map((center) => {
+      const kernels = x_values.map((other) =>
+        Math.abs(center - other) > 4 * sigma
+          ? 0
+          : Math.exp(-((center - other) ** 2) / (2 * sigma ** 2)),
+      )
+      const total = kernels.reduce((sum, kernel) => sum + kernel, 0)
+      return kernels.reduce((sum, kernel, jdx) => sum + kernel * y_values[jdx], 0) / total
+    })
   const grid = Array.from({ length: 60 }, (_, idx) => idx * 0.1)
   it.each([
     [`ascending`, grid],
@@ -338,8 +304,8 @@ describe(`apply_gaussian_smearing`, () => {
   ])(`matches an unwindowed reference on a %s grid`, (_label, x_values) => {
     const y_values = x_values.map((_, idx) => ((idx * 37) % 11) + 0.5)
     const expected = brute_force(x_values, y_values, 0.25)
-    const smeared = apply_gaussian_smearing(x_values, y_values, 0.25)
-    const errors = smeared.map((val, idx) => Math.abs(val - expected[idx]))
+    const smoothed = gaussian_kernel_smooth(x_values, y_values, 0.25)
+    const errors = smoothed.map((val, idx) => Math.abs(val - expected[idx]))
     expect(Math.max(...errors)).toBeLessThan(1e-10)
   })
 })
@@ -659,15 +625,31 @@ describe(`normalize_band_structure`, () => {
     [`a string`, `bands`],
     [`an empty object`, {}],
     [`empty qpoints`, { qpoints: [], branches: [], bands: [], distance: [] }],
-    [`a distance/qpoints length mismatch`, one_qpt({ distance: [0, 1] })],
-    [`a band of the wrong length`, one_qpt({ bands: [[0, 1]] })],
-    [`a branch past the last q-point`, one_qpt({ branches: [make_branch(0, 5, `t`)] })],
-    [`a branch with a NaN start index`, one_qpt({ branches: [make_branch(NaN, 0, `t`)] })],
     [`pymatgen input without bands`, pmg({ qpoints: line(2), bands: null })],
     [`pymatgen input with an unknown unit`, pmg({ qpoints: line(2), bands: [[0, 1]], unit: `GHz` })],
     [`pymatgen input with empty kpoints`, { kpoints: [], bands: { '1': [] } }],
   ])(`returns null for %s`, (_label, input) => {
     expect(normalize_band_structure(input)).toBeNull()
+  })
+
+  // parts that disagree throw naming the mismatch: a dropped q-point used to shift later bands
+  // oxfmt-ignore
+  it.each([
+    [`a distance/qpoints length mismatch`, one_qpt({ distance: [0, 1] }), `distance has 2 values, expected one per q-point (1)`],
+    [`a band of the wrong length`, one_qpt({ bands: [[0], [0, 1]] }), `band 1 of 2 has 2 values, expected one per q-point (1)`],
+    [`a ragged spin-down band`, one_qpt({ spin_down_bands: [[0, 1]] }), `spin-down band 0 of 1 has 2 values`],
+    [`a branch past the last q-point`, one_qpt({ branches: [make_branch(0, 5, `t`)] }), `out of range for 1 q-points`],
+    [`a branch with a NaN start index`, one_qpt({ branches: [make_branch(NaN, 0, `t`)] }), `out of range`],
+    // falsy entries must not read as "no invalid branch found"
+    [`a zero branch`, one_qpt({ branches: [0] }), `branch 0 is out of range`],
+    [`a false branch`, one_qpt({ branches: [false] }), `branch false is out of range`],
+    [`an empty-string branch`, one_qpt({ branches: [``] }), `branch "" is out of range`],
+    [`an unparsable pymatgen q-point`, pmg({ qpoints: [[0, 0, 0], `X`, [1, 0, 0]], bands: [[0, 1, 2]] }), `q-point 1 of 3 is not a 3-vector or k-point: "X"`],
+    [`a pymatgen band of the wrong length`, pmg({ qpoints: line(3), bands: [[0, 1, 2], [0, 1]] }), `band 1 of 2 has 2 values, expected one per q-point (3)`],
+    [`a ragged pymatgen spin-down band`, { ...identity_rec, kpoints: line(2), bands: { '1': [[0, 1], [2, 3]], '-1': [[0.1], [2.1, 3.1]] } }, `spin-down band 0 of 2 has 1 values`],
+    [`a pymatgen spin-down band count mismatch`, { ...identity_rec, kpoints: line(2), bands: { '1': [[0, 1], [2, 3]], '-1': [[0.1, 1.1]] } }, `spin-down channel has 1 bands, expected 2`],
+  ])(`throws for %s`, (_label, input, message) => {
+    expect(() => normalize_band_structure(input)).toThrow(message)
   })
 
   // Bands are stored in THz; the factor is the module's own unit table, so the test pins the
@@ -903,15 +885,13 @@ describe(`normalize_band_structure`, () => {
   describe(`electronic (kpoints, spin-keyed bands)`, () => {
     // oxfmt-ignore
     const [up, down] = [[[0, 1], [2, 3]], [[0.1, 1.1], [2.1, 3.1]]]
-    it(`reads both spin channels and drops a malformed spin-down channel`, () => {
-      const with_down = (spin_down: number[][]) =>
-        normalize_band_structure({
-          ...identity_rec,
-          kpoints: line(2),
-          bands: { '1': up, '-1': spin_down },
-        })
-      expect(with_down(down)).toMatchObject({ bands: up, spin_down_bands: down, nb_bands: 2 })
-      expect(with_down([[0.1], [2.1, 3.1]])?.spin_down_bands).toBeUndefined() // ragged
+    it(`reads both spin channels`, () => {
+      const result = normalize_band_structure({
+        ...identity_rec,
+        kpoints: line(2),
+        bands: { '1': up, '-1': down },
+      })
+      expect(result).toMatchObject({ bands: up, spin_down_bands: down, nb_bands: 2 })
     })
 
     it(`recognises pymatgen input by kpoints, @class or @module, but not bare branched input`, () => {

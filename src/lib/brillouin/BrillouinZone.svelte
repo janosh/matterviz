@@ -43,8 +43,8 @@
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
-  import { high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
-  import { reciprocal_lattice } from '#lib/math.js'
+  import { type HighSymmKPath, high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
+  import { det_3x3, dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math.js'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
@@ -265,7 +265,9 @@
       }
       structure = opened.data as Crystal // the zone needs a lattice; AnyStructure is wider
       current_filename = opened.filename
-      on_file_load?.({ structure, bz_data: zone, bz_order, ...opened.provenance })
+      const loaded = { structure, bz_order, ...opened.provenance }
+      on_file_load?.({ ...loaded, bz_data: zone })
+      pending_load = default_k_path && !k_path ? loaded : undefined
     },
     report_error: (message, metadata) => {
       error_msg = message
@@ -276,10 +278,13 @@
   // Zone derived from the structure at the current order. A caller-supplied `bz_data` (e.g.
   // pymatviz's `BrillouinZoneWidget(structure=..., bz_data=...)`) wins and is never written
   // back; without one the derived zone renders and follows structure/bz_order changes.
+  // With the default k-path shown, it is the zone of the path's primitive cell, so every path
+  // point lies on or inside it.
   const derived_bz = $derived.by((): { zone?: BrillouinZoneData; error?: string } => {
     const real = structure?.lattice?.matrix
     try {
-      const lattice = k_lattice ?? (real && reciprocal_lattice(real, { two_pi: true }))
+      const lattice =
+        path_k_lattice ?? k_lattice ?? (real && reciprocal_lattice(real, { two_pi: true }))
       if (!lattice) return {}
       return { zone: compute_brillouin_zone(lattice, clamp(bz_order, 1, 3) as 1 | 2 | 3) }
     } catch (err) {
@@ -303,17 +308,19 @@
       (default_k_path && !k_path) ||
       (info_pane_open && controls_config.visible(`info-pane`)),
   )
-  let symmetry = $state<{ data?: MoyoDataset; error?: unknown }>({})
+  // tagged with its structure: derived state reads it before this effect resets it
+  let symmetry = $state.raw<{ data?: MoyoDataset; error?: unknown; of?: Crystal }>({})
   $effect(() => {
     symmetry = {}
-    if (!needs_symmetry || !structure?.lattice) return
+    const of = structure
+    if (!needs_symmetry || !of?.lattice) return
     let stale = false
-    analyze_structure_symmetry(structure, {}).then(
+    analyze_structure_symmetry(of, {}).then(
       (data) => {
-        if (!stale) symmetry = { data }
+        if (!stale) symmetry = { data, of }
       },
       (error: unknown) => {
-        if (!stale) symmetry = { error }
+        if (!stale) symmetry = { error, of }
       },
     )
     return () => {
@@ -331,28 +338,65 @@
     if (!show_ibz || !zone) return { data: null }
     if (`error` in symmetry) return failed(symmetry.error)
     if (!symmetry.data) return { data: null }
+    // rotations act on input-fractional coords; the shown zone's own cell (rows 2π K⁻ᵀ = P·L,
+    // e.g. the default k-path's primitive cell or a supplied zone's) wants x_zone = P⁻ᵀ·x_input
+    const lattice = structure?.lattice?.matrix
+    const zone_cell = reciprocal_lattice(zone.k_lattice, { two_pi: true })
+    const prim_t = lattice && transpose_3x3(dot(zone_cell, inverse_3x3(lattice)) as Matrix3x3)
+    const to_zone = (rot: Matrix3x3) =>
+      prim_t ? dot(dot(inverse_3x3(prim_t), rot), prim_t) : rot
     try {
-      return {
-        data: compute_irreducible_bz(zone, point_group_rotations(symmetry.data.operations)),
-      }
+      const rotations = point_group_rotations(symmetry.data.operations).map(to_zone)
+      return { data: compute_irreducible_bz(zone, rotations) }
     } catch (err) {
       return failed(err)
     }
   })
-  // The default k-path follows the structure (its reciprocal basis), not a caller's k_lattice
-  const default_k_path_result = $derived.by((): { data?: KPathData; error?: string } => {
+  // The default k-path follows the structure (its primitive cell), not a caller's k_lattice
+  type DefaultKPath = Partial<HighSymmKPath> & { data?: KPathData; error?: string }
+  const default_k_path_result = $derived.by((): DefaultKPath => {
     const lattice = structure?.lattice?.matrix
     const { data } = symmetry
-    if (k_path || !default_k_path || !lattice || !(data || `error` in symmetry)) return {}
+    if (k_path || !default_k_path || !lattice || symmetry.of !== structure) return {}
     try {
       if (!data) throw symmetry.error
-      const own_k_lattice = reciprocal_lattice(lattice, { two_pi: true })
-      return { data: kpath_to_k_path_data(high_symmetry_kpath(lattice, data), own_k_lattice) }
+      const kpath = high_symmetry_kpath(lattice, data)
+      // a supplied zone of another lattice (e.g. the conventional cell's) would leave path
+      // points out: its rows must be a unimodular integer recombination of the path's
+      const transform =
+        bz_data && (dot(bz_data.k_lattice, inverse_3x3(kpath.k_lattice)) as Matrix3x3)
+      const near = (val: number, target = Math.round(val)) => Math.abs(val - target) < 1e-6
+      const unimodular = (mat: Matrix3x3) =>
+        mat.flat().every((val) => near(val)) && near(Math.abs(det_3x3(mat)), 1)
+      if (transform && !unimodular(transform))
+        throw new Error(`bz_data is not the primitive zone the standard path is defined in`)
+      return { ...kpath, data: kpath_to_k_path_data(kpath) }
     } catch (err) {
       return { error: `Default k-path failed: ${to_error(err).message}` }
     }
   })
   const shown_k_path = $derived(k_path ?? default_k_path_result.data)
+  // own derived: a new result without one must not re-derive (and re-report) the zone
+  const path_k_lattice = $derived(default_k_path_result.k_lattice)
+
+  // The default path's primitive zone follows the async symmetry analysis, so a load publishes
+  // again once with it
+  let pending_load = $state.raw<BZHandlerData>()
+  $effect(() => {
+    const loaded = pending_load
+    if (!path_k_lattice || !loaded) return
+    pending_load = undefined
+    if (loaded.structure !== structure) return
+    // the loader's error path no longer wraps this call, so report a throw the way it does
+    untrack(() => {
+      try {
+        on_file_load?.({ ...loaded, bz_order, bz_data: zone })
+      } catch (err) {
+        error_msg = `on_file_load failed for ${loaded.filename}: ${to_error(err).message}`
+        on_error?.({ ...loaded, bz_order, error_msg })
+      }
+    })
+  })
 
   let ibz_error = $state<string | undefined>()
   $effect(() => {

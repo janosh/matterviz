@@ -11,6 +11,7 @@ import { FramePreparer, display_frame_transfers } from '../prepare'
 import { to_error } from 'svelte-widgets/utils'
 import { position_stream_transferables } from '../helpers'
 import type {
+  CollectPositionsOptions,
   ParseProgress,
   PositionStreamOptions,
   TrajectoryMetadata,
@@ -358,7 +359,7 @@ export const worker_run = (
     ...(summary.has_collect_positions && {
       // Only the cloneable sweep options cross the port; progress and abort travel as
       // port messages
-      collect_positions: ({ on_progress, signal, ...options } = {}) =>
+      collect_positions: ({ on_progress, signal, ...options }: CollectPositionsOptions = {}) =>
         rpc<TrajectoryPositionStream>(`collect_positions`, [options], signal, on_progress),
     }),
     dispose: () => dispose(),

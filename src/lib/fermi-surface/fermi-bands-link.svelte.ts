@@ -8,6 +8,7 @@ import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
 import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
 import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte.js'
+import { EV_PER_ENERGY_UNIT } from '#lib/spectral/frequency-units.js'
 import {
   band_crossings,
   band_line_style,
@@ -87,21 +88,26 @@ export class FermiBandsLink {
   // style applies to both), re-read on theme changes
   private level_rgb = $state({ fermi: `#e74c3c`, reference: `#d48860` })
 
-  // Band structures are eV, so a grid in another or an unknown unit keeps the band colours and
-  // k-path link but previews, pins and marks no energies
-  private readonly energy_grid = $derived.by(() => {
-    const grid = this.inputs.band_data()
-    return grid?.energy_unit === `eV` ? grid : undefined
+  // eV per grid energy unit: band structures are eV, so energies convert here (mu stays in the
+  // grid's unit). A grid of unknown unit keeps the band colours and k-path link but previews,
+  // pins and marks no energies.
+  private readonly ev_per_unit = $derived.by(() => {
+    const unit = this.inputs.band_data()?.energy_unit
+    return unit ? EV_PER_ENERGY_UNIT[unit] : undefined
   })
-  readonly fermi_energy = $derived.by(() => this.energy_grid?.fermi_energy)
+  // E_F in eV
+  readonly fermi_energy = $derived.by(() => {
+    const grid = this.inputs.band_data()
+    return grid && this.ev_per_unit ? grid.fermi_energy * this.ev_per_unit : undefined
+  })
   // FermiSurface's `previewing`: a hovered energy shown off the grid
   readonly previewing = $derived(
     this.hovered_energy !== null && this.fermi_energy !== undefined,
   )
   private readonly shown_mu = $derived.by(() =>
-    this.hovered_energy === null || this.fermi_energy === undefined
+    this.hovered_energy === null || this.fermi_energy === undefined || !this.ev_per_unit
       ? this.inputs.mu.get()
-      : this.hovered_energy - this.fermi_energy,
+      : (this.hovered_energy - this.fermi_energy) / this.ev_per_unit,
   )
   private readonly shown_bands = $derived.by(() =>
     this.isolated_band === null ? this.inputs.selected_bands() : [this.isolated_band],
@@ -121,9 +127,9 @@ export class FermiBandsLink {
   )
   // energy of the shown surface when it is not E_F, marked on the bands
   readonly reference_frequency = $derived(
-    this.shown_mu === 0 || this.fermi_energy === undefined
+    this.shown_mu === 0 || this.fermi_energy === undefined || !this.ev_per_unit
       ? null
-      : this.fermi_energy + this.shown_mu,
+      : this.fermi_energy + this.shown_mu * this.ev_per_unit,
   )
   // the band emphasised on the plot: hovered (in either view), else isolated
   readonly highlighted_band = $derived(this.hovered_band ?? this.isolated_band)
@@ -151,9 +157,9 @@ export class FermiBandsLink {
       const style = band_line_style(kwargs ?? {}, band_idx, spin, false, structure)
       return {
         ...style,
-        stroke: grid_bands.has(band_idx)
+        color: grid_bands.has(band_idx)
           ? sheet_color(band_idx, sheet_spin(spin), color_property)
-          : (style.stroke ?? BANDS_CSS_COLORS.muted),
+          : (style.color ?? BANDS_CSS_COLORS.muted),
       }
     }
   })
@@ -240,15 +246,16 @@ export class FermiBandsLink {
     // only grid bands have a surface to preview; without a grid the k-point still shows
     const in_grid = event && point && this.grid_bands.has(point.band_idx) ? event : null
     this.path.hover_band(this.grid_bands.size > 0 ? in_grid : event)
-    this.hovered_energy = in_grid && this.energy_grid ? in_grid.point.y : null
+    this.hovered_energy = in_grid && this.ev_per_unit ? in_grid.point.y : null
   }
   // plot clicks reach the nearest band point within the tooltip's radius, so Bands keeps
   // plain lines (on_point_click would draw a marker per k-point)
   readonly band_click = (event: ScatterHandlerEvent): void => {
     const point = band_point_meta(event.point.metadata)
-    const grid = this.energy_grid
-    if (!point || !grid || !this.grid_bands.has(point.band_idx)) return
-    const { y, metadata } = event.point
+    const grid = this.inputs.band_data()
+    if (!point || !grid || !this.ev_per_unit || !this.grid_bands.has(point.band_idx)) return
+    const { metadata } = event.point
+    const y = event.point.y / this.ev_per_unit // in the grid's unit
     // isolate only a band with a sheet at `y`: strictly inside its range (in the clicked spin
     // channel), read off the grid as the shown surface may still be extracting
     const spin_idx = metadata?.spin === `down` && grid.n_spins === 2 ? 1 : 0

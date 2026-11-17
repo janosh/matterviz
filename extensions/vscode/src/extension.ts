@@ -65,6 +65,9 @@ type ExtensionContextLike =
 export const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 // Track webviews subscribed to each watched file path
 export const active_watcher_subscribers = new Map<string, Set<WebviewLike>>()
+// The file each panel was opened on, the only one it may request: kept apart from watcher
+// subscriptions so a failed watcher doesn't also lock the panel out of its own file
+export const webview_file_paths = new Map<WebviewLike, string>()
 // Host-indexed trajectory runs by file path, shared by its panels and serving request_frame.
 // Stored as the loading promise, so concurrent requests share one read of the file and a file
 // change (dispose_run) evicts a load still in flight instead of letting its stale run land.
@@ -339,6 +342,12 @@ export const create_html = (
 </html>`
 }
 
+// Webviews may only read the file they were opened on, not any path they name
+const assert_authorized = (file_path: string, webview: WebviewLike): void => {
+  if (webview_file_paths.get(webview) !== file_path)
+    throw new Error(`Refusing to serve ${file_path}: this panel was not opened on it`)
+}
+
 // Handle messages from webview
 export const handle_msg = async (
   msg: WebviewToHostMessage,
@@ -355,6 +364,7 @@ export const handle_msg = async (
     try {
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
+      assert_authorized(file_path, webview)
       // A newer request or panel close cancels this load: a stale run must not take its place
       webview_run_streams.get(webview)?.()
       let cancelled = false
@@ -383,6 +393,7 @@ export const handle_msg = async (
       const { request_id, file_path, frame_index, channels } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
+      assert_authorized(file_path, webview)
       const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
       const frame = frame_to_wire(await run.read_frame(frame_index, undefined, channels))
@@ -592,7 +603,10 @@ function setup_webview_panel(
   file_data: FileData,
   file_path?: string,
 ): void {
-  if (file_path) start_watching_file(file_path, panel.webview)
+  if (file_path) {
+    webview_file_paths.set(panel.webview, file_path)
+    start_watching_file(file_path, panel.webview)
+  }
 
   panel.webview.html = create_html(panel.webview, context, {
     data: file_data,
@@ -626,6 +640,7 @@ function setup_webview_panel(
     config_listener.dispose()
     webview_run_streams.get(panel.webview)?.()
     webview_run_streams.delete(panel.webview)
+    webview_file_paths.delete(panel.webview)
     if (file_path) stop_watching_file(file_path, panel.webview)
   })
 }
@@ -884,6 +899,7 @@ export const deactivate = (): void => {
   active_watchers.forEach((watcher) => watcher.dispose())
   active_watchers.clear()
   active_watcher_subscribers.clear()
+  webview_file_paths.clear()
   webview_run_streams.forEach((stop) => stop())
   webview_run_streams.clear()
   for (const file_path of [...active_runs.keys()]) dispose_run(file_path)

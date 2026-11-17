@@ -195,7 +195,7 @@
             y: is_horizontal ? x_values : densities,
             markers: `line`,
             label: `${series_label}${spin === `down` ? ` (↓)` : raw_down && effective_spin_mode ? ` (↑)` : ``}`,
-            line_style: { stroke, stroke_width: 1.5, line_dash: dash },
+            line_style: { color: stroke, width: 1.5, dash },
             point_style: { fill: stack ? stroke : undefined },
           })
         }
@@ -222,7 +222,7 @@
           ...(is_horizontal ? { x_axis: `x2` } : { y_axis: `y2` }),
           markers: `line`,
           label: label || `α²F ${a2f_idx + 1}`,
-          line_style: { stroke, stroke_width: 1.5, line_dash: `5,3` },
+          line_style: { color: stroke, width: 1.5, dash: `5,3` },
         })
       }
       return { series_data: all_series, stacked_areas: areas }

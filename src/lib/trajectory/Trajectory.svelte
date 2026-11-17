@@ -1140,7 +1140,7 @@
   let histogram_series = $derived.by((): HistogramSeries[] => {
     if (!distribution_series) return []
     const { id, y: values, label, unit, line_style } = distribution_series
-    return [{ id, values, label, unit, color: line_style?.stroke }]
+    return [{ id, values, label, unit, color: line_style?.color }]
   })
   const distribution_count = $derived.by(() => {
     let count = 0

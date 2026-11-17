@@ -1,6 +1,6 @@
 // Types of band structures, densities of states and vibrational spectra
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { InternalPoint } from '#lib/plot/index.js'
+import type { InternalPoint, LineStyle } from '#lib/plot/index.js'
 import type { ElectronEnergyUnit } from './frequency-units'
 
 // Discriminator of bands and DOS alike: phonon data is in THz (DOS `frequencies`), electronic
@@ -129,10 +129,7 @@ export type DosData = PhononDos | ElectronicDos
 // Band line styling: one style for every band, one per acoustic/optical mode, or one per band
 // and spin channel of a structure (its band_structs key or label, e.g. ElectronicStructure's sheet
 // colours)
-export interface BandLineStyle {
-  stroke?: string
-  stroke_width?: number
-}
+export type BandLineStyle = Pick<LineStyle, `color` | `width`>
 export type LineKwargs =
   | BandLineStyle
   | { acoustic?: BandLineStyle; optical?: BandLineStyle }

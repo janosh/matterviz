@@ -209,7 +209,7 @@
     y,
     label,
     point_style: { fill: color, radius: 4, ...point_style },
-    line_style: { stroke: color, stroke_width },
+    line_style: { color, width: stroke_width },
     markers: `line+points`,
   })
 

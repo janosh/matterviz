@@ -2008,8 +2008,8 @@ Lines that leave the fixed `x_axis.range` / `y_axis.range` are clipped at the pl
   // Add some basic styling
   clipping_series.forEach((series_data, idx) => {
     series_data.line_style = {
-      stroke: `hsl(${idx * 60}, 70%, 50%)`,
-      stroke_width: 2,
+      color: `hsl(${idx * 60}, 70%, 50%)`,
+      width: 2,
     }
   })
 </script>
@@ -2041,7 +2041,7 @@ Series with identical labels remain independent. To combine several drawing seri
       label: 'PBE',
       legend_group: 'DFT',
       point_style: { fill: '#3498db', radius: 5 },
-      line_style: { stroke: '#3498db', stroke_width: 2 },
+      line_style: { color: '#3498db', width: 2 },
       markers: 'line+points',
     },
     {
@@ -2050,7 +2050,7 @@ Series with identical labels remain independent. To combine several drawing seri
       label: 'LDA',
       legend_group: 'DFT',
       point_style: { fill: '#2980b9', radius: 5 },
-      line_style: { stroke: '#2980b9', stroke_width: 2, line_dash: '5 3' },
+      line_style: { color: '#2980b9', width: 2, dash: '5 3' },
       markers: 'line+points',
     },
     // ML Potentials group
@@ -2060,7 +2060,7 @@ Series with identical labels remain independent. To combine several drawing seri
       label: 'MACE',
       legend_group: 'ML Potentials',
       point_style: { fill: '#e74c3c', radius: 5 },
-      line_style: { stroke: '#e74c3c', stroke_width: 2 },
+      line_style: { color: '#e74c3c', width: 2 },
       markers: 'line+points',
     },
     {
@@ -2069,7 +2069,7 @@ Series with identical labels remain independent. To combine several drawing seri
       label: 'CHGNet',
       legend_group: 'ML Potentials',
       point_style: { fill: '#c0392b', radius: 5 },
-      line_style: { stroke: '#c0392b', stroke_width: 2, line_dash: '5 3' },
+      line_style: { color: '#c0392b', width: 2, dash: '5 3' },
       markers: 'line+points',
     },
     {
@@ -2078,7 +2078,7 @@ Series with identical labels remain independent. To combine several drawing seri
       label: 'M3GNet',
       legend_group: 'ML Potentials',
       point_style: { fill: '#a93226', radius: 5 },
-      line_style: { stroke: '#a93226', stroke_width: 2, line_dash: '2 2' },
+      line_style: { color: '#a93226', width: 2, dash: '2 2' },
       markers: 'line+points',
     },
     // Experiment (ungrouped)
@@ -2189,7 +2189,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
     y: x_values.map((val) => 10 + 3 * Math.sin(val * 0.5) + Math.random()),
     label: 'Upper Bound',
     point_style: { fill: '#e74c3c', radius: 4 },
-    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    line_style: { color: '#e74c3c', width: 2 },
     markers: 'line+points',
   }
   const lower_series = {
@@ -2197,7 +2197,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
     y: x_values.map((val) => 5 + 2 * Math.sin(val * 0.5) + Math.random()),
     label: 'Lower Bound',
     point_style: { fill: '#3498db', radius: 4 },
-    line_style: { stroke: '#3498db', stroke_width: 2 },
+    line_style: { color: '#3498db', width: 2 },
     markers: 'line+points',
   }
 
@@ -2207,7 +2207,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
     y: x_values.map((val) => 15 + 2 * Math.cos(val * 0.3)),
     label: 'Measurement',
     point_style: { fill: '#2ecc71', radius: 5 },
-    line_style: { stroke: '#2ecc71', stroke_width: 2 },
+    line_style: { color: '#2ecc71', width: 2 },
     markers: 'line+points',
   }
 
@@ -2270,14 +2270,14 @@ Fill regions and error bands accept a `pattern` (a shape name, plotly-style shor
     x: x_values,
     y: x_values.map((val) => 4 + 2 * Math.sin(val)),
     label: `Model A`,
-    line_style: { stroke: `#4c6ef5`, stroke_width: 2 },
+    line_style: { color: `#4c6ef5`, width: 2 },
     markers: `line`,
   }
   const model_b = {
     x: x_values,
     y: x_values.map((val) => 4.5 + 1.5 * Math.cos(val * 0.8)),
     label: `Model B`,
-    line_style: { stroke: `#e8590c`, stroke_width: 2 },
+    line_style: { color: `#e8590c`, width: 2 },
     markers: `line`,
   }
 
@@ -2336,7 +2336,7 @@ Use the `where` condition to fill only where a condition is true, e.g. highlight
     y: x_values.map((val) => 8 + 4 * Math.sin(val)),
     label: 'Series A',
     point_style: { fill: '#e74c3c', radius: 3 },
-    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    line_style: { color: '#e74c3c', width: 2 },
     markers: 'line+points',
   }
   const series_b = {
@@ -2344,7 +2344,7 @@ Use the `where` condition to fill only where a condition is true, e.g. highlight
     y: x_values.map((val) => 8 + 3 * Math.cos(val * 0.8)),
     label: 'Series B',
     point_style: { fill: '#3498db', radius: 3 },
-    line_style: { stroke: '#3498db', stroke_width: 2 },
+    line_style: { color: '#3498db', width: 2 },
     markers: 'line+points',
   }
 
@@ -2415,7 +2415,7 @@ Series on different x-grids need no resampling: each boundary keeps its own poin
     y: sparse_x.map((val) => 8 + 3 * Math.sin(val * 0.4)),
     label: 'Sparse (11 pts)',
     point_style: { fill: '#e74c3c', radius: 6 },
-    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    line_style: { color: '#e74c3c', width: 2 },
     markers: 'line+points',
   }
 
@@ -2426,7 +2426,7 @@ Series on different x-grids need no resampling: each boundary keeps its own poin
     y: dense_x.map((val) => 5 + 2 * Math.cos(val * 0.6)),
     label: 'Dense (41 pts)',
     point_style: { fill: '#3498db', radius: 3 },
-    line_style: { stroke: '#3498db', stroke_width: 2 },
+    line_style: { color: '#3498db', width: 2 },
     markers: 'line+points',
   }
 
@@ -2468,7 +2468,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
     y: [3, 5, 7, 6, 4],
     label: 'Left (0-8)',
     point_style: { fill: '#e74c3c', radius: 5 },
-    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    line_style: { color: '#e74c3c', width: 2 },
     markers: 'line+points',
   }
 
@@ -2478,7 +2478,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
     y: [2, 3, 5, 4, 3],
     label: 'Right (6-14)',
     point_style: { fill: '#3498db', radius: 5 },
-    line_style: { stroke: '#3498db', stroke_width: 2 },
+    line_style: { color: '#3498db', width: 2 },
     markers: 'line+points',
   }
 
@@ -2488,7 +2488,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
     y: [6, 8, 7, 9, 8],
     label: 'Far Right (16-20)',
     point_style: { fill: '#2ecc71', radius: 5 },
-    line_style: { stroke: '#2ecc71', stroke_width: 2 },
+    line_style: { color: '#2ecc71', width: 2 },
     markers: 'line+points',
   }
 
@@ -2542,7 +2542,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
       y: upper_y,
       label: 'Upper',
       point_style: { fill: '#e74c3c', radius: 4 },
-      line_style: { stroke: '#e74c3c', stroke_width: 2 },
+      line_style: { color: '#e74c3c', width: 2 },
       markers: 'line+points',
     },
     {
@@ -2550,7 +2550,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
       y: lower_y,
       label: 'Lower',
       point_style: { fill: '#3498db', radius: 4 },
-      line_style: { stroke: '#3498db', stroke_width: 2 },
+      line_style: { color: '#3498db', width: 2 },
       markers: 'line+points',
     },
   ]
@@ -2864,7 +2864,7 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
       x: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       y: [5.5, 8.5, 5.5, 2.5, 5.5, 8.5, 5.5, 2.5, 5.5],
       point_style: { fill: `#3498db`, radius: 11 },
-      line_style: { stroke: `#3498db`, stroke_width: 4 },
+      line_style: { color: `#3498db`, width: 4 },
       markers: `line+points`,
       label: `Data Series`,
     },
@@ -2925,7 +2925,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
       x: dates,
       y: values,
       point_style: { fill: `steelblue`, radius: 4 },
-      line_style: { stroke: `steelblue`, stroke_width: 2 },
+      line_style: { color: `steelblue`, width: 2 },
       markers: `line+points`,
       label: `Daily Metric`,
     },
@@ -3444,7 +3444,7 @@ Several fill regions between series at different sample densities, to stress-tes
       y: x_vals.map((val) => offset + amplitude * Math.sin(val * 0.5 + offset * 0.2)),
       label,
       point_style: { fill: color, radius: 3 },
-      line_style: { stroke: color, stroke_width: 1.5 },
+      line_style: { color, width: 1.5 },
       markers: 'line+points',
     }
   }
@@ -3520,7 +3520,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
     y: time.map((time_value) => 20 + 15 * Math.sin(time_value * 0.3) + Math.random() * 3),
     label: `Temperature (°C)`,
     point_style: { fill: `#e74c3c`, radius: 4 },
-    line_style: { stroke: `#e74c3c`, stroke_width: 2 },
+    line_style: { color: `#e74c3c`, width: 2 },
     markers: `line+points`,
     y_axis: `y`,
   }
@@ -3531,7 +3531,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
     ),
     label: `Pressure (kPa)`,
     point_style: { fill: `#3498db`, radius: 4 },
-    line_style: { stroke: `#3498db`, stroke_width: 2 },
+    line_style: { color: `#3498db`, width: 2 },
     markers: `line+points`,
     y_axis: `y2`,
   }
@@ -3587,7 +3587,7 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
     y_axis,
     markers: `line+points`,
     point_style: { fill: color, radius: 4 },
-    line_style: { stroke: color, stroke_width: 2 },
+    line_style: { color, width: 2 },
   })
 
   const series = [
@@ -3596,7 +3596,7 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
     make_series(`Throughput (units/hr)`, `#3498db`, `y2`, 0.25, 500, 200, 30),
     {
       ...make_series(`Cost ($/unit)`, `#9b59b6`, `y2`, 0.18, 200, 100, 20),
-      line_style: { stroke: `#9b59b6`, stroke_width: 2, line_dash: `4 2` },
+      line_style: { color: `#9b59b6`, width: 2, dash: `4 2` },
     },
   ]
 
@@ -3635,7 +3635,7 @@ Plot two series with independent x-scales on the same chart. The primary x-axis 
     y: intensity,
     label: `Wavelength (nm)`,
     markers: `line+points`,
-    line_style: { stroke: `#7c3aed`, stroke_width: 2 },
+    line_style: { color: `#7c3aed`, width: 2 },
     point_style: { fill: `#7c3aed`, radius: 5 },
   }
 
@@ -3646,7 +3646,7 @@ Plot two series with independent x-scales on the same chart. The primary x-axis 
     label: `Energy (eV)`,
     x_axis: `x2`,
     markers: `line+points`,
-    line_style: { stroke: `#ea580c`, stroke_width: 2 },
+    line_style: { color: `#ea580c`, width: 2 },
     point_style: { fill: `#ea580c`, radius: 5 },
   }
 </script>
@@ -3751,7 +3751,7 @@ Series `unit` metadata groups compatible values onto one y-axis. `axis_group` ex
       label: `Total energy`,
       unit: `eV`,
       markers: `line+points` as const,
-      line_style: { stroke: `#4c6ef5`, stroke_width: 2 },
+      line_style: { color: `#4c6ef5`, width: 2 },
       point_style: { fill: `#4c6ef5` },
     },
     {
@@ -3761,7 +3761,7 @@ Series `unit` metadata groups compatible values onto one y-axis. `axis_group` ex
       unit: `eV`,
       axis_group: split_residual ? `scf-residual` : undefined,
       markers: `line+points` as const,
-      line_style: { stroke: `#f03e3e`, stroke_width: 2 },
+      line_style: { color: `#f03e3e`, width: 2 },
       point_style: { fill: `#f03e3e` },
     },
   ])

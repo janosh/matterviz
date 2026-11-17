@@ -220,15 +220,14 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
     expect([oxygen.e_form_per_atom, iron.e_form_per_atom]).toEqual([0, 0])
   })
 
-  // E_form-only entries (0 eV placeholder energies) lost their cached E_form to the shifted O
+  // E_form-only entries lost their cached E_form to the shifted O
   // reference and were rebuilt from the placeholder (FeO at +0.55 instead of -0.95 eV/atom,
   // Fe2O3 next to absolute energies at +6.94 instead of -1.04), or dropped out of the hull when
   // another element had no reference to recompute against (no Si unary)
-  const fe_ref: PhaseData = { composition: { Fe: 1 }, energy: 0, e_form_per_atom: 0 }
-  const o_ref: PhaseData = { composition: { O: 2 }, energy: 0, e_form_per_atom: 0 }
+  const fe_ref: PhaseData = { composition: { Fe: 1 }, e_form_per_atom: 0 }
+  const o_ref: PhaseData = { composition: { O: 2 }, e_form_per_atom: 0 }
   const e_form_only = (composition: Record<string, number>, e_form: number): PhaseData => ({
     composition,
-    energy: 0,
     e_form_per_atom: e_form,
     entry_id: JSON.stringify(composition),
   })
@@ -306,7 +305,7 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
       make_phase({ Li: 1 }, -2),
       make_phase({ O: 1 }, -5.5, { temperatures: [1000], free_energies: [-5.5] }),
       make_phase({ O: 1 }, -4.9),
-      { composition: { Li: 2, O: 1 }, energy: 0, e_form_per_atom: -2, entry_id: `Li2O` },
+      { composition: { Li: 2, O: 1 }, e_form_per_atom: -2, entry_id: `Li2O` },
     ]
     const config: GasThermodynamicsConfig = { enabled_gases: [`O2`], pressures: { O2: 1 } }
     const delta_mu_o = compute_element_mu_shift(
@@ -440,10 +439,9 @@ describe(`gas-thermodynamics: compound gases are hull phases`, () => {
   // distances (kept in precomputed mode) went stale and CaCO3 read 0 at 2000 K in 1 bar CO2
   test(`a compound gas drops every cached hull distance`, () => {
     const entries: PhaseData[] = [
-      { composition: { Ca: 1, C: 2 }, energy: 0, e_form_per_atom: -0.1, e_above_hull: 0.05 },
+      { composition: { Ca: 1, C: 2 }, e_form_per_atom: -0.1, e_above_hull: 0.05 },
       {
         composition: { Ca: 1, C: 1, O: 3 },
-        energy: 0,
         e_form_per_atom: -2.7,
         is_stable: true,
       },

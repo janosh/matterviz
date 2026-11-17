@@ -471,8 +471,12 @@ describe(`scales`, () => {
   // arcsinh branch clamps by hand, not through d3's .clamp(true), so descending radius bounds
   // collapsed it to a constant. 1000 is out of domain: it clamps to the end, not past it.
   const ends = [1, 100, 1000]
-  test.each<[ScaleType, Vec2, Vec2, number[], number[]]>([
+  test.each<[ScaleType, [number | null, number | null], Vec2, number[], number[]]>([
     [`log`, [1, 100], [2, 10], [1, 10, 100], [2, 6, 10]],
+    // one-sided ranges fill the unset end from the data range [1, 100]
+    [`linear`, [null, 51], [2, 10], [0, 26, 51, 100], [2, 6, 10, 10]],
+    [`linear`, [51, null], [2, 10], [0, 51, 75.5, 100], [2, 2, 6, 10]],
+    [`log`, [0, 100], [2, 10], [1, 10, 100], [2, 6, 10]], // non-positive log end: unset
     [`log`, [100, 1], [2, 10], [1, 10, 100], [10, 6, 2]],
     [`linear`, [1, 100], [10, 2], ends, [10, 2, 2]],
     [`arcsinh`, [1, 100], [10, 2], ends, [10, 2, 2]],
@@ -480,7 +484,7 @@ describe(`scales`, () => {
   ])(
     `%s size scale over value_range %j, radius_range %j`,
     (type, value_range, radius_range, values, expected) => {
-      const radius = create_size_scale({ type, value_range, radius_range }, [0, 1])
+      const radius = create_size_scale({ type, value_range, radius_range }, [1, 100])
       expect(values.map(radius)).toEqual(expected)
     },
   )

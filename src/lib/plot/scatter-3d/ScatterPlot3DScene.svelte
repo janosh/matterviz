@@ -554,8 +554,8 @@
         series_idx,
         positions,
         color: extract_series_color(srs, plot_color(series_idx)),
-        width: line_style.stroke_width ?? 2,
-        dashed: Boolean(line_style.line_dash),
+        width: line_style.width ?? 2,
+        dashed: Boolean(line_style.dash),
       })
     }
     return inputs

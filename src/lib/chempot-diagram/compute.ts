@@ -50,7 +50,7 @@ export function safe_energy_per_atom(entry: PhaseData): number {
   return Number.isFinite(epa) ? epa : Number.NaN
 }
 
-// E_form-only entries (no energy, or a 0 eV placeholder next to E_form) placed on their
+// E_form-only entries (no energy or energy_per_atom) placed on their
 // references' absolute scale (E_form + Σ x_e E_e), so they share the absolute entries' axes
 function with_absolute_energies(entries: PhaseData[]): PhaseData[] {
   if (entries.every(has_absolute_energy)) return entries
@@ -220,21 +220,16 @@ export const renormalize_entries = (
     return { ...entry, energy: e_form * atoms, energy_per_atom: e_form, correction: undefined }
   })
 
-// Hyperplane rows [x_1, ..., x_n, -E_per_atom] for elemental refs and entries with negative
-// E_form. When every entry carries `is_stable`/`e_above_hull`, those replace pymatgen's
-// `E_form < -tol` rule. PRECONDITION: the flags must belong to THIS chemsys — stale ones from
-// a larger chemsys silently delete a locally stable phase's whole domain.
+// Hyperplane rows [x_1, ..., x_n, -E_per_atom] for elemental refs and entries with
+// E_form < -tol (pymatgen's rule). Entries' own is_stable/e_above_hull flags are ignored:
+// they may belong to a larger chemsys, where they would delete a locally stable domain.
 export function build_hyperplanes(
   min_entries: PhaseData[],
   el_refs: Record<string, PhaseData>,
   elements: string[],
 ): { hyperplanes: number[][]; hyperplane_entries: PhaseData[] } {
-  const n_elems = elements.length
   const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
-  const use_precomputed_hull = min_entries.every(
-    (entry) => typeof entry.is_stable === `boolean` || typeof entry.e_above_hull === `number`,
-  )
   const hyperplanes: number[][] = []
   const hyperplane_entries: PhaseData[] = []
 
@@ -243,26 +238,16 @@ export function build_hyperplanes(
     const composition = entry.composition as Record<string, number>
     const energy_per_atom = safe_energy_per_atom(entry)
     if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) continue
-    const row = Array(n_elems + 1).fill(0)
-    for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
-      row[elem_idx] = (composition[elements[elem_idx]] ?? 0) / atom_count
-    }
-    const on_precomputed_hull =
-      use_precomputed_hull &&
-      (entry.is_stable === true ||
-        (typeof entry.e_above_hull === `number` && entry.e_above_hull <= tol))
-    let include_entry = on_precomputed_hull || always_include.has(entry)
-    if (!include_entry && !use_precomputed_hull) {
+    if (!always_include.has(entry)) {
       // build_chempot_hyperplanes validated the reference set, so null here is bad input
       const e_form = compute_e_form_per_atom(entry, el_refs)
       if (e_form === null) throw new Error(`No E_form for ${JSON.stringify(composition)}`)
-      include_entry = e_form < -tol
+      if (!(e_form < -tol)) continue
     }
-    if (include_entry) {
-      row[n_elems] = -energy_per_atom
-      hyperplanes.push(row)
-      hyperplane_entries.push(entry)
-    }
+    const row = elements.map((element) => (composition[element] ?? 0) / atom_count)
+    row.push(-energy_per_atom)
+    hyperplanes.push(row)
+    hyperplane_entries.push(entry)
   }
 
   return { hyperplanes, hyperplane_entries }

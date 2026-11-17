@@ -579,7 +579,7 @@
     const first_color_value = srs.color_values?.[0]
     return {
       ...(has_marker(srs, `line`)
-        ? { line_color: color, line_dash: srs.line_style?.line_dash }
+        ? { line_color: color, line_dash: srs.line_style?.dash ?? line_state.dash }
         : {}),
       ...(has_marker(srs, `points`)
         ? {
@@ -788,8 +788,8 @@
           >
             {#if is_line}
               {@const color = series_color(srs)}
-              {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width}
-              {@const line_dash = srs.line_style?.line_dash ?? `none`}
+              {@const stroke_width = srs.line_style?.width ?? line_state.width}
+              {@const line_dash = srs.line_style?.dash ?? line_state.dash ?? `none`}
               {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
               {@const x_scale = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
               {@const show_line = has_marker(srs, `line`)}
@@ -1143,22 +1143,31 @@
           {#if series.length > 1 && series_label}
             <div><strong>{@html sanitize_html(series_label)}</strong></div>
           {/if}
-          <div>
-            <TooltipValue
-              label={hover_info.x_axis.label || `x`}
-              unit={hover_info.x_axis.unit}
-              value={(cat_axis === `x` ? hover_info.category_label : undefined) ??
-                format_value_or_num(hover_info.orient_x, hover_info.x_axis.format)}
-            />
-          </div>
-          <div>
-            <TooltipValue
-              label={hover_info.y_axis.label || `y`}
-              unit={hover_info.y_axis.unit}
-              value={(cat_axis === `y` ? hover_info.category_label : undefined) ??
-                format_value_or_num(hover_info.orient_y, hover_info.y_axis.format)}
-            />
-          </div>
+          {@const { x_axis: x_ax, y_axis: y_ax, orient_x, orient_y } = hover_info}
+          {#each [[`x`, x_ax, orient_x], [`y`, y_ax, orient_y]] as const as [key, axis, value] (key)}
+            {@const fmt = (num: number) => format_value_or_num(num, axis.format)}
+            <!-- an error on a time axis is a span, not a date: plain number in the axis unit -->
+            {@const fmt_err = (num: number) =>
+              format_value_or_num(num, axis.format?.startsWith(`%`) ? undefined : axis.format)}
+            <!-- the value axis carries y_error: ± σ, or +upper / −lower when asymmetric -->
+            {@const [low, up] = error_getter(
+              internal_series[hover_info.series_idx]?.y_error,
+            )?.(hover_info.bar_idx) ?? [0, 0]}
+            <div>
+              <TooltipValue
+                label={axis.label || key}
+                unit={axis.unit}
+                value={cat_axis === key
+                  ? (hover_info.category_label ?? fmt(value))
+                  : fmt(value) +
+                    (low === up
+                      ? up
+                        ? ` ± ${fmt_err(up)}`
+                        : ``
+                      : ` +${fmt_err(up)} / −${fmt_err(low)}`)}
+              />
+            </div>
+          {/each}
         {/if}
       </PlotTooltip>
     {/if}

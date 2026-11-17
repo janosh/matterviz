@@ -30,8 +30,7 @@ export const shown_point_style = (
 export const extract_series_color = (
   series_data: Pick<DataSeries, `line_style` | `point_style`> | null | undefined,
   fallback: string = DEFAULTS.scatter.point.color,
-): string =>
-  series_data?.line_style?.stroke ?? shown_point_style(series_data)?.fill ?? fallback
+): string => series_data?.line_style?.color ?? shown_point_style(series_data)?.fill ?? fallback
 
 // Minimal series shape every chart's legend entry is derived from.
 type LegendSeries = { label?: string | null; visible?: boolean; legend_group?: string }

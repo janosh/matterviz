@@ -368,9 +368,12 @@ export function apply_gas_corrections(
       is_stable: undefined,
       ...(replaced && { exclude_from_hull: true }),
     }
-    if (own_shift === 0) return moved
-    // the MP correction stays: the shifted base is the RAW per-atom energy
-    const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + own_shift
+    // the MP correction stays: the shifted base is the RAW per-atom energy (none for E_form-only
+    // entries, whose shift the E_form above carries)
+    const raw_per_atom =
+      entry.energy_per_atom ?? (entry.energy === undefined ? undefined : entry.energy / atoms)
+    if (own_shift === 0 || raw_per_atom === undefined) return moved
+    const energy_per_atom = raw_per_atom + own_shift
     return { ...moved, energy: energy_per_atom * atoms, energy_per_atom }
   })
 
@@ -394,10 +397,11 @@ export function apply_gas_corrections(
       reduced_formula: gas,
       name: `${gas} gas`,
       e_form_per_atom: mu_form - ref_sum_of(composition),
-      // E_form-only (0 eV placeholder) when a reference has no absolute energy
-      ...(Number.isFinite(energy_per_atom)
-        ? { energy: energy_per_atom * atoms, energy_per_atom }
-        : { energy: 0 }),
+      // E_form-only when a reference has no absolute energy
+      ...(Number.isFinite(energy_per_atom) && {
+        energy: energy_per_atom * atoms,
+        energy_per_atom,
+      }),
     }
   })
   return [...corrected, ...gas_entries]

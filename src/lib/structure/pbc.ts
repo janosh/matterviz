@@ -86,9 +86,9 @@ export type ImageAtomOptions =
       bonding_options: BondingOptions
     }
 export type ImageAtomCompletion = ImageAtomOptions[`completion`]
-// [atom_idx, image_xyz, image_abc, is_completion]: is_completion marks phase-2 images that
-// only complete bonds / coordination polyhedra at cell faces
-export type ImageAtom = [number, Vec3, Vec3, boolean]
+// is_completion marks phase-2 images that only complete bonds / coordination polyhedra at
+// cell faces
+export type ImageAtom = { site_idx: number; xyz: Vec3; abc: Vec3; is_completion: boolean }
 
 // Image atoms for PBC. Skips scattered trajectories.
 export const find_image_atoms = (
@@ -111,8 +111,8 @@ function image_atoms(
 
   const images: ImageAtom[] = []
   const push_copy = (site_idx: number, shift: Shift, is_completion: boolean): void => {
-    const img_abc = shifted(structure.sites[site_idx].abc, shift)
-    images.push([site_idx, frac_to_cart(img_abc), img_abc, is_completion])
+    const abc = shifted(structure.sites[site_idx].abc, shift)
+    images.push({ site_idx, xyz: frac_to_cart(abc), abc, is_completion })
   }
 
   // Phase 1: true periodic copies (not clamped to the face) of atoms within FACE_TOLERANCE of
@@ -191,7 +191,7 @@ function image_atoms(
     return { images, reach: 1 }
   }
   const seen_images = new Set(
-    images.map(([site_idx, , abc]) =>
+    images.map(({ site_idx, abc }) =>
       pack_image_key(site_idx, lattice_shift(abc, structure.sites[site_idx].abc), reach),
     ),
   )
@@ -280,7 +280,7 @@ export function get_pbc_image_sites(
         }
       : site
   const sites = structure.sites.map((site, site_idx) => stamp(site, site_idx, ZERO_SHIFT))
-  for (const [site_idx, xyz, abc, is_completion] of images) {
+  for (const { site_idx, xyz, abc, is_completion } of images) {
     const orig_site = structure.sites[site_idx]
     const image: Site = {
       ...orig_site,

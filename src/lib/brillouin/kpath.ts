@@ -3,7 +3,7 @@
 // HighSymmKPath uses by default. moyo's standardization supplies the Bravais lattice and
 // conventional cell; SC's own cell choices (axis order, monoclinic unique axis a with α < 90°,
 // triclinic reciprocal-angle signs) follow pymatgen's SpacegroupAnalyzer so labels and
-// coordinates match its k-paths. Points come back in the reciprocal basis of the given cell.
+// coordinates match its k-paths. Points come back in the SC primitive cell's reciprocal basis.
 import * as math from '#lib/math.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { point_group_rotations } from '#lib/symmetry/analyze.js'
@@ -11,13 +11,15 @@ import { type CrystalSystem, spacegroup_to_crystal_sys } from '#lib/symmetry/spa
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import type { KPathData } from './types'
 
-// High-symmetry k-points (fractional, in the reciprocal basis of the cell the path was built
-// for) and the path through them: each inner array is one continuous stretch of labels, and
-// consecutive stretches are separate (a jump between them is not path).
+// High-symmetry k-points (fractional in k_lattice, the reciprocal basis of `primitive`) and the
+// path through them: each inner array is one continuous stretch of labels, and consecutive
+// stretches are separate (a jump between them is not path).
 export type HighSymmKPath = {
   variant: ScLatticeVariant
   kpoints: Record<string, Vec3>
   path: string[][]
+  primitive: Matrix3x3 // the SC primitive cell the path is defined in (rows, input-fractional)
+  k_lattice: Matrix3x3 // its reciprocal lattice (rows b_i incl. 2π), whose zone holds the path
 }
 
 // What high_symmetry_kpath reads from a moyo analysis of the cell (analyze_structure_symmetry)
@@ -594,9 +596,9 @@ function closest_equivalent_basis(prim: Matrix3x3, rotations: Matrix3x3[]): Matr
 }
 
 // Setyawan–Curtarolo high-symmetry k-path of a crystal with lattice `lattice` (rows a_i, Å),
-// given moyo's analysis of it (analyze_structure_symmetry). k-points are fractional in this
-// cell's reciprocal basis, so a non-primitive input cell (e.g. conventional fcc) gets the
-// primitive cell's path in its own (smaller) reciprocal basis.
+// given moyo's analysis of it (analyze_structure_symmetry). k-points are SC's own fractional
+// coordinates in the reciprocal basis of `primitive` (also for a non-primitive input cell, e.g.
+// conventional fcc, whose smaller zone would leave points outside it).
 export function high_symmetry_kpath(
   lattice: Matrix3x3,
   sym_data: KPathSymmetry,
@@ -617,27 +619,20 @@ export function high_symmetry_kpath(
   const cell = { a_len, b_len, c_len, alpha, prim_alpha }
   const variant = sc_variant(family, centering, cell, prim_cart)
   const table: ScTable = SC_TABLES[variant](cell)
-  const sc_kpoints: Record<string, Vec3> = { Γ: [0, 0, 0], ...table.kpoints }
-  const basis = closest_equivalent_basis(prim, point_group_rotations(sym_data.operations))
-  // k = f_SC·B_SC with B_SC = P⁻ᵀ·B_input for SC primitive rows P (input-fractional), so the
-  // input-basis coordinates are f_SC·P⁻ᵀ
-  const to_input = math.inverse_3x3(basis)
-  const kpoints = Object.fromEntries(
-    Object.entries(sc_kpoints).map(([label, frac]) => [
-      label,
-      math.mul_3x3_vec3(to_input, frac),
-    ]),
-  )
+  const kpoints: Record<string, Vec3> = { Γ: [0, 0, 0], ...table.kpoints }
+  const primitive = closest_equivalent_basis(prim, point_group_rotations(sym_data.operations))
   const path = table.path.split(`|`).map((stretch) => stretch.split(`-`))
-  return { variant, kpoints, path }
+  const k_lattice = math.reciprocal_lattice(to_cartesian(primitive, lattice), { two_pi: true })
+  return { variant, kpoints, path, primitive, k_lattice }
 }
 
-// BrillouinZone's `k_path` for a high-symmetry path: Cartesian points (reciprocal lattice rows
-// b_i incl. 2π), one per label visit, with every path stretch a branch
-export function kpath_to_k_path_data(
-  { kpoints, path }: Pick<HighSymmKPath, `kpoints` | `path`>,
-  k_lattice: Matrix3x3,
-): KPathData {
+// BrillouinZone's `k_path` for a high-symmetry path: Cartesian points, one per label visit,
+// with every path stretch a branch
+export function kpath_to_k_path_data({
+  kpoints,
+  path,
+  k_lattice,
+}: Pick<HighSymmKPath, `kpoints` | `path` | `k_lattice`>): KPathData {
   const [points, labels, branches]: [Vec3[], string[], Vec2[]] = [[], [], []]
   const frac_to_cart = math.create_frac_to_cart(k_lattice)
   for (const stretch of path) {

@@ -26,6 +26,7 @@ import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, reset_section, set_input } from '../setup'
+import { max_abs_error } from '../numeric-helpers'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
 vi.mock(`svelte-widgets/browser`, async (import_original) => ({
@@ -89,8 +90,15 @@ describe(`poscar_frame_filename`, () => {
 })
 
 describe(`trajectory_frame_to_extxyz_str`, () => {
+  // one atom in a periodic 5 A cube with extra Properties columns and comment pairs
+  const parse_one_atom = (columns: string, row: string, comment = ``) =>
+    parse_exported_frames(
+      `1\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:${columns} ${comment} pbc="T T T"\n${row}`,
+    )[0]
+
   // Frame-level fields (step, energy, …) live outside the structure the single-structure
-  // exporter sees; scalars/booleans join the comment, arrays/strings/non-finites do not.
+  // exporter sees; scalars/booleans join the comment, numeric vectors as quoted arrays, while
+  // strings, non-finites and a stress of unknown units (no stress_frobenius) do not.
   test.each([0, 2])(`merges frame scalars into the comment for %i sites`, (site_count) => {
     const lines = trajectory_frame_to_extxyz_str(
       make_frame(5, two_sites.slice(0, site_count), {
@@ -101,6 +109,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
         pressure: Number.POSITIVE_INFINITY,
         bad_energy: Number.NaN,
         stress: [1, 2, 3, 4, 5, 6],
+        dipole: [0.5, -1, 2],
         label: `some string`,
       }),
     ).split(`\n`)
@@ -112,6 +121,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(comment).toContain(`force_max=0.1`)
     expect(comment).toContain(`temperature=300`)
     expect(comment).toContain(`converged=true`)
+    expect(comment).toContain(`dipole="0.5 -1 2"`)
     expect(comment).not.toContain(`stress`)
     expect(comment).not.toContain(`some string`)
     expect(comment).not.toMatch(/NaN|Infinity/)
@@ -120,7 +130,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
   test(`round-trips per-atom vectors and frame scalars through parse and export`, () => {
     const source = [
       `2`,
-      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T`,
+      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T bader="0.1 -0.2 0.3 -0.2" gaps="1 2" lone="_JSON [7]" virial="_JSON [1,2,3,4,5,6,7,8,9]"`,
       `Si 0 0 0 0.1 0.2 0.3 1e-7 2 3 0.25`,
       `O 1 1 1 -0.1 -0.2 -0.3 4 5 6 -0.5`,
     ].join(`\n`)
@@ -139,7 +149,67 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
       n_scf_steps: 7,
       density: 2.33,
       coords_unwrapped: true,
+      // vectors of any length keep their shape (a 1-vector as ASE's `_JSON [7]`)
+      bader: [0.1, -0.2, 0.3, -0.2],
+      gaps: [1, 2],
+      lone: [7],
+      // a flat 9-vector under a 3x3 key stays flat (plain text would read back as a matrix)
+      virial: [1, 2, 3, 4, 5, 6, 7, 8, 9],
     })
+    expect(text).toContain(`lone="_JSON [7]"`)
+  })
+
+  // ASE writes momenta (read back as momentum + derived velocity) and a 9-value stress in
+  // eV/Å³: export restores both as ASE wrote them, without a stray velocity column
+  // (non-symmetric, so a transposed stress or polarizability would show)
+  test(`re-exports ASE momenta and stress as ASE writes them`, () => {
+    const stress = `0.01 0.002 0 0.007 -0.03 0.004 0 0.001 0.05`
+    const frame = parse_one_atom(
+      `momenta:R:3`,
+      `Cu 0 0 0 1 -2 3`,
+      `stress="${stress}" polarizability="_JSON [[1, 4, 0], [0, 2, 0], [0, 0, 3]]"`,
+    )
+    const comment = trajectory_frame_to_extxyz_str(frame).split(`\n`)[1]
+    expect(comment).toContain(`Properties=species:S:1:pos:R:3:momenta:R:3 `)
+    expect(comment).toContain(`polarizability="_JSON [[1,4,0],[0,2,0],[0,0,3]]"`)
+    const written = /stress="(?<values>[^"]+)"/
+      .exec(comment)
+      ?.groups?.values.split(` `)
+      .map(Number)
+    expect(written).toHaveLength(9)
+    expect(max_abs_error(written ?? [], stress.split(` `).map(Number))).toBeLessThan(1e-15)
+  })
+
+  // the reader takes an explicit velocity column over the momenta, so one that differs from
+  // the momentum-derived velocity must be written, and one that matches it must not
+  test.each([
+    [`differs from`, `1 0 0`, [1, 0, 0]],
+    [`matches`, null, [0, 0, 0]],
+  ])(
+    `keeps an explicit velocity only when it %s the momenta`,
+    (_label, velocity, expected) => {
+      const columns = velocity ? `velocities:R:3:momenta:R:3` : `momenta:R:3`
+      const frame = parse_one_atom(columns, `Cu 0 0 0 ${velocity ?? ``} 0 0 0`)
+      const exported = trajectory_frame_to_extxyz_str(frame)
+      expect(exported.includes(`velocity:R:3`)).toBe(velocity !== null)
+      const site = parse_exported_frames(exported)[0].structure.sites[0]
+      expect(site.properties?.velocity).toEqual(expected)
+    },
+  )
+
+  // a mass on only some sites isn't written, so the reader divides by standard masses: the
+  // velocity derived from a recorded mass then differs from what reimport derives
+  test(`keeps a velocity derived from a mass the file will not hold`, () => {
+    const frame = parse_one_atom(`masses:R:1:momenta:R:3`, `H 0 0 0 2 1 0 0`)
+    // second site: no recorded mass, velocity derived from the standard mass
+    const second = parse_one_atom(`momenta:R:3`, `H 1 1 1 1 0 0`).structure.sites[0]
+    frame.structure.sites.push(second)
+    const velocity = frame.structure.sites[0].properties?.velocity
+    const exported = trajectory_frame_to_extxyz_str(frame)
+    expect(exported).toContain(`velocity:R:3`)
+    expect(parse_exported_frames(exported)[0].structure.sites[0].properties?.velocity).toEqual(
+      velocity,
+    )
   })
 })
 
@@ -438,9 +508,12 @@ describe(`TrajectoryExportPane property export`, () => {
   }
 
   // download() also takes Blobs (the POSCAR zip); a CSV/JSON export handing one over would
-  // stringify to `[object Blob]` in the saved file
-  const downloaded_text = (): string[] => {
-    const content = vi.mocked(download).mock.calls[0][0]
+  // stringify to `[object Blob]` in the saved file. Waits for the single download and checks
+  // its filename and MIME type when given.
+  const downloaded_text = async (...file: [name: string, mime: string] | []) => {
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+    const [content, ...saved_as] = vi.mocked(download).mock.calls[0]
+    if (file.length) expect(saved_as).toEqual(file)
     if (typeof content !== `string`)
       throw new TypeError(`expected text, got ${typeof content}`)
     return content.split(`\n`)
@@ -493,8 +566,7 @@ describe(`TrajectoryExportPane property export`, () => {
     expect(poscar.disabled).toBe(false)
     expect(xyz.disabled).toBe(false)
     await click(`Download extXYZ`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    const exported = parse_exported_frames(downloaded_text().join(`\n`))
+    const exported = parse_exported_frames((await downloaded_text()).join(`\n`))
     expect(exported.map(({ step }) => step)).toEqual([5, 9])
   })
 
@@ -678,7 +750,16 @@ describe(`TrajectoryExportPane property export`, () => {
       })
       let export_signal: AbortSignal | undefined
       vi.mocked(io_export.export_trajectory_video).mockImplementationOnce(
-        async (_canvas, _filename, { signal, on_step, on_finish, on_save } = {}) => {
+        async (
+          _canvas,
+          _filename,
+          {
+            signal,
+            on_step,
+            on_finish,
+            on_save,
+          }: Parameters<typeof io_export.export_trajectory_video>[2] = {},
+        ) => {
           export_signal = signal
           try {
             await on_step?.(0, signal)
@@ -815,12 +896,8 @@ describe(`TrajectoryExportPane property export`, () => {
       expect(document.querySelector(reset_selector)).toBeNull()
 
       await click(`Download CSV`)
-      await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-      const [, name, mime] = vi.mocked(download).mock.calls[0]
-      expect(name).toBe(`run_frames_1-3.csv`)
-      expect(mime).toBe(`text/csv`)
+      const lines = await downloaded_text(`run_frames_1-3.csv`, `text/csv`)
       expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
-      const lines = downloaded_text()
       expect(lines).toHaveLength(4)
       expect(lines[0]).toContain(`energy (eV)`)
       expect(lines.slice(1).map((line) => line.split(`,`)[0])).toEqual([`1`, `2`, `3`])
@@ -839,11 +916,8 @@ describe(`TrajectoryExportPane property export`, () => {
     await tick()
 
     await click(`Download extXYZ`)
-    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
-    const [, name, mime] = vi.mocked(download).mock.calls[0]
-    expect(name).toBe(`run.extxyz`)
-    expect(mime).toBe(`chemical/x-xyz`)
-    const exported = parse_exported_frames(downloaded_text().join(`\n`))
+    const lines = await downloaded_text(`run.extxyz`, `chemical/x-xyz`)
+    const exported = parse_exported_frames(lines.join(`\n`))
     expect(exported.map(({ step }) => step)).toEqual([0, 5])
   })
 

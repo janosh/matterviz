@@ -37,8 +37,8 @@ Phonon band structure with acoustic/optical mode styling:
 
   const bands_props = {
     line_kwargs: {
-      acoustic: { stroke: '#e74c3c', stroke_width: 2 },
-      optical: { stroke: '#3498db', stroke_width: 1.5 },
+      acoustic: { color: '#e74c3c', width: 2 },
+      optical: { color: '#3498db', width: 1.5 },
     },
   }
 </script>

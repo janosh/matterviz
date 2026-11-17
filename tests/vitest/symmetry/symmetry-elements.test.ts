@@ -3,6 +3,7 @@
 
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
+import { diagonal_matrix } from '#lib/structure/supercell.js'
 import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
 import {
   classify_symmetry_op,
@@ -519,27 +520,21 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
 describe(`cell clipping helpers`, () => {
   const cubic_2 = cubic_matrix(2)
 
-  // [name, point, direction, low and high endpoint]. clip_line_to_cell promises no endpoint
-  // ordering, so the returned pair is sorted by z before comparing.
+  // [name, point, direction, low and high endpoint, null for a miss]. clip_line_to_cell
+  // promises no endpoint ordering, so the returned pair is sorted by z before comparing.
   test.each([
     [`axis along z through origin`, [0, 0, 0], [0, 0, 1], [0, 0, 0], [0, 0, 2]],
     [`shifted axis`, [0.25, 0.25, 0.5], [0, 0, 1], [0.5, 0.5, 0], [0.5, 0.5, 2]],
     [`body diagonal`, [0, 0, 0], [1, 1, 1], [0, 0, 0], [2, 2, 2]],
-  ] as [string, Vec3, Vec3, Vec3, Vec3][])(
-    `clip_line_to_cell: %s spans the cell`,
+    [`line outside the cell`, [1.5, 0.5, 0], [0, 0, 1], null, null],
+  ] as [string, Vec3, Vec3, Vec3 | null, Vec3 | null][])(
+    `clip_line_to_cell: %s`,
     (_name, point, direction, low_end, high_end) => {
       const seg = clip_line_to_cell(point, direction, cubic_2)
-      expect(seg).not.toBeNull()
-      const sorted = (seg as [Vec3, Vec3]).toSorted(
-        (vector_1, vector_2) => vector_1[2] - vector_2[2],
-      )
-      expect(sorted).toEqual([low_end, high_end])
+      const sorted = seg?.toSorted((vec_a, vec_b) => vec_a[2] - vec_b[2]) ?? null
+      expect(sorted).toEqual(low_end && [low_end, high_end])
     },
   )
-
-  test(`clip_line_to_cell: line outside the cell returns null`, () => {
-    expect(clip_line_to_cell([1.5, 0.5, 0], [0, 0, 1], cubic_2)).toBeNull()
-  })
 
   test(`clip_plane_family: the z = 0 mirror family is the bottom and top faces`, () => {
     const polygons = clip_plane_family([0.5, 0.5, 0], [0, 0, 1], cubic_2)
@@ -570,22 +565,16 @@ describe(`cell clipping helpers`, () => {
   })
 
   test(`clip_plane_family returns vertices in convex winding order`, () => {
-    // The body-diagonal plane through the cell center cuts a regular hexagon. Vertices
-    // must come out sorted around the centroid (the angle-sort step) — otherwise the
-    // rendered polygon self-intersects. A convex, consistently-wound polygon turns the
-    // same way at every vertex, so all consecutive edge cross products project onto the
-    // plane normal with the same sign.
+    // The body-diagonal plane through the center cuts a regular hexagon, whose vertices must
+    // be angle-sorted (else the polygon self-intersects): every turn has the same sign.
     const polygons = clip_plane_family([0.5, 0.5, 0.5], [1, 1, 1], cubic_2)
     // triangles at x + y + z = 1/2 and 5/2 around the hexagonal cross-section at 3/2
     expect(polygons.map((poly) => poly.length)).toEqual([3, 6, 3])
     const poly = polygons[1]
     const normal = math.normalize_vec([1, 1, 1])
     const turn_signs = poly.map((vert, idx) => {
-      const edge_a = math.subtract(poly[(idx + 1) % poly.length], vert)
-      const edge_b = math.subtract(
-        poly[(idx + 2) % poly.length],
-        poly[(idx + 1) % poly.length],
-      )
+      const [next, after] = [1, 2].map((step) => poly[(idx + step) % poly.length])
+      const [edge_a, edge_b] = [math.subtract(next, vert), math.subtract(after, next)]
       return Math.sign(math.dot(math.cross_3d(edge_a, edge_b), normal))
     })
     expect(new Set(turn_signs)).toEqual(new Set([1])) // all same-sign → convex, no crossings
@@ -641,6 +630,11 @@ describe(`dash_segments`, () => {
 })
 
 describe(`tile_symmetry_elements`, () => {
+  // diagonal supercells as per-axis tile counts
+  const tile = (elements: SymmetryElement[], counts: Vec3) =>
+    tile_symmetry_elements(elements, diagonal_matrix(counts))
+  const tiling_reason = (elements: SymmetryElement[], counts: Vec3) =>
+    symmetry_tiling_reason(elements, diagonal_matrix(counts))
   const cell = cubic_matrix(4)
   const mirror: SymmetryElement = {
     kind: `mirror`,
@@ -665,15 +659,14 @@ describe(`tile_symmetry_elements`, () => {
 
   test.each([
     [2, 1, 3],
-    [0.5, 1, 1],
     [4001, 1, 1],
     [1, 1e9, 1e9],
     [Infinity, 1, 1],
   ] as Vec3[])(`preflights %s,%s,%s without allocating translated elements`, (...tiling) => {
     const elements = [mirror, screw]
-    const expected = tile_symmetry_elements(elements, tiling).unavailable_reason
+    const expected = tile(elements, tiling).unavailable_reason
     expect(
-      symmetry_tiling_reason(
+      tiling_reason(
         elements.map((element) => ({
           ...element,
           get point(): Vec3 {
@@ -689,11 +682,11 @@ describe(`tile_symmetry_elements`, () => {
 
   test(`repeats each element per tile at unchanged Cartesian positions`, () => {
     const elements = [mirror, screw]
-    expect(tile_symmetry_elements(elements, [1, 1, 1]).elements).toBe(elements)
+    expect(tile(elements, [1, 1, 1]).elements).toBe(elements)
     const tiling: Vec3 = [2, 1, 3]
     const block = math.scale_lattice_matrix(cell, tiling)
     // Along-plane/axis translations must not add coincident geometry.
-    const tiled = tile_symmetry_elements([mirror, screw], tiling).elements
+    const tiled = tile([mirror, screw], tiling).elements
     expect(tiled.filter((copy) => copy.locus === mirror.locus)).toHaveLength(2)
     expect(tiled.filter((copy) => copy.locus === screw.locus)).toHaveLength(2)
 
@@ -712,8 +705,8 @@ describe(`tile_symmetry_elements`, () => {
       .toSorted((one, two) => one - two)
     expect(mirror_x.map((coord) => Number(coord.toFixed(9)))).toEqual([1, 5])
     // the screw line runs along c, so tiling along c alone adds nothing
-    expect(tile_symmetry_elements([screw], [1, 1, 4]).elements).toHaveLength(1)
-    expect(tile_symmetry_elements([mirror], [1, 4, 4]).elements).toHaveLength(1)
+    expect(tile([screw], [1, 1, 4]).elements).toHaveLength(1)
+    expect(tile([mirror], [1, 4, 4]).elements).toHaveLength(1)
 
     // Cartesian screw/glide translations survive the basis change.
     for (const copy of tiled) {
@@ -725,7 +718,7 @@ describe(`tile_symmetry_elements`, () => {
     }
     // while directions stay primitive integer vectors for the family clippers
     const oblique: SymmetryElement = { ...mirror, axis: [1, 1, 0], plane_normal: [1, 1, 0] }
-    expect(tile_symmetry_elements([oblique], tiling).elements[0]).toMatchObject({
+    expect(tile([oblique], tiling).elements[0]).toMatchObject({
       axis: [1, 2, 0],
       plane_normal: [2, 1, 0],
     })
@@ -740,7 +733,7 @@ describe(`tile_symmetry_elements`, () => {
     ]
     // Cartesian normal along x: direction [1, 0, 0], plane (2 -1 0) in this cell
     const mirror_x: SymmetryElement = { ...mirror, plane_normal: [2, -1, 0], point: [0, 0, 0] }
-    const tiled = tile_symmetry_elements([mirror_x], [1, 2, 1]).elements
+    const tiled = tile([mirror_x], [1, 2, 1]).elements
     expect(tiled).toHaveLength(2)
     // the two planes really do sit at different distances along the normal
     const block = math.scale_lattice_matrix(hexagonal, [1, 2, 1])
@@ -748,9 +741,9 @@ describe(`tile_symmetry_elements`, () => {
     const offsets = tiled.map((copy) => to_cart(copy.point)[0])
     expect(Math.abs(offsets[0] - offsets[1])).toBeCloseTo(1.5, 9)
     // while a translation that genuinely lies in the plane still dedups away
-    expect(tile_symmetry_elements([mirror_x], [1, 1, 3]).elements).toHaveLength(1)
+    expect(tile([mirror_x], [1, 1, 3]).elements).toHaveLength(1)
     const planes: SymmetryElement[] = [mirror, { ...mirror, kind: `glide`, label: `g` }]
-    expect(tile_symmetry_elements(planes, [1, 1e9, 1e9])).toEqual({
+    expect(tile(planes, [1, 1e9, 1e9])).toEqual({
       elements: planes,
       unavailable_reason: null,
     })
@@ -768,40 +761,39 @@ describe(`tile_symmetry_elements`, () => {
       locus: `line-z`,
     }
     const roto: SymmetryElement = { ...rotation, kind: `rotoinversion`, label: `-4` }
-    expect(tile_symmetry_elements([rotation], [1, 1, 3]).elements).toHaveLength(1)
-    expect(tile_symmetry_elements([roto], [1, 1, 3]).elements).toHaveLength(3)
+    expect(tile([rotation], [1, 1, 3]).elements).toHaveLength(1)
+    expect(tile([roto], [1, 1, 3]).elements).toHaveLength(3)
     const centers = [roto, { ...roto, point: [0, 0, 0.5] as Vec3 }]
-    expect(
-      tile_symmetry_elements(centers, [1, 1, 3]).elements.map(({ point }) => point[2]),
-    ).toEqual([0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6])
+    const center_z = tile(centers, [1, 1, 3]).elements.map(({ point }) => point[2])
+    expect(center_z).toEqual([0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6])
     // Custom source centers outside the unit cell remain outside it; coincident copies dedup.
     expect(
-      tile_symmetry_elements([roto, { ...roto, point: [0, 0, 1] }], [1, 1, 2]).elements.map(
+      tile([roto, { ...roto, point: [0, 0, 1] }], [1, 1, 2]).elements.map(
         ({ point }) => point[2],
       ),
     ).toEqual([0, 0.5, 1])
     // and the two never collapse into each other despite sharing a locus
-    expect(tile_symmetry_elements([rotation, roto], [1, 1, 2]).elements).toHaveLength(3)
+    expect(tile([rotation, roto], [1, 1, 2]).elements).toHaveLength(3)
   })
 
   test(`deduplicates before enforcing the cap and refuses oversized overlays`, () => {
     const many = Array.from({ length: 200 }, (_, idx) => ({ ...mirror, locus: `m-${idx}` }))
     expect(many.length * 64).toBeGreaterThan(MAX_TILED_SYM_ELEMENTS)
-    expect(tile_symmetry_elements(many, [4, 4, 4]).elements).toHaveLength(800)
-    expect(tile_symmetry_elements(many, [2, 1, 1]).elements).toHaveLength(400)
-    expect(tile_symmetry_elements(many, [20, 1, 1]).elements).toHaveLength(
-      MAX_TILED_SYM_ELEMENTS,
-    )
-    const refused = tile_symmetry_elements(many, [21, 1, 1])
+    expect(tile(many, [4, 4, 4]).elements).toHaveLength(800)
+    expect(tile(many, [2, 1, 1]).elements).toHaveLength(400)
+    expect(tile(many, [20, 1, 1]).elements).toHaveLength(MAX_TILED_SYM_ELEMENTS)
+    const refused = tile(many, [21, 1, 1])
     expect(refused.elements).toEqual([])
     expect(refused.unavailable_reason).toContain(
       `exceeds ${MAX_TILED_SYM_ELEMENTS} unique elements`,
     )
-    expect(tile_symmetry_elements([], [1e9, 1e9, 1e9]).elements).toEqual([])
-    expect(tile_symmetry_elements([mirror], [1, 1e9, 1e9]).elements).toHaveLength(1)
-    expect(tile_symmetry_elements([screw], [1, 1, 1e9]).elements).toHaveLength(1)
+    expect(tile([], [1e9, 1e9, 1e9]).elements).toEqual([])
+    expect(tile([mirror], [1, 1e9, 1e9]).elements).toHaveLength(1)
+    expect(tile([screw], [1, 1, 1e9]).elements).toHaveLength(1)
     const diagonal: SymmetryElement = { ...mirror, axis: [1, 1, 1], plane_normal: [1, 1, 1] }
-    expect(tile_symmetry_elements([diagonal], [100, 100, 100]).elements).toHaveLength(298)
+    // 298 base-cell levels, but levels 100 apart are one (1 1 1) family of the supercell, and
+    // each family element draws all its in-cell planes
+    expect(tile([diagonal], [100, 100, 100]).elements).toHaveLength(100)
   })
 
   test(`treats a null axis (inversion centre) and fractional counts safely`, () => {
@@ -815,10 +807,99 @@ describe(`tile_symmetry_elements`, () => {
       translation: null,
       locus: `inv`,
     }
-    const tiled = tile_symmetry_elements([centre], [2, 1, 1]).elements
+    const tiled = tile([centre], [2, 1, 1]).elements
     expect(tiled.map((copy) => copy.axis)).toEqual([null, null])
     expect(tiled.map((copy) => copy.point[0])).toEqual([0, 0.5])
-    expect(tile_symmetry_elements([centre], [0.5, 1, 1]).elements).toEqual([centre])
+    expect(tile([centre], [0.5, 1, 1]).elements).toEqual([centre])
+    // a sheared det-2 supercell holds base cells 0 and b, whose centre (0, 1, 0) · M⁻¹ lands
+    // at (½, ½, 0); a mirror ⟂ a becomes the (1 -1 0) plane of the supercell basis
+    // oxfmt-ignore
+    const sheared: Matrix3x3 = [[1, 1, 0], [-1, 1, 0], [0, 0, 1]]
+    const centres = tile_symmetry_elements([centre], sheared).elements
+    expect(centres.map(({ point }) => point)).toEqual([
+      [0, 0, 0],
+      [0.5, 0.5, 0],
+    ])
+    const mirror_a: SymmetryElement = { ...centre, kind: `mirror`, plane_normal: [1, 0, 0] }
+    const [plane] = tile_symmetry_elements([mirror_a], sheared).elements
+    expect(plane.plane_normal).toEqual([1, -1, 0])
+    // the 4001 base-cell levels of a mirror ⟂ b are one (1 1 0) family of this supercell
+    const mirror_b: SymmetryElement = { ...mirror_a, plane_normal: [0, 1, 0] }
+    // oxfmt-ignore
+    const long_shear: Matrix3x3 = [[1, 1, 0], [-4000, 1, 0], [0, 0, 1]]
+    expect(tile_symmetry_elements([mirror_b], long_shear)).toMatchObject({
+      elements: [{ plane_normal: [1, 1, 0] }],
+      unavailable_reason: null,
+    })
+    // input-cell centres wrap into the supercell; a det-1 shear still changes the basis
+    const off_axis = { ...centre, point: [0.5, 0.25, 0.5] as Vec3 }
+    const wrapped = tile_symmetry_elements([off_axis], sheared).elements.map(
+      ({ point }) => point,
+    )
+    expect(wrapped.toSorted((one, two) => one[0] - two[0])).toEqual([
+      [0.375, 0.875, 0.5],
+      [0.875, 0.375, 0.5],
+    ])
+    // a det-1 shear far from the identity keeps axes exact: a ⟂-free 2-fold along a becomes
+    // M⁻ᵀ·a = (N+1, N, 0), which a float ratio search rounded to (1, 1, 0)
+    const far_shear = (big_n: number): Matrix3x3 => [
+      [1, -big_n, 0],
+      [-1, big_n + 1, 0],
+      [0, 0, 1],
+    ]
+    const two_fold: SymmetryElement = {
+      ...centre,
+      kind: `rotation`,
+      order: 2,
+      label: `2`,
+      axis: [1, 0, 0],
+    }
+    const [far] = tile_symmetry_elements([two_fold], far_shear(100_000)).elements
+    expect(far.axis).toEqual([100_001, 100_000, 0])
+    // drawing such an axis clips ~(2N+2)·2 translates (one per crossing of the cell), and
+    // [1, -N, N²] (N = 10⁴) clips ~N²: both are refused before rendering, by the preflight too
+    const clip_limit = `exceeds the axis and plane clipping work limit`
+    const wrap_n = 10_000
+    // oxfmt-ignore
+    const wrap_shear: Matrix3x3 = [[1, wrap_n, 0], [0, 1, wrap_n], [0, 0, 1]]
+    for (const supercell of [far_shear(2_000_000), wrap_shear]) {
+      expect(symmetry_tiling_reason([two_fold], supercell)).toContain(clip_limit)
+      expect(tile_symmetry_elements([two_fold], supercell)).toMatchObject({
+        elements: [],
+        unavailable_reason: expect.stringContaining(clip_limit),
+      })
+    }
+    // an already-sheared input cell hands over such an axis directly: no supercell, still refused
+    const sheared_axis: SymmetryElement = { ...two_fold, axis: [1, -wrap_n, wrap_n ** 2] }
+    expect(tile_symmetry_elements([sheared_axis], math.IDENTITY_3X3)).toMatchObject({
+      elements: [],
+      unavailable_reason: expect.stringContaining(clip_limit),
+    })
+    // det 1, though its Number products N² and N² - 1 both round to 10000000200000000
+    const det_n = 100_000_001
+    // oxfmt-ignore
+    const det_shear: Matrix3x3 = [[det_n, det_n - 1, 0], [det_n + 1, det_n, 0], [0, 0, 1]]
+    expect(tile_symmetry_elements([centre], det_shear).elements[0].point).toEqual([0, 0, 0])
+    // cofactors like N² pass 2^53 and must stay exact: M⁻ᵀ·(1, N, 0) = (1, 0, 0)
+    const huge_n = 100_000_001
+    // oxfmt-ignore
+    const huge_shear: Matrix3x3 = [[1, huge_n, 0], [0, 1, huge_n], [0, 0, 1]]
+    const huge_axis: SymmetryElement = { ...two_fold, axis: [1, huge_n, 0] }
+    const [exact] = tile_symmetry_elements([huge_axis], huge_shear).elements
+    expect(exact.axis).toEqual([1, 0, 0])
+    // the 4001 base-cell translates of an a-axis 2-fold are one line family of this supercell
+    // oxfmt-ignore
+    const tall_shear: Matrix3x3 = [[1, 1, 0], [0, 4001, 0], [0, 0, 1]]
+    expect(tile_symmetry_elements([two_fold], tall_shear)).toMatchObject({
+      elements: [{ axis: [4001, -1, 0] }],
+      unavailable_reason: null,
+    })
+    const unimodular = math.IDENTITY_3X3.with(0, [1, 1, 0]) as Matrix3x3
+    const [moved] = tile_symmetry_elements(
+      [{ ...centre, point: [0.5, 0.5, 0.5] }],
+      unimodular,
+    ).elements
+    expect(moved.point).toEqual([0.5, 0, 0.5])
   })
 })
 

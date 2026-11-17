@@ -5,6 +5,8 @@
   // only remap through the LUT and never rerun marching cubes.
   import { value_key } from '#lib/utils.js'
   import type { Matrix3x3, Vec3 } from '../math'
+  import { create_frac_to_cart, IDENTITY_3X3 } from '../math'
+  import { diagonal_scaling, supercell_translations } from '#lib/structure/supercell.js'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
@@ -32,7 +34,7 @@
   let {
     volumes = [],
     settings = DEFAULT_ISOSURFACE_SETTINGS,
-    tiling = [1, 1, 1],
+    supercell = IDENTITY_3X3,
     on_error,
     building = $bindable(false),
   }: {
@@ -40,8 +42,8 @@
     volumes?: VolumetricData[]
     // Layers (isovalue, color, opacity, source volumes), wireframe toggle, halo and display range; defaults to DEFAULT_ISOSURFACE_SETTINGS.
     settings?: IsosurfaceSettings
-    // Supercell tiling of geometry volumes (color sampling wraps the original volume)
-    tiling?: Vec3
+    // Integer supercell matrix periodic surfaces span (color sampling wraps the original volume)
+    supercell?: Matrix3x3
     // Geometry worker failures; defaults to the host's set_isosurface_error_handler
     on_error?: IsosurfaceErrorHandler
     // (output) true from a geometry rebuild's request until its surfaces are swapped in,
@@ -76,13 +78,23 @@
     return identifier
   }
 
+  // A diagonal supercell is one box of cells, extracted as one tiled window with the halo
+  // around the whole block. Any other draws unpadded one-cell copies at each cell's t·L, so
+  // no two copies overlap. An explicit display range or a finite volume draws its window once.
+  const tiling = $derived(diagonal_scaling(supercell))
+  const translations = $derived(tiling ? [] : supercell_translations(supercell).translations)
+  const copy_offsets = (vol: VolumetricData): Vec3[] => {
+    if (!vol.periodic || settings.display_range || !translations.length) return [[0, 0, 0]]
+    const to_cart = create_frac_to_cart(vol.lattice)
+    return translations.map((translation) => to_cart(translation))
+  }
   // Finite extraction range: always for periodic volumes (tiling and fractional bounds share
   // endpoint semantics), only an explicit crop for finite ones
   const effective_range = (vol: VolumetricData): DisplayRange | null =>
     resolve_volume_display_range(vol, {
       display_range: settings.display_range,
-      tiling,
-      halo: settings.halo,
+      tiling: tiling ?? [1, 1, 1],
+      halo: copy_offsets(vol).length > 1 ? 0 : settings.halo,
     })
 
   // === Prepared geometry grids ===
@@ -552,40 +564,44 @@
     {@const color = vertex_colored ? `#ffffff` : lobe_color(layer, entry.sign)}
     {@const opacity = layer.opacity}
     {@const transparent = opacity < 1}
-    <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->
-    {#key vertex_colored}
-      {#if settings.wireframe}
-        <T.Mesh geometry={entry.geometry} frustumCulled={false}>
-          <T.MeshBasicMaterial
-            {color}
-            vertexColors={vertex_colored}
-            wireframe
-            {transparent}
-            {opacity}
-          />
-        </T.Mesh>
-      {:else}
-        <!-- Transparent surfaces render back then front faces in two passes for
-          correct blending; opaque surfaces need a single double-sided pass -->
-        {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
-          <T.Mesh
-            geometry={entry.geometry}
-            renderOrder={entry.render_order + pass_idx}
-            frustumCulled={false}
-          >
-            <T.MeshStandardMaterial
-              {color}
-              vertexColors={vertex_colored}
-              {transparent}
-              {opacity}
-              {side}
-              depthWrite={!transparent}
-              metalness={0.1}
-              roughness={0.6}
-            />
-          </T.Mesh>
-        {/each}
-      {/if}
-    {/key}
+    {#each copy_offsets(layer.volume) as offset, copy_idx (copy_idx)}
+      <T.Group position={offset}>
+        <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->
+        {#key vertex_colored}
+          {#if settings.wireframe}
+            <T.Mesh geometry={entry.geometry} frustumCulled={false}>
+              <T.MeshBasicMaterial
+                {color}
+                vertexColors={vertex_colored}
+                wireframe
+                {transparent}
+                {opacity}
+              />
+            </T.Mesh>
+          {:else}
+            <!-- Transparent surfaces render back then front faces in two passes for
+              correct blending; opaque surfaces need a single double-sided pass -->
+            {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
+              <T.Mesh
+                geometry={entry.geometry}
+                renderOrder={entry.render_order + pass_idx}
+                frustumCulled={false}
+              >
+                <T.MeshStandardMaterial
+                  {color}
+                  vertexColors={vertex_colored}
+                  {transparent}
+                  {opacity}
+                  {side}
+                  depthWrite={!transparent}
+                  metalness={0.1}
+                  roughness={0.6}
+                />
+              </T.Mesh>
+            {/each}
+          {/if}
+        {/key}
+      </T.Group>
+    {/each}
   {/if}
 {/each}

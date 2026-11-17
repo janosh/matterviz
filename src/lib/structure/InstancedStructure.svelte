@@ -99,17 +99,24 @@
   })
   $effect(() => () => partial_atoms.dispose())
 
-  // Thermal ellipsoids replacing the spheres of sites with an ADP (one InstancedMesh)
-  const ellipsoid_atoms = new EllipsoidAtoms()
+  // Thermal ellipsoids replacing the spheres of sites with an ADP: one InstancedMesh, plus one
+  // for edit-atoms mode's image atoms, ghosted like the image spheres
+  const ellipsoid_meshes = [new EllipsoidAtoms(), new EllipsoidAtoms(true)]
+  const ellipsoid_groups = $derived(
+    [false, true].map((ghost) =>
+      atom_groups.ellipsoid.filter((atom) => (ghost_images && atom.is_image_atom) === ghost),
+    ),
+  )
   $effect(() => {
-    ellipsoid_atoms.update(atom_groups.ellipsoid, sphere_segments, atom_color_field)
+    for (const [ghost, atoms] of ellipsoid_groups.entries())
+      ellipsoid_meshes[ghost].update(atoms, sphere_segments, atom_color_field)
     invalidate()
   })
   $effect(() => {
-    ellipsoid_atoms.set_opacity(atom_opacity)
+    for (const mesh of ellipsoid_meshes) mesh.set_opacity(atom_opacity)
     invalidate()
   })
-  $effect(() => () => ellipsoid_atoms.dispose())
+  $effect(() => () => ellipsoid_meshes.forEach((mesh) => mesh.dispose()))
 
   // What the colors were resolved from: a snapshot's topology identity, else the site records
   // (never materialized from columns), whose species arrays coordinate-only edits such as drag
@@ -219,9 +226,11 @@
   <T is={partial_atoms} {...atom_events(atom_groups.partial)} dispose={false} />
 {/if}
 
-{#if atom_groups.ellipsoid.length > 0}
-  <T is={ellipsoid_atoms} {...atom_events(atom_groups.ellipsoid)} dispose={false} />
-{/if}
+{#each ellipsoid_groups as atoms, ghost (ghost)}
+  {#if atoms.length > 0}
+    <T is={ellipsoid_meshes[ghost]} {...ghost ? {} : atom_events(atoms)} dispose={false} />
+  {/if}
+{/each}
 
 {#if bonds.length > 0}
   <Bond

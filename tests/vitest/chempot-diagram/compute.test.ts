@@ -321,20 +321,18 @@ test.each<[string, PhaseData[]]>([
     `excluded entries ignored with hull flags`,
     li_o_with_excluded.map((entry) => ({ ...entry, e_above_hull: 0 })),
   ],
-  // E_form-only entries: a 0 eV placeholder energy used to put every phase at E = 0
-  ...[0, undefined].map((energy): [string, PhaseData[]] => [
-    `E_form-only entries (energy: ${energy})`,
+  // stale flags (e.g. from a larger chemsys) used to delete the Li2O domain
+  [`stale hull flags`, li_o_entries.map((entry) => ({ ...entry, is_stable: false }))],
+  [
+    `E_form-only entries`,
     (
       [
         [{ Li: 1 }, 0],
         [{ O: 2 }, 0],
         [{ Li: 2, O: 1 }, -2],
       ] as const
-    ).map(
-      ([composition, e_form_per_atom]) =>
-        ({ composition, e_form_per_atom, energy }) as PhaseData,
-    ),
-  ]),
+    ).map(([composition, e_form_per_atom]): PhaseData => ({ composition, e_form_per_atom })),
+  ],
 ])(`Li2O domain runs from (0, -6) to (-3, 0): %s`, (_label, li_o) => {
   const { domains } = compute_chempot_diagram(li_o, { default_min_limit: -20 })
   expect(Object.keys(domains).toSorted()).toEqual([`Li`, `Li2O`, `O`])
@@ -598,39 +596,29 @@ describe(`build_hyperplanes`, () => {
     expect(hyperplanes).toEqual(close_rows(chunk(3, [1, 0, 2, 0, 1, 3, 0.5, 0.5, 6]), 12))
   })
 
+  // hull flags are ignored, E_form < -tol decides: they may come from a larger chemsys
+  const refs = {
+    A: { ...make_phase({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+    B: { ...make_phase({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+  }
   test.each([
     {
-      label: `precomputed hull stability excludes known above-hull phases`,
-      refs: {
-        A: { ...make_phase({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
-        B: { ...make_phase({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
-      },
-      extra: [
-        { ...make_phase({ A: 1, B: 1 }, -6), is_stable: true, e_above_hull: 0 },
-        { ...make_phase({ A: 2, B: 1 }, -5), is_stable: false, e_above_hull: 0.2 },
-      ],
+      // AB has E_form = -3.5 eV/atom here: a stale `is_stable: false` used to delete its domain
+      label: `stale is_stable: false keeps a phase with negative E_form`,
+      extra: [{ ...make_phase({ A: 1, B: 1 }, -6), is_stable: false, e_above_hull: 0.2 }],
       expected: [`A`, `B`, `AB`],
     },
     {
-      // AB has E_form = -3.5 eV/atom here, yet a stale `is_stable: false` deletes its domain
-      label: `stale hull flags from a larger chemsys drop a locally stable phase`,
-      refs: {
-        A: { ...make_phase({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
-        B: { ...make_phase({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
-      },
-      extra: [{ ...make_phase({ A: 1, B: 1 }, -6), is_stable: false, e_above_hull: 0.2 }],
+      label: `is_stable: true does not add a phase with positive E_form`,
+      extra: [{ ...make_phase({ A: 2, B: 1 }, -1), is_stable: true, e_above_hull: 0 }],
       expected: [`A`, `B`],
     },
     {
-      label: `falls back to negative formation energy when hull stability is absent`,
-      refs: {
-        A: make_phase({ A: 1 }, -2),
-        B: make_phase({ B: 1 }, -3),
-      },
+      label: `negative E_form decides without hull flags`,
       extra: [make_phase({ A: 2, B: 1 }, -5)],
       expected: [`A`, `B`, `A2B`],
     },
-  ])(`$label`, ({ refs, extra, expected }) => {
+  ])(`$label`, ({ extra, expected }) => {
     const result = build_hyperplanes([refs.A, refs.B, ...extra], refs, [`A`, `B`])
     expect(
       result.hyperplane_entries.map((entry) =>

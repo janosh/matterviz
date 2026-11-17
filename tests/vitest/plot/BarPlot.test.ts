@@ -1,3 +1,4 @@
+import { format_num } from 'svelte-widgets/format'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
 import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
@@ -487,17 +488,22 @@ describe(`BarPlot`, () => {
 
   // NaN colour/size values are missing like null: d3 scales map NaN to undefined, which
   // painted the marker and legend swatch black at the default radius
+  // the global `line` style (here its dash) is the fallback for series without their own
   test(`line markers and legend keep the series style for NaN color/size values`, async () => {
     const values = [NaN, 1, 2, 3, 4]
     const line = { render_mode: `line`, markers: `line+points` } as const
     const plot = await mount_sized_bar_plot({
       series: [{ ...basic, ...line, color_values: values, size_values: values }],
       show_legend: true,
+      line: { dash: `4,2` },
     })
     const marker = query(plot, `.line-points .marker`)
     expect(marker.getAttribute(`fill`)).toContain(`steelblue`)
     expect(marker.getAttribute(`d`)).toMatch(/^M4,0A4,4/) // the default radius
-    expect(query(plot, `.legend-marker`).innerHTML).toContain(`steelblue`)
+    expect(query(plot, `.line-series polyline`).getAttribute(`stroke-dasharray`)).toBe(`4,2`)
+    const swatch = query(plot, `.legend-marker`).innerHTML
+    expect(swatch).toContain(`steelblue`)
+    expect(swatch).toMatch(/stroke-dasharray="4,2"/)
   })
 
   test(`markerless line series emit point callbacks, with no hit target when no vertex is in range`, async () => {
@@ -770,6 +776,24 @@ describe(`BarPlot`, () => {
     const text = await hovered_text(`.plot-tooltip`)
     expect(text).toContain(`Group A`)
     expect(text).toContain(`Count`)
+    expect(text).not.toContain(`±`)
+    // the value axis shows its y_error: ± σ, or +upper / −lower
+    for (const [y_error, orientation, expected] of [
+      [0.5, `vertical`, `Count: 10 ± 0.5`],
+      [{ upper: [2], lower: [1] }, `vertical`, `Count: 10 +2 / −1`],
+      [0.5, `horizontal`, `x: 10 ± 0.5`],
+    ] as const) {
+      const series = [{ x: [1], y: [10], y_error }]
+      expect(await hovered_text(`.plot-tooltip`, { series, orientation })).toContain(expected)
+    }
+    // a time axis formats its value as a date but the error as a span (not a 1970 date)
+    const day = 86_400_000
+    const time_text = await hovered_text(`.plot-tooltip`, {
+      series: [{ x: [1], y: [Date.UTC(2024, 5, 15)], y_error: day }],
+      y_axis: { label: `Count`, format: `%Y` },
+    })
+    expect(time_text).toContain(`2024 ± ${format_num(day)}`)
+    expect(time_text).not.toContain(`1970`)
     const tooltip = createRawSnippet<[BarHandlerProps]>((data) => ({
       render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
     }))

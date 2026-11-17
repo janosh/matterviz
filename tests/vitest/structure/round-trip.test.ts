@@ -38,7 +38,7 @@ type Capability = {
   labels: `verbatim` | `unique` | false
   charge_and_pbc: boolean // CIF and POSCAR cells are always fully periodic, with no charge
   regroups_by_element: boolean // POSCAR writes one block per element
-  // The site properties a re-read is expected to return, exactly
+  // The site properties a re-read is expected to return (exactly, or as closeTo matchers)
   site_properties: (site: Site, structure: AnyStructure) => Record<string, unknown>
 }
 
@@ -103,7 +103,15 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
     labels: `unique`,
     charge_and_pbc: false,
     regroups_by_element: false,
-    site_properties: () => ({}),
+    // vector moments and ADPs come back through the inverse transforms, up to f64 rounding
+    site_properties: ({ properties: { magmom, adp_U_cart } }) =>
+      JSON.parse(
+        JSON.stringify({
+          magmom: math.is_finite_vec3(magmom) ? magmom : undefined,
+          adp_U_cart,
+        }),
+        (_key, val) => (typeof val === `number` ? expect.closeTo(val, 12) : val),
+      ),
   },
   poscar: {
     ordered_only: true,

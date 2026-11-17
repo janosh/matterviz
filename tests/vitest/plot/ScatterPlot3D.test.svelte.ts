@@ -376,7 +376,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
         x: [1, 2, 3, 3.5, 9, 1],
         y: [1, 1, 3, 0.5, 1, 1],
         z: [1, 3, 3, 2, 1, -5],
-        line_style: { stroke: `red` },
+        line_style: { color: `red` },
       },
     ],
     hovered_point: null,

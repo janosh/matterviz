@@ -125,7 +125,6 @@ export function build_hull_model(
       const composition = { [element]: 1 } as CompositionType
       entries.push({
         composition,
-        energy: 0,
         e_form_per_atom: 0,
         e_above_hull: 0,
         is_stable: true,

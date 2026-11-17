@@ -1,4 +1,4 @@
-import { Color, InstancedBufferAttribute } from 'three/webgpu'
+import { Color, InstancedBufferAttribute, type Material } from 'three/webgpu'
 import { css_to_linear_rgb } from '#lib/scene/colors.js'
 
 const scratch = new Color()
@@ -8,6 +8,15 @@ const gray = new Color(0x999999)
 export const set_instance_color = (target: Color, css: string, ghost = false): Color => {
   target.setRGB(...css_to_linear_rgb(css))
   return ghost ? target.lerp(gray, 0.4) : target
+}
+
+// Material opacity, halved for ghosted (image) instances; toggling transparency recompiles
+export const set_material_opacity = (material: Material, opacity: number, ghost = false) => {
+  const alpha = opacity * (ghost ? 0.5 : 1)
+  if (material.transparent !== alpha < 1) material.needsUpdate = true
+  material.transparent = alpha < 1
+  material.opacity = alpha
+  material.visible = alpha > 0
 }
 
 // Keep CSS history with the attribute it describes. Geometry cloning copies the GPU data

@@ -244,11 +244,11 @@ export function build_free_energy_model(
   const unary_refs = find_lowest_energy_unary_refs(entries)
   // Without a reference entry the element's corner sits at dG_f = 0 (synthetic element)
   for (const element of elements)
-    unary_refs[element] ??= { composition: { [element]: 1 }, energy: 0 }
+    unary_refs[element] ??= { composition: { [element]: 1 }, e_form_per_atom: 0 }
   const atmosphere = build_atmosphere(options.gas_config, options.gas_pressures)
 
-  // Static energy per atom: the entry's own energy, else E_form on the references' scale (also
-  // for a 0 eV placeholder `energy`), else throw rather than sit at 0
+  // Static energy per atom: the entry's own energy, else E_form on the references' scale, else
+  // throw rather than sit at 0
   const static_energy = (entry: PhaseData): number => {
     if (!has_absolute_energy(entry) && !Number.isFinite(entry.e_form_per_atom)) {
       throw new TypeError(

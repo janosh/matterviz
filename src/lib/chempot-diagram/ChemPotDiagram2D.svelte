@@ -120,8 +120,8 @@
         markers: `line+points` as const,
         // a spline would bow polygon outlines
         line_style: {
-          stroke: color,
-          stroke_width: highlighted ? 6 : 3,
+          color,
+          width: highlighted ? 6 : 3,
           curve: `linear` as const,
         },
         point_style: { fill: color, radius: highlighted ? 5 : 3 },

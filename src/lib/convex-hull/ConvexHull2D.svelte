@@ -156,9 +156,9 @@
         markers: `line` as const,
         // Hull facets are straight segments between stable entries: never spline them
         line_style: {
-          stroke: color,
-          stroke_width: line_width,
-          line_dash: dash.join(`,`),
+          color,
+          width: line_width,
+          dash: dash.join(`,`),
           curve: `linear` as const,
         },
       },

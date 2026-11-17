@@ -47,7 +47,7 @@
 <TestSection title="Custom bands styling">
   <BandsAndDos
     {...phonon_props}
-    bands_props={{ line_kwargs: { stroke: `red` } }}
+    bands_props={{ line_kwargs: { color: `red` } }}
     data-testid="bands-and-dos-bands-styling"
   />
 </TestSection>
@@ -85,7 +85,7 @@
   <BandsAndDos
     band_structs={{ '': electronic_bands.vbr2_971787 }}
     {...electronic_dos_props}
-    bands_props={{ y_axis: { label: `Energy (eV)` }, line_kwargs: { stroke_width: 1.5 } }}
+    bands_props={{ y_axis: { label: `Energy (eV)` }, line_kwargs: { width: 1.5 } }}
     data-testid="bands-and-dos-spin-polarized"
   />
 </TestSection>

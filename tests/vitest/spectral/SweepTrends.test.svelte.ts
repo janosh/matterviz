@@ -131,7 +131,7 @@ test(`load states mark points and failed frames, lines and legend keep the serie
   expect(styles[1][0]).toMatchObject({ symbol_type: `Cross`, stroke: `crimson` }) // failed
   // frame 1 failed without a value: a line where its point would be
   expect(props.ref_lines?.at(-1)).toMatchObject({ type: `vertical`, x: 50 })
-  // the legend's line colour is the drawn line's (scatter_line_style)
+  // the legend's line colour is the drawn line's (line_fallback_color)
   const colours = [plot_color(0), plot_color(1)]
   const legend = build_series_legend_items(lines, () => ``)
   expect(legend.map(({ display_style }) => display_style.line_color)).toEqual(colours)
@@ -194,7 +194,7 @@ test(`overlaid descriptors add a dashed line per series, clicks still selecting 
     [`fcc\u0000tc_me`, `fcc Cu · Tc (ME)`, [2]],
     [`bcc\u0000tc_me`, `bcc · Tc (ME)`, []], // known missing
   ])
-  expect(lines.map(({ line_style }) => line_style?.line_dash)).toEqual([
+  expect(lines.map(({ line_style }) => line_style?.dash)).toEqual([
     undefined,
     undefined,
     `6 4`,

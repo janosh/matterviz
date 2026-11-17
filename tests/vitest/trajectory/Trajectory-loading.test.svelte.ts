@@ -616,13 +616,20 @@ describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
   test(`a failing group choice shows the error inside the picker and keeps the shown run`, async () => {
     const run_0 = make_run(`groups.h5`)
     const run_0_dispose = vi.spyOn(run_0, `dispose`)
-    stub_worker(async (_data, _filename, _is_base64, { load_options } = {}) => {
-      if (!load_options?.hdf5_group_path) {
-        throw new Hdf5GroupSelectionRequiredError([`/run/0`, `/run/1`])
-      }
-      if (load_options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
-      return run_0
-    })
+    stub_worker(
+      async (
+        _data,
+        _filename,
+        _is_base64,
+        { load_options }: Parameters<WorkerParse>[3] = {},
+      ) => {
+        if (!load_options?.hdf5_group_path) {
+          throw new Hdf5GroupSelectionRequiredError([`/run/0`, `/run/1`])
+        }
+        if (load_options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
+        return run_0
+      },
+    )
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({ show_controls: `always`, on_file_load, on_error })
