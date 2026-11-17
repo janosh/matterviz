@@ -256,34 +256,9 @@ export function min_image_displacement_into(
     return out
   }
 
-  const { lattice, reciprocal, reciprocal_axis_norms } = (
+  const { lattice, reciprocal, reciprocal_axis_norms, diagonal } = (
     converters ?? create_lattice_converters(lattice_matrix)
   ).search_basis(pbc)
-  // Exactly diagonal cell (ordinary MD boxes): axes are independent, so rounding each periodic
-  // fractional component already minimizes the distance, no candidate search needed
-  if (
-    lattice[0][1] === 0 &&
-    lattice[0][2] === 0 &&
-    lattice[1][0] === 0 &&
-    lattice[1][2] === 0 &&
-    lattice[2][0] === 0 &&
-    lattice[2][1] === 0
-  ) {
-    const frac_a = reciprocal[0][0] * delta_x
-    const frac_b = reciprocal[1][1] * delta_y
-    const frac_c = reciprocal[2][2] * delta_z
-    if (!Number.isFinite(frac_a) || !Number.isFinite(frac_b) || !Number.isFinite(frac_c)) {
-      throw new TypeError(
-        `Minimum-image displacement is non-finite: from=[${from}], target=[${target}], ` +
-          `fractional=[${frac_a}, ${frac_b}, ${frac_c}]`,
-      )
-    }
-    // Match the positive zero produced by the Cartesian matrix sums below.
-    out[0] = (pbc[0] ? frac_a - Math.round(frac_a) : frac_a) * lattice[0][0] + 0
-    out[1] = (pbc[1] ? frac_b - Math.round(frac_b) : frac_b) * lattice[1][1] + 0
-    out[2] = (pbc[2] ? frac_c - Math.round(frac_c) : frac_c) * lattice[2][2] + 0
-    return out
-  }
   const [
     [lattice_ax, lattice_ay, lattice_az],
     [lattice_bx, lattice_by, lattice_bz],
@@ -302,6 +277,20 @@ export function min_image_displacement_into(
   let best_y = wrapped_a * lattice_ay + wrapped_b * lattice_by + wrapped_c * lattice_cy
   let best_z = wrapped_a * lattice_az + wrapped_b * lattice_bz + wrapped_c * lattice_cz
   let best_dist_sq = best_x * best_x + best_y * best_y + best_z * best_z
+  if (!Number.isFinite(best_dist_sq)) {
+    throw new TypeError(
+      `Minimum-image displacement is non-finite: from=[${from}], target=[${target}], ` +
+        `fractional=[${frac_a}, ${frac_b}, ${frac_c}]`,
+    )
+  }
+  // (Near-)diagonal cell (ordinary MD boxes): axes are independent, so rounding each periodic
+  // fractional component already minimizes the distance, no candidate search needed
+  if (diagonal) {
+    out[0] = best_x
+    out[1] = best_y
+    out[2] = best_z
+    return out
+  }
   const search_radius = Math.sqrt(best_dist_sq) + EPS
 
   // |frac_i + shift_i| <= |b_i| * radius for any candidate within the radius
@@ -618,7 +607,13 @@ export const create_cart_to_frac = (lattice: Matrix3x3) => {
 }
 
 // A basis with its reciprocal (rows b_i with b_i · a_j = δ_ij) and the reciprocal row norms
-type LatticeBasis = { lattice: Matrix3x3; reciprocal: Matrix3x3; reciprocal_axis_norms: Vec3 }
+// `diagonal` when every off-diagonal entry is <= 1e-12 of its row norm (min-image fast path)
+type LatticeBasis = {
+  lattice: Matrix3x3
+  reciprocal: Matrix3x3
+  reciprocal_axis_norms: Vec3
+  diagonal: boolean
+}
 
 // Paired converters for a lattice, built once and reused across every site or frame. Raw
 // matrices are exposed for scalar hot loops; reciprocal_axis_norms[i] = |b_i| bounds how far a
@@ -634,7 +629,11 @@ export type LatticeConverters = LatticeBasis & {
 const lattice_basis = (lattice: Matrix3x3): LatticeBasis => {
   const reciprocal = reciprocal_lattice(lattice)
   const reciprocal_axis_norms = reciprocal.map((row) => Math.hypot(...row)) as Vec3
-  return { lattice, reciprocal, reciprocal_axis_norms }
+  const diagonal = lattice.every((row, row_idx) => {
+    const tol = 1e-12 * Math.hypot(...row)
+    return row.every((val, col_idx) => col_idx === row_idx || Math.abs(val) <= tol)
+  })
+  return { lattice, reciprocal, reciprocal_axis_norms, diagonal }
 }
 
 // Images only shift along periodic rows, so any basis whose periodic rows span the same lattice
@@ -903,26 +902,27 @@ function det_4x4(matrix: Matrix4x4): number {
 }
 
 // LU decomposition with partial pivoting on a copy: L below the diagonal, U on and above it,
-// `perm` the row order, `n_swaps` its parity. null when a pivot is <= EPS * largest |entry|
-// (scale-invariant singularity verdict).
+// `perm` the row order, `n_swaps` its parity. Pivots are chosen and judged relative to their
+// original row's norm (scaled partial pivoting), like invert_3x3's row-norm test: null when no
+// candidate exceeds EPS of its row norm. A global-max floor rejected well-posed
+// diag(1e-20, 1, 1, 1).
 const lu_decompose = (
   matrix: number[][],
 ): { lu: number[][]; perm: number[]; n_swaps: number } | null => {
   const size = matrix.length
   const lu_matrix = matrix.map((row) => [...row])
   const perm = Array.from({ length: size }, (_, idx) => idx)
-  // array_max skips NaN: a NaN floor from a plain Math.max scan makes every
-  // `max_val <= pivot_floor` false, so no column is ever called singular
-  const pivot_floor = EPS * array_max(matrix.flat().map(Math.abs))
+  const row_norms = matrix.map((row) => Math.hypot(...row))
   let n_swaps = 0
 
   for (let col = 0; col < size; col++) {
-    let [max_row, max_val] = [col, Math.abs(lu_matrix[col][col])]
-    for (let row = col + 1; row < size; row++) {
-      const val = Math.abs(lu_matrix[row][col])
-      if (val > max_val) [max_val, max_row] = [val, row]
+    let [max_row, max_ratio] = [col, -1]
+    for (let row = col; row < size; row++) {
+      const ratio = Math.abs(lu_matrix[row][col]) / row_norms[perm[row]]
+      if (ratio > max_ratio) [max_ratio, max_row] = [ratio, row]
     }
-    if (max_val <= pivot_floor) return null // singular
+    // `!(x > EPS)` so NaN entries (and zero rows, 0/0) count as singular too
+    if (!(max_ratio > EPS)) return null
 
     if (max_row !== col) {
       ;[lu_matrix[col], lu_matrix[max_row]] = [lu_matrix[max_row], lu_matrix[col]]

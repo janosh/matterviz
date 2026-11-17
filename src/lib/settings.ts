@@ -1261,8 +1261,9 @@ const merge_deep = <T>(defaults: T, user: unknown): T => {
   return merged as T
 }
 
+// Starts from a deep copy so callers mutating the result can't corrupt the shared DEFAULTS
 export const merge = (user: PartialSettings = {}): DefaultSettings =>
-  merge_deep(DEFAULTS, user)
+  merge_deep(plain_copy(DEFAULTS), user)
 
 // Group the structure defaults into the prop bundles <Structure> expects. Used by embedders
 // (file viewer, VS Code webview) that build a viewer from settings alone.

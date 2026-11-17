@@ -379,6 +379,38 @@ describe(`pbc_dist`, () => {
     }
   })
 
+  // Off-diagonals <= 1e-12 of the row norm (parser round-off) take the diagonal fast path and
+  // must match the full candidate search (forced by clearing `diagonal`; measured max |a-b| = 0)
+  test(`near-diagonal lattices take the fast path and match the full search`, () => {
+    const rng = (() => {
+      let seed = 3
+      return () => (seed = (seed * 1664525 + 1013904223) % 2 ** 32) / 2 ** 32
+    })()
+    for (let trial = 0; trial < 200; trial++) {
+      const lattice = [0, 1, 2].map((row) =>
+        [0, 1, 2].map((col) => (row === col ? 2 + 20 * rng() : (rng() - 0.5) * 1e-12)),
+      ) as math.Matrix3x3
+      const converters = math.create_lattice_converters(lattice)
+      const pbc: Pbc3 = [rng() > 0.2, rng() > 0.2, rng() > 0.2]
+      expect(converters.search_basis(pbc).diagonal).toBe(true)
+      const general: math.LatticeConverters = {
+        ...converters,
+        search_basis: (mask) => ({ ...converters.search_basis(mask), diagonal: false }),
+      }
+      for (let pair = 0; pair < 50; pair++) {
+        const [from, target] = [0, 1].map(() => [0, 1, 2].map(() => 100 * rng() - 50) as Vec3)
+        // bit-identical: the fast path is the search's own starting guess
+        expect(math.min_image_displacement(from, target, lattice, converters, pbc)).toEqual(
+          math.min_image_displacement(from, target, lattice, general, pbc),
+        )
+      }
+    }
+    // just above the tolerance the general search runs
+    // oxfmt-ignore
+    const skewed = math.create_lattice_converters([[6, 1e-10, 0], [0, 8, 0], [0, 0, 12]])
+    expect(skewed.search_basis([true, true, true]).diagonal).toBe(false)
+  })
+
   // A strongly sheared cell's own basis needed >100k candidate shifts and threw, breaking
   // RDF/MSD on such supercells; the search now runs in the reduced basis of the same lattice
   test(`finds the minimum image of a strongly sheared, fully periodic cell`, () => {
@@ -837,6 +869,9 @@ describe(`det_nxn`, () => {
       factorial(size),
       10,
     )
+    // row-relative singularity test: one tiny row is well-posed, not singular
+    const tiny = math.det_nxn(make_diagonal(size, (idx) => (idx === 0 ? 1e-20 : 1)))
+    expect(tiny / 1e-20).toBeCloseTo(1, 12)
   })
 
   test(`5x5 singular matrix → det=0`, () => {
@@ -1122,6 +1157,9 @@ describe(`solve_linear_system`, () => {
     [`3x3`, [[4, -2, 1], [3, 6, -4], [2, 1, 8]], [12, -25, 32]],
     [`5x5`, [[2, 1, 0, 0, 1], [1, 3, 1, 0, 0], [0, 1, 4, 1, 0], [0, 0, 1, 5, 1], [1, 0, 0, 1, 6]],
       [1, 2, 3, 4, 5]],
+    // a row-relative singularity floor keeps these well-posed; a global-max one rejected 4x4
+    [`diag(1e-20, 1, 1)`, [[1e-20, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 2, 3]],
+    [`diag(1e-20, 1, 1, 1)`, [[1e-20, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [1, 2, 3, 4]],
   ]
   test.each(systems)(`solves %s and its 1e-8-scaled copy`, (_name, coefficients, rhs) => {
     for (const factor of [1, 1e-8]) {

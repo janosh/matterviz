@@ -339,6 +339,12 @@ export const create_html = (
 </html>`
 }
 
+// Webviews may only read files they were opened on (and so subscribed to), not any path they name
+const assert_subscribed = (file_path: string, webview: WebviewLike): void => {
+  if (!active_watcher_subscribers.get(file_path)?.has(webview))
+    throw new Error(`Refusing to serve ${file_path}: this panel is not subscribed to it`)
+}
+
 // Handle messages from webview
 export const handle_msg = async (
   msg: WebviewToHostMessage,
@@ -355,6 +361,7 @@ export const handle_msg = async (
     try {
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
+      assert_subscribed(file_path, webview)
       // A newer request or panel close cancels this load: a stale run must not take its place
       webview_run_streams.get(webview)?.()
       let cancelled = false
@@ -383,6 +390,7 @@ export const handle_msg = async (
       const { request_id, file_path, frame_index, channels } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
+      assert_subscribed(file_path, webview)
       const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
       const frame = frame_to_wire(await run.read_frame(frame_index, undefined, channels))

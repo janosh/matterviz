@@ -317,6 +317,9 @@ describe(`MatterViz Extension`, () => {
     onDidReceiveMessage: vi.fn(() => ({ dispose })),
     options: undefined as WebviewOptions | undefined,
   })
+  // the host only serves request_large_file/request_frame for files a panel is subscribed to
+  const subscribe = (file_path: string, ...webviews: Parameters<typeof handle_msg>[1][]) =>
+    active_watcher_subscribers.set(file_path, new Set(webviews))
   const mock_context = {
     extensionUri: { fsPath: `/test` },
     subscriptions: [],
@@ -424,10 +427,11 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength, type: 1 })
     mock_vscode.workspace.fs.readFile.mockResolvedValue(compressed)
 
-    await handle_msg(large_file_msg(file_path, `large-request`), mock_webview)
-    const loading = active_runs.get(file_path)
     // a second panel on the same file shares the run instead of re-reading the file
     const webview_b = make_webview()
+    subscribe(file_path, mock_webview, webview_b)
+    await handle_msg(large_file_msg(file_path, `large-request`), mock_webview)
+    const loading = active_runs.get(file_path)
     await handle_msg(large_file_msg(file_path, `request-b`), webview_b)
     expect(active_runs.get(file_path)).toBe(loading)
     expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledOnce()
@@ -586,6 +590,7 @@ describe(`MatterViz Extension`, () => {
     const file_path = `/test/flaky.extxyz`
     vi.spyOn(console, `error`).mockImplementation(() => {})
     mock_vscode.workspace.fs.readFile.mockRejectedValueOnce(new Error(`disk hiccup`))
+    subscribe(file_path, mock_webview)
     await handle_msg(large_file_msg(file_path, `first`), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -604,19 +609,27 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
-  test(`large-file requests reject invalid request IDs before reading`, async () => {
-    await handle_msg(large_file_msg(`/test/movie.extxyz`, ``), mock_webview)
+  test.each([
+    [``, `Invalid request_id`],
+    [
+      `unsubscribed`,
+      `Refusing to serve /test/movie.extxyz: this panel is not subscribed to it`,
+    ],
+  ])(`large-file request %j is rejected before reading`, async (request_id, error) => {
+    vi.spyOn(console, `error`).mockImplementation(() => {})
+    await handle_msg(large_file_msg(`/test/movie.extxyz`, request_id), mock_webview)
     expect(mock_vscode.workspace.fs.stat).not.toHaveBeenCalled()
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
       command: `large_file_response`,
-      request_id: ``,
-      error: `Invalid request_id`,
+      request_id,
+      error,
     })
   })
 
   test(`a host parser rejection is reported with the parse stage`, async () => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
     mock_vscode.workspace.fs.readFile.mockResolvedValueOnce(new Uint8Array())
+    subscribe(`/test/empty.extxyz`, mock_webview)
     await handle_msg(large_file_msg(`/test/empty.extxyz`, `parse-failure`), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -630,8 +643,10 @@ describe(`MatterViz Extension`, () => {
   test.each([
     [`negative frame index`, `/test/movie.extxyz`, -1, `Invalid request_id or frame_index`],
     [`missing run`, `/test/missing.extxyz`, 0, `No indexed trajectory is open`],
-  ])(`request_frame reports %s`, async (_label, file_path, frame_index, error) => {
+    [`unsubscribed path`, `/etc/passwd`, 0, `this panel is not subscribed to it`],
+  ])(`request_frame reports %s`, async (label, file_path, frame_index, error) => {
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    if (label !== `unsubscribed path`) subscribe(file_path, mock_webview)
     await handle_msg(frame_msg(file_path, frame_index), mock_webview)
     // the log numbers frames from 1 like the step input
     expect(console_error).toHaveBeenCalledWith(

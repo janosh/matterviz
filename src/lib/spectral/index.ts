@@ -20,7 +20,6 @@ export { default as TrajectorySpectroscopyPane } from './TrajectorySpectroscopyP
 export { default as TrajectorySpectrumPlot } from './TrajectorySpectrumPlot.svelte'
 export * from './parse-phonon-modes'
 export * from './phonon-modes'
-export * from './spectroscopy-collect'
 export * from './sweep'
 export { default as SweepTrends } from './SweepTrends.svelte'
 export * from './thermal'
