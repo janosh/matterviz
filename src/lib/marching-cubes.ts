@@ -2,7 +2,7 @@
 // Based on the classic algorithm by Lorensen & Cline (1987)
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
 import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
-import { det_3x3, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { det_3x3, inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
 
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/isosurface/grid.js'
 
@@ -447,7 +447,7 @@ export function marching_cubes(
   let normal_transform: Matrix3x3 | null = null
   if (compute_norms) {
     try {
-      normal_transform = matrix_inverse_3x3(k_lattice)
+      normal_transform = inverse_3x3(k_lattice)
     } catch {
       // keep null
     }

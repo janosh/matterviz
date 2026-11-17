@@ -64,10 +64,7 @@ test(`plots one line per series, skipping missing values, with ranges and a thre
   const { props } = render()
   const [fcc, bcc] = props.series ?? []
   expect([fcc.label, bcc.label]).toEqual([`fcc Cu`, `bcc`])
-  expect([fcc.x, fcc.y]).toEqual([
-    [0, 100],
-    [1, 3],
-  ])
+  expect(fcc).toMatchObject({ x: [0, 100], y: [1, 3] })
   expect(fcc.metadata).toEqual([
     { series_id: `fcc`, frame_idx: 0 },
     { series_id: `fcc`, frame_idx: 2 },
@@ -214,18 +211,12 @@ test(`overlaid descriptors add a dashed line per series, clicks still selecting 
 
 test(`points follow a $state sweep edited in place: scalar edits and inserted frames`, () => {
   const { state } = render({ sweep: structuredClone(sweep) })
-  const plotted = () => [plot.props?.series?.[0].x, plot.props?.series?.[0].y]
-  expect(plotted()).toEqual([
-    [0, 100],
-    [1, 3],
-  ])
+  const plotted = () => plot.props?.series?.[0]
+  expect(plotted()).toMatchObject({ x: [0, 100], y: [1, 3] })
   state.sweep.series[0].frames[0].scalars = { tc: 1.5 }
   state.sweep.series[0].frames.splice(1, 0, { value: 20, scalars: { tc: 2 } })
   flushSync()
-  expect(plotted()).toEqual([
-    [0, 20, 100],
-    [1.5, 2, 3],
-  ])
+  expect(plotted()).toMatchObject({ x: [0, 20, 100], y: [1.5, 2, 3] })
 })
 
 // oxfmt-ignore

@@ -103,6 +103,7 @@ describe(`compute_isosurface_geometries`, () => {
       lattice: cubic_matrix(3),
       origin: [1, 2, 3],
       periodic: false,
+      units: `e/A^3`,
     })
     const prepared = prepare_geometry_grid(volume, null)
     expect(prepared.grid.values === values).toBe(reused)
@@ -129,6 +130,7 @@ describe(`compute_isosurface_geometries`, () => {
       lattice: cubic_matrix(20),
       origin: [0, 0, 0],
       periodic: false,
+      units: `e/A^3`,
     })
     const { grid, lattice, origin } = prepare_geometry_grid(volume, null)
     expect(grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)

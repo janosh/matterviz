@@ -43,6 +43,7 @@
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
+  import { high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
   import { reciprocal_lattice } from '#lib/math.js'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
@@ -122,6 +123,7 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     k_path,
+    default_k_path = false,
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
@@ -187,6 +189,9 @@
     // Band-structure k-path to draw, in Cartesian reciprocal coordinates from the reciprocal
     // lattice incl. 2π (spectral's band_k_path builds it from a band structure)
     k_path?: KPathData
+    // Without a `k_path`, draw the structure's Setyawan–Curtarolo high-symmetry path (pymatgen's
+    // HighSymmKpath default), found from its symmetry
+    default_k_path?: boolean
     // Currently hovered k-point in Cartesian reciprocal space coordinates
     hovered_k_point?: Vec3 | null
     // Persistently marked k-points in Cartesian reciprocal coordinates (same treatment as the
@@ -231,12 +236,12 @@
   const qpoint_link = join_hover_link(() => link_hover, `number`)
   const linked = $derived.by(() => {
     const qpoint_idx = qpoint_link.linked
-    if (qpoint_idx === null || !k_path) return null
+    if (qpoint_idx === null || !shown_k_path) return null
     const in_branch = ([start, end]: Vec2) => start <= qpoint_idx && qpoint_idx <= end
     return {
       qpoint_idx,
-      k_point: k_path.points[qpoint_idx] ?? null,
-      range: k_path.branches.find(in_branch) ?? null,
+      k_point: shown_k_path.points[qpoint_idx] ?? null,
+      range: shown_k_path.branches.find(in_branch) ?? null,
     }
   })
   const handle_kpath_hover = (qpoint_idx: number | null): void => {
@@ -294,7 +299,9 @@
   // either is shown; a result for a replaced structure never lands, and the previous one's
   // wedge and space group do not linger while it runs
   const needs_symmetry = $derived(
-    show_ibz || (info_pane_open && controls_config.visible(`info-pane`)),
+    show_ibz ||
+      (default_k_path && !k_path) ||
+      (info_pane_open && controls_config.visible(`info-pane`)),
   )
   let symmetry = $state<{ data?: MoyoDataset; error?: unknown }>({})
   $effect(() => {
@@ -332,6 +339,21 @@
       return failed(err)
     }
   })
+  // The default k-path follows the structure (its reciprocal basis), not a caller's k_lattice
+  const default_k_path_result = $derived.by((): { data?: KPathData; error?: string } => {
+    const lattice = structure?.lattice?.matrix
+    const { data } = symmetry
+    if (k_path || !default_k_path || !lattice || !(data || `error` in symmetry)) return {}
+    try {
+      if (!data) throw symmetry.error
+      const own_k_lattice = reciprocal_lattice(lattice, { two_pi: true })
+      return { data: kpath_to_k_path_data(high_symmetry_kpath(lattice, data), own_k_lattice) }
+    } catch (err) {
+      return { error: `Default k-path failed: ${to_error(err).message}` }
+    }
+  })
+  const shown_k_path = $derived(k_path ?? default_k_path_result.data)
+
   let ibz_error = $state<string | undefined>()
   $effect(() => {
     const { data, error } = ibz_result
@@ -441,6 +463,11 @@
          vertices, faces} with no structure) -->
     <ViewerNotices>
       <StatusMessage bind:message={ibz_error} type="warning" dismissible />
+      <StatusMessage
+        message={default_k_path_result.error}
+        type="warning"
+        class="k-path-error"
+      />
     </ViewerNotices>
     <ViewerChrome
       {controls_config}
@@ -507,7 +534,7 @@
           {show_vectors}
           {vector_scale}
           {camera_projection}
-          {k_path}
+          k_path={shown_k_path}
           hovered_k_point={hovered_k_point ?? linked?.k_point ?? null}
           {highlighted_k_points}
           hovered_qpoint_index={hovered_qpoint_index ?? linked?.qpoint_idx ?? null}

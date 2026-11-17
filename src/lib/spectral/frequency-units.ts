@@ -73,6 +73,29 @@ export const canonical_frequency_unit = (unit: unknown): FrequencyUnit => {
   return parsed
 }
 
+// Units electronic energies come in. Formats that name none (BXSF, FRMSF) give null: unknown,
+// never assumed eV, as their writers differ (QE fs.x and Wannier90 write eV, WIEN2k-derived
+// BXSF for SKEAF Ry, FRMSF producers Ry, Ha or eV)
+export const EV_PER_ENERGY_UNIT = { eV: 1, Ry: HARTREE_TO_EV / 2, Ha: HARTREE_TO_EV } as const
+export type ElectronEnergyUnit = keyof typeof EV_PER_ENERGY_UNIT
+const ELECTRON_ENERGY_UNITS = Object.keys(EV_PER_ENERGY_UNIT) as ElectronEnergyUnit[]
+
+// An energy unit as declared in input (null: none declared); throws on anything else
+export function parse_electron_energy_unit(unit: unknown): ElectronEnergyUnit | null {
+  if (unit === null) return null
+  const known = ELECTRON_ENERGY_UNITS.find((name) => name === unit)
+  if (!known) {
+    throw new Error(
+      `Invalid energy unit ${JSON.stringify(unit)}: must be one of ${ELECTRON_ENERGY_UNITS.join(`, `)} or null (unknown)`,
+    )
+  }
+  return known
+}
+
+// An electronic energy unit as labels show it, saying so when it is unknown
+export const energy_unit_text = (unit: ElectronEnergyUnit | null): string =>
+  unit ?? `unknown unit`
+
 // How a unit reads on an axis label or in HTML: a <sup>, as fonts set the ⁻ of ⁻¹ lower than
 // the 1. Plain text that can't hold markup (<option>, aria-label) uses frequency_unit_text.
 export const frequency_unit_label = (unit: string): string =>
@@ -83,16 +106,28 @@ export const frequency_unit_text = (unit: string): string => (unit === `cm^-1` ?
 // phonon spectra shown together read apart: the band energy / frequency axis and the DOS's
 // density axis. `narrow` breaks the latter before its unit, for a DOS column beside the bands,
 // whose x title would overflow the column on one line (axis titles wrap at 200px at the least).
-export const spectral_value_label = (is_phonon: boolean, unit: string): string =>
-  is_phonon ? `Phonon frequency (${frequency_unit_label(unit)})` : `Electron energy (eV)`
+// `unit` is the phonon frequency unit, or the electronic energy unit (null: unknown).
+export function spectral_value_label(
+  is_phonon: boolean,
+  unit: FrequencyUnit | ElectronEnergyUnit | null,
+): string {
+  if (!is_phonon) {
+    return `Electron energy (${energy_unit_text(parse_electron_energy_unit(unit))})`
+  }
+  if (unit === null) throw new Error(`A phonon frequency axis needs a frequency unit`)
+  return `Phonon frequency (${frequency_unit_label(unit)})`
+}
 // Normalizing by the max or sum leaves the DOS unitless; by the integral, per energy
 export const dos_density_label = (
   is_phonon: boolean,
   narrow: boolean,
   normalize: NormalizationMode,
+  energy_unit: ElectronEnergyUnit | null,
 ): string => {
   if (is_phonon) return `Phonon DOS`
-  const unit = normalize === null ? `states/eV` : normalize === `integral` ? `1/eV` : ``
+  const per = energy_unit_text(energy_unit)
+  const unit =
+    normalize === null ? `states/${per}` : normalize === `integral` ? `1/${per}` : ``
   return unit ? `Electron DOS${narrow ? `\n` : ` `}(${unit})` : `Electron DOS`
 }
 

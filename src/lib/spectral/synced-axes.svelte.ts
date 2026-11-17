@@ -11,7 +11,12 @@ import {
   max_side_padding,
 } from '#lib/plot/core/shared-axes.js'
 import type { AxisConfig, AxisRanges } from '#lib/plot/core/types.js'
-import { compute_frequency_range, extract_efermi, spectral_type } from './helpers'
+import {
+  compute_frequency_range,
+  electronic_energy_unit,
+  extract_efermi,
+  spectral_type,
+} from './helpers'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
 import type { BaseBandStructure, DosData, FrequencyUnit } from './types'
 
@@ -84,7 +89,12 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const bands_props = () => inputs.bands_props?.() ?? {}
   const dos_props = () => inputs.dos_props?.() ?? {}
   const unit_factor = $derived.by(() => {
-    if (spectral_type(inputs.band_structs(), doses()) !== `phonon`) return 1
+    if (spectral_type(inputs.band_structs(), doses()) !== `phonon`) {
+      // bands are eV: a DOS on their axis must be too
+      const beside_bands = Object.keys(inputs.band_structs()).length > 0
+      electronic_energy_unit(Object.values(doses()), beside_bands)
+      return 1
+    }
     const unit = inputs.units()
     return frequency_unit_per_thz(parse_frequency_unit(unit) ?? unit)
   })

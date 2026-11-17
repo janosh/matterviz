@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { calc_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
+  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
   import { BandsAndDos } from '#lib/spectral/index.js'
   import type { Crystal, Site } from '#lib/structure/index.js'
   import {
@@ -15,14 +15,14 @@
     [0.0, 0.0, 4.0],
   ]
   const si_site = (abc: Vec3): Site => ({
-    species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+    species: [{ element: `Si`, occu: 1 }],
     abc,
     xyz: [abc[0] * 4, abc[1] * 4, abc[2] * 4],
     label: `Si`,
     properties: {},
   })
   const mock_structure: Crystal = {
-    lattice: { matrix, pbc: [true, true, true], ...calc_lattice_params(matrix) },
+    lattice: { matrix, pbc: [true, true, true], ...compute_lattice_params(matrix) },
     sites: [si_site([0.0, 0.0, 0.0]), si_site([0.5, 0.5, 0.5])],
   }
 

@@ -104,6 +104,7 @@ const typed_grid = (nested: number[][][]): BandGridData => {
     k_grid: dims,
     k_lattice: IDENTITY_MATRIX3,
     fermi_energy: 0.3,
+    energy_unit: `eV`,
     n_bands: 1,
     n_spins: 1,
   }
@@ -135,6 +136,7 @@ test(`built-in drops load typed Fermi surface data and provenance`, async () => 
     isosurfaces: [],
     k_lattice: IDENTITY_MATRIX3,
     fermi_energy: 0,
+    energy_unit: `eV`,
     reciprocal_cell: `wigner_seitz`,
     metadata: { n_bands: 1, n_surfaces: 0 },
   })
@@ -171,6 +173,7 @@ test(`a dropped file shows its own bands, not the previous file's selection`, as
       })),
       k_lattice: IDENTITY_MATRIX3,
       fermi_energy: 0,
+      energy_unit: `eV`,
       reciprocal_cell: `wigner_seitz`,
       metadata: { n_bands: band_indices.length, n_surfaces: band_indices.length },
     })
@@ -299,6 +302,7 @@ const matterviz_json = {
   isosurfaces: [{ vertices: json_vertices, faces: json_faces, band_index: 3, spin: null }],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 1.25,
+  energy_unit: `eV`,
   reciprocal_cell: `wigner_seitz`,
   metadata: { n_bands: 1, n_surfaces: 1 },
 }
@@ -394,7 +398,7 @@ test(`malformed fermi_data reports via error_msg/on_error and a later valid one 
   expect(document.body.textContent).not.toContain(`Invalid Fermi surface data`)
   // An unrelated error (a failed file load) is not the normalizer's to clear
   props.error_msg = `Failed to parse other.frmsf`
-  props.fermi_data = { isosurfaces: [] }
+  props.fermi_data = { isosurfaces: [], energy_unit: null }
   await tick()
   expect(props.error_msg).toBe(`Failed to parse other.frmsf`)
   expect(on_error).toHaveBeenCalledTimes(1)
@@ -585,21 +589,18 @@ test.each<[ColorProperty | undefined, ColorProperty, string | null]>([
   [undefined, `property`, `Δ_nk (meV)`],
   [`spin`, `spin`, null],
   [`band`, `band`, null],
-])(
-  `color_property %s over data with properties shows %s, colour bar %s`,
-  async (color_property, shown, title) => {
-    fake_webgpu()
-    const fermi_data = surface_with(`Δ_nk (meV)`, `λ_nk`)
-    mounted.push(
-      mount(FermiSurface, {
-        target: document.body,
-        props: { fermi_data, color_property, controls_open: true },
-      }),
-    )
-    await tick()
-    expect([color_by().value, colorbar_title()]).toEqual([shown, title])
-  },
-)
+])(`color_property %s shows %s, colour bar %s`, async (color_property, shown, title) => {
+  fake_webgpu()
+  const fermi_data = surface_with(`Δ_nk (meV)`, `λ_nk`)
+  mounted.push(
+    mount(FermiSurface, {
+      target: document.body,
+      props: { fermi_data, color_property, controls_open: true },
+    }),
+  )
+  await tick()
+  expect([color_by().value, colorbar_title()]).toEqual([shown, title])
+})
 
 test(`a colouring picked in the controls survives frames, data without properties shows bands`, async () => {
   fake_webgpu()

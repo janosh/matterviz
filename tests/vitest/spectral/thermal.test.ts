@@ -46,11 +46,9 @@ describe(`thermal_properties`, () => {
     }
     // measured max relative gap is 9e-9 for F (the reference forms it as kT ∫ g ln(2 sinh(x/2))
     // rather than ZPE + kT ∫ g ln(1 − e^{−x})) and < 1e-9 for U, S, C_v
-    for (const key of QUANTITIES) {
-      for (const [idx, val] of thermal[key].entries()) {
+    for (const key of QUANTITIES)
+      for (const [idx, val] of thermal[key].entries())
         expect(rel(val * j_per_mol, refs[key][idx], 1)).toBeLessThan(1e-7)
-      }
-    }
     for (const [idx, temp] of temps.entries()) {
       if (temp === 0) expect(thermal.free_energy[idx]).toBe(thermal.zero_point_energy)
       // F = U − TS holds identically
@@ -145,21 +143,18 @@ describe(`thermal_properties`, () => {
       const from_unit = thermal_properties(dos_unit, [300, 1000], unit)
       // measured max relative gap over all quantities and units is 2e-15
       expect(rel(from_unit.zero_point_energy, from_thz.zero_point_energy)).toBeLessThan(1e-14)
-      for (const key of QUANTITIES) {
-        for (const [idx, val] of from_unit[key].entries()) {
+      for (const key of QUANTITIES)
+        for (const [idx, val] of from_unit[key].entries())
           expect(rel(val, from_thz[key][idx])).toBeLessThan(1e-14)
-        }
-      }
     },
   )
 
   test(`an unsorted frequency grid integrates like the sorted one`, () => {
     const sorted = fixture.phonon_dos
-    const order = sorted.frequencies.map((_, idx) => idx).toReversed()
     const reversed: PhononDos = {
       type: `phonon`,
-      frequencies: order.map((idx) => sorted.frequencies[idx]),
-      densities: order.map((idx) => sorted.densities[idx]),
+      frequencies: sorted.frequencies.toReversed(),
+      densities: sorted.densities.toReversed(),
     }
     const from_sorted = thermal_properties(sorted, [300])
     const from_reversed = thermal_properties(reversed, [300])

@@ -15,11 +15,14 @@ import {
   subtract,
 } from '#lib/math.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import type { FrequencyUnit } from './frequency-units'
+import type { ElectronEnergyUnit, FrequencyUnit } from './frequency-units'
 import {
   convert_frequencies,
   dos_density_label,
+  energy_unit_text,
+  EV_PER_ENERGY_UNIT,
   frequency_unit_per_thz,
+  parse_electron_energy_unit,
   parse_frequency_unit,
   spectral_value_label,
 } from './frequency-units'
@@ -35,23 +38,16 @@ export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e
 
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
+const GREEK_LETTERS: Record<string, string> = { GAMMA: `Γ`, DELTA: `Δ`, SIGMA: `Σ`, LAMBDA: `Λ` }
 // Pretty-print a symmetry point symbol: Greek names (plain GAMMA or LaTeX \Gamma) become
 // Greek letters and trailing digits become subscripts (S_0 and S0 both give S₀). LaTeX math
 // wrapping as in phonopy's BAND_LABELS (`$\Gamma$`, `$\mathrm{X}$`, `S_{0}`) is stripped.
-export function pretty_sym_point(symbol: string): string {
-  if (!symbol) return ``
-  return symbol
+export const pretty_sym_point = (symbol: string): string =>
+  symbol
     .replaceAll(/\\mathrm\{(?<text>[^}]*)\}/g, `$<text>`)
     .replaceAll(/[${}_]/g, ``)
-    .replaceAll(/\\?GAMMA/gi, `Γ`)
-    .replaceAll(/\\?DELTA/gi, `Δ`)
-    .replaceAll(/\\?SIGMA/gi, `Σ`)
-    .replaceAll(/\\?LAMBDA/gi, `Λ`)
-    .replaceAll(
-      /(?<letter>\p{L})(?<num>\d+)/gu,
-      (_, letter: string, num: string) => letter + subscript_digits(num),
-    )
-}
+    .replaceAll(/\\?(GAMMA|DELTA|SIGMA|LAMBDA)/gi, (_, name: string) => GREEK_LETTERS[name.toUpperCase()])
+    .replaceAll(/(\p{L})(\d+)/gu, (_, letter: string, num: string) => letter + subscript_digits(num))
 
 // One key per branch, aligned with `bs.branches`. Labels identify the same path across
 // structures; a repeated labeled pair gets `#n` and unlabeled branches are keyed by
@@ -231,6 +227,8 @@ export function display_smoother(
   const measure = trapezoid_weights(point_x)
   const cutoff = 4 * width
   const inv_two_sigma_sq = 1 / (2 * width ** 2)
+  // as many points as samples: curves come back in the grid's own order
+  const in_grid_order = points.length === grid.length && finite.length === grid.length
   const smooth = (values: readonly number[]): number[] => {
     // each point's mean value over its members (NaN for none), then the local average
     const means = points.map(({ members }) => {
@@ -253,17 +251,12 @@ export function display_smoother(
       }
       if (weight_sum > 0) out[idx] = sum / weight_sum
     }
-    if (points.length === grid.length && finite.length === grid.length) {
-      // as many points as samples: back in the grid's own order
-      const ordered = Array(grid.length)
-      points.forEach(({ members: [idx] }, pos) => (ordered[idx] = out[pos]))
-      return ordered
-    }
-    return out
+    if (!in_grid_order) return out
+    const ordered = Array(grid.length)
+    points.forEach(({ members: [idx] }, pos) => (ordered[idx] = out[pos]))
+    return ordered
   }
-  const x_out =
-    points.length === grid.length && finite.length === grid.length ? [...grid] : point_x
-  return { x: x_out, smooth }
+  return { x: in_grid_order ? [...grid] : point_x, smooth }
 }
 
 // Nadaraya-Watson Gaussian smoother Σ w·y / Σ w for a scattered (x, y) series. Unlike the DOS
@@ -278,11 +271,7 @@ export const gaussian_kernel_smooth = (
 const is_vec3 = (val: unknown): val is Vec3 =>
   Array.isArray(val) && val.length >= 3 && val.slice(0, 3).every(Number.isFinite)
 
-interface PymatgenKpoint {
-  frac_coords: Vec3
-  label?: string | null
-}
-const is_kpoint = (val: unknown): val is PymatgenKpoint =>
+const is_kpoint = (val: unknown): val is { frac_coords: Vec3; label?: string | null } =>
   val !== null && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
 
 const has_pymatgen_marker = (obj: Record<string, unknown>): boolean =>
@@ -552,28 +541,42 @@ export function normalize_band_structure(
   } as unknown as types.BaseBandStructure
 }
 
-// Electronic DOS in eV (null for a malformed `unit`). Spin-polarized when the input says so, else
-// when a same-length spin-down channel exists; that channel is only kept for spin-polarized data.
+// Electronic DOS in eV (null for a malformed `unit`), or kept as given when `energy_unit` is
+// null: an already-normalized DOS whose source named no unit stays unknown, never becomes eV.
+// `unit` is a producer's declared unit (undeclared: eV, pymatgen's), `energy_unit` the field an
+// ElectronicDos carries; one input may hold only one of them. Spin-polarized when the input says
+// so, else when a same-length spin-down channel exists, only then keeping that channel.
 const electronic_dos = (
   energies: number[],
   densities: number[],
   spin_down: unknown,
-  opts: { spin_polarized?: boolean; efermi?: number; unit?: unknown } = {},
+  opts: { spin_polarized?: boolean; efermi?: number; unit?: unknown; energy_unit?: unknown },
 ): types.ElectronicDos | null => {
-  const to_ev = band_unit_converter(opts.unit, `electronic`)
-  if (!to_ev) return null
+  let [scale, energy_unit]: [number, ElectronEnergyUnit | null] = [1, `eV`] // eV per unit
+  if (opts.energy_unit === undefined) {
+    const to_ev = band_unit_converter(opts.unit, `electronic`)
+    if (!to_ev) return null
+    ;[scale] = to_ev([1])
+  } else if (opts.unit !== undefined) {
+    throw new Error(
+      `DOS declares both unit ${JSON.stringify(opts.unit)} and energy_unit ${JSON.stringify(opts.energy_unit)}`,
+    )
+  } else {
+    energy_unit = parse_electron_energy_unit(opts.energy_unit)
+    if (energy_unit) scale = EV_PER_ENERGY_UNIT[energy_unit]
+  }
   // g(E) is per unit energy, so the Jacobian keeps ∫g dE through the conversion to eV
-  const [ev_per_unit] = to_ev([1])
-  const per_ev = (values: number[]) => values.map((density) => density / ev_per_unit)
+  const per_ev = (values: number[]) => values.map((density) => density / scale)
   const down = Array.isArray(spin_down) ? (spin_down as number[]) : null
   const spin_polarized = opts.spin_polarized ?? down?.length === densities.length
   return {
     type: `electronic`,
-    energies: to_ev(energies),
+    energy_unit: energy_unit && `eV`,
+    energies: energies.map((energy) => energy * scale),
     densities: per_ev(densities),
     spin_down_densities: spin_polarized && down ? per_ev(down) : undefined,
     spin_polarized,
-    ...(opts.efermi !== undefined && { efermi: opts.efermi * ev_per_unit }),
+    ...(opts.efermi !== undefined && { efermi: opts.efermi * scale }),
   }
 }
 
@@ -616,6 +619,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
       spin_polarized: spin_polarized as boolean | undefined,
       efermi: typeof dos.efermi === `number` ? dos.efermi : undefined,
       unit: dos.unit,
+      energy_unit: dos.energy_unit,
     })
   }
 
@@ -1052,38 +1056,41 @@ const FERMI_LEVEL_TOL = 1e-4
 // tetrahedron (Blöchl) corrections push them slightly outside [0, 1]
 const FILLED_OCCUPATION = 0.5
 
-// Band gap of electronic bands (each an array of energies over k). `filling` is either
-// per-state occupations shaped like `bands` or E_F (states below it are filled). Prefer
-// occupations: a non-SCF line-mode run takes E_F from the SCF mesh, so a VBM between SCF
-// k-points can rise tens of meV above it while its band stays filled. A band filled at some
-// k-points and empty at others is metallic (null).
-export function electronic_band_gap(
-  bands: readonly (readonly number[])[],
-  filling: number | readonly (readonly number[])[],
-): { vbm: number; cbm: number; gap: number } | null {
-  if (typeof filling !== `number`) {
-    // Name only the first mismatch: real band structures have ~100 bands per channel
-    if (filling.length !== bands.length) {
-      throw new Error(
-        `electronic_band_gap: ${filling.length} occupation rows for ${bands.length} bands`,
-      )
-    }
-    const bad_idx = filling.findIndex(
-      (row, band_idx) => row.length !== bands[band_idx].length || !row.every(Number.isFinite),
+// Electronic bands (each an array of energies over k) and how they are filled: per-state
+// occupations shaped like the bands, or E_F (states below it are filled)
+export type BandFilling = number | readonly (readonly number[])[]
+export type FilledBands = { bands: readonly (readonly number[])[]; filling: BandFilling }
+type SpinChannel = FilledBands & { spin?: types.BandSpin }
+
+// Throws naming the first mismatch only: real band structures have ~100 bands per channel
+function check_occupations({ bands, filling, spin }: SpinChannel): void {
+  if (typeof filling === `number`) return
+  const rows = spin ? `spin-${spin} occupation row` : `occupation row`
+  if (filling.length !== bands.length) {
+    throw new Error(
+      `electronic_band_gap: ${filling.length} ${rows}s for ${bands.length} bands`,
     )
-    if (bad_idx !== -1) {
-      throw new Error(
-        `electronic_band_gap: occupation row ${bad_idx} needs ${bands[bad_idx].length} finite values`,
-      )
-    }
   }
-  let [vbm, cbm] = [-Infinity, Infinity]
+  const bad_idx = filling.findIndex(
+    (row, band_idx) => row.length !== bands[band_idx].length || !row.every(Number.isFinite),
+  )
+  if (bad_idx !== -1) {
+    throw new Error(
+      `electronic_band_gap: ${rows} ${bad_idx} needs ${bands[bad_idx].length} finite values`,
+    )
+  }
+}
+
+// Highest filled (`top`) and lowest empty (`bottom`) state of one spin channel at each
+// q-point, or null if a band is partially filled (a metal)
+function channel_edges({ bands, filling, spin }: SpinChannel, n_qpoints: number) {
+  const unset = (energy: number) =>
+    Array.from({ length: n_qpoints }, () => ({ energy, band_idx: -1 }))
+  const [top, bottom] = [unset(-Infinity), unset(Infinity)]
   for (const [band_idx, band] of bands.entries()) {
-    let [band_min, band_max, has_filled, has_empty] = [Infinity, -Infinity, false, false]
+    let [has_filled, has_empty] = [false, false]
     for (const [k_idx, energy] of band.entries()) {
       if (!Number.isFinite(energy)) continue
-      band_min = Math.min(band_min, energy)
-      band_max = Math.max(band_max, energy)
       if (typeof filling === `number`) {
         // states within FERMI_LEVEL_TOL of E_F are neither
         has_filled ||= energy < filling - FERMI_LEVEL_TOL
@@ -1091,13 +1098,101 @@ export function electronic_band_gap(
       } else if (filling[band_idx][k_idx] > FILLED_OCCUPATION) has_filled = true
       else has_empty = true
     }
-    if (band_min > band_max) continue // no finite energies
-    if (!has_empty) vbm = Math.max(vbm, band_max)
-    else if (!has_filled) cbm = Math.min(cbm, band_min)
-    else return null // partially filled: a metal
+    if (has_filled && has_empty) return null
+    // a band without empty states (incl. one only touching E_F) is a valence band
+    const [edges, sign] = has_empty ? [bottom, -1] : [top, 1]
+    for (const [k_idx, energy] of band.entries()) {
+      if (Number.isFinite(energy) && sign * (energy - edges[k_idx].energy) > 0)
+        edges[k_idx] = { energy, band_idx }
+    }
   }
-  const gap = cbm - vbm
-  return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null
+  return { top, bottom, spin }
+}
+
+// Band gap of electronic bands, its edges and the smallest direct gap; null for a metal (a band
+// filled at some k-points, empty at others). `filling`: occupations shaped like `bands`
+// (preferred: a non-SCF line-mode run takes E_F from the SCF mesh, so a VBM between its
+// k-points can rise tens of meV above E_F while staying filled) or E_F. `spin_down` makes
+// `bands`/`filling` the spin-up channel. Direct when one q-point reaches both edges within
+// FERMI_LEVEL_TOL (matching either copy of a repeated junction point); edges then sit there,
+// else at the first q-point along the path reaching each.
+export function electronic_band_gap(
+  bands: readonly (readonly number[])[],
+  filling: BandFilling,
+  spin_down?: FilledBands,
+): types.ElectronicBandGap | null {
+  const channels: SpinChannel[] = spin_down
+    ? [
+        { bands, filling, spin: `up` },
+        { ...spin_down, spin: `down` },
+      ]
+    : [{ bands, filling }]
+  for (const channel of channels) check_occupations(channel)
+  const n_qpoints = Math.max(
+    0,
+    ...channels.flatMap((channel) => channel.bands.map((band) => band.length)),
+  )
+  const per_channel = channels.map((channel) => channel_edges(channel, n_qpoints))
+  if (!per_channel.every((edges) => edges !== null)) return null
+  const edge_energies = (side: `top` | `bottom`) =>
+    per_channel.flatMap((edges) => edges[side].map(({ energy }) => energy))
+  const [vbm_energy, cbm_energy] = [
+    Math.max(...edge_energies(`top`)),
+    Math.min(...edge_energies(`bottom`)),
+  ]
+  const gap = cbm_energy - vbm_energy
+  if (!(Number.isFinite(gap) && gap > 0)) return null
+
+  // The state reaching an edge energy (to within `tol`) at a q-point, from the first channel
+  // that does
+  const edge_at = (
+    k_idx: number,
+    side: `top` | `bottom`,
+    target: number,
+    tol: number,
+  ): types.BandEdge | null => {
+    for (const { [side]: edges, spin } of per_channel) {
+      const { energy, band_idx } = edges[k_idx]
+      if (Math.abs(energy - target) <= tol)
+        return { energy, band_idx, qpoint_idx: k_idx, ...(spin && { spin }) }
+    }
+    return null
+  }
+  const k_indices = Array.from({ length: n_qpoints }, (_, k_idx) => k_idx)
+  const direct_k = k_indices.find(
+    (k_idx) =>
+      edge_at(k_idx, `top`, vbm_energy, FERMI_LEVEL_TOL) &&
+      edge_at(k_idx, `bottom`, cbm_energy, FERMI_LEVEL_TOL),
+  )
+  // The shared q-point of a direct gap, else the first one reaching the edge exactly. The
+  // edge energy is the global extremum either way.
+  const locate = (side: `top` | `bottom`, target: number): types.BandEdge => {
+    const [candidates, tol] =
+      direct_k === undefined ? [k_indices, 0] : [[direct_k], FERMI_LEVEL_TOL]
+    for (const k_idx of candidates) {
+      const edge = edge_at(k_idx, side, target, tol)
+      if (edge) return { ...edge, energy: target }
+    }
+    throw new Error(`electronic_band_gap: no q-point reaches the band edge at ${target}`)
+  }
+
+  // Smallest vertical gap within one spin channel (first q-point on ties); none when no
+  // channel has both filled and empty bands (e.g. every spin-up band filled, every down empty)
+  let direct_gap: types.ElectronicBandGap[`direct_gap`] = null
+  for (const { top, bottom, spin } of per_channel) {
+    for (const k_idx of k_indices) {
+      const energy = bottom[k_idx].energy - top[k_idx].energy
+      if (Number.isFinite(energy) && energy < (direct_gap?.energy ?? Infinity))
+        direct_gap = { energy, qpoint_idx: k_idx, ...(spin && { spin }) }
+    }
+  }
+  return {
+    gap,
+    vbm: locate(`top`, vbm_energy),
+    cbm: locate(`bottom`, cbm_energy),
+    is_direct: direct_k !== undefined,
+    direct_gap,
+  }
 }
 
 // A shared axis cannot mix frequencies and energies. Validate every material, including maps
@@ -1212,6 +1307,23 @@ export function padded_frequency_range(
   return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
 }
 
+// The one energy unit of electronic DOS shown on one axis (undefined: none is electronic);
+// throws on a mix, and with `beside_bands` on any but eV, the unit band structures are in
+// (normalize_band_structure converts them), since one axis cannot show two units
+export function electronic_energy_unit(
+  doses: Iterable<types.DosData>,
+  beside_bands = false,
+): ElectronEnergyUnit | null | undefined {
+  const units = new Set<ElectronEnergyUnit | null>()
+  for (const dos of doses) if (dos.type === `electronic`) units.add(dos.energy_unit)
+  if (beside_bands && units.size) units.add(`eV`)
+  if (units.size > 1) {
+    const names = [...units].map(energy_unit_text).join(` and `)
+    throw new Error(`Cannot plot electronic energies in ${names} on one energy axis`)
+  }
+  return units.size ? [...units][0] : undefined
+}
+
 // Shared frequency/energy range of bands and DOS, see padded_frequency_range
 export function compute_frequency_range(
   band_structs: Record<string, types.BaseBandStructure>,
@@ -1219,6 +1331,7 @@ export function compute_frequency_range(
   padding_factor = 0.02,
 ): Vec2 | undefined {
   const type = spectral_type(band_structs, doses)
+  electronic_energy_unit(Object.values(doses), Object.keys(band_structs).length > 0)
   const band_values = Object.values(band_structs).flatMap((band_structure) =>
     [...band_structure.bands, ...(band_structure.spin_down_bands ?? [])].flat(),
   )
@@ -1243,7 +1356,8 @@ export function format_dos_tooltip(opts: {
   label: string | null
   is_horizontal: boolean // frequency/energy on y and density on x
   is_phonon: boolean
-  units: FrequencyUnit
+  // the phonon frequency unit, or the electronic energy unit (null: unknown)
+  units: FrequencyUnit | ElectronEnergyUnit | null
   normalize?: types.NormalizationMode // default null (none)
   x_axis_label: string
   y_axis_label: string
@@ -1253,7 +1367,12 @@ export function format_dos_tooltip(opts: {
   const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
   const freq_default = parse_axis_label(spectral_value_label(is_phonon, units))
   const density_default = parse_axis_label(
-    dos_density_label(is_phonon, false, opts.normalize ?? null),
+    dos_density_label(
+      is_phonon,
+      false,
+      opts.normalize ?? null,
+      is_phonon ? null : parse_electron_energy_unit(units),
+    ),
   )
   const freq_line = (parsed: { name: string; unit?: string }, value: string) => ({
     label: parsed.name || freq_default.name,
@@ -1292,7 +1411,7 @@ export const validate_sigma_range = ([min, max]: Vec2): Vec2 =>
   Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
 
 // Calculate slider step: 1/100th of range, or 0.01 fallback
-export function calculate_sigma_step(range: Vec2): number {
+export function compute_sigma_step(range: Vec2): number {
   const [min, max] = validate_sigma_range(range)
   return (max - min) / 100 || 0.01
 }

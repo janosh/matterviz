@@ -286,41 +286,37 @@ describe(`sample_plane_slice`, () => {
     [true, [7, 6, 11]],
     [false, [7, 6, 11]],
     [true, [1, 5, 4]],
-  ] as [boolean, Vec3][])(
-    `matches point-wise sampling (periodic=%s, dims=%j)`,
-    (periodic, dims) => {
-      const volume = make_volume(
-        make_grid(...dims, (idx_x, idx_y, idx_z) =>
-          Math.sin(idx_x * 12.9 + idx_y * 78.2 + idx_z * 37.7),
-        ),
-        { lattice: skewed, origin: [0.2, -0.3, 0.5], periodic },
+  ] as [boolean, Vec3][])(`matches point sampling (periodic %s, %j)`, (periodic, dims) => {
+    const volume = make_volume(
+      make_grid(...dims, (idx_x, idx_y, idx_z) =>
+        Math.sin(idx_x * 12.9 + idx_y * 78.2 + idx_z * 37.7),
+      ),
+      { lattice: skewed, origin: [0.2, -0.3, 0.5], periodic },
+    )
+    const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
+    const plane = { point: [1, 1.5, 3] as Vec3, normal: [0.3, 0.5, 1] as Vec3 }
+    const { data, mask, width, height, u_range, v_range, u_axis, v_axis } = plane_slice(
+      plane,
+      { resolution: 97 },
+      volume,
+    )
+    expect(mask.filter(Boolean).length).toBeGreaterThan(1000)
+    for (const [data_idx, inside] of mask.entries()) {
+      if (!inside) continue
+      const u_coord =
+        u_range[0] + ((data_idx % width) * (u_range[1] - u_range[0])) / (width - 1)
+      const v_coord =
+        v_range[0] + (Math.floor(data_idx / width) * (v_range[1] - v_range[0])) / (height - 1)
+      const position = math.add(
+        plane.point,
+        math.scale(u_axis, u_coord),
+        math.scale(v_axis, v_coord),
       )
-      const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
-      const plane = { point: [1, 1.5, 3] as Vec3, normal: [0.3, 0.5, 1] as Vec3 }
-      const { data, mask, width, height, u_range, v_range, u_axis, v_axis } = plane_slice(
-        plane,
-        { resolution: 97 },
-        volume,
-      )
-      expect(mask.filter(Boolean).length).toBeGreaterThan(1000)
-      for (const [data_idx, inside] of mask.entries()) {
-        if (!inside) continue
-        const u_coord =
-          u_range[0] + ((data_idx % width) * (u_range[1] - u_range[0])) / (width - 1)
-        const v_coord =
-          v_range[0] +
-          (Math.floor(data_idx / width) * (v_range[1] - v_range[0])) / (height - 1)
-        const position = math.add(
-          plane.point,
-          math.scale(u_axis, u_coord),
-          math.scale(v_axis, v_coord),
-        )
-        // values span [-1, 1]; the cubic form and nested lerps differ by ~1e-15 in rounding, so
-        // 1e-12 leaves headroom without hiding a wrong cell or fraction
-        expect(Math.abs(data[data_idx] - sample(position))).toBeLessThan(1e-12)
-      }
-    },
-  )
+      // values span [-1, 1]; the cubic form and nested lerps differ by ~1e-15 in rounding, so
+      // 1e-12 leaves headroom without hiding a wrong cell or fraction
+      expect(Math.abs(data[data_idx] - sample(position))).toBeLessThan(1e-12)
+    }
+  })
 
   test(`a (001) hkl plane samples like the matching Cartesian plane for shifted volumes`, () => {
     const volume = linear_volume(cubic, [3, -2, 5])

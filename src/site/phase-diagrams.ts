@@ -1,4 +1,4 @@
-import type { FileInfo } from '#lib'
+import type { FileInfo } from '#lib/io/index.js'
 import type { BinaryPhaseDiagram, PhaseObservation } from '#lib/phase-diagram/index.js'
 import { normalize_system_name } from '#site/phase-diagrams/tdb-parse.js'
 import { glob_basename, site_file_info } from '#site/imports.js'

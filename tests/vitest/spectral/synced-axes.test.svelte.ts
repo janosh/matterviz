@@ -47,7 +47,12 @@ test.each([`phonon`, `electronic`] as const)(
             '':
               type === `phonon`
                 ? doses
-                : { type, energies: doses.frequencies, densities: doses.densities },
+                : {
+                    type,
+                    energy_unit: `eV`,
+                    energies: doses.frequencies,
+                    densities: doses.densities,
+                  },
           }),
           units: () => units,
           side_by_side: () => inputs.side_by_side,

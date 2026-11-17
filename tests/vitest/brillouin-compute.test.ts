@@ -47,8 +47,9 @@ const reference_data = load_json<Record<string, BzReference>>(
   `${import.meta.dirname}/bz_reference_data.json.gz`,
 )
 
+const row_major = math.mat3x3_from_flat_row_major
 const diag = (x_val: number, y_val: number, z_val: number) =>
-  math.vec9_to_mat3x3([x_val, 0, 0, 0, y_val, 0, 0, 0, z_val])
+  row_major([x_val, 0, 0, 0, y_val, 0, 0, 0, z_val])
 // corners of the cube [-half, half]³
 const cube_corners = (half: number): Vec3[] =>
   [-half, half].flatMap((x_val) =>
@@ -66,8 +67,8 @@ const UNIT_SQUARE: Vec3[] = [
   [0, 1, 0],
 ]
 // Hexagonal 3-fold rotation and its square in fractional coords (non-orthogonal: W^T ≠ W^{-1})
-const C3_HEX = math.vec9_to_mat3x3([0, -1, 0, 1, -1, 0, 0, 0, 1])
-const C3_HEX_SQ = math.vec9_to_mat3x3([-1, 1, 0, -1, 0, 0, 0, 0, 1])
+const C3_HEX = row_major([0, -1, 0, 1, -1, 0, 0, 0, 1])
+const C3_HEX_SQ = row_major([-1, 1, 0, -1, 0, 0, 0, 0, 1])
 
 const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
   vertices.some((vertex) => vertex.every((coord, idx) => Math.abs(coord - target[idx]) < tol))
@@ -121,10 +122,10 @@ const REAL_LATTICES: Record<string, Matrix3x3> = {
   tetragonal: lattice_from_params(4, 4, 6, 90, 90, 90),
   orthorhombic: lattice_from_params(4, 5, 6, 90, 90, 90),
   triclinic: lattice_from_params(4, 5, 6, 80, 85, 70),
-  non_reduced: math.vec9_to_mat3x3([4, 0, 0, 3.5, 1, 0, 0, 0, 4]),
+  non_reduced: row_major([4, 0, 0, 3.5, 1, 0, 0, 0, 4]),
   // simple cubic lattice in a [[1,0,0],[10,1,0],[0,0,1]] supercell setting: its reciprocal
   // basis is a sliver whose ±1 Bragg shell bounds a cell ~100× too large along one axis
-  sheared_cubic: math.vec9_to_mat3x3([A_CUBIC, 0, 0, 10 * A_CUBIC, A_CUBIC, 0, 0, 0, A_CUBIC]),
+  sheared_cubic: row_major([A_CUBIC, 0, 0, 10 * A_CUBIC, A_CUBIC, 0, 0, 0, A_CUBIC]),
 }
 
 type Polygon = { normal: Vec3; dist: number; vertex_ids: Set<number> }
@@ -326,7 +327,7 @@ describe(`compute_brillouin_zone`, () => {
 
   // A coplanar real lattice has no reciprocal lattice; the error must surface, not NaN geometry
   test(`singular real or reciprocal lattice throws`, () => {
-    const coplanar = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 1, 1, 0])
+    const coplanar = row_major([1, 0, 0, 0, 1, 0, 1, 1, 0])
     expect(() => recip_2pi(coplanar)).toThrow(/singular/)
     expect(() => compute_brillouin_zone(coplanar, 1)).toThrow(/singular/)
     expect(() => compute_brillouin_zone(diag(1, NaN, 1), 1)).toThrow(/non-finite/)
@@ -446,9 +447,9 @@ describe(`BZ order`, () => {
 })
 
 // Fractional rotation matrices (row-major) for mock moyo operations
-const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1])
+const ROT_Z_90 = row_major([0, -1, 0, 1, 0, 0, 0, 0, 1])
 const ROT_Z_180 = diag(-1, -1, 1)
-const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1])
+const ROT_Z_270 = row_major([0, 1, 0, -1, 0, 0, 0, 0, 1])
 const MIRROR_Z = diag(1, 1, -1)
 const C4_OPS = [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270]
 
@@ -513,7 +514,7 @@ describe(`compute_ibz_clipping_planes`, () => {
     // every curated direction is fixed by exactly one op, so .find() returns undefined
     for (const dir of IBZ_REFERENCE_DIRECTIONS) {
       const fixed_by = ops.filter(
-        (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) < 1e-8,
+        (rot) => Math.hypot(...math.subtract(math.mul_3x3_vec3(rot, dir), dir)) < 1e-8,
       ).length
       expect(fixed_by).toBe(1)
     }
@@ -525,7 +526,7 @@ describe(`compute_ibz_clipping_planes`, () => {
   test(`find_ibz_reference_direction returns a direction with trivial stabilizer`, () => {
     const ref = find_ibz_reference_direction([ROT_Z_90, ROT_Z_180, MIRROR_Z])
     for (const rot of [ROT_Z_90, ROT_Z_180, MIRROR_Z]) {
-      const moved = Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, ref), ref))
+      const moved = Math.hypot(...math.subtract(math.mul_3x3_vec3(rot, ref), ref))
       expect(moved).toBeGreaterThan(1e-8)
     }
   })
@@ -554,8 +555,8 @@ const group_closure = (generators: Matrix3x3[]): Matrix3x3[] => {
 // Hexagonal point group D6h in fractional coordinates of a₁ = (a,0,0), a₂ = a(−½, √3/2, 0):
 // the 60° rotation sends a₁ → a₁+a₂ and a₂ → −a₁ (columns of W), C2 about a₁ sends
 // a₂ → −a₁−a₂ and a₃ → −a₃, plus the horizontal mirror.
-const C6_HEX = math.vec9_to_mat3x3([1, -1, 0, 1, 0, 0, 0, 0, 1])
-const C2_HEX_A1 = math.vec9_to_mat3x3([1, -1, 0, 0, -1, 0, 0, 0, -1])
+const C6_HEX = row_major([1, -1, 0, 1, 0, 0, 0, 0, 1])
+const C2_HEX_A1 = row_major([1, -1, 0, 0, -1, 0, 0, 0, -1])
 const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z])
 
 describe(`compute_irreducible_bz`, () => {
@@ -579,7 +580,7 @@ describe(`compute_irreducible_bz`, () => {
   // Oh in the fractional basis of the fcc primitive cell: W = B·R·B⁻¹ inverts
   // fractional_to_cartesian_rotation (R orthogonal), and must come out integer
   const fcc_k = recip_2pi(REAL_LATTICES.fcc)
-  const fcc_k_inv = math.matrix_inverse_3x3(fcc_k)
+  const fcc_k_inv = math.inverse_3x3(fcc_k)
   const fcc_oh_frac = oh_ops.map((rot) => math.dot(math.dot(fcc_k, rot), fcc_k_inv))
   const fcc_oh_ops = fcc_oh_frac.map(
     (w_frac) => w_frac.map((row) => row.map(Math.round)) as Matrix3x3,
@@ -659,7 +660,7 @@ describe(`fractional_to_cartesian_rotation`, () => {
       const rot = fractional_to_cartesian_rotation(frac_rot, k_latt)
       // Orthogonal (RᵀR = I), proper (det = +1), right angle (trace = 1 + 2·cosθ — also
       // rules out the identity fallback, which trivially passes the other invariants)
-      expect(math.dot(math.transpose_3x3_matrix(rot), rot)).toEqual(
+      expect(math.dot(math.transpose_3x3(rot), rot)).toEqual(
         IDENTITY_MAT.map((row) => row.map((val) => expect.closeTo(val, 10))),
       )
       expect(math.det_3x3(rot)).toBeCloseTo(1, 10)
@@ -667,7 +668,7 @@ describe(`fractional_to_cartesian_rotation`, () => {
 
       // R must map the reciprocal lattice onto itself: coordinates of R·bᵢ in the
       // reciprocal basis (k_cart = Bᵀ·q) must be integers
-      const basis_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_latt))
+      const basis_inv = math.inverse_3x3(math.transpose_3x3(k_latt))
       for (const b_vec of k_latt) {
         for (const coord of math.dot(basis_inv, math.dot(rot, b_vec))) {
           expect(coord, `R·b lattice coords`).toBeCloseTo(Math.round(coord), 8)
@@ -719,14 +720,14 @@ describe(`k_lattice_inverse + cartesian_to_fractional`, () => {
     const inv = k_lattice_inverse(k_lattice)
     expect(cartesian_to_fractional(inv, [2, 4, 8])).toEqual([1, 1, 1])
     expect(cartesian_to_fractional(inv, [1, 1, 1])).toEqual([0.5, 0.25, 0.125])
-    const skewed = math.vec9_to_mat3x3([1, 0, 0, 0.5, Math.sqrt(3) / 2, 0, 0, 0, 1])
+    const skewed = row_major([1, 0, 0, 0.5, Math.sqrt(3) / 2, 0, 0, 0, 1])
     const fractional = cartesian_to_fractional(k_lattice_inverse(skewed), skewed[1])
     expect(fractional).toEqual([0, 1, 0].map((val) => expect.closeTo(val, 12)))
   })
 
   test(`returns null for missing or singular lattice`, () => {
     expect(k_lattice_inverse(undefined)).toBeNull()
-    expect(k_lattice_inverse(math.vec9_to_mat3x3([1, 0, 0, 2, 0, 0, 0, 0, 1]))).toBeNull()
+    expect(k_lattice_inverse(row_major([1, 0, 0, 2, 0, 0, 0, 0, 1]))).toBeNull()
     expect(cartesian_to_fractional(null, [1, 2, 3])).toBeNull()
   })
 })

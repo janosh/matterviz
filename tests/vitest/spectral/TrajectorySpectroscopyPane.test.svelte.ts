@@ -18,7 +18,7 @@ import {
   set_input,
   set_select,
 } from '../setup'
-import { make_position_stream } from '../test-fixtures'
+import { make_position_stream, make_signal } from '../test-fixtures'
 
 const mocks = vi.hoisted(() => {
   const cancel = vi.fn()
@@ -52,17 +52,20 @@ const make_run = (): TrajectoryRun =>
     { time_step: { value: 1, unit: `fs` } },
   )
 
+// lazy descriptors for every IR kind besides dipole and a Raman tensor
+const response_signals = () => ({
+  polarization: { sample_shape: [3], sample_count: 2 },
+  current: { sample_shape: [3], sample_count: 2 },
+  polarizability: { sample_shape: [3, 3], sample_count: 2 },
+})
+
 const make_input = (): TrajectorySpectroscopyInput => ({
   positions: make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`H`], {
     lattice_matrices: null,
     pbc: [false, false, false],
   }),
   masses: new Float64Array([1]),
-  velocities: {
-    values: new Float64Array([1, 0, 0, 1, 0, 0]),
-    sample_shape: [1, 3],
-    steps: [0, 1],
-  },
+  velocities: make_signal(2, [1, 3], () => [1, 0, 0]),
   infrared_signal: null,
   raman_signal: null,
 })
@@ -202,16 +205,7 @@ test.each([
   `recollects only what changing %s alongside timing affects`,
   async (label, value, expected_options, stage) => {
     mocks.compute.mockResolvedValue(make_result(`computed`))
-    const target = render_pane({
-      run: {
-        ...make_run(),
-        signals: {
-          polarization: { sample_shape: [3], sample_count: 2 },
-          current: { sample_shape: [3], sample_count: 2 },
-          polarizability: { sample_shape: [3, 3], sample_count: 2 },
-        },
-      },
-    })
+    const target = render_pane({ run: { ...make_run(), signals: response_signals() } })
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
     await open_settings(target)
     const control = [...target.querySelectorAll(`.spectroscopy-controls label`)]
@@ -233,11 +227,7 @@ test.each([
 
 test(`picking an IR signal clears branch-continuous polarization`, async () => {
   mocks.compute.mockResolvedValue(make_result(`computed`))
-  const signals = {
-    polarization: { sample_shape: [3], sample_count: 2 },
-    current: { sample_shape: [3], sample_count: 2 },
-  }
-  const target = render_pane({ run: { ...make_run(), signals } })
+  const target = render_pane({ run: { ...make_run(), signals: response_signals() } })
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
   await open_settings(target)
   const ir_select = query<HTMLSelectElement>(target, `.spectroscopy-controls select`)
@@ -343,11 +333,8 @@ test.each([
 
     second_result.resolve(make_result(`second`))
     await vi.waitFor(() => expect(props.result?.metadata.name).toBe(`second`))
-    mocks.collect.mock.calls[0][1].on_progress({
-      current: 1,
-      total: 2,
-      stage: `stale progress`,
-    })
+    const stale_progress = { current: 1, total: 2, stage: `stale progress` }
+    mocks.collect.mock.calls[0][1].on_progress(stale_progress)
     if (settlement === `resolve`)
       first_result.resolve(stage === `collect` ? make_input() : make_result(`first`))
     else first_result.reject(new Error(`stale failure`))

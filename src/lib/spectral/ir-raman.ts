@@ -1,10 +1,7 @@
-// Compute IR intensities and Raman activities for phonon modes at a q-point.
-//
-// IR intensities are computed here from Born effective charges and eigenvectors.
-// Raman activities are NOT: they need polarizability derivatives (d alpha / d Q), which
-// phonopy does not produce. Callers must supply either per-mode Raman tensors (from a
-// LEPSILON finite-difference workflow, vasp_raman.py, phonopy-spectroscopy, ...) or
-// precomputed activities. Nothing in this file invents Raman data from eigenvectors.
+// IR intensities of phonon modes at a q-point, from Born effective charges and eigenvectors.
+// Raman activities need polarizability derivatives (d alpha / d Q), which phonopy does not
+// produce: callers supply per-mode Raman tensors (LEPSILON finite differences, vasp_raman.py,
+// phonopy-spectroscopy, ...) or precomputed activities; none are invented from eigenvectors.
 
 import { display_idx } from '#lib/labels.js'
 import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
@@ -39,19 +36,17 @@ export function ir_intensity(
   born_charges: Matrix3x3[],
 ): number {
   const n_atoms = masses.length
-  if (eigenvector.length !== n_atoms || born_charges.length !== n_atoms) {
+  if (eigenvector.length !== n_atoms || born_charges.length !== n_atoms)
     throw new Error(
       `ir_intensity: length mismatch — ${eigenvector.length} eigenvector blocks, ` +
         `${masses.length} masses, ${born_charges.length} Born charge tensors`,
     )
-  }
 
   const dipole: Complex[] = [0, 1, 2].map((): Complex => [0, 0])
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
     const mass = masses[atom_idx]
-    if (!Number.isFinite(mass) || mass <= 0) {
+    if (!Number.isFinite(mass) || mass <= 0)
       throw new Error(`ir_intensity: atom ${display_idx(atom_idx)} has invalid mass ${mass}`)
-    }
     const inv_sqrt_mass = 1 / Math.sqrt(mass)
     const charge = born_charges[atom_idx]
     const displacement = eigenvector[atom_idx]
@@ -138,41 +133,34 @@ export function compute_ir_raman_spectrum(
   const { modes, q_position } = qpoint
   const n_atoms = masses.length
 
-  if (born.born_charges.length !== n_atoms) {
+  if (born.born_charges.length !== n_atoms)
     throw new Error(
       `compute_ir_raman_spectrum: ${born.born_charges.length} Born charge tensors for ` +
         `${n_atoms} atoms. phonopy's BORN lists only the symmetry-independent atoms, and ` +
         `expanding them needs the cell's symmetry, which is unsupported: give one per atom.`,
     )
-  }
-  if (modes.length !== 3 * n_atoms) {
+  if (modes.length !== 3 * n_atoms)
     throw new Error(
       `compute_ir_raman_spectrum: ${modes.length} modes for ${n_atoms} atoms, expected ` +
         `3N = ${3 * n_atoms}`,
     )
+  for (const [name, values] of [
+    [`tensors`, raman_tensors],
+    [`activities`, raman_activities],
+  ] as const) {
+    if (values && values.length !== modes.length)
+      throw new Error(
+        `compute_ir_raman_spectrum: ${values.length} Raman ${name} for ${modes.length} modes`,
+      )
   }
-  if (raman_tensors && raman_tensors.length !== modes.length) {
-    throw new Error(
-      `compute_ir_raman_spectrum: ${raman_tensors.length} Raman tensors for ${modes.length} modes`,
-    )
-  }
-  if (raman_activities && raman_activities.length !== modes.length) {
-    throw new Error(
-      `compute_ir_raman_spectrum: ${raman_activities.length} Raman activities for ` +
-        `${modes.length} modes`,
-    )
-  }
-
   const acoustic = acoustic_mode_indices(modes, q_position, acoustic_threshold)
-
   const vibrational_modes = modes.map((mode, mode_idx): VibrationalMode => {
     const { eigenvector, frequency } = mode
-    if (!eigenvector) {
+    if (!eigenvector)
       throw new Error(
         `compute_ir_raman_spectrum: mode ${display_idx(mode_idx)} has no eigenvector; IR intensities ` +
           `cannot be computed from frequencies alone`,
       )
-    }
     const invariants = raman_tensors ? raman_invariants(raman_tensors[mode_idx]) : null
     return {
       mode_idx,
@@ -181,9 +169,8 @@ export function compute_ir_raman_spectrum(
       raman_activity: raman_activities?.[mode_idx] ?? invariants?.activity ?? null,
       depolarization_ratio: invariants?.depolarization_ratio ?? null,
       is_acoustic: acoustic.has(mode_idx),
-      // Per-mode, so the cutoff has to be absolute. A fraction of the spectrum's total
-      // weight would make the same -1.5 THz mode imaginary in a 9-mode cell and real in a
-      // 48-mode one, which is not a property of the mode.
+      // absolute per-mode cutoff: a fraction of the total weight would make the same
+      // -1.5 THz mode imaginary in a 9-mode cell and real in a 48-mode one
       is_imaginary: frequency < -acoustic_threshold,
     }
   })
@@ -213,12 +200,11 @@ export function spectrum_from_phonon_data(
     throw new Error(`spectrum_from_phonon_data: no Gamma point among q-points [${listed}]`)
   }
   const qpoint = data.qpoints[resolved_index]
-  if (!qpoint) {
+  if (!qpoint)
     throw new Error(
       `spectrum_from_phonon_data: q-point index ${resolved_index} out of range ` +
         `(${data.qpoints.length} q-points)`,
     )
-  }
   const masses = data.atoms.map((atom) => atom.mass)
   return compute_ir_raman_spectrum(qpoint, masses, born, spectrum_options)
 }
@@ -236,12 +222,11 @@ export function spectrum_sticks(
   } = {},
 ): SpectrumCurve & { modes: VibrationalMode[] } {
   const { unit = `cm^-1`, include_acoustic = false, include_imaginary = false } = options
-  if (kind === `raman` && !spectrum.has_raman) {
+  if (kind === `raman` && !spectrum.has_raman)
     throw new Error(
       `spectrum_sticks: Raman requested but this spectrum has no polarizability data. ` +
         `Supply raman_tensors or raman_activities when computing it.`,
     )
-  }
 
   const selected = spectrum.modes.filter(
     (mode) =>
@@ -294,49 +279,38 @@ export interface BroadenOptions {
   step_size?: number // grid spacing, defaults to FWHM/20
 }
 
-// Convolve a stick spectrum with pseudo-Voigt line shapes. Delegates to #lib/lineshape's
-// broaden_peaks with an injected constant or frequency-dependent width. Line shapes are
-// area-normalised, so the integrated intensity of each stick is preserved (up to the
-// +/-20 FWHM truncation window and grid discretisation).
-//
-// broaden_peaks is unit-agnostic (see its contract), so sticks go through unscaled.
+// Convolve a stick spectrum with pseudo-Voigt line shapes via #lib/lineshape's (unit-agnostic)
+// broaden_peaks, sticks unscaled. Line shapes are area-normalised, so each stick's integrated
+// intensity is preserved (up to the +/-20 FWHM window and grid discretisation).
 export function broaden_spectrum(
   sticks: SpectrumCurve,
   options: BroadenOptions = {},
 ): SpectrumCurve {
   const { fwhm = 10, fwhm_fn, shape_factor = 0.5 } = options
-  if (sticks.x.length !== sticks.y.length) {
+  if (sticks.x.length !== sticks.y.length)
     throw new Error(
       `broaden_spectrum: ${sticks.x.length} positions but ${sticks.y.length} intensities`,
     )
-  }
-  // Before the width checks, so both the constant and the fwhm_fn path treat "nothing to
-  // broaden" as a no-op rather than one throwing and the other returning empty
+  // before the width checks, so the constant and fwhm_fn paths both treat it as a no-op
   if (sticks.x.length === 0) return { x: [], y: [] }
 
-  // broaden_peaks rejects NaN/Infinity and an out-of-range shape_factor itself, but silently
-  // drops a negative intensity via its relative floor, coming back as an all-zero curve
-  // indistinguishable from "no such mode". Not producible by ir_intensity/raman_activity
-  // (both sums of squares), so it is a caller bug.
-  for (const [stick_idx, intensity] of sticks.y.entries()) {
-    if (intensity < 0) {
+  // broaden_peaks rejects NaN/Infinity itself but silently zeroes a negative intensity via its
+  // relative floor. ir_intensity/raman_activity are sums of squares, so it is a caller bug.
+  for (const [stick_idx, intensity] of sticks.y.entries())
+    if (intensity < 0)
       throw new Error(
         `broaden_spectrum: stick ${stick_idx} at ${sticks.x[stick_idx]} has negative ` +
           `intensity ${intensity}`,
       )
-    }
-  }
 
-  // Widths are needed up front to size the grid, so validate them here rather than letting
-  // a NaN step_size fail inside broaden_peaks with no peak named.
+  // validated up front (they size the grid) so a bad width names its peak
   const width_at = fwhm_fn ?? (() => fwhm)
   const widths = sticks.x.map((peak_center) => {
     const width = width_at(peak_center)
-    if (!Number.isFinite(width) || width <= 0) {
+    if (!Number.isFinite(width) || width <= 0)
       throw new Error(
         `broaden_spectrum: fwhm must be > 0 and finite, got ${width} at peak ${peak_center}`,
       )
-    }
     return width
   })
   const [min_width, max_width] = array_extent(widths)
@@ -346,35 +320,30 @@ export function broaden_spectrum(
   const step_size = options.step_size ?? min_width / 20
 
   const n_points = Math.ceil((range_hi - range_lo) / step_size)
-  // Every width can be individually sane while their RATIO is not: the grid spans
-  // 10*max_width past the sticks in steps of min_width/20, so a soft mode 9 orders below
-  // the rest asks for ~1e12 points and broaden_peaks fills them in an uninterruptible loop.
-  if (n_points > MAX_BROADENING_GRID_POINTS) {
+  // Sane widths can have an insane RATIO: the grid spans 10*max_width in steps of
+  // min_width/20, so a soft mode 9 orders below the rest asks for ~1e12 points.
+  if (n_points > MAX_BROADENING_GRID_POINTS)
     throw new Error(
       `broaden_spectrum: ${n_points} grid points over [${range_lo}, ${range_hi}] at step ` +
         `${step_size}. Widths span ${min_width}..${max_width}; pass an explicit step_size ` +
         `or range for a spectrum with this width spread.`,
     )
-  }
 
   return broaden_peaks(sticks, width_at, shape_factor, [range_lo, range_hi], step_size)
 }
 
-// Scale a curve so its maximum is 1. Used for the transmittance presentation, which inverts
-// the result, so an unbounded or all-zero absorbance would silently render a flat line at 1
-// instead of failing. A loop, not Math.max(...values): broadened grids run to 1e7 points, far
-// past the spread-argument limit.
+// Scale a curve to maximum 1. Throws rather than letting the inverting transmittance view
+// draw a flat line at 1. A loop: broadened grids (1e7 points) exceed Math.max's spread limit.
 export function scale_to_max(values: number[]): number[] {
   let max_val = -Infinity
   for (const val of values) {
     if (!Number.isFinite(val)) max_val = NaN
     if (val > max_val) max_val = val
   }
-  if (!Number.isFinite(max_val) || max_val <= 0) {
+  if (!Number.isFinite(max_val) || max_val <= 0)
     throw new Error(
       `scale_to_max needs a positive finite maximum over ${values.length} values, got ${max_val}`,
     )
-  }
   return values.map((val) => val / max_val)
 }
 

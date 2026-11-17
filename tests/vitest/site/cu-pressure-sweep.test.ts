@@ -8,7 +8,7 @@ import {
   validate_sweep,
   volume_per_atom,
 } from '#lib/spectral/sweep.js'
-import { dot, transpose_3x3_matrix } from '#lib/math.js'
+import { dot, transpose_3x3 } from '#lib/math.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
 import {
@@ -41,6 +41,7 @@ const band_data: BandGridData = {
   k_grid: [1, 2, 2],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 7,
+  energy_unit: `eV`,
   n_bands: 1,
   n_spins: 1,
   periodic: true,
@@ -140,7 +141,7 @@ test.each([
     [-1, 2, 2],
   ].map((row) => row.map((val) => val / 3)) as Matrix3x3
   const rot_diag = rot.map((row) => row.map((val, idx) => val * diag[idx])) as Matrix3x3
-  const eigs = symmetric_eigenvalues(dot(rot_diag, transpose_3x3_matrix(rot)))
+  const eigs = symmetric_eigenvalues(dot(rot_diag, transpose_3x3(rot)))
   const expected = diag.toSorted((lhs, rhs) => lhs - rhs)
   for (const [idx, val] of eigs.entries())
     expect(Math.abs(val - expected[idx])).toBeLessThan(tol)

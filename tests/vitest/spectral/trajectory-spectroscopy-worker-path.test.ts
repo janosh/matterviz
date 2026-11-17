@@ -5,7 +5,7 @@ import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,
 } from '#lib/spectral/trajectory-spectroscopy.js'
-import { calc_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
+import { compute_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
 import { create_input_store, type WorkerRequest } from '#lib/worker-serve.js'
 import { afterEach, beforeAll, describe, expect, it } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
@@ -15,14 +15,8 @@ const make_input = (): TrajectorySpectroscopyInput => {
   const n_frames = 16
   const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
   const phase = (sample_idx: number) => (2 * Math.PI * sample_idx) / 4
-  const velocities = make_signal(n_frames, [2, 3], (idx) => [
-    Math.cos(phase(idx)),
-    0,
-    0,
-    0,
-    0,
-    0,
-  ])
+  // oxfmt-ignore
+  const velocities = make_signal(n_frames, [2, 3], (idx) => [Math.cos(phase(idx)), 0, 0, 0, 0, 0])
   const response = make_signal(n_frames, [3], (idx) => [Math.sin(phase(idx)), 0, 0])
   const polarizability = make_signal(n_frames, [3, 3], (sample_idx) => {
     const value = 1 + 0.1 * Math.sin(phase(sample_idx))
@@ -48,7 +42,7 @@ const make_input = (): TrajectorySpectroscopyInput => {
 const input_of = create_input_store<TrajectorySpectroscopyInput>()
 const stub = install_stub_worker<
   WorkerRequest<TrajectorySpectroscopyInput, TrajectorySpectroscopyOptions>
->((message) => calc_trajectory_spectroscopy(input_of(message), message.options))
+>((message) => compute_trajectory_spectroscopy(input_of(message), message.options))
 let compute_spectroscopy_async: typeof compute_trajectory_spectroscopy_async
 
 beforeAll(async () => {
@@ -70,7 +64,7 @@ describe(`trajectory spectroscopy worker code path`, () => {
       zero_pad_factor: 1,
     } as const
     const result = await compute_spectroscopy_async(input, options)
-    expect(result).toEqual(calc_trajectory_spectroscopy(input, options))
+    expect(result).toEqual(compute_trajectory_spectroscopy(input, options))
     expect(stub.posted).toHaveLength(1)
     expect(stub.posted[0].transfer).toHaveLength(0)
     const payload = stub.posted[0].message.input
@@ -81,7 +75,7 @@ describe(`trajectory spectroscopy worker code path`, () => {
     // the same input with another window and timestep posts the options alone
     const hann = { ...options, window: `hann`, time_step: 1 } as const
     expect(await compute_spectroscopy_async(input, hann)).toEqual(
-      calc_trajectory_spectroscopy(input, hann),
+      compute_trajectory_spectroscopy(input, hann),
     )
     expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })

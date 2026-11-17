@@ -64,8 +64,8 @@ Rocksalt NaCl has one triply degenerate T₁u optical mode. Its IR intensity is 
 
 ```svelte example
 <script lang="ts">
-  import { IrRamanSpectrum } from '#lib/spectral/index.js'
   import {
+    IrRamanSpectrum,
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
@@ -90,13 +90,13 @@ The three acoustic modes are identified at Γ and excluded from the stick spectr
 
 ```svelte example
 <script lang="ts">
-  import { IrRamanSpectrum } from '#lib/spectral/index.js'
   import {
+    IrRamanSpectrum,
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
+    type SpectrumKind,
   } from '#lib/spectral/index.js'
-  import type { SpectrumKind } from '#lib/spectral/index.js'
   import raman_data from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
   import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
   import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
@@ -127,8 +127,8 @@ Set `presentation="transmittance"` to flip IR bands downwards. `fwhm` sets the p
 
 ```svelte example
 <script lang="ts">
-  import { IrRamanSpectrum } from '#lib/spectral/index.js'
   import {
+    IrRamanSpectrum,
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,

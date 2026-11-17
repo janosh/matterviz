@@ -87,7 +87,13 @@ export class FermiBandsLink {
   // style applies to both), re-read on theme changes
   private level_rgb = $state({ fermi: `#e74c3c`, reference: `#d48860` })
 
-  readonly fermi_energy = $derived.by(() => this.inputs.band_data()?.fermi_energy)
+  // Band structures are eV, so a grid in another or an unknown unit keeps the band colours and
+  // k-path link but previews, pins and marks no energies
+  private readonly energy_grid = $derived.by(() => {
+    const grid = this.inputs.band_data()
+    return grid?.energy_unit === `eV` ? grid : undefined
+  })
+  readonly fermi_energy = $derived.by(() => this.energy_grid?.fermi_energy)
   // FermiSurface's `previewing`: a hovered energy shown off the grid
   readonly previewing = $derived(
     this.hovered_energy !== null && this.fermi_energy !== undefined,
@@ -234,13 +240,13 @@ export class FermiBandsLink {
     // only grid bands have a surface to preview; without a grid the k-point still shows
     const in_grid = event && point && this.grid_bands.has(point.band_idx) ? event : null
     this.path.hover_band(this.grid_bands.size > 0 ? in_grid : event)
-    this.hovered_energy = in_grid ? in_grid.point.y : null
+    this.hovered_energy = in_grid && this.energy_grid ? in_grid.point.y : null
   }
   // plot clicks reach the nearest band point within the tooltip's radius, so Bands keeps
   // plain lines (on_point_click would draw a marker per k-point)
   readonly band_click = (event: ScatterHandlerEvent): void => {
     const point = band_point_meta(event.point.metadata)
-    const grid = this.inputs.band_data()
+    const grid = this.energy_grid
     if (!point || !grid || !this.grid_bands.has(point.band_idx)) return
     const { y, metadata } = event.point
     // isolate only a band with a sheet at `y`: strictly inside its range (in the clicked spin

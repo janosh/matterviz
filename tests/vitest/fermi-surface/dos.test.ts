@@ -1,9 +1,11 @@
 // band_grid_dos: Gaussian-broadened DOS of a band grid's bands over its unique k-points
-import { band_grid_dos } from '#lib/fermi-surface/dos.js'
+import { band_grid_dos, DOS_SIGMA_SPAN_FRACTION } from '#lib/fermi-surface/dos.js'
+import { parse_fermi_file, with_energy_unit } from '#lib/fermi-surface/parse.js'
 import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
 import type { Vec3 } from '#lib/math.js'
+import { dos_density_label, spectral_value_label } from '#lib/spectral/frequency-units.js'
 import { describe, expect, test } from 'vite-plus/test'
-import { IDENTITY_MATRIX3 } from '../test-fixtures'
+import { IDENTITY_MATRIX3, read_maybe_gz } from '../test-fixtures'
 
 // energy of grid point (ix, iy, iz), stored in `order`
 const band = (
@@ -25,6 +27,7 @@ const make_grid = (bands: BandEnergyGrid[][], periodic: boolean): BandGridData =
   k_grid: bands[0][0].dims,
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 0.5,
+  energy_unit: `eV`,
   n_bands: bands[0].length,
   n_spins: bands.length,
   periodic,
@@ -66,27 +69,24 @@ describe(`band_grid_dos`, () => {
 
   // the k = 1 planes of an endpoint-inclusive grid repeat k = 0, so a value only they hold
   // (50 eV here) must not count, whichever axis runs fastest in storage
-  test.each([`z_fastest`, `x_fastest`] as const)(
-    `an endpoint-inclusive %s grid skips its duplicated planes`,
-    (order) => {
-      const dims: Vec3 = [3, 4, 2]
-      const energy = (ix: number, iy: number, iz: number) =>
-        ix === 2 || iy === 3 || iz === 1 ? 50 : ix + 0.1 * iy
-      const dos = band_grid_dos(make_grid([[band(dims, energy, order)]], false), {
-        sigma: 0.05,
-        n_points: 2000,
-      })
-      expect(Math.max(...dos.energies)).toBeLessThan(2.3) // highest unique energy: 1 + 0.2
-      expect(Math.abs(integral(dos.energies, dos.densities) - 2)).toBeLessThan(WEIGHT_TOL)
-      // 2 x-planes x 3 y-rows x 1 z-layer = 6 unique points, energies 0, 0.1, 0.2, 1, 1.1, 1.2
-      const below_half = dos.energies.findIndex((value) => value > 0.5)
-      const lower = integral(
-        dos.energies.slice(0, below_half),
-        dos.densities.slice(0, below_half),
-      )
-      expect(Math.abs(lower - 1)).toBeLessThan(1e-3)
-    },
-  )
+  test.each([`z_fastest`, `x_fastest`] as const)(`%s endpoint grid skips copies`, (order) => {
+    const dims: Vec3 = [3, 4, 2]
+    const energy = (ix: number, iy: number, iz: number) =>
+      ix === 2 || iy === 3 || iz === 1 ? 50 : ix + 0.1 * iy
+    const dos = band_grid_dos(make_grid([[band(dims, energy, order)]], false), {
+      sigma: 0.05,
+      n_points: 2000,
+    })
+    expect(Math.max(...dos.energies)).toBeLessThan(2.3) // highest unique energy: 1 + 0.2
+    expect(Math.abs(integral(dos.energies, dos.densities) - 2)).toBeLessThan(WEIGHT_TOL)
+    // 2 x-planes x 3 y-rows x 1 z-layer = 6 unique points, energies 0, 0.1, 0.2, 1, 1.1, 1.2
+    const below_half = dos.energies.findIndex((value) => value > 0.5)
+    const lower = integral(
+      dos.energies.slice(0, below_half),
+      dos.densities.slice(0, below_half),
+    )
+    expect(Math.abs(lower - 1)).toBeLessThan(1e-3)
+  })
 
   // the binned-and-convolved DOS against one Gaussian summed per k-point at every output
   // energy, on a dispersive two-band grid in both spin channels
@@ -113,6 +113,41 @@ describe(`band_grid_dos`, () => {
       const max_err = Math.max(...densities.map((value, idx) => Math.abs(value - direct[idx])))
       expect(max_err / peak).toBeLessThan((step / sigma) ** 2 / 8)
     }
+  })
+
+  // FRMSF names no energy unit and FermiSurfer's samples come in whatever their producer wrote
+  // (MgB2's 3 bands span 0.91, SrVO3's t2g 0.09): the DOS stays of unknown unit, and the default
+  // smearing follows the bandwidth where a fixed 0.1 "eV" was 11% of MgB2's and wider than SrVO3's
+  test.each([
+    [`mgb2_b2pz.frmsf`, 0.914],
+    [`srvo3_orb.frmsf`, 0.0918],
+  ])(`shipped %s: unknown unit, sigma 1%% of its %f span`, (name, span) => {
+    const grid = parse_fermi_file(read_maybe_gz(`src/site/fermi-surfaces/${name}.gz`), name)
+    if (`isosurfaces` in grid) throw new Error(`${name} is not a band grid`)
+    expect(grid.energy_unit).toBeNull()
+    const values = grid.energies.flat().flatMap((band_grid) => [...band_grid.values])
+    const measured_span = Math.max(...values) - Math.min(...values)
+    expect(measured_span).toBeCloseTo(span, 3)
+    const dos = band_grid_dos(grid)
+    const sigma = DOS_SIGMA_SPAN_FRACTION * measured_span
+    expect(dos.energies[0]).toBeCloseTo(Math.min(...values) - 5 * sigma, 12)
+    // each of the 3 bands still holds its two electrons whatever the unit
+    expect(Math.abs(integral(dos.energies, dos.densities) - 6)).toBeLessThan(3 * WEIGHT_TOL)
+    // labels never claim eV for it
+    expect(dos.energy_unit).toBeNull()
+    expect(spectral_value_label(false, dos.energy_unit)).toBe(`Electron energy (unknown unit)`)
+    expect(dos_density_label(false, false, null, dos.energy_unit)).toBe(
+      `Electron DOS (states/unknown unit)`,
+    )
+    // a caller that knows the producer's unit declares it
+    const declared = band_grid_dos(with_energy_unit(grid, `Ry`))
+    expect(spectral_value_label(false, declared.energy_unit)).toBe(`Electron energy (Ry)`)
+  })
+
+  test(`the default sigma needs energies spanning something`, () => {
+    const grid = make_grid([[band([2, 2, 2], () => 1)]], true)
+    expect(() => band_grid_dos(grid)).toThrow(/span nothing/)
+    expect(band_grid_dos(grid, { sigma: 0.1 }).energy_unit).toBe(`eV`)
   })
 
   test.each([

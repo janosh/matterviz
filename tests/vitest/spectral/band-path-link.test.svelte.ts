@@ -54,13 +54,12 @@ const make_link = (inputs: Partial<Parameters<typeof create_band_path_link>[0]> 
   return link
 }
 
-// active q-point, its k-point and its branch range in one snapshot
+// [active q-point, its k-point, its branch range] in one snapshot
 const state = (link: ReturnType<typeof create_band_path_link>) => {
   flushSync()
-  const { active_qpoint, hovered_k_point, highlighted_qpoint_range } = link
-  return { active_qpoint, hovered_k_point, highlighted_qpoint_range }
+  return [link.active_qpoint, link.hovered_k_point, link.highlighted_qpoint_range]
 }
-const idle = { active_qpoint: null, hovered_k_point: null, highlighted_qpoint_range: null }
+const idle = [null, null, null]
 
 // oxfmt-ignore
 test.each([
@@ -78,28 +77,13 @@ describe(`create_band_path_link`, () => {
   // band hover wins over a k-path hover until it clears
   test(`k-path follows the band structure; hovers mark the q-point, k-point and branch`, () => {
     const link = make_link()
-    const branches = [
-      [0, 2],
-      [3, 5],
-    ]
-    expect(link.k_path).toEqual({
-      points: coords,
-      labels: [`Γ`, ...labels.slice(1)],
-      branches,
-    })
+    // oxfmt-ignore
+    expect(link.k_path).toEqual({ points: coords, labels: [`Γ`, ...labels.slice(1)], branches: [[0, 2], [3, 5]] })
     link.hover_path(1)
-    const path_state = {
-      active_qpoint: 1,
-      hovered_k_point: [0.25, 0, 0],
-      highlighted_qpoint_range: [0, 2],
-    }
+    const path_state = [1, [0.25, 0, 0], [0, 2]]
     expect(state(link)).toEqual(path_state)
     link.hover_band(hover(3))
-    expect(state(link)).toEqual({
-      active_qpoint: 3,
-      hovered_k_point: [0.5, 0, 0],
-      highlighted_qpoint_range: [3, 5],
-    })
+    expect(state(link)).toEqual([3, [0.5, 0, 0], [3, 5]])
     link.hover_band(null)
     expect(state(link)).toEqual(path_state)
     link.hover_path(null)
@@ -114,11 +98,7 @@ describe(`create_band_path_link`, () => {
     // without a reciprocal lattice the q-point still links but has no k-point
     const no_lattice = make_link({ k_lattice: () => undefined })
     no_lattice.hover_band(hover(4))
-    expect(state(no_lattice)).toEqual({
-      ...idle,
-      active_qpoint: 4,
-      highlighted_qpoint_range: [3, 5],
-    })
+    expect(state(no_lattice)).toEqual([4, null, [3, 5]])
   })
 
   // a coarser second structure Bands overlays: its q-point 3 (M at x=2) is not band_struct's
@@ -131,7 +111,7 @@ describe(`create_band_path_link`, () => {
     const x_positions: Record<string, Vec2> = { GAMMA_X: [0, 1], X_M: [1, 2] }
     const link = make_link({ x_positions: () => x_positions })
     link.hover_band(hover(3, 2, coarse_struct))
-    expect(state(link).active_qpoint).toBe(5)
+    expect(state(link)[0]).toBe(5)
     const unplaced = make_link()
     unplaced.hover_band(hover(3, 2, coarse_struct))
     expect(state(unplaced)).toEqual(idle)

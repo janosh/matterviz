@@ -1,7 +1,8 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { to_error } from 'svelte-widgets/utils'
-  import { open_material, type FileInfo } from '#lib'
+  import { open_material } from '#lib'
+  import type { FileInfo } from '#lib/io/index.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type {
@@ -9,10 +10,19 @@
     FermiSurfaceData,
     SliceShading,
   } from '#lib/fermi-surface/index.js'
-  import { FermiSlice, FermiSurface, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
+  import {
+    FermiSlice,
+    FermiSurface,
+    is_fermi_surface_data,
+    with_energy_unit,
+  } from '#lib/fermi-surface/index.js'
   import type { Vec3 } from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { fermi_file_paints, fermi_surface_files } from '#site/fermi-surfaces.js'
+  import {
+    FERMI_FILE_ENERGY_UNITS,
+    fermi_file_paints,
+    fermi_surface_files,
+  } from '#site/fermi-surfaces.js'
   import {
     file_param,
     latest_load,
@@ -73,7 +83,9 @@
           fermi_data = parsed
           band_data = undefined
         } else {
-          band_data = parsed
+          // a grid whose producer is known gets its unit; the rest stay unknown
+          const energy_unit = FERMI_FILE_ENERGY_UNITS[file.name]
+          band_data = energy_unit ? with_energy_unit(parsed, energy_unit) : parsed
           fermi_data = undefined
         }
       } finally {

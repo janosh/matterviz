@@ -9,20 +9,20 @@ import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './typ
 
 const TOL = 1e-8
 // Three unit normals whose parallelepiped volume is below this are treated as linearly
-// dependent (same scale-invariant cutoff math.matrix_inverse_3x3 applies to unit rows)
+// dependent (same scale-invariant cutoff math.inverse_3x3 applies to unit rows)
 const PARALLEL_TOL = 1e-10
 
 // Convert fractional rotation W to Cartesian k-space rotation. k_lattice stores reciprocal
 // vectors as ROWS (k_cart = Bᵀ·q) and reciprocal fractional rotation is q' = W^{-T}·q, so
 // R_cart = Bᵀ·W^{-T}·B^{-T}. For non-orthogonal lattices W^{-1} ≠ Wᵀ, so the transpose matters.
-// Throws (via matrix_inverse_3x3) for a singular W or k_lattice: rotation matrices are
+// Throws (via inverse_3x3) for a singular W or k_lattice: rotation matrices are
 // never singular, so that always means corrupt input rather than something to paper over.
 export function fractional_to_cartesian_rotation(
   rotation_matrix: Matrix3x3,
   k_lattice: Matrix3x3,
 ): Matrix3x3 {
-  const B_T = math.transpose_3x3_matrix(k_lattice)
-  const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(rotation_matrix))
+  const B_T = math.transpose_3x3(k_lattice)
+  const W_inv_T = math.transpose_3x3(math.inverse_3x3(rotation_matrix))
   // R_cart = Bᵀ · W^{-T} · B^{-T}, where B^{-T} is the reciprocal of B
   return math.dot(math.dot(B_T, W_inv_T), math.reciprocal_lattice(k_lattice))
 }
@@ -430,7 +430,7 @@ export const IBZ_REFERENCE_DIRECTIONS: Vec3[] = [
 export function find_ibz_reference_direction(non_identity_ops: Matrix3x3[]): Vec3 {
   const has_trivial_stabilizer = (dir: Vec3): boolean =>
     non_identity_ops.every(
-      (rot) => Math.hypot(...math.subtract(math.mat3x3_vec3_multiply(rot, dir), dir)) > TOL,
+      (rot) => Math.hypot(...math.subtract(math.mul_3x3_vec3(rot, dir), dir)) > TOL,
     )
 
   const curated = IBZ_REFERENCE_DIRECTIONS.find(has_trivial_stabilizer)
@@ -473,7 +473,7 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
   const seen_normals = new Set<string>()
 
   for (const rot of non_identity_ops) {
-    const rotated = math.mat3x3_vec3_multiply(rot, ref_dir)
+    const rotated = math.mul_3x3_vec3(rot, ref_dir)
     const diff: Vec3 = math.subtract(rotated, ref_dir)
     // ref_dir has a trivial stabilizer, so every op must move it; a zero diff would
     // silently drop a plane and inflate the IBZ — surface it instead

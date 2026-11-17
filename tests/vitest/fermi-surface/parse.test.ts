@@ -4,11 +4,12 @@ import {
   normalize_band_grid,
   normalize_fermi_surface,
   parse_fermi_file,
+  with_energy_unit,
 } from '#lib/fermi-surface/parse.js'
 import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { fermi_surface_files } from '#site/fermi-surfaces.js'
-import { describe, expect, test } from 'vite-plus/test'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   IDENTITY_MATRIX3,
   make_bxsf,
@@ -527,18 +528,17 @@ const mock_band_grid: BandGridData = {
   k_grid: [1, 1, 1],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 0,
+  energy_unit: `eV`,
   n_bands: 1,
   n_spins: 1,
 }
 
-describe(`is_fermi_surface_data`, () => {
-  test.each([
-    [`FermiSurfaceData`, mock_fermi_surface, true],
-    [`BandGridData`, mock_band_grid, false],
-    [`null`, null, false],
-  ])(`%s → %s`, (_label, data, expected) => {
-    expect(is_fermi_surface_data(data)).toBe(expected)
-  })
+test.each([
+  [`FermiSurfaceData`, mock_fermi_surface, true],
+  [`BandGridData`, mock_band_grid, false],
+  [`null`, null, false],
+])(`is_fermi_surface_data: %s → %s`, (_label, data, expected) => {
+  expect(is_fermi_surface_data(data)).toBe(expected)
 })
 
 // Prop-boundary normalisers: pymatviz traits (and any caller) may hand the viewer the JSON
@@ -606,6 +606,51 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
 
   // Named property grids share the energies' [spin][band] layout, JSON null (NaN) → NaN;
   // band_indices list every band once
+  // BXSF and FRMSF name no energy unit, so grids read from them are of unknown unit (null)
+  // unless declared; JSON names its own, and a declaration contradicting it throws
+  test(`energy units: unknown unless named or declared, never assumed eV`, () => {
+    // the Fermi energy's header line may name the unit itself
+    const named = make_bxsf() // `# Fermi energy: 7 eV`
+    expect(parse_grid(named, `cu.bxsf`).energy_unit).toBe(`eV`)
+    vi.spyOn(console, `error`).mockImplementation(() => {}) // parse_fermi_file logs it too
+    expect(() => parse_fermi_file(named, `cu.bxsf`, { energy_unit: `Ry` })).toThrow(
+      /BXSF header 'Fermi energy: 7 eV' names energy unit eV but Ry was declared/,
+    )
+    const rydberg = named.replace(`7 eV`, `0.51 Rydberg`)
+    expect(parse_grid(rydberg, `cu.bxsf`)).toMatchObject({
+      fermi_energy: 0.51,
+      energy_unit: `Ry`,
+    })
+    const bxsf = named.replace(`7 eV`, `7`)
+    expect(parse_grid(bxsf, `cu.bxsf`).energy_unit).toBeNull()
+    expect(parse_fermi_file(bxsf, `cu.bxsf`, { energy_unit: `Ry` }).energy_unit).toBe(`Ry`)
+    // the shipped QE files name none (`Fermi Energy:         19.0343`)
+    const cu = read_maybe_gz(`src/site/fermi-surfaces/cu_fs.bxsf.gz`)
+    expect(parse_grid(cu, `cu_fs.bxsf`).energy_unit).toBeNull()
+    const json = (energy_unit?: string | null) =>
+      JSON.stringify({ ...nested, energy_unit, energies: [[[[[3, 4]]]]] })
+    expect(parse_fermi_file(json(), `grid.json`).energy_unit).toBeNull()
+    expect(parse_fermi_file(json(`Ha`), `grid.json`).energy_unit).toBe(`Ha`)
+    expect(parse_fermi_file(json(), `grid.json`, { energy_unit: `eV` }).energy_unit).toBe(`eV`)
+    expect(() => parse_fermi_file(json(`Ha`), `grid.json`, { energy_unit: `eV` })).toThrow(
+      /JSON names energy unit Ha but eV was declared/,
+    )
+    expect(() => parse_fermi_file(json(`kcal`), `grid.json`)).toThrow(/Invalid energy unit/)
+    // typed grids and surfaces state theirs, null included
+    const { energy_unit: _unit, ...unitless } = mock_band_grid
+    expect(() => normalize_band_grid(unitless)).toThrow(/band_data needs an energy_unit/)
+    expect(() => normalize_fermi_surface({ isosurfaces: [] })).toThrow(
+      /fermi_data needs an energy_unit/,
+    )
+    // a producer's known unit fills in an unknown one, never relabels a known one
+    const unknown = { ...mock_band_grid, energy_unit: null }
+    expect(with_energy_unit(unknown, `eV`).energy_unit).toBe(`eV`)
+    expect(with_energy_unit(mock_band_grid, `eV`)).toBe(mock_band_grid)
+    expect(() => with_energy_unit(mock_band_grid, `Ry`)).toThrow(
+      /Band grid names energy unit eV but Ry was declared/,
+    )
+  })
+
   test(`band grid JSON properties and band_indices are validated against energies`, () => {
     expect(normalize_band_grid({ ...nested, band_indices: [5] }).band_indices).toEqual([5])
     expect(() => normalize_band_grid({ ...nested, band_indices: [5, 6] })).toThrow(

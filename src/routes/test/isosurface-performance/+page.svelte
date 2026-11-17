@@ -89,6 +89,7 @@
       origin: [0, 0, 0],
       periodic: true,
       label: kind,
+      units: kind === `density` ? `e/A^3` : `eV`, // as start_run declares them below
     })
   }
 

@@ -4,8 +4,7 @@ import Bands from '#lib/spectral/Bands.svelte'
 import type * as helpers from '#lib/spectral/helpers.js'
 import { build_point_metadata } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
-import type { ComponentProps } from 'svelte'
-import { flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import {
@@ -79,28 +78,20 @@ const make_unlabeled_band_structure = (
   labels_dict: {},
 })
 
+const electronic_bands = [
+  [-1.2, -0.6, -0.1, 0.3],
+  [-0.6, -0.1, 0.4, 0.9],
+  [0.2, 0.8, 1.4, 2.0],
+  [1.1, 1.7, 2.3, 2.9],
+]
+// spin down 0.2 eV above spin up
 const spin_polarized_electronic = {
   ...base_band_structure,
   type: `electronic`,
-  bands: [
-    [-1.2, -0.6, -0.1, 0.3],
-    [-0.6, -0.1, 0.4, 0.9],
-    [0.2, 0.8, 1.4, 2.0],
-    [1.1, 1.7, 2.3, 2.9],
-  ],
-  spin_down_bands: [
-    [-1.0, -0.4, 0.1, 0.5],
-    [-0.4, 0.1, 0.6, 1.1],
-    [0.4, 1.0, 1.6, 2.2],
-    [1.3, 1.9, 2.5, 3.1],
-  ],
+  bands: electronic_bands,
+  spin_down_bands: electronic_bands.map((band) => band.map((energy) => energy + 0.2)),
   efermi: 0,
 } as BaseBandStructure & { efermi: number; spin_down_bands: number[][] }
-
-const mount_bands = async (props: ComponentProps<typeof Bands>): Promise<void> => {
-  mount(Bands, { target: document.body, props })
-  await tick()
-}
 
 // Drawn line stretches: each band is one path across the branches, a subpath per branch
 const line_count = (): number =>
@@ -108,8 +99,11 @@ const line_count = (): number =>
     (sum, path) => sum + (path.getAttribute(`d`)?.match(/M/g)?.length ?? 0),
     0,
   )
+const y_ticks = () =>
+  [...document.querySelectorAll(`.y-axis .tick text`)].map(({ textContent }) => textContent)
+// the plot's root, or the EmptyState shown instead
 const mount_plot = (props: Partial<ComponentProps<typeof Bands>>, width?: number) =>
-  mount_sized(Bands, props, { selector: `.scatter`, width })
+  mount_sized(Bands, props, { selector: `.scatter, .empty-state`, width })
 
 describe(`Bands component`, () => {
   it.each<{ name: string; props: ComponentProps<typeof Bands>; expected_line_count: number }>([
@@ -176,7 +170,7 @@ describe(`Bands component`, () => {
       expected_line_count: 8,
     },
   ])(`renders expected line count for $name`, async ({ props, expected_line_count }) => {
-    await mount_bands(props)
+    await mount_plot(props)
     expect(line_count()).toBe(expected_line_count)
     expect_axis_titles_placed(document.body) // the y title sat 15 px below center
   })
@@ -305,7 +299,7 @@ describe(`Bands component`, () => {
   })
 
   it(`renders strict-mode mismatch as EmptyState with message`, async () => {
-    await mount_bands({
+    await mount_plot({
       band_structs: { canonical: base_band_structure, alt: path_mismatch_structure },
       path_mode: `strict`,
       'data-testid': `strict-mismatch-plot`,
@@ -330,7 +324,7 @@ describe(`Bands component`, () => {
     `path_mode=%s, path_length %s lays out mismatched paths`,
     async (path_mode, path_length, expected_lines, expected_positions, expected_text) => {
       const state: { x_positions?: Record<string, Vec2> } = { x_positions: undefined }
-      await mount_bands(
+      await mount_plot(
         bind_props(
           {
             band_structs: { canonical: base_band_structure, alt: path_mismatch_structure },
@@ -377,12 +371,7 @@ describe(`Bands component`, () => {
         show_controls: true,
         controls_open: true,
       })
-      const max_y_tick = () =>
-        Math.max(
-          ...[...document.querySelectorAll(`.y-axis .tick text`)].map((element) =>
-            Number(element.textContent),
-          ),
-        )
+      const max_y_tick = () => Math.max(...y_ticks().map(Number))
       expect(document.body.textContent).toContain(`Phonon frequency (cm−1)`)
       // −1 is a raised segment, not the ⁻¹ glyphs fonts set unevenly
       const exponent = doc_query(`.y-axis .axis-label tspan[baseline-shift="super"]`)
@@ -427,7 +416,7 @@ describe(`Bands component`, () => {
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
     const controls_state = { controls_open: true }
-    await mount_bands(
+    await mount_plot(
       bind_props(
         {
           band_structs: { '': base_band_structure },
@@ -462,7 +451,7 @@ describe(`Bands component`, () => {
       [0.1, 0.2, 1, 0.5],
       [0.01, -1, Infinity, NaN],
     ]
-    await mount_bands({
+    await mount_plot({
       band_structs: { '': { ...make_unlabeled_band_structure(), band_widths } },
       ribbon_config: { max_width: 100 },
     })
@@ -505,7 +494,7 @@ describe(`Bands component`, () => {
 
   it(`emphasizes the selection, extends marker hit areas, draws highlight regions`, async () => {
     const on_point_click = vi.fn()
-    await mount_bands({
+    await mount_plot({
       band_structs: { '': base_band_structure },
       highlighted_band_index: 2,
       highlighted_qpoint_index: 1,
@@ -543,7 +532,7 @@ describe(`Bands component`, () => {
       const own_stroke = (band: number, spin: string) =>
         `#${spin === `up` ? `a` : `b`}0${band}`
       const highlight = fromStore(writable<number | null>(1))
-      await mount_bands({
+      await mount_plot({
         band_structs: { '': spin_polarized_electronic },
         line_kwargs: (band_idx: number, spin: string) => ({
           stroke: own_stroke(band_idx, spin),
@@ -574,7 +563,7 @@ describe(`Bands component`, () => {
   // the callback also names the structure, so multi-structure plots can style each one
   it(`line_kwargs callback receives each band's structure label`, async () => {
     const strokes: Record<string, string> = { PBE: `#a00000`, HSE: `#00b000` }
-    await mount_bands({
+    await mount_plot({
       band_structs: { PBE: spin_polarized_electronic, HSE: spin_polarized_electronic },
       line_kwargs: (_band_idx: number, _spin: string, structure: string) => ({
         stroke: strokes[structure],
@@ -624,7 +613,7 @@ describe(`Bands component`, () => {
       const bands = spin_polarized_electronic.bands.map((band, band_idx) =>
         band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
       )
-      await mount_bands({
+      await mount_plot({
         band_structs: { '': { ...spin_polarized_electronic, bands, occupations } },
         band_spin_mode: `up_only`,
         units: `cm^-1`,
@@ -635,15 +624,41 @@ describe(`Bands component`, () => {
     },
   )
 
+  // VBM/CBM markers sit on the path at their q-points; direct gaps stack them on one q-point
+  const { spin_down_bands: _spin_down, ...unpolarized_electronic } = spin_polarized_electronic
+  // oxfmt-ignore
+  it.each([
+    // VBM at q-point 3, CBM at q-point 0 (the semiconductor case above)
+    [`indirect`, spin_polarized_electronic.bands.map((band, idx) => band.map((energy) => energy + (idx < 2 ? -0.95 : 0))), `overlay`, /^VBM −0\.05 eV, band 2 \(spin up\)$/],
+    [`direct`, [[-1, -0.5, -0.2, -0.6], [1, 0.6, 0.3, 0.8]], null, /^VBM −0\.2 eV, band 1$/],
+  ] as const)(`marks VBM and CBM on the path (%s gap)`, async (kind, gap_bands, spin_mode, vbm_title) => {
+    const bands = gap_bands.map((band) => [...band])
+    const band_structure = spin_mode
+      ? { ...spin_polarized_electronic, bands, spin_down_bands: spin_polarized_electronic.spin_down_bands.map((band) => band.map((energy) => energy + 5)) }
+      : { ...unpolarized_electronic, bands, nb_bands: bands.length }
+    await mount_plot({
+      band_structs: { '': band_structure },
+      show_gap_annotation: true,
+      ...(spin_mode && { band_spin_mode: spin_mode }),
+    })
+    expect(doc_query(`.gap-label .gap-kind`).textContent?.trim()).toBe(kind)
+    const markers = [...document.querySelectorAll(`circle.band-edge`)]
+    expect(markers.map((marker) => marker.classList.contains(`vbm`))).toEqual([true, false])
+    const [vbm_x, cbm_x] = markers.map((marker) => Number(marker.getAttribute(`cx`)))
+    expect(vbm_x === cbm_x).toBe(kind === `direct`)
+    expect(markers[0].querySelector(`title`)?.textContent?.trim()).toMatch(vbm_title)
+    expect(document.querySelector(`line.gap-transition`)).not.toBeNull()
+  })
+
   it(`keeps plotting with a notice when occupations miss a spin-down channel`, async () => {
-    await mount_bands({
+    await mount_plot({
       band_structs: { '': { ...spin_polarized_electronic, occupations: filled_below_band_2 } },
       band_spin_mode: `overlay`,
       show_gap_annotation: true,
     })
     // in the shared top-center notice column, clear of the corner controls
     expect(doc_query(`.viewer-notices .gap-error`).textContent).toMatch(
-      /Invalid band occupations: electronic_band_gap: 4 occupation rows for 8 bands/,
+      /Invalid band occupations: electronic_band_gap: 0 spin-down occupation rows for 4 bands/,
     )
     expect(line_count()).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(/Eg:/)
@@ -725,10 +740,6 @@ describe(`Bands component`, () => {
     await mount_plot({ band_structs: { '': band_structs } })
     const svg = plot_svg()
     // the padded energy range differs from the nice()-rounded auto range too
-    const y_ticks = () =>
-      [...document.querySelectorAll(`.y-axis .tick text`)].map(
-        (element) => element.textContent,
-      )
     const y_before = y_ticks()
     // x of the last symmetry-point tick (X) and where the Fermi line stops
     const last_tick_x = () => translate_of(tick_labels().at(-1)?.closest(`.tick`)).x

@@ -40,7 +40,14 @@ const nacl = make_crystal(4, [
   [`Cl`, [0.5, 0, 0]], [`Cl`, [0, 0.5, 0]], [`Cl`, [0, 0, 0.5]], [`Cl`, [0.5, 0.5, 0.5]],
 ])
 const dos = (energies: number[], densities: number[], extra: Partial<ElectronicDos> = {}) =>
-  ({ type: `electronic`, energies, densities, efermi: 1, ...extra }) satisfies ElectronicDos
+  ({
+    type: `electronic`,
+    energy_unit: `eV`,
+    energies,
+    densities,
+    efermi: 1,
+    ...extra,
+  }) satisfies ElectronicDos
 // two bands on a 2³ grid: band 0 spans 0..2 (crosses E_F = 1), band 1 lies at 3..4
 const band = (values: number[]): BandGridData[`energies`][number][number] => ({
   values: Float64Array.from(values),
@@ -52,6 +59,7 @@ const grid: BandGridData = {
   k_grid: [2, 2, 2],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 1,
+  energy_unit: `eV`,
   n_bands: 2,
   n_spins: 1,
   periodic: true,
@@ -174,6 +182,7 @@ describe(`computed descriptors`, () => {
       ],
       k_lattice: IDENTITY_MATRIX3,
       fermi_energy: 0,
+      energy_unit: `eV` as const,
       reciprocal_cell: `wigner_seitz` as const,
       metadata: { n_bands: 2, n_surfaces: 3 },
     }

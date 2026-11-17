@@ -2,12 +2,14 @@
 
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/index.js'
+import type { ElectronEnergyUnit } from './frequency-units'
 
 // Discriminator of bands and DOS alike: phonon data is in THz (DOS `frequencies`), electronic
-// in eV (DOS `energies`). One plot cannot mix the two (spectral_type throws).
+// in eV (DOS `energies`; a band-grid DOS in its grid's `energy_unit`). One plot cannot mix the
+// two (spectral_type throws).
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
-export type { FrequencyUnit } from './frequency-units'
+export type { ElectronEnergyUnit, FrequencyUnit } from './frequency-units'
 export type NormalizationMode = `max` | `sum` | `integral` | null
 
 export interface QPoint {
@@ -59,10 +61,34 @@ export interface PhononBandStructure extends BaseBandStructure {
   has_nac?: boolean
 }
 
+// Spin polarization is `spin_down_bands` being present; the band gap is derived on demand
+// (electronic_band_gap) from the spin channels on display
 export interface ElectronicBandStructure extends BaseBandStructure {
   type: `electronic`
-  is_spin_polarized: boolean
-  band_gap?: { energy: number; direct: boolean; transition?: string }
+}
+
+// Spin channel of a band (spin-polarized band structures only)
+export type BandSpin = `up` | `down`
+
+// Where an electronic band edge sits: its energy, band and q-point index (into the band
+// structure's `bands`/`spin_down_bands` and `qpoints`), and spin channel when polarized
+export interface BandEdge {
+  energy: number
+  band_idx: number
+  qpoint_idx: number
+  spin?: BandSpin
+}
+
+// electronic_band_gap's result. `is_direct`: VBM and CBM share a q-point (in k, as pymatgen's
+// BandStructure.get_band_gap; spins may differ). `direct_gap` is the smallest vertical gap
+// within one spin channel (pymatgen's get_direct_band_gap), at its q-point; null when no
+// channel has both filled and empty bands.
+export interface ElectronicBandGap {
+  gap: number
+  vbm: BandEdge
+  cbm: BandEdge
+  is_direct: boolean
+  direct_gap: { energy: number; qpoint_idx: number; spin?: BandSpin } | null
 }
 
 // Phonon DOS: frequencies as independent variable
@@ -74,6 +100,9 @@ export interface PhononDos {
 // Electronic DOS: energies as independent variable
 export interface ElectronicDos {
   type: `electronic`
+  // unit of energies, efermi and (inversely) densities: eV from normalize_dos, the band grid's
+  // own from band_grid_dos, null when the source names none (labels then say so)
+  energy_unit: ElectronEnergyUnit | null
   energies: number[]
   densities: number[] // Spin-up densities (or total if not spin-polarized)
   spin_down_densities?: number[] // Spin-down densities (only for spin-polarized)

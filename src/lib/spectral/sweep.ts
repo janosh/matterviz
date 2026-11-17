@@ -265,17 +265,20 @@ export function dos_at_energy(dos: DosData, energy: number): number | undefined 
   return total(upper - 1) + frac * (total(upper) - total(upper - 1))
 }
 
-// The frame's E_F: the band grid's, else its DOS's or band structure's
+// The frame's E_F in eV: the band grid's, else its DOS's or band structure's. Sources in
+// another or an unknown unit (BXSF and FRMSF name none) are skipped, not read as eV.
 export function frame_fermi_energy(frame: Partial<SweepFrame>): number | undefined {
   const { band_data, fermi_data, doses = {}, band_structs = {} } = frame
+  const in_ev = (source?: { energy_unit: string | null; fermi_energy: number }) =>
+    source?.energy_unit === `eV` ? source.fermi_energy : undefined
+  // band structures are always eV, a DOS says
   const levels = [...Object.values(doses), ...Object.values(band_structs)].map((spectrum) =>
-    spectrum.type === `electronic` ? spectrum.efermi : undefined,
+    spectrum.type === `electronic` &&
+    (!(`energy_unit` in spectrum) || spectrum.energy_unit === `eV`)
+      ? spectrum.efermi
+      : undefined,
   )
-  return (
-    band_data?.fermi_energy ??
-    fermi_data?.fermi_energy ??
-    levels.find((level) => level !== undefined)
-  )
+  return in_ev(band_data) ?? in_ev(fermi_data) ?? levels.find((level) => level !== undefined)
 }
 
 // `total`, else a lone DOS that is no element projection
@@ -319,10 +322,11 @@ export function compute_descriptor(
   }
   if (spec.compute === `fermi_band_count`) return fermi_band_count(frame)
   const total = doses && total_dos(doses)
+  // states/eV: a DOS in another or an unknown unit (from a BXSF/FRMSF grid) has no such value
+  if (total?.type !== `electronic` || total.energy_unit !== `eV`) return undefined
   // the DOS's own E_F: a denser-k DOS is not evaluated at a coarse grid's
-  const fermi_energy =
-    total?.type === `electronic` ? (total.efermi ?? frame_fermi_energy(frame)) : undefined
-  if (!total || fermi_energy === undefined) return undefined
+  const fermi_energy = total.efermi ?? frame_fermi_energy(frame)
+  if (fermi_energy === undefined) return undefined
   const at_fermi = dos_at_energy(total, fermi_energy)
   if (spec.compute === `fermi_dos`) return at_fermi
   if (spec.compute === `fermi_dos_share`) {

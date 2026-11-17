@@ -13,20 +13,7 @@
   import { plot_area_line } from '#lib/plot/core/layout.js'
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
-  import {
-    calculate_sigma_step,
-    closed_edge_path,
-    density_divisor,
-    DISPLAY_BROADENING,
-    display_smoother,
-    dos_imaginary_frequencies,
-    extract_efermi,
-    spectral_type,
-    format_dos_tooltip,
-    NORMALIZATION_MODES,
-    SPIN_MODES,
-    validate_sigma_range,
-  } from './helpers'
+  import * as helpers from './helpers'
   import {
     convert_frequencies,
     dos_density_label,
@@ -74,19 +61,16 @@
     resolved_padding = $bindable(),
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
-    // Keyed by legend label (`""` for an unlabelled series); parse raw input once with
-    // normalize_dos, projections with extract_pdos(raw, 'atom' | 'orbital', filter)
+    // Keyed by legend label (`""` if unlabelled), parsed by normalize_dos or, projections, by
+    // extract_pdos(raw, 'atom' | 'orbital', filter)
     doses: Record<string, DosData>
     // Eliashberg functions α²F(ω), dimensionless: dashed on their own density axis (top beside
-    // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
-    // stacked
+    // bands, else right), never rescaled with units, normalized or stacked
     a2f?: Record<string, PhononDos>
     // Stack the curves cumulatively as filled areas instead of overlaying them.
     stack?: boolean
-    // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
-    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer.
-    // Every curve (α²F too) is smoothed by sigma or, if wider, the display width that only
-    // removes detail finer than the plot draws (see display_smoother), so 0 draws that.
+    // In the data unit (THz or eV) like sigma_range and both frequencies, whatever `units` shows.
+    // Every curve is smoothed by sigma or, if wider, the display width (see display_smoother)
     sigma?: number
     // Frequency unit displayed for phonon DOS (data stays in THz); electronic energies are never converted.
     units?: FrequencyUnit
@@ -116,29 +100,31 @@
   // prop boundary; every read below uses the canonical unit
   let unit = $derived(canonical_frequency_unit(units))
 
-  const is_phonon = $derived(spectral_type(doses, a2f) === `phonon`)
+  const is_phonon = $derived(helpers.spectral_type(doses, a2f) === `phonon`)
+  // electronic energies are drawn in their own unit (a band grid's may be unknown), one per plot
+  const energy_unit = $derived(helpers.electronic_energy_unit(Object.values(doses)) ?? null)
+  // the axis' unit: displayed frequency unit for phonons, the energies' unit for electrons
+  const axis_unit = $derived(is_phonon ? unit : energy_unit)
   const has_a2f = $derived(Object.keys(a2f).length > 0)
   // Display units per data unit; electronic energies are never converted
   const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
   const display_sigma = $derived(sigma * display_factor)
+  // a curve's frequencies or energies as drawn
+  const display_x = (dos: DosData): number[] =>
+    dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies
   // The smoothing width (display unit): sigma, or if wider DISPLAY_BROADENING of the frequency
   // span drawn, a caller's axis range (BandsAndDos's shared energy axis) where it sets one,
   // else all curves' extent, so curves in one plot share one width
   const smooth_width = $derived.by(() => {
-    let [lo, hi] = array_extent(
-      [...Object.values(doses), ...Object.values(a2f)].flatMap((dos) =>
-        array_extent(
-          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies,
-        ),
-      ),
-    )
+    const curves = [...Object.values(doses), ...Object.values(a2f)]
+    let [lo, hi] = array_extent(curves.flatMap((dos) => array_extent(display_x(dos))))
     const [range_lo, range_hi] = (is_horizontal ? y_axis : x_axis).range ?? []
     if (typeof range_lo === `number` && Number.isFinite(range_lo)) lo = range_lo
     if (typeof range_hi === `number` && Number.isFinite(range_hi)) hi = range_hi
     const span = Number.isFinite(hi - lo) ? Math.abs(hi - lo) : 0
-    return Math.max(display_sigma, DISPLAY_BROADENING * span)
+    return Math.max(display_sigma, helpers.DISPLAY_BROADENING * span)
   })
-  const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
+  const effective_fermi_level = $derived(fermi_level ?? helpers.extract_efermi(doses))
   const fermi_color = `var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`
 
   let has_spin_polarized = $derived(
@@ -146,7 +132,6 @@
       (dos) => dos.type === `electronic` && dos.spin_down_densities?.length,
     ),
   )
-
   // A null spin_mode auto-detects: mirror when spin data exists
   let effective_spin_mode = $derived<SpinMode>(
     spin_mode ?? (has_spin_polarized ? `mirror` : null),
@@ -161,10 +146,7 @@
 
       for (const [dos_idx, [label, dos]] of Object.entries(doses).entries()) {
         const color = plot_color(dos_idx)
-        const smoother = display_smoother(
-          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies,
-          smooth_width,
-        )
+        const smoother = helpers.display_smoother(display_x(dos), smooth_width)
         const x_values = smoother.x
         const series_label = label || `DOS ${dos_idx + 1}`
         const raw_down =
@@ -182,7 +164,7 @@
             : null
         // one divisor over only the drawn spins keeps their relative scale
         const drawn = [up, down].filter((curve) => curve !== null)
-        const divisor = density_divisor(drawn, x_values, normalize)
+        const divisor = helpers.density_divisor(drawn, x_values, normalize)
 
         // mirror negates spin-down before stacking, so it also stacks and fills downward
         const draw = (curve: number[], spin: `up` | `down`, stroke: string, dash?: string) => {
@@ -224,8 +206,8 @@
         }
       }
       for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {
-        const { x: x_values, smooth } = display_smoother(
-          convert_frequencies(curve.frequencies, unit),
+        const { x: x_values, smooth } = helpers.display_smoother(
+          display_x(curve),
           smooth_width,
         )
         const densities = smooth(curve.densities)
@@ -244,8 +226,8 @@
     },
   )
 
+  // for clamping phonon noise
   let all_freqs = $derived(
-    // for clamping phonon noise
     Object.values(doses).flatMap((dos) =>
       dos.type === `phonon` ? dos.frequencies : dos.energies,
     ),
@@ -256,16 +238,14 @@
   let clamp_to_zero = $derived(
     is_phonon &&
       all_freqs.some((freq) => freq < 0) &&
-      dos_imaginary_frequencies(Object.values(doses)).length === 0,
+      helpers.dos_imaginary_frequencies(Object.values(doses)).length === 0,
   )
 
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 
-  // Density axis starts at 0 (unless mirror mode needs negative values); frequency axis
-  // clamps to 0 only when negative phonon frequencies are numerical noise.
-  // Folds over each series' own array instead of concatenating them: this re-runs on every
-  // sigma-slider tick and legend toggle over grids of up to 1e7 points.
-  // α²F's own density axis spans [0, its maximum]
+  // Density axes (α²F's too) start at 0 unless mirror mode needs negative values; the frequency
+  // axis clamps to 0 only when negative phonon frequencies are noise. Folds over each series
+  // without concatenating: this re-runs per sigma tick on grids of up to 1e7 points.
   const compute_range = (
     axis: `x` | `y`,
     is_density_axis: boolean,
@@ -282,17 +262,16 @@
     return [from_zero ? 0 : acc.min, acc.max]
   }
   const data_density_extent = $derived(compute_range(is_horizontal ? `x` : `y`, true))
+  const data_a2f_extent = $derived(compute_range(is_horizontal ? `x` : `y`, true, true))
+  // push the read-only outputs to the bindable props
   $effect(() => {
     density_extent = data_density_extent
+    a2f_extent = data_a2f_extent
   })
   const density_axis_range = $derived(density_range ?? data_density_extent)
   const frequency_range = $derived(compute_range(is_horizontal ? `y` : `x`, false))
   let x_range = $derived(is_horizontal ? density_axis_range : frequency_range)
   let y_range = $derived(is_horizontal ? frequency_range : density_axis_range)
-  const data_a2f_extent = $derived(compute_range(is_horizontal ? `x` : `y`, true, true))
-  $effect(() => {
-    a2f_extent = data_a2f_extent
-  })
   const a2f_axis = $derived<AxisConfig>({
     label: `α²F(ω)`,
     format: `.2f`,
@@ -301,8 +280,10 @@
     ...(is_horizontal && { ticks: 2 }),
   })
 
-  let value_label = $derived(spectral_value_label(is_phonon, unit))
-  let density_label = $derived(dos_density_label(is_phonon, is_horizontal, normalize))
+  let value_label = $derived(spectral_value_label(is_phonon, axis_unit))
+  let density_label = $derived(
+    dos_density_label(is_phonon, is_horizontal, normalize, is_phonon ? null : energy_unit),
+  )
 
   const internal_x_axis = $derived<AxisConfig>({
     label: is_horizontal ? density_label : value_label,
@@ -328,18 +309,16 @@
     ...rest.y2_axis,
   })
 
-  // Auto-detect sigma range based on frequency/energy range
+  // sigma slider range unless given: 0 to 5% of the frequency/energy span
   let effective_sigma_range = $derived.by((): Vec2 => {
     if (sigma_range) return sigma_range
     if (all_freqs.length === 0) return [0, 1]
     const [min_freq, max_freq] = array_extent(all_freqs)
-    // Reasonable sigma range: 0 to ~5% of total range
-    const max_sigma = Math.max(0.1, (max_freq - min_freq) * 0.05)
-    return [0, max_sigma]
+    return [0, Math.max(0.1, (max_freq - min_freq) * 0.05)]
   })
 
-  let safe_sigma_range = $derived(validate_sigma_range(effective_sigma_range))
-  let sigma_step = $derived(calculate_sigma_step(effective_sigma_range))
+  let safe_sigma_range = $derived(helpers.validate_sigma_range(effective_sigma_range))
+  let sigma_step = $derived(helpers.compute_sigma_step(effective_sigma_range))
 
   function build_stacked_area_path(
     area: StackedAreaData,
@@ -355,7 +334,7 @@
           : [freq, densities[idx]]
         return `${x_scale_fn(coord_x).toFixed(2)},${y_scale_fn(coord_y).toFixed(2)}`
       })
-    return closed_edge_path(edge(area.upper_densities), edge(area.lower_densities))
+    return helpers.closed_edge_path(edge(area.upper_densities), edge(area.lower_densities))
   }
 
   const spin_display_settings = track_settings(() => ({ spin_mode }), { spin_mode: `mirror` })
@@ -371,13 +350,13 @@
 
 {#if series_data.length > 0}
   {#snippet dos_tooltip({ x_formatted, y_formatted, label }: ScatterHandlerProps)}
-    {@const tooltip_data = format_dos_tooltip({
+    {@const tooltip_data = helpers.format_dos_tooltip({
       x_formatted,
       y_formatted,
       label: label ?? null,
       is_horizontal,
       is_phonon,
-      units: unit,
+      units: axis_unit,
       normalize,
       x_axis_label: internal_x_axis.label ?? ``,
       y_axis_label: internal_y_axis.label ?? ``,
@@ -419,7 +398,7 @@
           on_reset={() => (spin_mode = `mirror`)}
         >
           <div class="dos-spin-modes">
-            {#each SPIN_MODES as mode (mode.value)}
+            {#each helpers.SPIN_MODES as mode (mode.value)}
               <button
                 type="button"
                 class={['spin-mode-btn', { active: spin_mode === mode.value }]}
@@ -470,7 +449,7 @@
             <label>
               <span>Normalize</span>
               <select id="dos-normalize" bind:value={normalize}>
-                {#each NORMALIZATION_MODES as mode (mode.value)}
+                {#each helpers.NORMALIZATION_MODES as mode (mode.value)}
                   <option value={mode.value}>{mode.label}</option>
                 {/each}
               </select>
