@@ -735,9 +735,16 @@ function symmetry_tiling(
   // for a diagonal M; an offset is reduced by the whole supercells it spans, so the
   // supercell holds every image of a center inside the input cell (others stay outside)
   const det = Math.round(math.det_3x3(supercell))
-  const numerators = math
-    .transpose_3x3(math.inverse_3x3(supercell))
-    .map((row) => row.map((val) => Math.round(val * det))) as Matrix3x3
+  // det · M⁻ᵀ is M's cofactor matrix: integer minors, no ill-conditioned float inverse
+  const others = (idx: number) => [0, 1, 2].filter((other) => other !== idx)
+  const numerators = [0, 1, 2].map((row) => {
+    const [r0, r1] = others(row)
+    return [0, 1, 2].map((col) => {
+      const [c0, c1] = others(col)
+      const [m0, m1] = [supercell[r0], supercell[r1]]
+      return (-1) ** (row + col) * (m0[c0] * m1[c1] - m0[c1] * m1[c0])
+    })
+  }) as Matrix3x3
   const shrink = (vec: Vec3): Vec3 =>
     math.mul_3x3_vec3(numerators, vec).map((val) => val / det) as Vec3
   const supercell_t = math.transpose_3x3(supercell)
@@ -749,15 +756,18 @@ function symmetry_tiling(
     return center.map((val) => val - Math.floor(val)) as Vec3
   }
   // Directions stay primitive integer vectors in the block basis, as the family clippers need:
-  // axis · M⁻¹ scaled by its smallest component to the least integer multiple; plane
-  // indices M · n
+  // axis · M⁻¹ = cof(M)·axis / det: its direction sign(det)·cof(M)·axis reduced exactly in
+  // BigInt (huge diagonal supercells pass 2^53; a float ratio search merged near-parallel axes)
+  const big_gcd = (val_a: bigint, val_b: bigint): bigint =>
+    val_b === 0n ? (val_a < 0n ? -val_a : val_a) : big_gcd(val_b, val_a % val_b)
   const block_axis = (axis: Vec3): Vec3 => {
-    const frac = shrink(axis)
-    const unit = Math.min(...frac.filter((val) => val !== 0).map(Math.abs))
-    const scaled = (mult: number) => frac.map((val) => (val / unit) * mult)
-    let mult = 1
-    while (scaled(mult).some((val) => Math.abs(val - Math.round(val)) > 1e-6)) mult++
-    return math.reduce_miller_indices(scaled(mult).map(Math.round) as Vec3)
+    const dir = numerators.map(
+      (row) =>
+        row.reduce((sum, val, col) => sum + BigInt(val) * BigInt(axis[col]), 0n) *
+        BigInt(Math.sign(det)),
+    )
+    const divisor = dir.reduce(big_gcd, 0n) || 1n
+    return dir.map((val) => Number(val / divisor)) as Vec3
   }
   const block_normal = (normal: Vec3): Vec3 =>
     math.reduce_miller_indices(math.mul_3x3_vec3(supercell, normal))

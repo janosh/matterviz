@@ -477,7 +477,7 @@ const assert_band_lengths = (bands: unknown, n_qpts: number, n_up_bands?: number
 }
 
 // Returns null for shapes that are not a band structure at all. A band-structure-shaped input
-// whose parts disagree (unparseable q-point, band or distance length != q-point count, branch
+// whose parts disagree (unparsable q-point, band or distance length != q-point count, branch
 // out of range, missing pymatgen reciprocal lattice) throws an Error naming the mismatch.
 export function normalize_band_structure(
   band_struct: unknown,

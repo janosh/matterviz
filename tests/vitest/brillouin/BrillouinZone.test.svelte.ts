@@ -524,4 +524,35 @@ test.each([
   })
   // a load publishes the input cell's zone, then once more the primitive one it switched to
   expect(on_file_load.mock.calls.map(([data]) => data.bz_data)).toEqual([own_zone, rendered()])
+  // a supplied zone gets the IBZ rotations in its own basis (the primitive one still cuts 1/48),
+  // and one of another cell rejects the standard path rather than drawing it outside the zone
+  const primitive_zone = rendered()
+  for (const [bz_data, path] of [
+    [primitive_zone, false],
+    [own_zone, true],
+  ] as const) {
+    unmount(mounted_component)
+    analyze_structure_symmetry.mockImplementationOnce(analyze)
+    const supplied = $state({
+      structure,
+      bz_data,
+      default_k_path: path,
+      show_ibz: true,
+      ibz_data,
+    })
+    mounted_component = mount(BrillouinZone, { target: document.body, props: supplied })
+    if (path)
+      await vi.waitFor(() =>
+        expect(document.body.querySelector(`.k-path-error`)?.textContent).toMatch(
+          /not the primitive zone/,
+        ),
+      )
+    else
+      await vi.waitFor(() =>
+        expect(((supplied.ibz_data?.volume ?? 0) * 48) / (bz_data?.volume ?? 1)).toBeCloseTo(
+          1,
+          9,
+        ),
+      )
+  }
 })

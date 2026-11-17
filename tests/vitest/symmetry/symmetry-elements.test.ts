@@ -852,6 +852,14 @@ describe(`tile_symmetry_elements`, () => {
       [0.375, 0.875, 0.5],
       [0.875, 0.375, 0.5],
     ])
+    // a det-1 shear far from the identity keeps axes exact: a ⟂-free 2-fold along a becomes
+    // M⁻ᵀ·a = (N+1, N, 0), which a tolerance-based ratio search rounded to (1, 1, 0)
+    const big_n = 2_000_000
+    // oxfmt-ignore
+    const far_shear: Matrix3x3 = [[1, -big_n, 0], [-1, big_n + 1, 0], [0, 0, 1]]
+    const two_fold = { ...centre, kind: `rotation`, order: 2, label: `2`, axis: [1, 0, 0] }
+    const [far] = tile_symmetry_elements([two_fold as SymmetryElement], far_shear).elements
+    expect(far.axis).toEqual([big_n + 1, big_n, 0])
     const unimodular = math.IDENTITY_3X3.with(0, [1, 1, 0]) as Matrix3x3
     const [moved] = tile_symmetry_elements(
       [{ ...centre, point: [0.5, 0.5, 0.5] }],

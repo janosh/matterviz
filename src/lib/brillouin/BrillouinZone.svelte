@@ -44,7 +44,7 @@
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { type HighSymmKPath, high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
-  import { dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math.js'
+  import { det_3x3, dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math.js'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
@@ -266,7 +266,7 @@
       structure = opened.data as Crystal // the zone needs a lattice; AnyStructure is wider
       current_filename = opened.filename
       const loaded = { structure, bz_order, ...opened.provenance }
-      on_file_load?.({ ...loaded, bz_order, bz_data: zone })
+      on_file_load?.({ ...loaded, bz_data: zone })
       pending_load = default_k_path && !k_path ? loaded : undefined
     },
     report_error: (message, metadata) => {
@@ -338,14 +338,17 @@
     if (!show_ibz || !zone) return { data: null }
     if (`error` in symmetry) return failed(symmetry.error)
     if (!symmetry.data) return { data: null }
-    // rotations act on input-fractional coords, the default k-path's primitive cell (rows P)
-    // zone on x_prim = P⁻ᵀ·x_input
-    const prim = bz_data ? undefined : default_k_path_result.primitive
-    const prim_t = prim && transpose_3x3(prim)
-    const to_prim = (rot: Matrix3x3) =>
+    // rotations act on input-fractional coords; the shown zone's own cell (rows 2π K⁻ᵀ = P·L,
+    // e.g. the default k-path's primitive cell or a supplied zone's) wants x_zone = P⁻ᵀ·x_input
+    const lattice = structure?.lattice?.matrix
+    const zone_cell = transpose_3x3(inverse_3x3(zone.k_lattice)).map((row) =>
+      row.map((val) => val * 2 * Math.PI),
+    ) as Matrix3x3
+    const prim_t = lattice && transpose_3x3(dot(zone_cell, inverse_3x3(lattice)) as Matrix3x3)
+    const to_zone = (rot: Matrix3x3) =>
       prim_t ? dot(dot(inverse_3x3(prim_t), rot), prim_t) : rot
     try {
-      const rotations = point_group_rotations(symmetry.data.operations).map(to_prim)
+      const rotations = point_group_rotations(symmetry.data.operations).map(to_zone)
       return { data: compute_irreducible_bz(zone, rotations) }
     } catch (err) {
       return failed(err)
@@ -360,6 +363,10 @@
     try {
       if (!data) throw symmetry.error
       const kpath = high_symmetry_kpath(lattice, data)
+      // a supplied zone of another cell (e.g. the conventional one) would leave path points out
+      const volume = (cell: Matrix3x3) => Math.abs(det_3x3(cell))
+      if (bz_data && Math.abs(volume(bz_data.k_lattice) / volume(kpath.k_lattice) - 1) > 1e-6)
+        throw new Error(`bz_data is not the primitive zone the standard path is defined in`)
       return { ...kpath, data: kpath_to_k_path_data(kpath) }
     } catch (err) {
       return { error: `Default k-path failed: ${to_error(err).message}` }
@@ -377,7 +384,7 @@
     if (!path_k_lattice || !loaded) return
     pending_load = undefined
     if (loaded.structure === structure)
-      untrack(() => on_file_load?.({ ...loaded, bz_data: zone }))
+      untrack(() => on_file_load?.({ ...loaded, bz_order, bz_data: zone }))
   })
 
   let ibz_error = $state<string | undefined>()
