@@ -1,14 +1,11 @@
 import type { Intersection, Object3D, Plane, Raycaster, Sphere } from 'three/webgpu'
 import { InstancedMesh, Matrix4, Mesh, Ray, Vector3 } from 'three/webgpu'
 
-// interactivity() `filter` keeping a single hit: the front-most one among those whose object has
-// the highest `userData.pick_rank` (default 0). Threlte dispatches pointer events to every hit
-// under the cursor, nearest first, so a hover handler that stores its target ends up reporting
-// the farthest one. A positive rank lets thin or nested targets win over surfaces in front of
-// them (k-paths through a zone, rods behind a cutting plane), a negative one keeps catch-all
-// planes from shadowing the objects behind them. Raycasts ignore clipping, so hits on the
-// cut-away side of `clip_plane` are skipped first, else an invisible, clipped-off surface would
-// win the pick.
+// interactivity() `filter` keeping one hit, the front-most of the highest `userData.pick_rank`
+// (default 0): Threlte dispatches to every hit, nearest first, so hover handlers ended on the
+// farthest. Positive ranks let thin or nested targets (k-paths, rods behind a cutting plane)
+// win, negative ones keep catch-all planes from shadowing. Hits clipped by `clip_plane` are
+// skipped first.
 export function front_hit<Hit extends { point: Vector3; object: Object3D }>(
   hits: Hit[],
   clip_plane?: Plane | null,
@@ -22,11 +19,9 @@ export function front_hit<Hit extends { point: Vector3; object: Object3D }>(
   return best ? [best] : []
 }
 
-// Indices of packed sphere instances `ray` may hit, all in the mesh's local space: one
-// analytic ray-sphere pass over `values`, `stride` floats per instance with its xyz at
-// `position_at` and a uniform scale of the shared geometry's bounding `sphere` at `scale_at`.
-// Conservative (triangles lie inside the bounding sphere), so callers run Three's exact
-// triangle test only on these candidates.
+// Indices of packed sphere instances `ray` may hit (mesh-local): an analytic ray-sphere pass
+// over `values`, `stride` floats per instance, xyz at `position_at`, bounding `sphere` scale
+// at `scale_at`. Conservative: callers run the exact triangle test on these.
 export function ray_sphere_candidates(
   ray: Ray,
   sphere: Sphere,
@@ -67,14 +62,11 @@ const [world_center, world_offset] = [new Vector3(), new Vector3()]
 // makeScale(r).setPosition(p) instance matrices: column-major scale at 0, translation at 12
 const SCALED_TRANSLATION = { stride: 16, position_at: 12, scale_at: 0 }
 
-// InstancedMesh whose instance matrices are uniform scales plus translations (spheres). Picks
-// like Three's native instancing (same hits, distances and instanceIds) but runs the matrix
-// products and triangle tests only for instances the analytic ray-sphere pass can't rule out.
+// Uniformly scaled, translated sphere instances picking exactly like native instancing,
+// testing triangles only where the ray-sphere pass can't rule an instance out.
 export class SphereInstances extends InstancedMesh {
-  // Report only the front-most hit (the one Raycaster's distance sort puts first), for hosts
-  // whose pointer filter keeps one hit per object anyway (scene_interactivity's front_hit
-  // without a clip plane). A dense cloud hands the triangle test hundreds of candidates under
-  // the cursor; this visits them nearest first and stops once none can come closer.
+  // Report only the front-most hit, for hosts whose filter keeps one anyway (front_hit without
+  // a clip plane): candidates are visited nearest first, stopping once none can come closer.
   nearest_only = false
 
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {

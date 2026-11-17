@@ -1,8 +1,6 @@
 <script lang="ts">
-  // PlotTooltip pinned to a 3D point. `position` is in the local space of where this sits in
-  // the scene graph (inside the structure's rotation groups, say), projected to the canvas on
-  // every rendered frame. The chip flips and clamps inside the box that would cut it off and
-  // keeps clear of the hovered object's screen disk (`anchor_radius`).
+  // PlotTooltip pinned to a 3D `position` (local to its parent), flipped and clamped inside
+  // the box that would clip it, clear of the hovered object's disk (`anchor_radius`)
   import type { Vec3 } from '#lib/math.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
@@ -20,9 +18,8 @@
   }: Omit<ComponentProps<typeof PlotTooltip>, `x` | `y` | `children`> & {
     position: Vec3
     anchor_radius?: number // scene-space radius of the hovered object, kept clear on screen
-    // Overlay host whose origin is the canvas's. Defaults to the Canvas host's parent, as
-    // threlte's Canvas clips its own overflow: the tooltip may leave the canvas (a gallery
-    // card) but not the nearest box that clips that parent (the gallery track).
+    // Overlay host sharing the canvas's origin, by default the Canvas host's parent (threlte's
+    // Canvas clips its overflow), so the tooltip stays inside the box clipping that parent
     portal?: HTMLElement
     children: Snippet
   } = $props()
@@ -74,12 +71,8 @@
     untrack(project)
   })
 
-  // Measured once the tooltip is in the DOM: hosts may lift their clip only while one shows (a
-  // gallery card's overflow), so a box read before mounting would keep it inside the card.
-  // Tracks only whether it shows, not where: the anchor moves on every frame of a camera
-  // orbit, and each measure forces layout and walks the ancestors' computed styles. A scroll or
-  // window resize moves the clip box relative to the host, so a shown (e.g. pinned) tooltip
-  // re-measures on those.
+  // Measured once shown (hosts may lift their clip only then), not per anchor move since it
+  // forces layout; a scroll or window resize moves the clip box, so it re-measures then.
   const tooltip_shown = $derived(screen !== null)
   $effect(() => {
     void $size

@@ -8,8 +8,8 @@ import { plain_copy, same_while_equal } from '#lib/utils.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol } from '#lib/element/helpers.js'
 import { plural } from '#lib/labels.js'
-import type { Vec3 } from '#lib/math.js'
-import { create_cart_to_frac, create_frac_to_cart } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { create_cart_to_frac, create_frac_to_cart, IDENTITY_3X3 } from '#lib/math.js'
 import type { CellType, SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
 import {
   map_wyckoff_to_all_atoms,
@@ -21,7 +21,7 @@ import { untrack } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'
 import { get_property_colors } from './atom-properties'
-import type { BondingStrategy } from './bonding'
+import type { BondingOptions, BondingStrategy } from './bonding'
 import {
   merge_bond_edits,
   remap_bonds_after_deletion,
@@ -53,7 +53,7 @@ import {
   snapshot_topologies,
   site_count,
 } from './site'
-import { make_supercell, parse_supercell_scaling } from './supercell'
+import { make_supercell, parse_supercell_matrix } from './supercell'
 
 // State the component owns as (bindable) props, read and written through these accessors so
 // a caller-bound prop and the session never hold two copies
@@ -93,7 +93,8 @@ export interface StructureSessionInputs {
   // Atom coloring inputs; property colors are derived once here for the scene and the legend
   atom_color_config: () => AtomColorConfig
   bonding_strategy: () => BondingStrategy
-  bonding_options: () => Record<string, unknown>
+  // the options for bonding_strategy (strategy_bonding_options of the viewer's settings)
+  bonding_options: () => BondingOptions
   // Transient user-facing notices ("Deleted 2 sites", supercell failures)
   on_notice?: (message: string) => void
   // The host tool's result on the current input: an undo or redo that leaves the input keeps
@@ -303,15 +304,19 @@ export class StructureSession {
     },
   )
   base_structure = $derived(this.cell_transform.structure)
-  private readonly supercell_factors = $derived.by((): Vec3 | undefined => {
+  // The typed supercell as its integer matrix; undefined while the input does not parse
+  // (CellSelect flags it), which shows the input cell
+  private readonly typed_supercell_matrix = $derived.by((): Matrix3x3 | undefined => {
     try {
-      return parse_supercell_scaling(this.inputs.supercell_scaling())
+      return parse_supercell_matrix(this.inputs.supercell_scaling())
     } catch {
       return undefined
     }
   })
+  // template strings flatten the nested rows, comparing the matrices entry by entry
   private readonly has_scaled_cell = $derived(
-    this.supercell_factors?.some((factor) => factor !== 1) ?? false,
+    this.typed_supercell_matrix !== undefined &&
+      `${this.typed_supercell_matrix}` !== `${IDENTITY_3X3}`,
   )
   has_supercell = $derived.by(
     () => this.inputs.apply_supercell_scaling() && this.has_scaled_cell,
@@ -335,10 +340,11 @@ export class StructureSession {
       this.has_scaled_cell &&
       (!this.inputs.apply_supercell_scaling() || this.supercell.applied),
   )
-  // Tiling factors for the drawn cell and isosurface geometry; 1 unless the supercell built
-  supercell_tiling = $derived.by((): Vec3 => {
-    if (!this.has_supercell || !this.supercell.applied) return [1, 1, 1]
-    return this.supercell_factors ?? [1, 1, 1]
+  // The supercell matrix of the drawn cell (new lattice = M · base lattice); the identity
+  // unless the supercell built. Its diagonal tiles the cell grid and isosurface geometry.
+  supercell_matrix = $derived.by((): Matrix3x3 => {
+    if (!this.has_supercell || !this.supercell.applied) return IDENTITY_3X3
+    return this.typed_supercell_matrix ?? IDENTITY_3X3
   })
   bond_edits_enabled = $derived.by(
     () => this.inputs.cell_type() === `original` && !this.scaled_cell_displayed,
@@ -409,9 +415,8 @@ export class StructureSession {
     return merge_site_properties(displayed, properties, this.to_base_site_idx)
   })
   // Wyckoff rows of the analyzed cell with site_indices re-expressed onto the displayed
-  // structure (conventional/primitive cell, supercell, image atoms), so the table and the
-  // Wyckoff coloring address the atoms actually on screen rather than the analyzed cell's
-  // indices, which only coincide for the untransformed 1x1x1 view
+  // structure (cell transform, supercell, image atoms), so the table and coloring address the
+  // atoms on screen
   wyckoff_rows = $derived.by((): WyckoffPos[] => {
     const sym_data = this.inputs.sym_data()
     const rows = wyckoff_positions_from_moyo(sym_data)
@@ -684,13 +689,10 @@ export class StructureSession {
     })
   }
 
-  // Image sets renumber only the copies appended after the base sites (bond edits name base
-  // sites and cell shifts, so they stay): site-indexed state follows each copy through its
-  // (base site, lattice shift) token, dropping copies no longer drawn. A changed base cell (an
-  // async supercell, a conventional cell once symmetry lands) drops it all: its indices name
-  // other atoms. In edit-atoms the cell is the input's, whose sites lead any supercell, so those
-  // stay. A copy is looked up among the image sites of its own base site, so frames build no
-  // index over every site.
+  // Image sets renumber only the copies after the base sites (bond edits name base sites and
+  // shifts, so they stay): site-indexed state follows each copy by its (base site, shift)
+  // token, looked up among its base site's images, dropping undrawn copies. A changed base
+  // cell drops it all, except in edit-atoms, where the input's sites lead any supercell.
   private remap_image_sites(
     before?: AnyStructure,
     after?: AnyStructure,
@@ -886,11 +888,9 @@ export class StructureSession {
     this.last_write = written && next && { written, plain: next }
   }
 
-  // Index into base_structure of a displayed site: image atoms name the site they mirror and
-  // sites of a session-built supercell name the base site they tile. A caller-supplied structure
-  // may itself carry unit_cell_idx from a supercell built outside the viewer (phonon mode
-  // supercells); those index a cell that is not displayed, so they are only followed while the
-  // session's own supercell is on screen.
+  // Index into base_structure of a displayed site: an image atom's mirrored site, a supercell
+  // site's tiled one. unit_cell_idx from an external supercell (phonon modes) indexes a cell
+  // not displayed, so it is followed only while the session's own supercell is on screen.
   readonly to_base_site_idx = (site: Site, site_idx: number): number => {
     if (this.supercell_structure !== this.base_structure) {
       return get_orig_site_idx(site, site_idx)
@@ -911,11 +911,9 @@ export class StructureSession {
     }
     return result
   }
-  // Cartesian→fractional converter for the current lattice; undefined for molecules (whose
-  // `abc` mirrors `xyz`) and for a singular lattice (extXYZ `Lattice="... 0 0 0"` parses fine
-  // but has no inverse). The callers are pointer handlers (drag moves, click-to-add), so the
-  // failure is surfaced as a notice and they keep editing `xyz` (each says what it does with
-  // `abc`). A drag calls this on every pointer move, so the notice is shown once per externally
+  // Cartesian→fractional converter for the current lattice; undefined for molecules and for a
+  // singular lattice (extXYZ `Lattice="... 0 0 0"`), whose pointer-handler callers then edit
+  // `xyz` only. A drag calls this per move, so a singular lattice's notice shows once per
   // loaded structure (the flag resets in the invalidation effect).
   private singular_lattice_notified = false
   private cart_to_frac(): ((xyz: Vec3) => Vec3) | undefined {
@@ -1022,9 +1020,7 @@ export class StructureSession {
     this.write_structure({
       ...structure,
       sites: structure.sites.map((site, idx) =>
-        targets.has(idx)
-          ? { ...site, species: [{ element, occu: 1, oxidation_state: 0 }], label: element }
-          : site,
+        targets.has(idx) ? { ...site, species: [{ element, occu: 1 }], label: element } : site,
       ),
     })
     this.change_element_mode = false
@@ -1040,7 +1036,7 @@ export class StructureSession {
     if (!element) return console.warn(`Invalid element symbol "${symbol}", ignoring add-atom`)
     this.push_undo()
     const site = {
-      species: [{ element, occu: 1, oxidation_state: 0 }],
+      species: [{ element, occu: 1 }],
       xyz,
       // molecules mirror xyz; a singular lattice has no fractional frame to offer either
       abc: this.cart_to_frac()?.(xyz) ?? xyz,

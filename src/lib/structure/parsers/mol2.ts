@@ -72,12 +72,8 @@ const mol2_element = (
   atom_idx: number,
 ): ElementSymbol => {
   const name_letters = atom_name.replaceAll(/[^A-Za-z]/g, ``)
-  const candidates = [
-    atom_type.split(`.`)[0],
-    name_letters.slice(0, 2),
-    name_letters.slice(0, 1),
-  ]
-  return element_from_candidates(candidates, atom_idx)
+  const name_candidates = [name_letters.slice(0, 2), name_letters.slice(0, 1)]
+  return element_from_candidates([atom_type.split(`.`)[0], ...name_candidates], atom_idx)
 }
 
 // SYBYL types naming no atom: dummy atoms, lone pairs and query wildcards (any atom, halogen,
@@ -90,13 +86,10 @@ export const parse_mol2 = (content: string): AnyStructure => {
   const molecule_headers = [...content.matchAll(/^[ \t]*@<TRIPOS>MOLECULE/gim)]
   const first_record =
     molecule_headers.length > 1 ? content.slice(0, molecule_headers[1].index) : content
-  if (molecule_headers.length > 1) {
+  if (molecule_headers.length > 1)
     parse_warn(
-      `MOL2 contains ${molecule_headers.length} molecules; parsed the first and skipped ${
-        molecule_headers.length - 1
-      }`,
+      `MOL2 contains ${molecule_headers.length} molecules; parsed the first and skipped ${molecule_headers.length - 1}`,
     )
-  }
 
   const sections = split_mol2_sections(first_record)
   const atom_rows = sections.get(`ATOM`) ?? []
@@ -132,10 +125,9 @@ export const parse_mol2 = (content: string): AnyStructure => {
       continue
     }
     const element = mol2_element(atom_type, tokens[1], atom_idx)
-    const abc = to_frac(xyz)
     // keyed to the site index, which runs behind atom_idx once a row is skipped
     record_atom_id(site_idx_by_atom_id, Number(tokens[0]), sites.length)
-    sites.push(make_site(element, abc, xyz, `${element}${sites.length + 1}`))
+    sites.push(make_site(element, to_frac(xyz), xyz, `${element}${sites.length + 1}`))
   }
   if (skipped_types.size > 0)
     parse_warn(`MOL2: skipped non-atom rows of SYBYL type ${[...skipped_types].join(`, `)}`)
@@ -155,11 +147,10 @@ export const parse_mol2 = (content: string): AnyStructure => {
     )
       continue
     const order = MOL2_BOND_ORDERS[bond_type]
-    if (order === undefined) {
+    if (order === undefined)
       parse_warn(
         `MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`,
       )
-    }
     raw_bonds.push({ atom_id_1: ids[0], atom_id_2: ids[1], order: order ?? 1 })
   }
   const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `MOL2 bond block`)

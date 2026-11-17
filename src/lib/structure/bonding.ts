@@ -3,7 +3,7 @@
 import { value_key } from '#lib/utils.js'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '../element/data'
-import { element_from_atomic_number } from '../element/helpers'
+import { element_from_atomic_number, is_elem_symbol } from '../element/helpers'
 import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -642,30 +642,138 @@ const METAL_SHELL_WIDTH = 0.12 / Math.sqrt(Math.LN2)
 // siloxanes (1.06x) and Ti-Ti in Ti2O (1.01x).
 const STRETCH_WIDTH = 0.08
 
-type BondingStrategyFn = (
-  structure: AnyStructure,
-  options?: Record<string, unknown>,
-) => BondPair[]
 export const BONDING_STRATEGIES = {
   electroneg_ratio,
+  pair_cutoffs,
   explicit_only,
-} as const satisfies Record<string, BondingStrategyFn>
+} as const satisfies Record<string, (structure: AnyStructure) => BondPair[]>
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
+
+// Tuning of electroneg_ratio's distance and strength model (see perceive_bonds for each)
+const ELECTRONEG_OPTION_KEYS = [
+  `electronegativity_threshold`,
+  `max_distance_ratio`,
+  `min_bond_dist`,
+  `metal_metal_penalty`,
+  `cation_cation_penalty`,
+  `metal_nonmetal_bonus`,
+  `similar_electronegativity_bonus`,
+  `strength_threshold`,
+] as const
+type ElectronegRatioOptions = Partial<Record<(typeof ELECTRONEG_OPTION_KEYS)[number], number>>
+// VESTA-style bond search: every contact whose length lies in its element pair's [min, max] Å
+// (inclusive), e.g. { 'Si-O': [0, 1.9] }. Either element order names a pair (but not both).
+// Unlisted pairs never bond. Sites bond as their majority element.
+export type PairCutoffs = Readonly<Record<string, readonly [number, number]>>
+// `pbc`: the periodic axes to bond across (none by default, see perceive_bonds). explicit_only
+// draws the same bonds either way: explicit bonds name their periodic images by cell_shift.
+type CommonBondingOptions = { pbc?: Pbc }
+type BondingOptionsMap = {
+  electroneg_ratio: CommonBondingOptions & ElectronegRatioOptions
+  pair_cutoffs: CommonBondingOptions & { pair_cutoffs?: PairCutoffs }
+  explicit_only: CommonBondingOptions
+}
+export type BondingOptions<Strategy extends BondingStrategy = BondingStrategy> =
+  BondingOptionsMap[Strategy]
+// A viewer's options per strategy, so switching never hands one strategy another's options
+export type BondingOptionsByStrategy = Partial<BondingOptionsMap>
+
+// pair_cutoffs as [elem_a, elem_b, min, max] rows (elements sorted), or what makes them malformed
+export function read_pair_cutoffs(
+  value: unknown,
+): [ElementSymbol, ElementSymbol, number, number][] | string {
+  if (value === null || typeof value !== `object` || Array.isArray(value))
+    return `expected an object mapping 'A-B' element pairs to [min, max] in Å, got ${JSON.stringify(value)}`
+  const rows: [ElementSymbol, ElementSymbol, number, number][] = []
+  const key_of_pair = new Map<string, string>()
+  for (const [key, range] of Object.entries(value)) {
+    const [elem_a, elem_b, ...rest] = key.split(`-`).map((part) => part.trim())
+    if (rest.length > 0 || !is_elem_symbol(elem_a) || !is_elem_symbol(elem_b))
+      return `'${key}' is not an element pair like 'Si-O'`
+    const pair: [ElementSymbol, ElementSymbol] =
+      elem_a <= elem_b ? [elem_a, elem_b] : [elem_b, elem_a]
+    const pair_key = pair.join(`-`)
+    const previous = key_of_pair.get(pair_key)
+    if (previous !== undefined) return `'${previous}' and '${key}' name the same pair`
+    key_of_pair.set(pair_key, key)
+    const [min, max] = Array.isArray(range) && range.length === 2 ? range : []
+    if (
+      typeof min !== `number` ||
+      typeof max !== `number` ||
+      !(min >= 0 && min <= max && max > 0 && max < Infinity)
+    )
+      return `'${key}' must be [min, max] in Å with 0 <= min <= max and max > 0, got ${JSON.stringify(range)}`
+    rows.push([...pair, min, max])
+  }
+  return rows
+}
+
+// Every option key each strategy reads, and what makes its value invalid (undefined: valid)
+type OptionCheck = (value: unknown) => string | undefined
+const finite_number: OptionCheck = (value) =>
+  Number.isFinite(value) ? undefined : `expected a finite number, got ${JSON.stringify(value)}`
+const COMMON_OPTION_CHECKS = {
+  pbc: (value) =>
+    math.is_pbc(value)
+      ? undefined
+      : `expected three booleans [a, b, c], got ${JSON.stringify(value)}`,
+} satisfies Record<keyof CommonBondingOptions, OptionCheck>
+const BONDING_OPTION_CHECKS: Record<BondingStrategy, Record<string, OptionCheck>> = {
+  electroneg_ratio: {
+    ...COMMON_OPTION_CHECKS,
+    ...Object.fromEntries(ELECTRONEG_OPTION_KEYS.map((key) => [key, finite_number])),
+  },
+  pair_cutoffs: {
+    ...COMMON_OPTION_CHECKS,
+    pair_cutoffs: (value) => {
+      const rows = read_pair_cutoffs(value)
+      return typeof rows === `string` ? rows : undefined
+    },
+  },
+  explicit_only: COMMON_OPTION_CHECKS,
+}
+
+// `options` as `strategy` reads them. Options arrive untyped from hosts, settings and workers,
+// and a misspelled key would otherwise be silently ignored, so an unknown key or an invalid
+// value (a string threshold, a 2-axis pbc) throws. An undefined value counts as unset.
+export function validate_bonding_options<Strategy extends BondingStrategy>(
+  strategy: Strategy,
+  options: object,
+): BondingOptions<Strategy> {
+  const checks = BONDING_OPTION_CHECKS[strategy]
+  for (const [key, value] of Object.entries(options)) {
+    if (!Object.hasOwn(checks, key)) {
+      const allowed = Object.keys(checks).join(`, `)
+      throw new Error(
+        `Unknown ${strategy} bonding option '${key}', expected one of ${allowed}`,
+      )
+    }
+    const problem = value === undefined ? undefined : checks[key](value)
+    if (problem) throw new Error(`Invalid ${strategy} bonding option ${key}: ${problem}`)
+  }
+  return options
+}
+
+// The options a viewer's per-strategy settings hold for `strategy`
+export const strategy_bonding_options = (
+  by_strategy: BondingOptionsByStrategy | undefined,
+  strategy: BondingStrategy,
+): BondingOptions => by_strategy?.[strategy] ?? {}
 
 // Memo for the costly neighbor search: WeakMap keyed by structure (GC'd with it), each holding a
 // per-signature (strategy + value_key of the options) map of results. The multi-side view's 4 panes share one
 // search (identical inputs, one flush); the per-signature map also lets alternating
 // strategies/options on the same structure reuse earlier results instead of thrashing one slot.
 const bond_memo = new WeakMap<AnyStructure, Map<string, BondPair[] | BondFrame>>()
-const bond_sig = (strategy: BondingStrategy, options: Record<string, unknown>): string =>
+const bond_sig = (strategy: BondingStrategy, options: BondingOptions): string =>
   `${strategy}:${value_key(options)}`
 
 // Store bonds for this exact structure + signature in bond_memo: the one write path, used both
 // by get_bond_data to memoize its own search and to install bonds the source worker computed.
-export function cache_prepared_bonds(
+export function cache_prepared_bonds<Strategy extends BondingStrategy>(
   structure: AnyStructure,
-  strategy: BondingStrategy,
-  options: Record<string, unknown>,
+  strategy: Strategy,
+  options: BondingOptions<Strategy>,
   bonds: BondPair[] | BondFrame,
 ): void {
   let by_sig = bond_memo.get(structure)
@@ -983,26 +1091,26 @@ export class BondSearch {
 
   compute_columns(
     structure: AnyStructure,
-    options: Parameters<typeof electroneg_ratio>[1] = {},
+    options: BondingOptions<`electroneg_ratio`> = {},
   ): BondColumns {
     if (!site_count(structure)) return pack_bonds([])
     return bond_columns(structure, perceive_bonds(structure, options, this.query))
   }
 }
 
-export function compute_bonds(
+export function compute_bonds<Strategy extends BondingStrategy>(
   structure: AnyStructure,
-  strategy: BondingStrategy,
-  options: Record<string, unknown> = {},
+  strategy: Strategy,
+  options: BondingOptions<Strategy> = {},
 ): BondPair[] {
   const data = get_bond_data(structure, strategy, options)
   return data instanceof BondFrame ? data.materialize() : data
 }
 
-export function get_bond_data(
+export function get_bond_data<Strategy extends BondingStrategy>(
   structure: AnyStructure,
-  strategy: BondingStrategy,
-  options: Record<string, unknown> = {},
+  strategy: Strategy,
+  options: BondingOptions<Strategy> = {},
   query?: BondNeighborQuery, // electroneg_ratio's neighbor search
 ): BondPair[] | BondFrame {
   const cached = bond_memo.get(structure)?.get(bond_sig(strategy, options))
@@ -1014,11 +1122,14 @@ export function get_bond_data(
   }
   // Perceived bonds stay packed: materializing 285k records cost ~17 ms per search, and most
   // consumers (rendering, polyhedra, image completion) read the columns
-  const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
+  // the searches validate their own options, explicit_only reads none of its own
+  if (strategy === `explicit_only`) validate_bonding_options(strategy, options)
   const bonds =
     strategy === `electroneg_ratio`
-      ? electroneg_ratio_frame(structure, options, query)
-      : strategy_fn(structure, options)
+      ? contacts_frame(structure, () => perceive_bonds(structure, options, query))
+      : strategy === `pair_cutoffs`
+        ? contacts_frame(structure, () => cutoff_contacts(structure, options, query))
+        : explicit_only(structure)
   cache_prepared_bonds(structure, strategy, options, bonds)
   return bonds
 }
@@ -1049,21 +1160,18 @@ type PerceivedBonds = Omit<BondNeighborList, 'offsets'> & {
 
 export function electroneg_ratio(
   structure: AnyStructure,
-  options: Parameters<typeof perceive_bonds>[1] = {},
+  options: BondingOptions<`electroneg_ratio`> = {},
   query?: BondNeighborQuery,
 ): BondPair[] {
-  return electroneg_ratio_frame(structure, options, query).materialize()
+  return contacts_frame(structure, () =>
+    perceive_bonds(structure, options, query),
+  ).materialize()
 }
-const electroneg_ratio_frame = (
-  structure: AnyStructure,
-  options: Parameters<typeof perceive_bonds>[1] = {},
-  query?: BondNeighborQuery,
-): BondFrame =>
+// Bonds over a structure's accepted contacts (none in an empty structure)
+const contacts_frame = (structure: AnyStructure, contacts: () => PerceivedBonds): BondFrame =>
   new BondFrame(
     structure,
-    site_count(structure)
-      ? bond_columns(structure, perceive_bonds(structure, options, query))
-      : pack_bonds([]),
+    site_count(structure) ? bond_columns(structure, contacts()) : pack_bonds([]),
   )
 
 // Both public records and worker columns consume the same accepted contacts in discovery order.
@@ -1149,6 +1257,68 @@ function bond_columns(
   }
 }
 
+// VESTA-style bonds: every contact in its element pair's [min, max] range (see PairCutoffs),
+// plus explicit bonds tagged like electroneg_ratio's
+export function pair_cutoffs(
+  structure: AnyStructure,
+  options: BondingOptions<`pair_cutoffs`> = {},
+  query?: BondNeighborQuery,
+): BondPair[] {
+  return contacts_frame(structure, () =>
+    cutoff_contacts(structure, options, query),
+  ).materialize()
+}
+
+function cutoff_contacts(
+  structure: AnyStructure,
+  options: BondingOptions<`pair_cutoffs`>,
+  query: BondNeighborQuery = query_bond_neighbors,
+): PerceivedBonds {
+  const { pair_cutoffs: cutoffs = {}, pbc = NO_PBC } = validate_bonding_options(
+    `pair_cutoffs`,
+    options,
+  )
+  const rows = read_pair_cutoffs(cutoffs)
+  if (typeof rows === `string`) throw new TypeError(rows) // unreachable once validated: narrows
+  const { symbols, site_elem_ids: elem_ids } = intern_site_elements(
+    numeric_sites.get(structure) ?? structure.sites,
+  )
+  const n_elem = symbols.length
+  // an empty range (hi < lo) for every pair no row names
+  const lo = new Float64Array(n_elem * n_elem)
+  const hi = new Float64Array(n_elem * n_elem).fill(-1)
+  const elem_id = new Map(symbols.map((symbol, idx) => [symbol, idx]))
+  let max_reach = 0
+  for (const [elem_a, elem_b, min, max] of rows) {
+    const [id_a, id_b] = [elem_id.get(elem_a), elem_id.get(elem_b)]
+    if (id_a === undefined || id_b === undefined) continue // pair absent from this structure
+    for (const pair of [id_a * n_elem + id_b, id_b * n_elem + id_a]) {
+      lo[pair] = min
+      hi[pair] = max
+    }
+    max_reach = Math.max(max_reach, max)
+  }
+  // the band keeps exactly the in-range contacts, each pair once from its lower site
+  const { offsets, neighbors, image_geometry, distances } =
+    max_reach > 0
+      ? query(structure, max_reach, pbc, { elem_ids, n_elem, lo, hi })
+      : {
+          offsets: new Int32Array(1),
+          neighbors: new Int32Array(0),
+          image_geometry: undefined,
+          distances: new Float64Array(0),
+        }
+  const count = offsets[offsets.length - 1]
+  const centers = new Int32Array(count)
+  const slots = new Int32Array(count)
+  for (let center = 0; center + 1 < offsets.length; center++)
+    for (let slot = offsets[center]; slot < offsets[center + 1]; slot++) {
+      centers[slot] = center
+      slots[slot] = slot
+    }
+  return { centers, slots, count, neighbors, image_geometry, distances }
+}
+
 type BondScratch = {
   slots: Int32Array
   centers: Int32Array
@@ -1171,7 +1341,10 @@ const scratches = new WeakMap<BondNeighborQuery, BondScratch>()
 
 function perceive_bonds(
   structure: AnyStructure,
-  {
+  options: BondingOptions<`electroneg_ratio`>,
+  query: BondNeighborQuery = query_bond_neighbors,
+): PerceivedBonds {
+  const {
     electronegativity_threshold = 1.7, // Max electronegativity difference for bonding
     max_distance_ratio = 2.0, // Max distance as multiple of the expected bond length
     min_bond_dist = 0.4, // Minimum bond distance in Angstroms
@@ -1192,9 +1365,7 @@ function perceive_bonds(
     // the infinite crystal (coordination, bond angles) pass the lattice's pbc and get bonds
     // to periodic images with `cell_shift` set and `pos_2` at the image position.
     pbc = NO_PBC,
-  } = {},
-  query: BondNeighborQuery = query_bond_neighbors,
-): PerceivedBonds {
+  } = validate_bonding_options(`electroneg_ratio`, options)
   const columns = numeric_sites.get(structure)
   const sites = columns ?? structure.sites
   const n_sites = sites.length

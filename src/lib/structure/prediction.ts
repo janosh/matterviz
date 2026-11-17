@@ -4,12 +4,12 @@ import { is_plain_object } from 'svelte-widgets/utils'
 import { grid_data_range, type VolumetricData } from '#lib/isosurface/types.js'
 import { grid_dimensions } from '#lib/isosurface/grid.js'
 import {
-  calc_lattice_params,
+  compute_lattice_params,
   create_cart_to_frac,
   is_finite_matrix3x3,
   is_finite_vec3,
   is_pbc,
-  matrix_inverse_3x3,
+  inverse_3x3,
   type Matrix3x3,
   type Vec3,
 } from '#lib/math.js'
@@ -112,7 +112,7 @@ const matrix = (value: unknown, path: string): void => {
   if (!is_finite_matrix3x3(value)) invalid(path, `expected a finite 3x3 lattice`)
   // A singular or ill-conditioned lattice cannot locate a density grid or fractional sites.
   try {
-    matrix_inverse_3x3(value as Matrix3x3)
+    inverse_3x3(value as Matrix3x3)
   } catch {
     invalid(path, `lattice must be invertible`)
   }
@@ -183,7 +183,7 @@ export function apply_tool_geometry(
     ? {
         ...input,
         sites,
-        lattice: { ...input.lattice, matrix: lattice, ...calc_lattice_params(lattice) },
+        lattice: { ...input.lattice, matrix: lattice, ...compute_lattice_params(lattice) },
       }
     : { ...input, sites }
 }
@@ -207,8 +207,12 @@ export function copy_prediction_input(value: unknown): AnyStructure {
         invalid(`input.sites[${idx}].species.element`, `unknown element: ${entry.element}`)
       if (typeof entry.occu !== `number` || entry.occu < 0)
         invalid(`input.sites[${idx}].species.occu`, `expected nonnegative occupancy`)
-      // prediction_to_json drops undecorated (0) oxidation states, as pymatgen omits them
-      if (typeof (entry.oxidation_state ??= 0) !== `number`)
+      // undecorated species have no oxidation_state (pymatgen may write null)
+      if (entry.oxidation_state === null) delete entry.oxidation_state
+      else if (
+        entry.oxidation_state !== undefined &&
+        typeof entry.oxidation_state !== `number`
+      )
         invalid(`input.sites[${idx}].species.oxidation_state`, `expected a number`)
     }
   }

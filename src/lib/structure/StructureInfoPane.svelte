@@ -167,6 +167,9 @@
     return { ...row, value }
   }
 
+  const info_row = (label: string, value: string, key: string) => ({ label, value, key })
+  const format_list = (values: number[], format: string, unit: string): string =>
+    values.map((value) => `${format_num(value, format)}${unit}`).join(`, `)
   // Skipped while closed — ViewerPane keeps children mounted (display:none).
   let structure_cards = $derived.by((): InfoPaneCard[] => {
     if (!pane_open) return []
@@ -176,20 +179,13 @@
         value: `${get_electro_neg_formula(structure)} (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
-      {
-        label: `Charge`,
-        value: `${format_num(structure.charge || 0)}e`,
-        key: `structure-charge`,
-      },
+      info_row(`Charge`, `${format_num(structure.charge || 0)}e`, `structure-charge`),
     ]
     // Only display scalar values (skip arrays and objects)
     for (const [key, value] of Object.entries(structure.properties ?? {})) {
       if (value == null || typeof value === `object`) continue
-      structure_rows.push({
-        label: key.replaceAll(`_`, ` `).replaceAll(/\b\w/g, (char) => char.toUpperCase()),
-        value: String(value),
-        key: `structure-prop-${key}`,
-      })
+      const label = key.replaceAll(`_`, ` `).replaceAll(/\b\w/g, (char) => char.toUpperCase())
+      structure_rows.push(info_row(label, String(value), `structure-prop-${key}`))
     }
     const cards: InfoPaneCard[] = [{ title: `Structure`, rows: structure_rows }]
     if (!(`lattice` in structure)) return cards
@@ -202,18 +198,8 @@
           value: `${format_num(volume, `.1~f`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
           key: `cell-volume-density`,
         },
-        {
-          label: `a, b, c`,
-          value: `${[a, b, c].map((length) => format_num(length, `.3~f`)).join(`, `)} Å`,
-          key: `cell-abc`,
-        },
-        {
-          label: `α, β, γ`,
-          value: [alpha, beta, gamma]
-            .map((angle) => `${format_num(angle, `.2~f`)}°`)
-            .join(`, `),
-          key: `cell-angles`,
-        },
+        info_row(`a, b, c`, `${format_list([a, b, c], `.3~f`, ``)} Å`, `cell-abc`),
+        info_row(`α, β, γ`, format_list([alpha, beta, gamma], `.2~f`, `°`), `cell-angles`),
       ],
     })
     if (!sym_data) return cards
@@ -230,16 +216,8 @@
             : String(sym_data.number),
           key: `symmetry-space-group`,
         },
-        {
-          label: `Hall Number`,
-          value: String(sym_data.hall_number),
-          key: `symmetry-hall-number`,
-        },
-        {
-          label: `Pearson Symbol`,
-          value: sym_data.pearson_symbol,
-          key: `symmetry-pearson-symbol`,
-        },
+        info_row(`Hall Number`, String(sym_data.hall_number), `symmetry-hall-number`),
+        info_row(`Pearson Symbol`, sym_data.pearson_symbol, `symmetry-pearson-symbol`),
         {
           label: `Symmetry Ops`,
           value: `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,

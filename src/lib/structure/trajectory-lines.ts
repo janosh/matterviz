@@ -1,13 +1,11 @@
-// Per-atom trajectory trails — the path each atom traces over an MD run, the same thing
-// OVITO calls "generate trajectory lines".
-//
-// TrajectoryTrail samples the WHOLE run once onto the frame_stride grid in frame-major vertex
-// rows (row k holds every drawn atom at frame k * frame_stride), so the segments of any window
-// of grid frames are one contiguous index range and sliding the window moves a draw range. Two
-// extra rows hold the window's start and end when they fall between grid frames; their
-// segments live in a small index block rewritten per window, O(atoms). Anchor translations and
-// time colors are applied in the shader (TrajectoryLines.svelte) from per-atom offsets and the
-// window bounds, so no per-window work scales with atoms x frames.
+// Per-atom trajectory trails: the path each atom traces over an MD run (OVITO's "generate
+// trajectory lines"). TrajectoryTrail samples the WHOLE run once onto the frame_stride grid in
+// frame-major vertex rows (row k holds every drawn atom at frame k * frame_stride), so the
+// segments of any window of grid frames are one contiguous index range and sliding the window
+// moves a draw range. Two extra rows hold the window's start and end when they fall between
+// grid frames; their segments live in a small index block rewritten per window, O(atoms).
+// Anchor translations and time colors are applied in the shader (TrajectoryLines.svelte) from
+// per-atom offsets and the window bounds, so no per-window work scales with atoms x frames.
 //
 // One indexed line-segment buffer serves the whole scene (one draw call, two while an off-grid
 // end is drawn, not one object per atom); indexed because each interior point is shared by two
@@ -39,10 +37,9 @@ export type TrajectoryLineWrapMode = `unwrap` | `break`
 
 // What a TrajectoryTrail is built for; changing any of these means a new trail
 interface TrajectoryTrailOptions {
-  // Keep only every Nth collected frame, on top of the stream's own frame_stride. The grid
-  // is anchored at frame 0 so the sampled set does not shift as the window slides; both
-  // window ends are always included, so a trail never degenerates and its head stays glued
-  // to the atom.
+  // Keep only every Nth collected frame, on top of the stream's own frame_stride. The grid is
+  // anchored at frame 0 so the sampled set does not shift as the window slides; both window
+  // ends are always included, so a trail never degenerates and its head stays on the atom.
   frame_stride?: number
   // Species to draw trails for. undefined/null means every atom; an EMPTY array means none
   // (so unchecking every box in a UI hides the layer rather than showing everything).
@@ -127,9 +124,8 @@ function make_wrap_jump_test(
   return (step, frame_idx) => {
     const lattice = stream.lattice_matrices?.[frame_idx]
     if (!lattice) return false
-    if (cached?.lattice !== lattice) {
+    if (cached?.lattice !== lattice)
       cached = { lattice, cart_to_frac: create_cart_to_frac(lattice) }
-    }
     cached.cart_to_frac(step, frac_step)
     return (
       (periodic[0] && Math.abs(frac_step[0]) > 0.5) ||
@@ -426,14 +422,13 @@ export function trail_color_texels(
   return texels
 }
 
-// Cartesian trail-head targets in the position stream's atom order, or null when the
-// displayed sites cannot be matched to the stream's atoms one for one. Trails are built from
-// raw (unwrapped) stream coordinates while the spheres are drawn from the displayed
-// structure, so without these anchors a trail head sits whole lattice vectors from its atom.
-// get_pbc_image_sites keeps the base sites at [0, n_atoms) in stream order and appends the
-// image copies, so those leading sites still anchor. A supercell instead renumbers every
-// atom (every site carries unit-cell provenance), leaving nothing to anchor one-to-one.
-// A numeric frame's columns anchor directly: they carry no provenance, and reading `sites` would
+// Cartesian trail-head targets in the position stream's atom order, or null when the displayed
+// sites cannot be matched to the stream's atoms one for one. Trails are built from raw
+// (unwrapped) stream coordinates while spheres are drawn from the displayed structure, so
+// without anchors a trail head sits whole lattice vectors from its atom. get_pbc_image_sites
+// keeps the base sites at [0, n_atoms) in stream order and appends image copies, so those still
+// anchor; a supercell renumbers every atom (all carry unit-cell provenance), so none can. A
+// numeric frame's columns anchor directly: they carry no provenance, and reading `sites` would
 // build every atom's record each frame of playback.
 export function trajectory_trail_anchors(
   structure: AnyStructure | null | undefined,

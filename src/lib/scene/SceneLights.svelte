@@ -1,9 +1,7 @@
 <script lang="ts">
-  // One lighting rig for every Threlte scene so SceneControlProps.ambient_light /
-  // directional_light mean the same thing everywhere. The key light defaults to where the
-  // structure viewer has always had it; `fill` adds a dimmer light from the opposite side (as a
-  // fraction of `directional`) for scenes whose back faces would otherwise go black (Fermi
-  // surfaces, scatter cubes, ternary prisms). Positions only set the light direction.
+  // One lighting rig for every Threlte scene, so ambient_light / directional_light mean the
+  // same everywhere. `fill` adds a dimmer opposite light (a fraction of `directional`) where
+  // back faces would go black (Fermi surfaces, scatter cubes). Positions only set direction.
   import type { Vec3 } from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { T } from '@threlte/core'

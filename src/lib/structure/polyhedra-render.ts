@@ -124,11 +124,10 @@ export type PolyhedraColoring =
   | { mode: `uniform`; color: string }
   | { mode: `vertex` | `center`; site_color: (site_idx: number) => string }
 
-// Merge all polyhedra into single non-indexed position/normal/color arrays (one draw call)
-// plus crease-edge segments for outlines. Edges interior to coplanar face groups
-// (e.g. quad diagonals on a cube) are omitted. Normals are the flat per-face normals
-// BufferGeometry.computeVertexNormals would derive from the float32 positions, bit for bit,
-// so callers can upload them directly.
+// Merge all polyhedra into single non-indexed position/normal/color arrays (one draw call) plus
+// crease-edge segments for outlines, omitting edges inside coplanar face groups (e.g. a cube's
+// quad diagonals). Normals are the flat per-face normals BufferGeometry.computeVertexNormals
+// would derive from the float32 positions, bit for bit, so callers can upload them directly.
 export function merge_polyhedra_buffers(
   polyhedra: readonly Polyhedron[],
   coloring: PolyhedraColoring,

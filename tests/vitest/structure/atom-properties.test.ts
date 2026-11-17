@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '#lib'
 import { get_d3_interpolator } from '#lib/colors/index.js'
-import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import { compute_coordination_nums } from '#lib/coordination/compute-coordination.js'
 import * as math from '#lib/math.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { Vec3 } from '#lib/math.js'
@@ -17,8 +17,8 @@ import {
 } from '#lib/trajectory/frame.js'
 import selective_dynamics_poscar from '#site/structures/selective-dynamics.poscar?raw'
 import { make_supercell } from '#lib/structure/supercell.js'
-import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/calc-cna.js'
-import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
+import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/compute-cna.js'
+import { CNA_TYPE_PROPERTY } from '#lib/structure-id/compute-structure-id.js'
 import type { WyckoffPos } from '#lib/symmetry/index.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { rgb } from 'd3-color'
@@ -154,16 +154,16 @@ describe(`Coordination`, () => {
       expect(colors).toHaveLength(sites.length)
     })
 
-    // CoordinationBarPlot and the 3D viewer both call calc_coordination_nums under the
+    // CoordinationBarPlot and the 3D viewer both call compute_coordination_nums under the
     // lattice's pbc, so their boundary-atom CN must agree and must exceed the finite-box
     // count (regression: the bar plot previously ran on the raw cell and undercounted
     // boundary atoms).
-    test(`calc_coordination_nums bonds across PBC and matches viewer CN`, () => {
+    test(`compute_coordination_nums bonds across PBC and matches viewer CN`, () => {
       const strategy = `electroneg_ratio`
       const structure = make_cubic_structure(nacl_corner_sites, 5)
-      const bar_plot_cn = calc_coordination_nums(structure, { strategy }).coordination_nums
+      const bar_plot_cn = compute_coordination_nums(structure, { strategy }).coordination_nums
       const viewer_cn = atom_properties.get_coordination_colors(structure, strategy).values
-      const raw_cn = calc_coordination_nums(structure, {
+      const raw_cn = compute_coordination_nums(structure, {
         strategy,
         pbc: [false, false, false],
       }).coordination_nums
@@ -199,7 +199,7 @@ describe(`Coordination`, () => {
             return { ...site, abc, xyz: frac_to_cart(abc), provenance }
           }),
         )
-        return calc_coordination_nums(
+        return compute_coordination_nums(
           { ...structure, sites: [...structure.sites, ...images] },
           { pbc: [false, false, false] },
         ).coordination_nums.slice(0, structure.sites.length)
@@ -448,12 +448,8 @@ describe(`normalize_atom_color_config`, () => {
 
   test(`serialized custom mode cannot reach get_custom_colors without a function`, () => {
     const config = as_serialized({ mode: `custom` }) as atom_properties.AtomColorConfig
-    expect(atom_properties.get_atom_colors(make_struct([{ xyz: [0, 0, 0] }]), config)).toEqual(
-      {
-        colors: [],
-        values: [],
-      },
-    )
+    const colors = atom_properties.get_atom_colors(make_struct([{ xyz: [0, 0, 0] }]), config)
+    expect(colors).toEqual({ colors: [], values: [] })
   })
 
   const default_scale = DEFAULT_ATOM_COLOR_CONFIG.color_scale
@@ -512,21 +508,13 @@ describe(`next_atom_color_config`, () => {
   })
 
   test(`custom mode requires and preserves its color function`, () => {
-    expect(() =>
-      atom_properties.next_atom_color_config(
-        atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
-        `custom`,
-        [],
-      ),
-    ).toThrow(`without a color_fn`)
-
+    const { next_atom_color_config } = atom_properties
+    expect(() => next_atom_color_config(DEFAULT_ATOM_COLOR_CONFIG, `custom`, [])).toThrow(
+      `without a color_fn`,
+    )
     const color_fn = () => `red`
-    const custom: atom_properties.AtomColorConfig = {
-      ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
-      mode: `custom`,
-      color_fn,
-    }
-    expect(atom_properties.next_atom_color_config(custom, `custom`, [])).toMatchObject({
+    const custom = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `custom`, color_fn } as const
+    expect(next_atom_color_config(custom, `custom`, [])).toMatchObject({
       mode: `custom`,
       color_fn,
     })

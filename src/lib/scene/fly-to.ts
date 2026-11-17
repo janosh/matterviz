@@ -1,15 +1,13 @@
-// Shared camera fly-to, used by the orientation gizmo (axis handles) and the zone-axis
-// control (crystallographic directions). The camera's OFFSET from the orbit target is rotated
-// about a fixed axis at constant radius, so the structure neither zooms nor drifts during the
-// flight and the swing covers its angle at the eased rate. A lerp of the endpoints would cut
-// the corner (dolly in and back out) and, between opposite handles, pass through the target.
+// Camera fly-to shared by the orientation gizmo and the zone-axis control. It rotates the
+// camera's offset from the orbit target about a fixed axis at constant radius, at the eased
+// rate: a lerp of the endpoints would dolly in and out, and pass through the target between
+// opposite handles.
 import { motion_duration } from '#lib/effects.svelte.js'
 import type { Vec3 } from '#lib/math.js'
 import * as THREE from 'three/webgpu'
 
-// Structural rather than the concrete OrbitControls class: Threlte's <OrbitControls> `ref` and
-// three's own export are separate declarations of the same object, and only these three members
-// are needed to orbit a camera around a target.
+// Structural, not OrbitControls: Threlte's `ref` and three's export declare the same object
+// separately, and orbiting a camera needs only these members.
 export type FlyToControls = { target: THREE.Vector3; enabled: boolean; update: () => unknown }
 
 type FlyToHooks = {

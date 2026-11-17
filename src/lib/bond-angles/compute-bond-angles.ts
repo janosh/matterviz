@@ -5,7 +5,7 @@
 import type { Vec3 } from '#lib/math.js'
 import { is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
-import type { BondingStrategy } from '#lib/structure/bonding.js'
+import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding.js'
 import { compute_bonds, intern_site_elements } from '#lib/structure/bonding.js'
 import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list.js'
 import { angle_between_vectors } from '#lib/structure/measure.js'
@@ -26,6 +26,9 @@ export const TOTAL_TRIPLET_LABEL = `All angles`
 
 export interface BondAngleOptions {
   strategy?: BondingStrategy
+  // The strategy's options (max_distance_ratio, strength_threshold, ...), as the scene's bonds
+  // use. Their pbc is replaced by `pbc` below: angles are measured in the periodic crystal, not the drawn sites.
+  bonding_options?: BondingOptions
   // Bin width in degrees (default 2). Mutually exclusive with n_bins.
   bin_width?: number
   // Number of bins spanning 0-180 degrees. Mutually exclusive with bin_width.
@@ -112,7 +115,7 @@ export const angle_bin_centers = (n_bins: number, bin_width: number): number[] =
   Array.from({ length: n_bins }, (_unused, bin_idx) => (bin_idx + 0.5) * bin_width)
 
 // Bins are half-open on the lower edge, [lo, hi). Exact crystal angles (60, 90, 120 deg) sit
-// on bin edges but come out of acos a few ulp low, so the 1e-9 nudge (as in calc-rdf.ts)
+// on bin edges but come out of acos a few ulp low, so the 1e-9 nudge (as in compute-rdf.ts)
 // keeps one shell from splitting across two bins; it is far below any physical separation.
 // Exactly 180 degrees is clamped into the last bin so perfectly linear triplets are counted
 // rather than dropped. No lower clamp: angle_between_vectors clamps its cosine to [-1, 1], so
@@ -121,7 +124,7 @@ export const angle_bin_index = (angle: number, n_bins: number, bin_width: number
   Math.min(n_bins - 1, Math.floor(angle / bin_width + 1e-9))
 
 // Every bond angle in the structure, one entry per unordered neighbour pair per centre.
-export function calc_bond_angles(
+export function compute_bond_angles(
   structure: AnyStructure,
   options: BondAngleOptions = {},
 ): BondAngles {
@@ -134,6 +137,7 @@ export function calc_bond_angles(
   // neighbours. explicit_only reads bonds (cell_shift included) straight off
   // structure.properties.bonds and ignores the periodicity option.
   const bonds = compute_bonds(structure, strategy, {
+    ...options.bonding_options,
     pbc: lattice_pbc_or_throw(structure, options.pbc),
   })
   // Elements as small integers so the inner loop indexes a label table instead of
@@ -255,7 +259,7 @@ export function calc_bond_angles(
 }
 
 // Histogram angles that have already been computed. Kept separate from
-// calc_bond_angles so re-binning (e.g. a bin-width slider) never re-runs the image
+// compute_bond_angles so re-binning (e.g. a bin-width slider) never re-runs the image
 // expansion and bond search.
 export function bin_bond_angles(
   { angles, label_ids, labels }: BondAngles,
@@ -265,7 +269,7 @@ export function bin_bond_angles(
   const { split_by_triplet = true } = options
 
   const total_counts = Array.from({ length: n_bins }, () => 0)
-  // Indexed by label id. calc_bond_angles only labels angles it emits, so none stays empty.
+  // Indexed by label id. compute_bond_angles only labels angles it emits, so none stays empty.
   const counts_by_label = split_by_triplet
     ? labels.map(() => Array.from({ length: n_bins }, () => 0))
     : []
@@ -296,10 +300,10 @@ export function bin_bond_angles(
 // Bond-angle distribution: histogram of every bond angle over 0-180 degrees, plus one
 // histogram per triplet type. Series carry raw counts; to_angle_bar_series in ./series.ts
 // turns them into densities where structures of different sizes need comparing.
-export const calc_bond_angle_distribution = (
+export const compute_bond_angle_distribution = (
   structure: AnyStructure,
   options: BondAngleOptions = {},
-): BondAngleData => bin_bond_angles(calc_bond_angles(structure, options), options)
+): BondAngleData => bin_bond_angles(compute_bond_angles(structure, options), options)
 
 // Sites behind one histogram bar (bin `bin_idx`, optionally one triplet label): the sorted
 // centre atoms and outer atoms (base sites for neighbours across a cell boundary) of its angles

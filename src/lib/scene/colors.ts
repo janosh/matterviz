@@ -8,12 +8,10 @@ type LinearRgb = readonly [number, number, number]
 
 const parse_scratch = new Color()
 
-// Parsed by d3 rather than three's Color.set, which leaves the previous value in place on an
-// unparsable string — painting one element with the last one's color. Falls back to mid grey.
-// Fully transparent inputs land on grey too: d3 blanks their channels (`if (a <= 0) r = g = b =
-// NaN`), and these meshes are opaque, so there is no hue left to honor anyway.
-// Uncached: for one-shot conversions already cached by the caller (isosurface colormap LUTs),
-// which would otherwise evict the element colors the memo below exists for.
+// Parsed by d3, not three's Color.set, which keeps the previous value on an unparsable string.
+// Unparsable and fully transparent inputs (d3 blanks their channels) fall back to mid grey.
+// Uncached, for one-shot conversions the caller caches (colormap LUTs) that would otherwise
+// evict the element colors the memo below exists for.
 export function parse_linear_rgb(css_color: string): LinearRgb {
   const { r: red, g: green, b: blue } = parse_rgb(css_color)
   if (Number.isFinite(red) && Number.isFinite(green) && Number.isFinite(blue)) {
@@ -24,11 +22,9 @@ export function parse_linear_rgb(css_color: string): LinearRgb {
   return [parse_scratch.r, parse_scratch.g, parse_scratch.b]
 }
 
-// Bonds and polyhedra re-convert the same few element colors once per instance — 40k parses for
-// a 20k-bond scene, measured at 6.4 ms against 0.6 ms cached. Only worth it at low cardinality:
-// the same 40k spread over unique colors measured 2x slower cached than not, so a caller minting
-// a distinct string per value (a continuous property scale) wants parse_linear_rgb instead.
-// Bounded for that reason too — such a caller would otherwise grow the map without end.
+// Bonds and polyhedra re-convert the same few element colors per instance: 40k parses for 20k
+// bonds took 6.4 ms, 0.6 ms cached. Over unique colors caching measured 2x slower, so callers
+// minting a string per value (continuous scales) want parse_linear_rgb; bounded for them too.
 const MAX_CACHED_COLORS = 4096
 const linear_rgb_cache = new Map<string, LinearRgb>()
 
@@ -47,9 +43,8 @@ const brighten_scratch = new Color()
 const brighten_white = new Color(0xffffff)
 
 // The hover colour of a mark filled with `css_color`: a quarter of the way to white in sRGB,
-// where steps look even, so a blue stays a lighter blue (55% in Linear-sRGB turned a blue sheet
-// near white). Parsed by d3 (see parse_linear_rgb) so an unparsable color glows grey rather
-// than in whatever hue the previous call left in the scratch.
+// where steps look even (55% in Linear-sRGB turned a blue sheet near white). Parsed by d3 (see
+// parse_linear_rgb), so an unparsable color glows grey, not the scratch's previous hue.
 export function brighten_hex(css_color = `#cccccc`): string {
   brighten_scratch
     .setRGB(...parse_linear_rgb(css_color))

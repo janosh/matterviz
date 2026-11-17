@@ -8,20 +8,15 @@ import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { PreparedVectorGeometry } from './vectors'
 
-// pymatgen-compatible JSON data: pymatgen reads any species oxidation_state key, 0 included, as
-// decorated (Fe0+), so undecorated species drop it (readers default it back to 0). A site
-// without species fails here, as pymatgen and parse_structure_file reject one on read.
+// pymatgen-compatible JSON data. Species are written as stored: undecorated ones carry no
+// oxidation_state key and 0 round-trips as pymatgen's Fe0+. A site without species fails
+// here, as pymatgen and parse_structure_file reject one on read.
 export const structure_json_data = (structure: AnyStructure): object => ({
   ...structure,
   sites: structure.sites.map((site, idx) => {
     if (!site.species.length)
       throw new Error(`Site ${display_idx(idx)} has no species, so it has no JSON form`)
-    return {
-      ...site,
-      species: site.species.map(({ oxidation_state, ...species }) =>
-        oxidation_state === 0 ? species : { ...species, oxidation_state },
-      ),
-    }
+    return site
   }),
 })
 
@@ -100,7 +95,7 @@ export class NumericSites {
           `Invalid atomic number ${this.numbers[idx]} at site ${display_idx(idx)}`,
         )
       identity = {
-        species: [{ element, occu: 1, oxidation_state: 0 }],
+        species: [{ element, occu: 1 }],
         label: `${element}${idx + 1}`,
       }
       this.identities[idx] = identity
@@ -174,7 +169,7 @@ export const make_site = (
   label: string,
   properties: Record<string, unknown> = {},
   occu = 1,
-): Site => ({ species: [{ element, occu, oxidation_state: 0 }], abc, xyz, label, properties })
+): Site => ({ species: [{ element, occu }], abc, xyz, label, properties })
 
 // Only viewer-generated provenance identifies copies; source properties are ordinary data.
 export const is_image_site = (site: Site | undefined): boolean =>

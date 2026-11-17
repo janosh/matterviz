@@ -24,21 +24,16 @@ describe(`build_orbit_props`, () => {
   }
 
   test(`gates interactions on speed and doubles ortho zoom`, () => {
-    const props = build_orbit_props(opts)
-    expect([props.enableRotate, props.enableZoom, props.enablePan]).toEqual([
-      true,
-      true,
-      false,
-    ])
-    expect([props.autoRotate, props.enableDamping]).toEqual([false, true])
-    expect(props.zoomSpeed).toBe(0.5)
+    const { enableRotate, enableZoom, enablePan, autoRotate, enableDamping, zoomSpeed } =
+      build_orbit_props(opts)
+    expect([enableRotate, enableZoom, enablePan]).toEqual([true, true, false])
+    expect([autoRotate, enableDamping, zoomSpeed]).toEqual([false, true, 0.5])
     expect(build_orbit_props({ ...opts, camera_projection: `orthographic` }).zoomSpeed).toBe(1)
   })
 
-  // Rotation feel is easy to regress by nudging one default, and neither number reads as
-  // wrong on its own. OrbitControls turns the camera by 360° * drag_px * rotateSpeed /
-  // canvas_height_px, then pays a released gesture out at dampingFactor per frame — so assert
-  // the drag distance and settle time those defaults produce, not the defaults themselves.
+  // Neither default reads as wrong on its own, so assert the drag distance and settle time
+  // they produce: OrbitControls turns 360° * drag_px * rotateSpeed / canvas_height_px, then
+  // pays a released gesture out at dampingFactor per frame.
   test(`default rotation stays controllable on a default-height canvas`, () => {
     const { rotate_speed, rotation_damping } = DEFAULTS.structure
     const props = build_orbit_props({ ...opts, rotate_speed, rotation_damping })
@@ -50,10 +45,9 @@ describe(`build_orbit_props`, () => {
     expect(Math.log(0.01) / Math.log(1 - props.dampingFactor) / 60).toBeLessThan(0.5)
   })
 
-  // camera_is_moving turns on with the gesture's first camera change, not on `start`: the
-  // pointerdown behind `start` may not have reached the pressed mesh yet, and a click (or a press
-  // a scene claimed by disabling the controls) never moves the camera. Changes outside a gesture
-  // (damping tail, auto-rotation) and repeat changes within one leave it alone.
+  // camera_is_moving turns on with a gesture's first camera change, not on `start` (whose
+  // pointerdown may not have reached the pressed mesh, and a click never moves the camera).
+  // Changes outside a gesture (damping tail, auto-rotation) leave it alone.
   test.each<[string, (`start` | `change` | `end`)[], boolean[][]]>([
     [`drag`, [`start`, `change`, `change`, `end`, `change`], [[true], [false]]],
     [`click`, [`start`, `end`], [[false]]],
@@ -110,11 +104,9 @@ describe(`build_orbit_props`, () => {
 
     test(`hands OrbitControls the near limit for zooming in and the far one for out`, () => {
       const props = build_orbit_props(perspective_opts)
-      expect(props.minDistance).toBeCloseTo(
-        perspective_distance_for_zoom(20_000, height, fov),
-        9,
-      )
-      expect(props.maxDistance).toBeCloseTo(perspective_distance_for_zoom(0.1, height, fov), 9)
+      const distance = (zoom: number) => perspective_distance_for_zoom(zoom, height, fov)
+      expect(props.minDistance).toBeCloseTo(distance(20_000), 9)
+      expect(props.maxDistance).toBeCloseTo(distance(0.1), 9)
       expect(props.minDistance).toBeLessThan(props.maxDistance)
     })
 

@@ -1,11 +1,9 @@
-// Keyboard hover for the 3D scenes. A scene lists its hover targets (atoms, faces, domains,
-// rods, markers) in the order users expect and how the pointer hovers, leaves and clicks one;
-// the viewer root's one tab stop then walks them: arrows step and wrap, Home/End jump,
-// Enter/Space does what a click would (select, or pin the tooltip), Escape unpins, then
-// clears, as does focus leaving the viewer. A target the pointer hovers is where the walk
-// stands, so keys pick up from the mouse. Each step replays the target's pointer handlers,
-// so a keyboard user gets the same tooltip, HoverHighlight and on_*_hover payload as the
-// mouse, and the viewer's live region announces the target.
+// Keyboard hover for the 3D scenes. A scene lists its hover targets in the order users expect
+// plus their pointer hover/leave/click handlers; the viewer root's tab stop walks them: arrows
+// step and wrap, Home/End jump, Enter/Space click, Escape unpins then clears (as does focus
+// leaving). Keys pick up from the pointer's hover. Each step replays the target's handlers, so
+// keyboard users get the mouse's tooltip, HoverHighlight and on_*_hover payload, and the
+// viewer's live region announces the target.
 import type { Vec3 } from '#lib/math.js'
 import {
   focus_left,
@@ -137,9 +135,8 @@ export function scene_key_walk<T>(options: KeyWalkOptions<T>): KeyWalk<T> {
   return walk
 }
 
-// A pointer event at world-space `point`, placed at its projection on the canvas, so a KeyWalk
-// can replay an object's pointer handlers. `hit` adds the face or instance they read. Call
-// during scene init (it reads the Threlte context).
+// A pointer event at world `point`'s canvas projection (plus `hit`'s face or instance) for a
+// KeyWalk to replay pointer handlers with. Call during scene init (reads the Threlte context).
 export function scene_pointer() {
   const { camera, dom } = useThrelte()
   return (

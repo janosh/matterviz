@@ -47,9 +47,7 @@ export const read_text_line = (
   offset: number,
 ): { line: string; next: number } => {
   let end = offset
-  while (end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) {
-    end++
-  }
+  while (end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) end++
   const line = text.slice(offset, end)
   let next = end
   if (next < text.length && text.charCodeAt(next) === 13) next++ // skip \r
@@ -62,9 +60,8 @@ export const text_cursor = (text: string, start = 0): VaspLineCursor => {
   let pos = start
   const offset_of = (lookahead: number): number => {
     let offset = pos
-    for (let step = 0; step < lookahead && offset < text.length; step++) {
+    for (let step = 0; step < lookahead && offset < text.length; step++)
       offset = read_text_line(text, offset).next
-    }
     return offset
   }
   return {
@@ -134,11 +131,6 @@ const comment_line_species = (comment: string, n_species: number): ElementSymbol
   return symbols.length === n_species ? symbols : null
 }
 
-const require_line = (line: string | undefined, error: string): string => {
-  if (line === undefined) throw new Error(error)
-  return line
-}
-
 // Multiply a Cartesian vector by the header's per-axis scale factors
 export const apply_axis_scale = (vec: Vec3, scale: Vec3): Vec3 =>
   vec.map((value, axis) => value * scale[axis]) as Vec3
@@ -148,36 +140,33 @@ export function parse_vasp_header(
   options: VaspHeaderOptions,
 ): VaspHeaderResult {
   const { format, coord_mode = `strict`, line_offset = 0, strict_species = false } = options
+  // The line `lookahead` lines ahead; the file ending first is an error naming `what` it lacks
+  const peek_line = (what: string, lookahead = 0): string => {
+    const line = cursor.peek(lookahead)
+    if (line === undefined) throw new Error(`${format}: file ends ${what}`)
+    return line
+  }
   try {
     // kept for VASP 4 headers, which may name their species there
-    const comment = require_line(cursor.peek(), `${format}: file ends before the comment line`)
+    const comment = peek_line(`before the comment line`)
     cursor.advance()
 
-    // Scale line: one factor (negative means target volume) or three per-axis Cartesian
-    // factors, Fortran `5.0D-01` exponents included.
-    const scale_line = require_line(
-      cursor.peek(),
-      `${format}: file ends before the scale line`,
-    )
+    // Scale line: one factor (negative means target volume) or three positive per-axis
+    // Cartesian factors (Fortran `5.0D-01` included), optionally followed by a comment
+    const scale_line = peek_line(`before the scale line`)
     cursor.advance()
     const scale_tokens = split_tokens(scale_line).map(parse_float_token)
-    // The leading numeric run may be followed by a comment. Accept one uniform/volume
-    // factor or exactly three positive per-axis factors.
     const non_numeric = scale_tokens.findIndex((value) => !Number.isFinite(value))
     const factors = non_numeric === -1 ? scale_tokens : scale_tokens.slice(0, non_numeric)
     const per_axis_scale =
       factors.length === 3 && factors.every((value) => value > 0) ? (factors as Vec3) : null
-    if (factors.length !== 1 && !per_axis_scale) {
+    if (factors.length !== 1 && !per_axis_scale)
       return fail(`Invalid scale factor in ${format}: '${scale_line.trim()}'`)
-    }
     let uniform_scale = factors[0]
 
     // Lattice rows sit on file lines 3-5 of the header and are named by that line in errors
     const lattice_rows = [0, 1, 2].map((row_idx) =>
-      require_line(
-        cursor.peek(row_idx),
-        `${format}: file ends before lattice vector ${row_idx + 1}`,
-      ),
+      peek_line(`before lattice vector ${row_idx + 1}`, row_idx),
     )
     cursor.advance(3)
     // VASP reads the first 3 numbers of a lattice line, so a trailing comment (`3 0 0 ! a`)
@@ -196,18 +185,14 @@ export function parse_vasp_header(
     // A negative single factor is the target cell volume, not a multiplier
     if (!per_axis_scale && uniform_scale < 0) {
       const volume = Math.abs(math.det_3x3(raw_lattice))
-      if (volume < math.EPS) {
+      if (volume < math.EPS)
         return fail(`${format} target-volume scaling requires a non-singular lattice`)
-      }
       uniform_scale = (-uniform_scale / volume) ** (1 / 3)
     }
     const scale: Vec3 = per_axis_scale ?? [uniform_scale, uniform_scale, uniform_scale]
     const lattice = raw_lattice.map((row) => apply_axis_scale(row, scale)) as Matrix3x3
 
-    const species_line = require_line(
-      cursor.peek(),
-      `${format}: file ends before the element/count lines`,
-    )
+    const species_line = peek_line(`before the element/count lines`)
 
     const raw_symbols: string[] = []
     let counts: number[] = []
@@ -239,9 +224,7 @@ export function parse_vasp_header(
 
     let elements: ElementSymbol[]
     if (raw_symbols.length === 0) {
-      if (strict_species) {
-        return fail(`${format}: element symbols are missing (VASP 4 header)`)
-      }
+      if (strict_species) return fail(`${format}: element symbols are missing (VASP 4 header)`)
       const named = comment_line_species(comment, counts.length)
       elements =
         named ??
@@ -258,9 +241,8 @@ export function parse_vasp_header(
       // element fails rather than being drawn as H, He, …, and the error keeps the raw value
       const cleaned = raw_symbols.map(strip_potcar_suffix)
       const invalid_idx = cleaned.findIndex((symbol) => !is_elem_symbol(symbol))
-      if (invalid_idx !== -1) {
+      if (invalid_idx !== -1)
         return fail(`Invalid element symbol in ${format}: ${raw_symbols[invalid_idx]}`)
-      }
       elements = cleaned as ElementSymbol[]
     }
 
@@ -269,41 +251,30 @@ export function parse_vasp_header(
     if (
       counts.length === 0 ||
       counts.some((count) => !Number.isInteger(count) || count < min_count)
-    ) {
+    )
       return fail(
-        `${format} has invalid atom counts (need ${count_requirement}): [${counts.join(
-          `, `,
-        )}]`,
+        `${format} has invalid atom counts (need ${count_requirement}): [${counts.join(`, `)}]`,
       )
-    }
-    if (elements.length !== counts.length) {
+    if (elements.length !== counts.length)
       return fail(
         `${format}: ${elements.length} element symbol(s) but ${counts.length} atom count(s)`,
       )
-    }
 
     let has_selective_dynamics = false
     let is_direct = true
     if (coord_mode !== `skip`) {
-      let mode_line = require_line(
-        cursor.peek(),
-        `${format}: file ends before the coordinate mode line`,
-      )
+      let mode_line = peek_line(`before the coordinate mode line`)
       // VASP reads only the first letter: any line starting with s/S is `Selective dynamics`,
       // and a blank (or non-C/K) coordinate-mode line means Direct
       has_selective_dynamics = /^s/i.test(mode_line.trim())
       if (has_selective_dynamics) {
         cursor.advance()
-        mode_line = require_line(
-          cursor.peek(),
-          `${format}: file ends after the selective dynamics line`,
-        )
+        mode_line = peek_line(`after the selective dynamics line`)
       }
       const mode = mode_line.trim().toUpperCase()
       is_direct = !/^[CK]/.test(mode)
-      if (coord_mode === `strict` && mode !== `` && !/^[CDK]/.test(mode)) {
+      if (coord_mode === `strict` && mode !== `` && !/^[CDK]/.test(mode))
         return fail(`Unknown coordinate mode in ${format}: ${mode}`)
-      }
       cursor.advance()
     }
 

@@ -26,11 +26,8 @@ import {
 
 // Cartesian dot-notation atom sites mark macromolecular mmCIF. A small-molecule CIF2 file
 // spells its tags with dots too (`_atom_site.fract_x`) but stores fractional coordinates
-// plus symops, which only parse_cif expands.
-// Horizontal whitespace only, never `\s`: under /m the `^` retries at every line start and
-// `\s*` then swallows the whole remaining run of newlines before failing, which is quadratic.
-// This runs on the raw text of any dropped file, so a file of blank lines was a denial of
-// service - 80 kB of them took 631 ms. The sibling LAMMPS sniffers had the same shape.
+// plus symops, which only parse_cif expands. Horizontal whitespace only, never `\s`: under
+// /m, `^\s*` rescans every newline run from each line start, quadratic on blank-line files.
 export const is_mmcif_content = (content: string): boolean =>
   /^[ \t]*_atom_site\.cartn_[xyz]\b/im.test(content)
 
@@ -128,11 +125,10 @@ export const parse_mmcif = (content: string): AnyStructure => {
   // type_symbol is mandatory in the PDBx dictionary; without it elements have to come
   // from the atom names, which are ambiguous (`CA` is an alpha carbon in a protein but
   // calcium in a ligand)
-  if (indices.symbol === undefined) {
+  if (indices.symbol === undefined)
     parse_warn(
       `mmCIF _atom_site loop has no type_symbol column; inferring elements from label_atom_id`,
     )
-  }
 
   // A row too short to reach its coordinate columns wrapped a quoted/semicolon value onto
   // a continuation line; multi-line CIF records are not supported, so the atom is dropped.
@@ -141,12 +137,11 @@ export const parse_mmcif = (content: string): AnyStructure => {
   const last_coord_col = Math.max(...coord_indices)
   const n_raw_rows = data_rows.length
   data_rows = data_rows.filter((row) => row.length > last_coord_col)
-  if (data_rows.length < n_raw_rows) {
+  if (data_rows.length < n_raw_rows)
     parse_warn(
       `mmCIF: skipped ${n_raw_rows - data_rows.length} _atom_site row(s) that stop short ` +
         `of the coordinate columns (multi-line records are not supported)`,
     )
-  }
 
   // Only the first model of an NMR / MD ensemble is parsed; later models are skipped
   const model_col = indices.model
@@ -158,9 +153,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
   if (model_rows.length < data_rows.length) {
     const model_count = new Set(data_rows.map((row) => row[model_col])).size
     parse_warn(
-      `mmCIF contains ${model_count} models; parsed model ${first_model} and skipped ${
-        data_rows.length - model_rows.length
-      } atom rows from the rest`,
+      `mmCIF contains ${model_count} models; parsed model ${first_model} and skipped ${data_rows.length - model_rows.length} atom rows from the rest`,
     )
   }
 
@@ -180,43 +173,30 @@ export const parse_mmcif = (content: string): AnyStructure => {
           (row) => {
             const auth_seq = text_at(row, `auth_seq_id`)
             const seq = is_cif_unset(auth_seq) ? text_at(row, `label_seq_id`) : auth_seq
-            return [
-              text_at(row, `chain`),
-              text_at(row, `asym_id`),
-              seq,
-              text_at(row, `ins_code`),
-            ]
-              .map((part) => part ?? ``)
-              .join(`|`)
+            // join() writes undefined (an undeclared column) as an empty part
+            const parts = [text_at(row, `chain`), text_at(row, `asym_id`), seq]
+            return [...parts, text_at(row, `ins_code`)].join(`|`)
           },
           (row) => text_at(row, `label`) ?? ``,
         )
-  if (rows.length < model_rows.length) {
+  if (rows.length < model_rows.length)
     parse_warn(
-      `mmCIF: skipped ${
-        model_rows.length - rows.length
-      } atom(s) with alternate location indicators`,
+      `mmCIF: skipped ${model_rows.length - rows.length} atom(s) with alternate location indicators`,
     )
-  }
   if (rows.length === 0)
     throw new Error(
       `mmCIF _atom_site loop has no usable atoms left: every row was dropped as too ` +
         `short, from a later model, or an alternate conformer`,
     )
 
-  // Same scoping as parse_cif: a multi-block file declares a cell and space group per
-  // block, so reading them file-wide picks whichever came first, not the one describing
-  // these atoms. Silently gave a `data_global` header block's cell to a later phase.
+  // Same scoping as parse_cif: a multi-block file declares a cell and space group per block,
+  // so read only the atoms' block, not whichever block (e.g. `data_global`) came first
   const block_lines = lines.filter((_line, idx) => block_ids[idx] === atom_block_id)
 
-  const symmetry_ops = block_lines.filter((line) =>
-    /^\s*_(?:space_group_symop|symmetry_equiv)\./i.test(line),
-  )
-  if (symmetry_ops.length > 0) {
+  if (block_lines.some((line) => /^\s*_(?:space_group_symop|symmetry_equiv)\./i.test(line)))
     parse_warn(
       `mmCIF: symmetry operations and assembly generation are not applied; showing the deposited coordinates only`,
     )
-  }
 
   // The `_cell` block, or null for a molecule: absent cell tags, or the 1 1 1 90 90 90
   // placeholder MD and docking tools write for aperiodic systems

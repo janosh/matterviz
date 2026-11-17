@@ -31,9 +31,8 @@ export const flight_controller = (
     invalidate,
   )
 
-// A focused viewer root for a scene's KeyWalk: `provide` it (key_walk_root) during the init of
-// a component wrapping the scene, then `press` keys at it. press returns whether the walk took
-// the key, `message` is what the root's live region announces.
+// A focused viewer root for a scene's KeyWalk: `provide` it during a wrapper's init, then
+// `press` keys (returns whether the walk took it); `message` is the live region's text.
 function key_walk_host() {
   const node = Object.assign(document.createElement(`div`), { tabIndex: 0 })
   let root: KeyWalkRoot | undefined

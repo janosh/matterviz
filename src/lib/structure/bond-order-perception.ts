@@ -21,39 +21,16 @@ const primary_element = (site: Site): string => get_majority_element(site) ?? ``
 
 // xyz2mol atomic_valence. Valence combinations are re-sorted by total
 // valence sum so the least-saturated solution is tried first.
+// oxfmt-ignore
 const ATOMIC_VALENCE: Record<string, number[]> = {
-  H: [1],
-  B: [3, 4],
-  C: [4],
-  N: [3, 4],
-  O: [2, 1, 3],
-  F: [1],
-  Si: [4],
-  P: [5, 3],
-  S: [6, 3, 2],
-  Cl: [1],
-  Se: [6, 3, 2],
-  Br: [1],
-  Te: [6, 3, 2],
-  I: [1],
+  H: [1], B: [3, 4], C: [4], N: [3, 4], O: [2, 1, 3], F: [1], Si: [4], P: [5, 3],
+  S: [6, 3, 2], Cl: [1], Se: [6, 3, 2], Br: [1], Te: [6, 3, 2], I: [1],
 }
 
 // xyz2mol atomic_valence_electrons (group valence-electron count).
+// oxfmt-ignore
 const VALENCE_ELECTRONS: Record<string, number> = {
-  H: 1,
-  B: 3,
-  C: 4,
-  N: 5,
-  O: 6,
-  F: 7,
-  Si: 4,
-  P: 5,
-  S: 6,
-  Cl: 7,
-  Se: 6,
-  Br: 7,
-  Te: 6,
-  I: 7,
+  H: 1, B: 3, C: 4, N: 5, O: 6, F: 7, Si: 4, P: 5, S: 6, Cl: 7, Se: 6, Br: 7, Te: 6, I: 7,
 }
 
 // xyz2mol get_atomic_charge: formal charge from the atom's actual bond
@@ -98,10 +75,9 @@ function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
       if (node === undefined) break
       frag.push(node)
       for (const neighbor of adjacency[node]) {
-        if (!seen.has(neighbor)) {
-          seen.add(neighbor)
-          stack.push(neighbor)
-        }
+        if (seen.has(neighbor)) continue
+        seen.add(neighbor)
+        stack.push(neighbor)
       }
     }
     fragments.push(frag)
@@ -415,15 +391,10 @@ export function perceive_bond_orders(
   const max_atoms = opts.max_atoms ?? 5000
   const edges: Edge[] = []
   const result = new Map<BondPair, PerceivedBond>()
+  const in_range = (site_idx: number): boolean => site_idx >= 0 && site_idx < sites.length
   for (const bond of bonds) {
     result.set(bond, { ...bond, bond_order: 1, perceived: false })
-    if (
-      bond.site_idx_1 < 0 ||
-      bond.site_idx_2 < 0 ||
-      bond.site_idx_1 >= sites.length ||
-      bond.site_idx_2 >= sites.length
-    )
-      continue
+    if (!in_range(bond.site_idx_1) || !in_range(bond.site_idx_2)) continue
     edges.push({ from: bond.site_idx_1, to: bond.site_idx_2, bond })
   }
 

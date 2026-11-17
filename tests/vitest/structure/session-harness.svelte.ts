@@ -8,6 +8,7 @@ import type {
   StructureBond,
 } from '#lib/structure/index.js'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
+import type { BondingOptions } from '#lib/structure/bonding.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
@@ -39,7 +40,7 @@ export type SessionHost = {
   cell_type: CellType
   sym_data: SymmetryDataset | null
   atom_color_config: AtomColorConfig
-  bonding_options: Record<string, unknown>
+  bonding_options: BondingOptions
   site_properties?: Record<string, unknown>[]
 }
 

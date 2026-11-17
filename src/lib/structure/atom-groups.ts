@@ -1,7 +1,7 @@
 // Render records for the instanced atom meshes: which atoms draw, with what radius and color,
 // split into the visual classes that each get their own mesh. Kept out of StructureScene so
 // the per-frame reuse path (coordinate-only trajectory frames) is testable without a canvas.
-import { same_position, type Vec3 } from '#lib/math.js'
+import { same_position, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import type { AtomColorField } from './atom-color-field'
 import type { AtomPropertyColors } from './atom-properties'
@@ -14,14 +14,19 @@ import {
   type RenderSite,
 } from './partial-occupancy'
 import { numeric_sites, snapshot_topologies } from './site'
+import { site_ellipsoid } from './thermal-ellipsoids'
 
 // One record per wedge; an ordered atom is a single full-turn wedge
 export type RenderAtom = PartialAtom & { species: Site[`species`] }
+// A fully occupied site with an ADP, drawn as its thermal ellipsoid: `ellipsoid` maps the unit
+// sphere onto it (see thermal_ellipsoid)
+export type EllipsoidRenderAtom = RenderAtom & { ellipsoid: Matrix3x3 }
 export type AtomGroups = {
   first_by_site: Map<number, RenderAtom>
   base: RenderAtom[]
   image: RenderAtom[]
   partial: RenderAtom[]
+  ellipsoid: EllipsoidRenderAtom[]
 }
 export type SiteAnchor = Pick<RenderAtom, `site_idx` | `position` | `radius`>
 
@@ -30,6 +35,7 @@ const empty_atom_groups = (): AtomGroups => ({
   base: [],
   image: [],
   partial: [],
+  ellipsoid: [],
 })
 
 export const site_anchor = ({ site_idx, position, radius }: RenderAtom): SiteAnchor => ({
@@ -71,6 +77,9 @@ export type AtomGroupInput = {
   radius_options: Parameters<typeof site_base_radius>[2]
   hidden_centers: ReadonlySet<number> | null // polyhedron centers to hide
   cutaway_sites: ReadonlyMap<number, Vec3[]> | undefined // whole-atom cutaway positions
+  // Probability level of thermal ellipsoids drawn for fully occupied sites with an ADP (in
+  // place of their spheres, at true size), null to draw spheres only
+  ellipsoid_probability: number | null
   appearance: string // serialized palette + radius settings; a change rebuilds every record
 }
 
@@ -92,7 +101,7 @@ export class AtomGroupBuilder {
     // SvelteSet, whose get/has allocate a signal per key.
     const { structure, appearance, property_colors, palette, cutaway_sites } = input
     const { hidden_prop_vals, hidden_elements, drawn_completion_sites } = input
-    const { radius_scale, radius_options, hidden_centers } = input
+    const { radius_scale, radius_options, hidden_centers, ellipsoid_probability } = input
     const { values: prop_values, colors: prop_colors } = property_colors ?? {}
     const filter_prop_vals = hidden_prop_vals.size > 0
     const filter_elements = hidden_elements.size > 0
@@ -140,6 +149,9 @@ export class AtomGroupBuilder {
       const visible_species = filter_elements
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
         : site.species
+      // a tensor that is not positive definite has no ellipsoid, so its site stays a sphere
+      const ellipsoid =
+        ellipsoid_probability === null ? null : site_ellipsoid(site, ellipsoid_probability)
       for (const position of cutaway_sites?.get(site_idx) ?? [site.xyz]) {
         for (const slice_data of compute_slice_geometry(visible_species)) {
           const atom = {
@@ -151,15 +163,22 @@ export class AtomGroupBuilder {
             color: site_property_color ?? palette[slice_data.element],
             is_image_atom: is_image_atom || !same_position(position, site.xyz),
           }
+          // an ellipsoid's radius spans its longest diameter, for highlights and labels
+          const drawn =
+            ellipsoid && atom.occupancy >= 1
+              ? { ...atom, radius: 2 * ellipsoid.semi_axes[2], ellipsoid: ellipsoid.transform }
+              : atom
           // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
-          if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, atom)
-          if (atom.occupancy < 1) groups.partial.push(atom)
+          if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, drawn)
+          if (`ellipsoid` in drawn) groups.ellipsoid.push(drawn)
+          else if (atom.occupancy < 1) groups.partial.push(atom)
           else (atom.is_image_atom ? groups.image : groups.base).push(atom)
         }
       }
     }
     this.#previous =
-      reusable && groups.image.length === 0 && groups.partial.length === 0
+      reusable &&
+      [groups.image, groups.partial, groups.ellipsoid].every((list) => !list.length)
         ? {
             appearance,
             groups,

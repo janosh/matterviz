@@ -1,7 +1,5 @@
-// Plumbing shared by parse.ts and the per-format parsers in this directory:
-// numeric/element coercion, recoverable warnings, and CIF tokenization.
-// Lives here (not in parse.ts) so format parsers can use it without importing
-// their own dispatcher.
+// Plumbing shared by parse.ts and the format parsers here (numeric/element coercion,
+// warnings, CIF tokenization), so the parsers need not import their own dispatcher.
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
 import { capitalize, display_idx } from '#lib/labels.js'
@@ -31,11 +29,10 @@ export const parse_float_token = (token: string | undefined): number => {
   return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
 }
 
-// Whitespace tokenizer for the hot atom-line loops of the trajectory parsers.
-// `trim().split(/\s+/)` allocates an array plus one substring per column on every line; this
-// records token bounds and values in reusable typed arrays and decodes numbers straight off
-// the char codes, so a 20 MB XYZ/LAMMPS file allocates nothing per coordinate. One instance
-// per parse call.
+// Whitespace tokenizer for the hot atom-line loops of the trajectory parsers. Unlike
+// `trim().split(/\s+/)`, it records token bounds and values in reusable typed arrays and
+// decodes numbers off the char codes, so a 20 MB XYZ/LAMMPS file allocates nothing per
+// coordinate. One instance per parse call.
 const grow = <T extends Int32Array | Float64Array>(old: T): T => {
   const next = new (old.constructor as new (length: number) => T)(old.length * 2)
   next.set(old)
@@ -172,8 +169,7 @@ export const is_num_token = (token: string, integer = false): boolean => {
 }
 
 // Split a whitespace-delimited record row, rejecting fewer than `min_tokens` columns.
-// `expected` names the layout, e.g.
-// "MOL2 atom row (need 'id name x y z [type]')".
+// `expected` names the layout, e.g. "MOL2 atom row (need 'id name x y z [type]')".
 export const row_tokens = (row: string, min_tokens: number, expected: string): string[] => {
   const tokens = row.trim().split(/\s+/)
   if (tokens.length >= min_tokens) return tokens
@@ -200,7 +196,7 @@ export const vec3_from_values = (values: unknown, context: string): Vec3 => {
 
 // Build a 3x3 matrix from 3 row vectors (lattice vectors as rows); the error context for a
 // bad row is suffixed with its 1-based index
-export const matrix3x3_from_rows = (rows: unknown, context: string): math.Matrix3x3 => {
+export const mat3x3_from_rows = (rows: unknown, context: string): math.Matrix3x3 => {
   if (!is_array_like(rows) || rows.length !== 3) {
     const got = is_array_like(rows) ? `${rows.length} rows` : typeof rows
     throw new Error(`Expected 3x3 matrix for ${context}, got ${got}`)
@@ -231,26 +227,17 @@ export const normalize_cif_names = (lines: readonly string[]): string[] =>
 export const is_cif_blank_or_comment = (trimmed: string): boolean =>
   trimmed === `` || trimmed.startsWith(`#`)
 
-// Key-value cell parameters (`_cell_length_a 5.43(2)`, from normalize_cif_names lines); no
-// dialect puts them in a loop. Tags are matched exactly on a line's first token
-// (case-insensitively), so `_cell_length_a_su` / `_cell_length_a_esd` (the uncertainty,
-// which some writers emit first) cannot shadow the value and the order of the lines in the
-// file does not matter. A bare tag takes its value from the next non-comment line, as CIF
-// allows. Returns [a, b, c, alpha, beta, gamma], or null when any tag is absent or unset
-// (`.` / `?`). A tag whose value does not parse is corruption and throws; edge lengths are
-// checked by the caller (assert_cell_lengths), since a 0 0 0 cell can be a placeholder.
+// Key-value cell parameters (`_cell_length_a 5.43(2)`, from normalize_cif_names lines; never
+// looped). Tags match a line's whole first token case-insensitively, so an uncertainty tag
+// (`_cell_length_a_su`/`_esd`, which some writers emit first) cannot shadow the value. A bare
+// tag takes its value from the next non-comment line, as CIF allows. Returns [a, b, c, alpha,
+// beta, gamma], or null when any tag is absent or unset (`.`/`?`). An unparsable value throws;
+// edge lengths are left to assert_cell_lengths, since a 0 0 0 cell can be a placeholder.
 export const read_cell_params = (
   lines: readonly string[],
   format: `CIF` | `mmCIF`,
 ): number[] | null => {
-  const names = [
-    `length_a`,
-    `length_b`,
-    `length_c`,
-    `angle_alpha`,
-    `angle_beta`,
-    `angle_gamma`,
-  ]
+  const names = `length_a length_b length_c angle_alpha angle_beta angle_gamma`.split(` `)
   const tags = names.map((name) => `_cell_${name}`)
   const token_by_tag = new Map<string, { token: string | undefined; line: string }>()
   for (const [line_idx, line] of lines.entries()) {
@@ -382,7 +369,7 @@ export const make_lattice = (
   pbc: Pbc = [true, true, true],
 ): LatticeType => {
   const completed = complete_lattice_matrix(matrix)
-  return { matrix: completed, ...math.calc_lattice_params(completed), pbc }
+  return { matrix: completed, ...math.compute_lattice_params(completed), pbc }
 }
 
 // Zero-length cell vectors become right-handed unit normals to the others (ASE complete_cell),
@@ -433,8 +420,7 @@ export const capitalize_symbol = (raw: string): string => capitalize(raw.toLower
 // The element part of a species name: POTCAR suffixes (`Si_GW`, `Fe/abc123`, `O_pv`) dropped
 export const strip_potcar_suffix = (symbol: string): string => symbol.split(/[_/]/)[0]
 
-// The element a file names. A symbol naming no element throws: substituting H, He, … drew a
-// wrong but plausible structure, which is worse than refusing the file.
+// The element a file names. A symbol naming no element throws rather than drawing H, He, …
 export function parse_element_symbol(symbol: string, context: string): ElementSymbol {
   const element = strip_potcar_suffix(symbol)
   if (is_elem_symbol(element)) return element
@@ -464,15 +450,14 @@ const approximate_cart_to_frac = (
   axis_lengths: Vec3,
   target: Vec3 = [0, 0, 0],
 ): Vec3 => {
-  target[0] = Math.abs(axis_lengths[0]) > math.EPS ? xyz[0] / axis_lengths[0] : 0
-  target[1] = Math.abs(axis_lengths[1]) > math.EPS ? xyz[1] / axis_lengths[1] : 0
-  target[2] = Math.abs(axis_lengths[2]) > math.EPS ? xyz[2] / axis_lengths[2] : 0
+  for (let axis = 0; axis < 3; axis++) {
+    target[axis] = Math.abs(axis_lengths[axis]) > math.EPS ? xyz[axis] / axis_lengths[axis] : 0
+  }
   return target
 }
 
-// cart→frac converter that falls back to per-axis-length division for singular lattices.
-// axis_lengths defaults to the row norms of the lattice matrix; naming the cell in
-// `context` makes the fallback warn on the caller's behalf (through `warn`, default
+// cart→frac converter that falls back to per-axis-length division (default: lattice row
+// norms) for singular lattices. A `context` makes the fallback warn through `warn` (default
 // parse_warn; lazy trajectory readers pass their collector).
 export const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
@@ -483,11 +468,7 @@ export const cart_to_frac_with_fallback = (
   } catch {
     // fall through to the per-axis-length approximation below
   }
-  const lengths: Vec3 = opts.axis_lengths ?? [
-    Math.hypot(...matrix[0]),
-    Math.hypot(...matrix[1]),
-    Math.hypot(...matrix[2]),
-  ]
+  const lengths = opts.axis_lengths ?? (matrix.map((row) => Math.hypot(...row)) as Vec3)
   if (opts.context) {
     const warn = opts.warn ?? parse_warn
     warn(`Singular ${opts.context}, using axis-length fallback for cart→frac`)
@@ -510,9 +491,8 @@ export const record_atom_id = (
   atom_id: number,
   site_idx: number,
 ): void => {
-  if (Number.isInteger(atom_id) && !site_idx_by_atom_id.has(atom_id)) {
+  if (Number.isInteger(atom_id) && !site_idx_by_atom_id.has(atom_id))
     site_idx_by_atom_id.set(atom_id, site_idx)
-  }
 }
 
 const order_rank = (order: BondOrder): number => (order === `aromatic` ? 1.5 : order)
@@ -540,11 +520,10 @@ export const resolve_bonds = (
     if (existing && order_rank(existing.order) >= order_rank(order)) continue
     bonds.set(key, normalize_structure_bond(site_idx_1, site_idx_2, order))
   }
-  if (dropped > 0) {
+  if (dropped > 0)
     parse_warn(
       `${context}: dropped ${dropped} bond(s) referencing unknown atom ids or bonding an atom to itself`,
     )
-  }
   return [...bonds.values()]
 }
 
@@ -564,25 +543,20 @@ export const parse_cif_uncertain_number = (token: string): number | null => {
   return Number.isNaN(value) ? null : value
 }
 
-// CIF reserved words are case-insensitive, so `DATA_phase_2` opens a block and `LOOP_` starts
-// a loop exactly as their lowercase spellings do. Comparing raw text left an uppercase header
-// inside the previous block, letting one phase's symmetry data reshape another phase's atoms.
+// CIF reserved words are case-insensitive: `DATA_phase_2` opens a block, `LOOP_` a loop
 export const is_cif_data_header = (line: string): boolean => /^\s*data_/i.test(line)
 export const is_cif_loop_header = (line: string): boolean => /^\s*loop_\s*$/i.test(line)
 
-// The `data_` block each line belongs to: 0 for anything before the first block header,
-// then one id per block. CIF scopes every data item to its own block, so a multi-block file
-// (a global block plus one per phase) must be read block by block. A `data_` line inside a
-// semicolon-delimited text field is content rather than a header, so text fields are
-// tracked here too.
+// The `data_` block each line belongs to (0 before the first header, then one id per block).
+// CIF scopes data items to their block, so a multi-block file (global block plus one per
+// phase) is read block by block. A `data_` line inside a `;` text field is content.
 export const cif_block_ids = (lines: readonly string[]): number[] => {
   const block_ids: number[] = []
   let block_id = 0
   let in_text_field = false
   for (const line of lines) {
-    // A text field opens and closes ONLY on a `;` in column 1, so this tests the raw line:
-    // an indented `  ;` is content, and trimming first would end the field early and let the
-    // rest of its text be read as headers.
+    // A text field opens and closes ONLY on a `;` in column 1, so test the raw line: an
+    // indented `  ;` is content, and trimming would end the field early.
     if (in_text_field) in_text_field = !line.startsWith(`;`)
     else if (line.startsWith(`;`)) in_text_field = true
     else if (is_cif_data_header(line)) block_id++
@@ -592,10 +566,8 @@ export const cif_block_ids = (lines: readonly string[]): number[] => {
 }
 
 // Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line.
-// Blank and comment lines between `loop_` and its tags (`# symmetry operations`) are skipped:
-// stopping at them dropped every tag, silently losing a symop loop or the atom-site loop.
-// A tag line is tokenized like a data line, so a trailing comment (`_atom_site_label # name`)
-// is no part of the tag and several tags may share a line.
+// Blank and comment lines among the tags are skipped. Tag lines are tokenized like data
+// lines, so a trailing `# comment` is no tag and several tags may share a line.
 export function* iter_cif_loops(
   lines: string[],
 ): Generator<{ headers: string[]; data_start: number }> {
@@ -612,11 +584,8 @@ export function* iter_cif_loops(
   }
 }
 
-// Same separator test as LineScanner and parse_coordinate above, so one file has one notion of
-// whitespace. Space and tab alone let a CRLF file's trailing `\r` ride along inside the last
-// token, and left a quoted value at the end of a line unterminated, so `'x, y, z'\r` split into
-// three broken pieces. Control characters below space count as separators too, which the `\s`
-// this replaced did not do, but a CIF carrying one in a data line is malformed either way.
+// Same separator test as LineScanner: any char code <= 32, so a CRLF file's trailing `\r`
+// ends the last token (and closes a quoted value like `'x, y, z'\r`) instead of riding along.
 const is_cif_space = (char: string): boolean => char.charCodeAt(0) <= 32
 
 // CIF closes a quoted value on a delimiter followed by whitespace or end of line, so an
@@ -628,11 +597,9 @@ const cif_quote_end = (line: string, quote: string, from: number): number => {
   return -1
 }
 
-// Walk a CIF data line's whitespace-separated tokens, keeping a quoted multi-word value
-// as one token and dropping only its enclosing delimiters. Stripping every quote in the token
-// instead corrupted primed labels (`C1'` -> `C1`, and `H2'`/`H2''` both -> `H2`, though those
-// are different atoms), and letting `'[^']*'` span two unrelated apostrophes swallowed a whole
-// row into one token, which the short-row filter then dropped without a word.
+// Walk a CIF data line's whitespace-separated tokens, keeping a quoted multi-word value as one
+// token and dropping only its enclosing delimiters, so primed labels (`C1'`, `H2''`) survive
+// and a quote never spans two unrelated apostrophes.
 function scan_cif_tokens(line: string, on_token: (token: string, quoted: boolean) => void) {
   let pos = 0
   while (pos < line.length) {

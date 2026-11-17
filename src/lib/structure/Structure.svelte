@@ -59,6 +59,7 @@
   import { DEFAULTS, type ShowBonds } from '#lib/settings.js'
   import type { ImageAtomCompletion } from './pbc'
   import { polyhedra_options_from } from './polyhedra'
+  import { strategy_bonding_options } from './bonding'
   import type {
     AnyStructure,
     BondEditMode,
@@ -465,6 +466,12 @@
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
   let series_key = $derived(structure_series_key ?? structure)
+  const bonding_strategy = $derived(
+    scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
+  )
+  const bonding_options = $derived(
+    strategy_bonding_options(scene_props.bonding_options, bonding_strategy),
+  )
   // Declared before the session: its pre-effect builds the display pipeline during construction,
   // when active_overlay is not yet initialized (and no overlay exists yet).
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
@@ -508,17 +515,16 @@
       return {
         completion: image_atom_completion,
         ...(applies_to_structure(show_polyhedra, true) && { polyhedra }),
-        bonding_strategy: scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
-        bonding_options: scene_props.bonding_options ?? {},
+        bonding_strategy,
+        bonding_options,
       }
     },
     cell_type: () => cell_type,
     set_cell_type: (value) => (cell_type = value),
     sym_data: () => sym_data,
     atom_color_config: () => atom_color_config,
-    bonding_strategy: () =>
-      scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
-    bonding_options: () => scene_props.bonding_options ?? {},
+    bonding_strategy: () => bonding_strategy,
+    bonding_options: () => bonding_options,
     on_notice: show_toast,
     tool_prediction: () => saved_prediction,
     // No run computes a restored result: end any run on the replaced input first, so that run's

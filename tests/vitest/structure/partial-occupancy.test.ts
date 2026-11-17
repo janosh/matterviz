@@ -31,7 +31,7 @@ const make_site = (species: Site[`species`], xyz: Vec3, label: string): Site => 
 })
 
 const species = (...entries: [ElementSymbol, number][]): Site[`species`] =>
-  entries.map(([element, occu]) => ({ element, occu, oxidation_state: 0 }))
+  entries.map(([element, occu]) => ({ element, occu }))
 
 describe(`partial occupancy render-site logic`, () => {
   const shared_xyz: Vec3 = [1.234567, 2.345678, 3.456789]
@@ -167,13 +167,9 @@ describe(`partial occupancy slice flags`, () => {
   })
 })
 
+// oxfmt-ignore
 const palette: Partial<Record<ElementSymbol, string>> = {
-  Fe: `#e06633`,
-  Cu: `#c88033`,
-  Au: `#ffd123`,
-  Ni: `#50d050`,
-  O: `red`,
-  F: `#90e050`,
+  Fe: `#e06633`, Cu: `#c88033`, Au: `#ffd123`, Ni: `#50d050`, O: `red`, F: `#90e050`,
 }
 // Render records as StructureScene builds them: each site's wedges are consecutive
 const to_partial_atoms = (

@@ -10,6 +10,7 @@
   import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
+  import { diagonal_scaling } from './supercell'
   import type { AtomColorField } from './atom-color-field'
   import { AtomGroupBuilder, site_anchor, tooltip_fill } from './atom-groups'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
@@ -102,7 +103,12 @@
   import type { Mesh, WebGPURenderer } from 'three/webgpu'
   import { bond_neighbor_summary, bond_records } from './bond-rendering'
   import type { BondData } from './bond-rendering'
-  import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
+  import type {
+    BondEditResult,
+    BondingOptionsByStrategy,
+    BondingStrategy,
+    BondKeyTarget,
+  } from './bonding'
   import {
     add_or_restore_bond,
     canonicalize_bond_target,
@@ -112,6 +118,7 @@
     get_explicit_bond_metadata,
     rendered_bond_key_for,
     set_bond_order as apply_set_bond_order,
+    strategy_bonding_options,
     structure_bond_to_bond_pair,
   } from './bonding'
   import { compose_perceived_bonds, perceive_bond_orders } from './index'
@@ -145,6 +152,8 @@
     atom_radius = DEFAULTS.structure.atom_radius,
     atom_opacity = 1,
     same_size_atoms = false,
+    show_thermal_ellipsoids = DEFAULTS.structure.show_thermal_ellipsoids,
+    ellipsoid_probability = DEFAULTS.structure.ellipsoid_probability,
     // The auto-placement effect below assigns the position it computes, which a
     // plain prop would strand here, leaving the parent to re-push its stale value
     camera_position = $bindable(undefined),
@@ -262,7 +271,7 @@
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
     slice_polygon = [],
-    supercell_tiling = [1, 1, 1],
+    supercell_matrix = math.IDENTITY_3X3,
     interactive = true,
     fly_to_request = $bindable(undefined),
     reference_structure = undefined,
@@ -292,6 +301,8 @@
     to_base_site_idx?: (site: Site, site_idx: number) => number
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
+    show_thermal_ellipsoids?: boolean // sites with CIF ADPs as true-size thermal ellipsoids
+    ellipsoid_probability?: number // probability each ellipsoid encloses
     camera_position?: [x: number, y: number, z: number] // initial camera position; unset fits the structure
     camera_target?: Vec3 // orbit-controls target (pans offset the camera, not this)
     // When set (and camera_position is unset), auto-place the camera along this
@@ -320,7 +331,9 @@
     bonding_strategy?: BondingStrategy
     auto_bond_order?: boolean
     aromatic_display?: `aromatic` | `kekule`
-    bonding_options?: Record<string, unknown>
+    // Per-strategy tuning, e.g. { electroneg_ratio: { strength_threshold: 0.5 } }; only
+    // bonding_strategy's applies, so switching strategies never mixes their options
+    bonding_options?: BondingOptionsByStrategy
     show_polyhedra?: ShowBonds // when to render coordination polyhedra
     polyhedra_neighbor_mode?: PolyhedraNeighborMode
     polyhedra_opacity?: number
@@ -341,22 +354,18 @@
     cell_edge_opacity?: number
     cell_surface_opacity?: number
     show_cell_vectors?: boolean
-    // (hkl) lattice planes drawn inside the cell. Miller indices refer to the input cell;
-    // like symmetry_elements, StructureViewport hides them when a different cell is shown.
-    // Indices are used as given, so (222) draws the half-spacing stack, not the (111) planes.
+    // (hkl) planes inside the cell, indexed in the input cell (hidden like symmetry_elements
+    // when another cell shows) and used as given: (222) draws the half-spacing stack.
     lattice_planes?: LatticePlane[]
-    // Symmetry elements (from symmetry_elements_from_ops) to overlay on the structure.
-    // Fractional coords must refer to the SAME cell as the rendered lattice (moyo
-    // operations are in the input-cell frame, i.e. the original untransformed cell).
+    // Symmetry elements (symmetry_elements_from_ops) to overlay. Fractional coords must refer
+    // to the rendered lattice's cell (moyo operations use the original input cell).
     symmetry_elements?: SymmetryElement[]
     symmetry_elements_props?: Omit<
       ComponentProps<typeof SymmetryElements>,
       `elements` | `lattice` | `tiling`
     >
-    // Auto-reduce visual clutter while a symmetry-element overlay is visible: hides
-    // coordination polyhedra and calculated bonds, and shrinks atoms so axes/planes/
-    // centers stay readable. Purely derived — toggling the overlay off restores the
-    // configured appearance.
+    // While symmetry elements show, hide polyhedra and computed bonds and shrink atoms so
+    // axes/planes/centers stay readable (derived: hiding the overlay restores the rest)
     symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
     // false hides the hovered-atom tooltip, a snippet adds rows below the built-in site info
@@ -413,15 +422,15 @@
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     slice_polygon?: Vec3[] // where a 2D volume slice cuts the cell (see slice_cell_polygon)
-    // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
-    // and the isosurface geometry; 1x1x1 until an applied supercell lands.
-    supercell_tiling?: Vec3
+    // Displayed lattice = this integer matrix x the base cell's (identity until a supercell
+    // lands). Diagonal ones tile the cell grid, isosurfaces and symmetry elements; others draw
+    // the supercell's outline and carry lattice planes into its basis.
+    supercell_matrix?: math.Matrix3x3
     // When false, render the scene without hover/edit raycast helpers. Used by multi-side
     // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
-    // One-shot camera command: fly to look along this direction (structure coordinates, need
-    // not be normalized). Bindable because the effect below clears it as it starts the
-    // flight; asking for the same direction again therefore flies again.
+    // One-shot fly-to along this (unnormalized, structure-frame) direction. Bindable: the
+    // effect below clears it as the flight starts, so the same direction flies again.
     fly_to_request?: Vec3
     // Comparison overlay: when set, each atom gets an arrow from where it sat in this
     // reference geometry to where it sits now. Must have the same atom count and ordering as
@@ -431,9 +440,8 @@
     displacement_arrow_scale?: number
     displacement_arrow_color?: string
     displacement_summary?: measure.DisplacementSummary | null // (output) readout vs reference
-    // Per-atom trajectory trails. Inert unless a caller supplies a whole-trajectory position
-    // stream (TrajectoryRun.collect_positions) — a single structure has
-    // no path to draw, so nothing changes for plain Structure users.
+    // Per-atom trajectory trails, inert without a whole-run position stream
+    // (TrajectoryRun.collect_positions): a single structure has no path to draw.
     trajectory_position_stream?: TrajectoryPositionStream | null
     show_trajectory_lines?: boolean
     // Newest collected frame the trails reach; drive from the playhead for a comet tail
@@ -810,6 +818,10 @@
   let visual_lattice = $derived(
     base_structure && `lattice` in base_structure ? base_structure.lattice : lattice,
   )
+  // Whole base cells along a/b/c of a diagonal supercell. A non-diagonal one tiles no box of
+  // them, so tiled overlays stay in one base cell and the outline follows the supercell.
+  const supercell_tiling: Vec3 = $derived(diagonal_scaling(supercell_matrix) ?? [1, 1, 1])
+  const cell_lattice = $derived(diagonal_scaling(supercell_matrix) ? visual_lattice : lattice)
 
   let rotation_target = $derived(
     lattice
@@ -1085,7 +1097,12 @@
     const want_bonds = applies_to_structure(show_bonds, Boolean(lattice))
     const want_polyhedra = applies_to_structure(effective_show_polyhedra, Boolean(lattice))
     return structure && (want_bonds || want_polyhedra)
-      ? get_bond_data(structure, bonding_strategy, bonding_options, bond_query)
+      ? get_bond_data(
+          structure,
+          bonding_strategy,
+          strategy_bonding_options(bonding_options, bonding_strategy),
+          bond_query,
+        )
       : []
   })
 
@@ -1144,6 +1161,7 @@
       radius_options.element_radius_overrides,
       [...(radius_options.site_radius_overrides ?? [])],
       effective_atom_radius,
+      show_thermal_ellipsoids && ellipsoid_probability,
     ]),
   )
   const atom_group_builder = new AtomGroupBuilder()
@@ -1161,6 +1179,7 @@
           radius_options,
           hidden_centers: polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null,
           cutaway_sites: cutaway_visible_sites,
+          ellipsoid_probability: show_thermal_ellipsoids ? ellipsoid_probability : null,
           appearance: atom_appearance,
         })
       : atom_group_builder.reset(),
@@ -1347,7 +1366,7 @@
     // Centers hidden inside their polyhedra drop the sphere, not the bonds to it
     if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.size > 0) return true
     const reach = 2.35 * bond_thickness
-    return [atom_groups.base, atom_groups.image].some((atoms) =>
+    return [atom_groups.base, atom_groups.image, atom_groups.ellipsoid].some((atoms) =>
       atoms.some((atom) => atom.radius < reach),
     )
   })
@@ -1750,7 +1769,7 @@
 
       {#if visual_lattice}
         <Lattice
-          matrix={visual_lattice.matrix}
+          matrix={(cell_lattice ?? visual_lattice).matrix}
           tiling={supercell_tiling}
           {cell_edge_color}
           {cell_surface_color}
@@ -1763,7 +1782,7 @@
           <LatticePlanes
             planes={lattice_planes}
             lattice={visual_lattice.matrix}
-            tiling={supercell_tiling}
+            supercell={supercell_matrix}
           />
         {/if}
         {#if symmetry_elements.length > 0}

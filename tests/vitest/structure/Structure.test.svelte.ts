@@ -39,7 +39,6 @@ import { prediction_from_json, prediction_to_json } from '#lib/structure/predict
 import { make_supercell } from '#lib/structure/supercell.js'
 import * as export_funcs from '#lib/structure/export.js'
 import StructureOwnerHarness from './StructureOwnerHarness.svelte'
-import { StructureSession } from '#lib/structure/session.svelte.js'
 import StructureViewport from '#lib/structure/StructureViewport.svelte'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
 import { structures } from '#site/structures.js'
@@ -78,7 +77,7 @@ import {
   make_srtio3,
   make_volume,
 } from '../test-fixtures'
-import { flush_set } from './session-harness.svelte'
+import { flush_set, make_session } from './session-harness.svelte'
 
 // Exercise viewport lifecycle without creating a renderer in happy-dom.
 vi.mock(`@threlte/core`, async (import_original) => ({
@@ -370,43 +369,8 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
     atom_opacity: 0.4,
     sphere_segments: 32,
   }
-  let session: StructureSession | undefined
-  const cleanup = $effect.root(() => {
-    session = new StructureSession({
-      structure: () => structure,
-      set_structure: () => {},
-      bonds: () => undefined,
-      set_bonds: () => {},
-      series_key: () => undefined,
-      selected_sites: () => [],
-      set_selected_sites: () => {},
-      measured_sites: () => [],
-      set_measured_sites: () => {},
-      highlighted_sites: () => [],
-      set_highlighted_sites: () => {},
-      hovered_site_idx: () => null,
-      set_hovered_site_idx: () => {},
-      measure_mode: () => `distance`,
-      set_measure_mode: () => {},
-      bond_edit_mode: () => `add`,
-      set_bond_edit_mode: () => {},
-      bond_edit_order: () => 1,
-      set_bond_edit_order: () => {},
-      supercell_scaling: () => `1x1x1`,
-      apply_supercell_scaling: () => false,
-      show_image_atoms: () => false,
-      image_atom_options: () => image_options(),
-      cell_type: () => `original`,
-      set_cell_type: () => {},
-      sym_data: () => null,
-      atom_color_config: () => DEFAULT_ATOM_COLOR_CONFIG,
-      bonding_strategy: () => DEFAULTS.structure.bonding_strategy,
-      bonding_options: () => ({}),
-    })
-  })
-  if (!session) throw new Error(`StructureSession was not created`)
-  // runs after the shared afterEach has unmounted the viewports
-  onTestFinished(cleanup)
+  // its teardown runs after the shared afterEach has unmounted the viewports
+  const { session } = make_session({ structure, apply_supercell_scaling: false })
   const stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`H`])
   const shared_props = {
     session,
@@ -1284,12 +1248,11 @@ test.each([`cancel`, `failure`, `replace input`] as const)(
   },
 )
 
-test.each([
-  [`clear`, true],
-  [`clear`, false],
-  [`replace input`, true],
-  [`replace input`, false],
-] as const)(
+test.each(
+  ([`clear`, `replace input`] as const).flatMap((reset) =>
+    [true, false].map((visible) => [reset, visible] as const),
+  ),
+)(
   `host overlays restore atom colors on %s (visible=%s) and preserve adjusted surfaces`,
   async (reset, visible_at_reset) => {
     const original_color: AtomColorConfig = {
@@ -2502,7 +2465,7 @@ test.each([
   [`polyhedra only for molecules`, { scene_props: { show_polyhedra: `molecules` } }],
   [
     `a bond strength threshold`,
-    polyhedra_with({ bonding_options: { strength_threshold: 100 } }),
+    polyhedra_with({ bonding_options: { electroneg_ratio: { strength_threshold: 100 } } }),
   ],
   [`explicit_only bonding`, polyhedra_with({ bonding_strategy: `explicit_only` })],
   [`Ti hidden in the legend`, { hidden_elements: new Set([`Ti`]) }],
@@ -2773,6 +2736,13 @@ test.each([
       expect(text).not.toContain(empty)
 })
 
+// Each viewer's auto-rotate speed input, by label, not by `[max="2"]`: several sliders share
+// that bound, so a positional match follows whichever section the pane renders first
+const auto_rotate_inputs = (): HTMLInputElement[] =>
+  [...document.querySelectorAll(`.controls-pane label`)]
+    .filter((label) => label.textContent?.includes(`Auto-rotate speed`))
+    .flatMap((label) => label.querySelector<HTMLInputElement>(`input[type="number"]`) ?? [])
+
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   mock_gpu()
   const camera = { camera_direction: [1, 2, 3] as Vec3, camera_up: [0, 3, -2] as Vec3 }
@@ -2791,13 +2761,7 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     `perspective`,
     `orthographic`,
   ])
-  // by label, not by `[max="2"]`: several sliders share that bound, so a positional match
-  // silently follows whichever section the pane happens to render first
-  const auto_rotate_label = [...document.querySelectorAll(`.controls-pane label`)].find(
-    (label) => label.textContent?.includes(`Auto-rotate speed`),
-  )
-  const auto_rotate_input =
-    auto_rotate_label?.querySelector<HTMLInputElement>(`input[type="number"]`)
+  const [auto_rotate_input] = auto_rotate_inputs()
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
   expect(scene_stub.props?.auto_rotate).toBe(0.5)
   // the single-pane view has no view direction of its own, so the caller's one (and roll) apply
@@ -2913,13 +2877,6 @@ test.each([`literal`, `bound`] as const)(
 )
 
 test(`viewer-local setting changes do not mutate defaults or another viewer`, async () => {
-  const auto_rotate_inputs = (): HTMLInputElement[] =>
-    [...document.querySelectorAll(`label`)]
-      .filter((label) => label.textContent?.includes(`Auto-rotate speed`))
-      .flatMap((label) => {
-        const input = label.querySelector<HTMLInputElement>(`input[type="number"]`)
-        return input ? [input] : []
-      })
   const default_auto_rotate = DEFAULTS.structure.auto_rotate
   await mount_settled({ structure, active_pane: `controls`, show_controls: true })
   const [first_auto_rotate] = auto_rotate_inputs()
@@ -2988,7 +2945,7 @@ const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
 const structure_json = (element: string, count = 1) =>
   JSON.stringify({
     sites: Array.from({ length: count }, (_, idx) => ({
-      species: [{ element, occu: 1, oxidation_state: 0 }],
+      species: [{ element, occu: 1 }],
       abc: [0, 0, 0],
       xyz: [idx, 0, 0],
       label: `${element}${idx + 1}`,
@@ -3129,24 +3086,27 @@ const supersede_source_url = async () => {
   return { on_file_load, on_error, pending }
 }
 
-test(`ignores a superseded source URL's success landing after the new source loaded`, async () => {
+test.each([
+  [`success landing after the new source loaded`, true],
+  [`failure landing while the new source is pending`, false],
+])(`ignores a superseded source URL's %s`, async (_label, succeeds) => {
   const { on_file_load, on_error, pending } = await supersede_source_url()
-  pending(`/b.json`)?.resolve(new Response(structure_json(`He`)))
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-  pending(`/a.json`)?.resolve(new Response(structure_json(`H`)))
+  if (succeeds) {
+    pending(`/b.json`)?.resolve(new Response(structure_json(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    pending(`/a.json`)?.resolve(new Response(structure_json(`H`)))
+  } else {
+    pending(`/a.json`)?.reject(new Error(`/a.json failed`))
+    pending(`/b.json`)?.reject(new Error(`/b.json failed`))
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  }
   await tick()
-  expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([1, 0])
-  expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
-})
-
-test(`ignores a superseded source URL's failure landing while the new source is pending`, async () => {
-  const { on_file_load, on_error, pending } = await supersede_source_url()
-  pending(`/a.json`)?.reject(new Error(`/a.json failed`))
-  pending(`/b.json`)?.reject(new Error(`/b.json failed`))
-  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-  await tick()
-  expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([0, 1])
-  expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
+  expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual(
+    succeeds ? [1, 0] : [0, 1],
+  )
+  if (succeeds)
+    expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+  else expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
 })
 
 test(`an unrelated prop change does not abort and restart an in-flight source fetch`, async () => {

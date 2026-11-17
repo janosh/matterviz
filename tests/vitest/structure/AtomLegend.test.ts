@@ -1,5 +1,4 @@
 import { default_element_colors } from '#lib/colors/index.js'
-import type { ElementSymbol } from '#lib/element/index.js'
 import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import { colors } from '#lib/state.svelte.js'
 import AtomLegend from '#lib/structure/AtomLegend.svelte'
@@ -10,7 +9,7 @@ import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, onTestFinished, test } from 'vite-plus/test'
-import { bind_props, dismiss_popover, doc_query, set_input } from '../setup'
+import { bind_props, dismiss_popover, doc_query, query, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 
 let mounted_components: ReturnType<typeof mount>[] = []
@@ -95,15 +94,11 @@ describe(`AtomLegend Component`, () => {
     expect(label_texts()).toEqual(expected_labels)
 
     if (check_styling) {
-      const iron_label = [...document.querySelectorAll(`label`)].find((label) =>
-        label.textContent?.trim().startsWith(`Fe `),
-      )
-      if (!iron_label) throw new Error(`Expected Fe label to exist`)
+      const iron_label = doc_query(`.legend-item:nth-child(5) label`) // after the mode selector
+      expect(iron_label.textContent?.trim()).toBe(`Fe 2`)
       expect(iron_label.style.backgroundColor).toBe(colors.element.Fe)
-      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(
-        expected_labels.length,
-      )
-      expect(iron_label.querySelector<HTMLInputElement>(`input[type="color"]`)?.value).toBe(
+      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(4)
+      expect(query(iron_label, `input[type="color"]`, HTMLInputElement).value).toBe(
         colors.element.Fe,
       )
       const legend = doc_query(`.atom-legend`)
@@ -482,16 +477,10 @@ describe(`AtomLegend Component`, () => {
     )
 
     test(`right-click opens a searchable remap dropdown that Escape closes`, async () => {
-      let element_mapping: Record<string, string> | undefined
-      mount_legend({
-        elements: { Fe: 1 },
-        get element_mapping() {
-          return element_mapping
-        },
-        set element_mapping(val) {
-          element_mapping = val
-        },
-      })
+      const state: { element_mapping?: Record<string, string> } = {
+        element_mapping: undefined,
+      }
+      mount_legend(bind_props({ elements: { Fe: 1 } }, state))
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
 
       const search_input = await open_remap_menu()
@@ -500,7 +489,7 @@ describe(`AtomLegend Component`, () => {
       // Enter on an empty query must not pick the first listed element (H)
       search_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       await tick()
-      expect(element_mapping).toBeUndefined()
+      expect(state.element_mapping).toBeUndefined()
       expect(document.querySelector(`.remap-dropdown`)).not.toBeNull()
 
       set_input(search_input, `sodium`)
@@ -513,7 +502,7 @@ describe(`AtomLegend Component`, () => {
       // Enter on a non-empty query picks its first match and closes the menu
       search_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       await tick()
-      expect(element_mapping).toEqual({ Fe: `Na` })
+      expect(state.element_mapping).toEqual({ Fe: `Na` })
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
 
       const reopened_input = await open_remap_menu()
@@ -526,19 +515,13 @@ describe(`AtomLegend Component`, () => {
 
     test(`radius inputs override element and selected-site radii within bounds`, async () => {
       const site_radius_overrides = new SvelteMap<number, number>()
-      let element_radius_overrides: Partial<Record<ElementSymbol, number>> = {}
-      mount_legend({
+      const overrides = { element_radius_overrides: {} }
+      const props = {
         elements: { H: 2, O: 1 },
         structure: simple_structure,
         selected_sites: [0],
-        site_radius_overrides,
-        get element_radius_overrides() {
-          return element_radius_overrides
-        },
-        set element_radius_overrides(value) {
-          element_radius_overrides = value
-        },
-      })
+      }
+      mount_legend(bind_props({ ...props, site_radius_overrides }, overrides))
       // 1-based like the info pane and the scene's site labels
       const site_0_element = simple_structure.sites[0].species[0].element
       expect(doc_query(`.site-radius-control .site-label`).textContent).toBe(
@@ -557,7 +540,7 @@ describe(`AtomLegend Component`, () => {
       const element_input = doc_query<HTMLInputElement>(`.radius-control input`)
       expect(element_input.value).toBe(`0.5`) // H's display radius, not its 0.25 Å atomic radius
       set_input(element_input, `0.7`)
-      expect(element_radius_overrides).toEqual({ H: 0.7 })
+      expect(overrides.element_radius_overrides).toEqual({ H: 0.7 })
     })
 
     // The scene draws H mapped to Na with Na's radius, so the override must be keyed by Na
@@ -579,16 +562,8 @@ describe(`AtomLegend Component`, () => {
       [`picking Na maps H to Na`, undefined, `.remap-option:has(b)`, `Na`, { H: `Na` }],
       [`reset removes the mapping`, { H: `Na` }, `.remap-option.reset`, `Reset to H`, undefined],
     ] as const)(`%s`, async (_desc, initial, selector, option_text, expected) => {
-      let element_mapping: Record<string, string> | undefined = initial
-      mount_legend({
-        elements: { H: 1 },
-        get element_mapping() {
-          return element_mapping
-        },
-        set element_mapping(val) {
-          element_mapping = val
-        },
-      })
+      const state: { element_mapping?: Record<string, string> } = { element_mapping: initial }
+      mount_legend(bind_props({ elements: { H: 1 } }, state))
       await open_remap_menu()
 
       const option = [...document.querySelectorAll<HTMLButtonElement>(selector)].find((opt) =>
@@ -598,7 +573,7 @@ describe(`AtomLegend Component`, () => {
       option.click()
       await tick()
 
-      expect(element_mapping).toEqual(expected) // empty mapping becomes undefined
+      expect(state.element_mapping).toEqual(expected) // empty mapping becomes undefined
       expect(document.querySelector(`.remap-dropdown`)).toBeNull() // Dropdown closes
     })
   })

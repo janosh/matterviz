@@ -1,7 +1,3 @@
-// Geometric neighbor search with periodic images: fixed-radius and k-nearest lists over a
-// binned image cloud, shared by bond perception, RDF, coordination, bond angles and
-// structure identification
-
 import { display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -10,15 +6,14 @@ import { numeric_sites } from '#lib/structure/site.js'
 
 export const NO_PBC: Pbc = [false, false, false]
 
-// Purely geometric fixed-radius / k-nearest neighbor lists with periodic images. The single
-// neighbor-search primitive: RDF, coordination, bond angles, structure identification and
-// the chemical bond perception in bonding.ts (electroneg_ratio) all start from this list and layer
-// their own filters on top.
+// Purely geometric fixed-radius / k-nearest neighbor lists with periodic images over a binned
+// image cloud. The single neighbor-search primitive: RDF, coordination, bond angles, structure
+// identification and bond perception (electroneg_ratio in bonding.ts) layer their filters on it.
 //
 // Layout: neighbors of center `idx` occupy slots [offsets[idx], offsets[idx + 1]), sorted by
-// ascending distance unless the query opted out. For slot `slot`: `neighbors[slot]` is the partner's site index,
-// `images[3*slot..]` the integer lattice shift applied to the partner (so the partner's
-// position is `sites[neighbors[slot]].xyz + images · lattice`), `deltas[3*slot..]` that
+// ascending distance unless the query opted out. For slot `slot`: `neighbors[slot]` is the
+// partner's site index, `images[3*slot..]` the integer lattice shift applied to the partner
+// (so its position is `sites[neighbors[slot]].xyz + images · lattice`), `deltas[3*slot..]` that
 // shifted position minus the center's and `distances[slot]` its norm. Both ends of a pair
 // are listed (from each center once), a site's own periodic images count as neighbors,
 // and only the unshifted self is excluded. Coincident sites (distance 0) are reported, not
@@ -455,14 +450,12 @@ export function neighbor_query_cutoff(
     return false
   }
 
-  // Pair sweep: every pair within cutoff once, from the lexicographically lower bin (own
-  // bin: from the lower slot). Pairs between two images are skipped, since images are never
-  // centers. Streaming histograms reuse adjacent ranges for every slot in an occupied bin.
-  // Materialized lists keep their original slot discovery order: bond consumers use that
-  // order for geometric deduplication and hull construction. Image-only bins can skip
-  // every range that contains no base endpoints.
-  // Pairs are stored once (struct of arrays) and counted towards each base
-  // endpoint; the per-center lists are assembled from them below.
+  // Pair sweep: every pair within cutoff once, from the lexicographically lower bin (own bin:
+  // the lower slot), skipping image-image pairs (images are never centers) and image-only bins'
+  // ranges without base endpoints. Streaming histograms reuse a bin's ranges for all its slots.
+  // Materialized lists keep slot discovery order, which bond consumers rely on for geometric
+  // dedup and hull construction. Pairs are stored once (struct of arrays) and counted towards
+  // each base endpoint; the per-center lists are assembled from them below.
   let pair_a: Int32Array = new Int32Array(visit ? 0 : Math.max(256, n_sites * 8))
   let pair_b: Int32Array = new Int32Array(pair_a.length)
   let pair_dist_sq: Float64Array = new Float64Array(pair_a.length)
@@ -686,14 +679,8 @@ const k_search_bounds = (
   order: number,
   pbc: Pbc,
 ): { total_volume: number; max_cutoff: number } => {
-  const mins: Vec3 = [Infinity, Infinity, Infinity]
-  const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
-  for (const { xyz } of structure.sites) {
-    for (let axis = 0; axis < 3; axis++) {
-      if (xyz[axis] < mins[axis]) mins[axis] = xyz[axis]
-      if (xyz[axis] > maxs[axis]) maxs[axis] = xyz[axis]
-    }
-  }
+  const coords = new Float64Array(structure.sites.flatMap(({ xyz }) => xyz))
+  const [mins, maxs] = bounding_box(coords, structure.sites.length)
   const extents = [0, 1, 2].map((axis) => Math.max(maxs[axis] - mins[axis], 1))
   // A pair at opposite box corners spans the diagonal exactly, and its distance can round
   // 1 ulp above hypot(extents); the margin keeps that pair inside the last pass's radius

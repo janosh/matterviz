@@ -1,12 +1,9 @@
 <script lang="ts">
-  // The one hover highlight for 3D scene surfaces: the hovered triangles (all of `geometry`, or
-  // its `faces` subset) redrawn just in front of the source, unlit, in its colour brightened
-  // (brighten_hex) at half opacity so the source's shading still shows (the outline marks the
-  // hovered region), outlined along their boundary in a darker shade of it (highlight_edge_color).
-  // The polygon offset pulls the fill in front of its coplanar source and it writes no depth,
-  // so it never hides what lies behind; render order 100 draws it after ordinary transparent
-  // layers and before always-on-top markers. The source geometries stay the caller's; the face
-  // subset and outline built here are disposed on change and unmount.
+  // The hover highlight for 3D surfaces: the hovered triangles (`geometry`, or its `faces`)
+  // redrawn unlit just in front (polygon offset, no depth writes) in a brightened colour at
+  // half opacity, outlined in a darker shade. Render order 100 puts it after transparent
+  // layers, before always-on-top markers. The face subset and outline built here are disposed
+  // on change and unmount.
   import { T } from '@threlte/core'
   import { type BufferGeometry, DoubleSide } from 'three/webgpu'
   import { brighten_hex, highlight_edge_color } from './colors'

@@ -9,7 +9,7 @@ import { make_site } from '#lib/structure/site.js'
 import {
   element_from_candidates,
   leading_letters,
-  matrix3x3_from_rows,
+  mat3x3_from_rows,
   parse_element_symbol,
   parse_float_token,
   parsed_result,
@@ -25,7 +25,7 @@ type ParsedAtom = [ElementSymbol, math.Vec3, boolean, [boolean, boolean, boolean
 // recomputed from them, as in parse_poscar (a cell without volume throws).
 function build_structure(atoms: ParsedAtom[], cell: number[][], format: string): AnyStructure {
   if (atoms.length === 0) throw new Error(`${format} has no atoms`)
-  const lattice_matrix = cell.length ? matrix3x3_from_rows(cell, `${format} lattice`) : null
+  const lattice_matrix = cell.length ? mat3x3_from_rows(cell, `${format} lattice`) : null
   const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
   const cart_to_frac = lattice_matrix && math.create_cart_to_frac(lattice_matrix)
   const sites = atoms.map(([element, coords, fractional, movable], idx) => {

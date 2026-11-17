@@ -5,10 +5,10 @@ import { highlight_site_union, to_structure_entries } from '#lib/plot/core/struc
 import { element_by_symbol } from '#lib/element/data.js'
 import type { StructureEntry, StructureInput } from '#lib'
 import {
-  calc_coordination_nums,
+  compute_coordination_nums,
   coordination_bar_sites,
-} from '#lib/coordination/calc-coordination.js'
-import * as calc_module from '#lib/coordination/calc-coordination.js'
+} from '#lib/coordination/compute-coordination.js'
+import * as calc_module from '#lib/coordination/compute-coordination.js'
 import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
 import { tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
@@ -66,7 +66,7 @@ describe(`coordination_bar_sites`, () => {
   const entries = [
     { label: `small`, structure: make_rocksalt() },
     { label: `large`, structure: make_rocksalt(6) },
-  ].map((entry) => ({ ...entry, data: calc_coordination_nums(entry.structure) }))
+  ].map((entry) => ({ ...entry, data: compute_coordination_nums(entry.structure) }))
   const all_sites = [0, 1, 2, 3, 4, 5, 6, 7]
   const both = [`small`, `large`]
 
@@ -82,17 +82,17 @@ describe(`coordination_bar_sites`, () => {
   })
 })
 
-describe(`calc_coordination_nums`, () => {
+describe(`compute_coordination_nums`, () => {
   // Rocksalt: every ion is octahedrally coordinated by 6 counter-ions. Bonded as a finite
   // box a conventional-cell ion only sees the 3 partners inside it; the default (the
   // lattice's pbc, what the bar plot and the 3D viewer use) bonds across the faces too.
   test(`rocksalt gives CN 6 with counter-ion neighbours across periodic boundaries`, () => {
     const rocksalt = make_rocksalt()
-    const bare = calc_coordination_nums(rocksalt, { pbc: [false, false, false] })
+    const bare = compute_coordination_nums(rocksalt, { pbc: [false, false, false] })
     expect(bare.coordination_nums).toEqual(Array(8).fill(3))
 
     const { coordination_nums, cn_histogram, cn_histogram_by_element } =
-      calc_coordination_nums(rocksalt)
+      compute_coordination_nums(rocksalt)
     expect(coordination_nums).toEqual(Array(8).fill(6))
     expect([...cn_histogram]).toEqual([[6, 8]])
     expect(
@@ -114,7 +114,7 @@ describe(`calc_coordination_nums`, () => {
     )
 
     // With atoms 50 Å apart, no bonds should form with default electroneg_ratio strategy
-    const result = calc_coordination_nums(isolated_atoms, { strategy: `electroneg_ratio` })
+    const result = compute_coordination_nums(isolated_atoms, { strategy: `electroneg_ratio` })
     expect(result.coordination_nums).toEqual([0, 0])
     expect(result.cn_histogram.get(0)).toBe(2)
   })
@@ -125,7 +125,7 @@ describe(`calc_coordination_nums`, () => {
     const radius = element_by_symbol.get(`Po`)?.covalent_radius ?? 0
     const polonium = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
     const { coordination_nums, cn_histogram, cn_histogram_by_element } =
-      calc_coordination_nums(polonium)
+      compute_coordination_nums(polonium)
     expect(coordination_nums).toEqual([6])
     expect([...cn_histogram]).toEqual([[6, 1]])
     expect(
@@ -133,7 +133,7 @@ describe(`calc_coordination_nums`, () => {
     ).toEqual([[`Po`, [[6, 1]]]])
     // a slab under an explicit pbc override loses the two vacuum-axis images
     expect(
-      calc_coordination_nums(polonium, { pbc: [true, true, false] }).coordination_nums,
+      compute_coordination_nums(polonium, { pbc: [true, true, false] }).coordination_nums,
     ).toEqual([4])
   })
 
@@ -144,10 +144,10 @@ describe(`calc_coordination_nums`, () => {
     ])
     // Disordered site whose minority species (Na) is listed first
     struct.sites[0].species = [
-      { element: `Na`, occu: 0.3, oxidation_state: 0 },
-      { element: `Cl`, occu: 0.7, oxidation_state: 0 },
+      { element: `Na`, occu: 0.3 },
+      { element: `Cl`, occu: 0.7 },
     ]
-    const result = calc_coordination_nums(struct)
+    const result = compute_coordination_nums(struct)
     // Minority element must NOT create its own bucket for the disordered site
     expect([...result.cn_histogram_by_element.keys()]).toEqual([`Cl`, `O`])
   })
@@ -155,7 +155,7 @@ describe(`calc_coordination_nums`, () => {
   // neighbor_query rejects a non-finite position; the wrapper must let that through rather
   // than hand the plot a histogram computed from garbage
   test(`throws on a NaN site position`, () => {
-    expect(() => calc_coordination_nums(with_nan_site())).toThrow(/non-finite position/)
+    expect(() => compute_coordination_nums(with_nan_site())).toThrow(/non-finite position/)
   })
 })
 
@@ -190,7 +190,7 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
     `allow_file_drop=%s shows %s when empty (host on_file_drop=%s)`,
     async (allow_file_drop, message, intercept) => {
       const on_file_drop = intercept ? vi.fn() : undefined
-      const calc_spy = vi.spyOn(calc_module, `calc_coordination_nums`)
+      const calc_spy = vi.spyOn(calc_module, `compute_coordination_nums`)
       onTestFinished(() => calc_spy.mockRestore())
       const root = await mount_plot({ structures: {}, allow_file_drop, on_file_drop })
       expect(root.textContent).toContain(message)
@@ -265,7 +265,7 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
       const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
       const { element, cn } =
         /^\s*(?<element>Cl|Na)\s+—[\s\S]*CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups ?? {}
-      const { coordination_nums } = calc_coordination_nums(simple_cubic)
+      const { coordination_nums } = compute_coordination_nums(simple_cubic)
       const expected = simple_cubic.sites.flatMap(({ species }, idx) =>
         species[0].element === element && coordination_nums[idx] === Number(cn) ? [idx] : [],
       )
