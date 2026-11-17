@@ -750,6 +750,29 @@ describe(`plan_synthesis`, () => {
       { entries: ba_ti_c_o, target: `agm003212195`, conditions: { open_species: [`CO2`] } },
       /Target CO2 is replaced by open CO2 at these conditions/,
     ],
+    // open gases that react with each other are a free-energy source of their own: name the
+    // reaction instead of failing with "Inverse hull LP unbounded"
+    [
+      {
+        entries: li_co_c_o,
+        target: `LiCoO2`,
+        conditions: { temperature: 1000, open_species: [`O2`, `CO`, `CO2`] },
+      },
+      /not in equilibrium at these conditions: O2 \+ 2 CO → 2 CO2 releases 730 meV\/atom, so LiCoO2 has no open-system hull/,
+    ],
+    [
+      {
+        entries: li_co_c_o,
+        target: `LiCoO2`,
+        conditions: { open_species: [`H2`, `O2`, `H2O`] },
+      },
+      /2 H2 \+ O2 → 2 H2O releases 825 meV\/atom/,
+    ],
+    // a gas condensing into a solid of its own elements (Boudouard carbon at 0 K)
+    [
+      { entries: li_co_c_o, target: `LiCoO2`, conditions: { open_species: [`CO`, `CO2`] } },
+      /2 CO → C \+ CO2 releases 615 meV\/atom/,
+    ],
     [{ conditions: { temperature: -1 } }, /conditions.temperature/],
     [{ conditions: { temperature: 2001 } }, /conditions.temperature/],
     [{ conditions: { open_species: [`Ar`] } }, /unsupported Ar/],

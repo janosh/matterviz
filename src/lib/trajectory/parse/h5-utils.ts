@@ -1,5 +1,5 @@
-import { transpose_3x3_matrix, type Matrix3x3 } from '#lib/math.js'
-import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { transpose_3x3, type Matrix3x3 } from '#lib/math.js'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import type {
   PositionStreamOptions,
   TrajectoryMetadata,
@@ -100,8 +100,8 @@ export const read_numeric_1d = (
 // HDF5 writes the cell with lattice vectors down the columns (`values[row * 3 + col]` is
 // component `row` of vector `col`); the structure convention keeps them as rows, hence transpose
 export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matrix3x3 =>
-  transpose_3x3_matrix(
-    matrix3x3_from_rows(
+  transpose_3x3(
+    mat3x3_from_rows(
       Array.from({ length: 3 }, (_unused, row_idx) =>
         Array.from(
           { length: 3 },
@@ -363,7 +363,7 @@ export const read_scaled_lattice = (
   const lattice_data = squeeze_leading_axis(read_dataset(h5_file, lattice_path))
   if (!lattice_data) return null
   const scale = to_scalar_number(read_dataset(h5_file, scale_path)) ?? 1
-  return scale_matrix(matrix3x3_from_rows(lattice_data, `lattice matrix`), scale)
+  return scale_matrix(mat3x3_from_rows(lattice_data, `lattice matrix`), scale)
 }
 
 export const to_scalar_number = (data: unknown): number | null => {

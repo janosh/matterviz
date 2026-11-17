@@ -13,10 +13,10 @@ import type { VacfInput } from './index'
 // vx vy vz, ASE momenta over masses), and the run signal an HDF5 file declares them under. A
 // vec3 in the file's own units; nothing here converts it. HDF5 runs record the unit on the
 // signal descriptor, readers that convert ASE momenta as run metadata `velocity_unit` (Å/fs);
-// for other text formats calc_vacf labels the stored VACF as file velocity units.
+// for other text formats compute_vacf labels the stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
-// Frame stride that keeps every trajectory-sized buffer calc_vacf holds inside `max_bytes`:
+// Frame stride that keeps every trajectory-sized buffer compute_vacf holds inside `max_bytes`:
 // positions + stored velocities = 2. WITHOUT stored velocities, central_difference_velocities
 // builds the series from the unwrapped positions, so wrapped ones in a cell add the unwrapped
 // copy: 3. Budgeting that path at 1 held ~1.4 GB against a 512 MB budget on a 20k-frame x
@@ -63,7 +63,7 @@ export async function collect_vacf_input(
     ...options,
     ...(stored && { vector_keys: [VELOCITY_SITE_PROPERTY] }),
     analysis_name: `VACF`,
-    // calc_vacf needs 2 velocity frames to form a lag. Central differences drop the first and
+    // compute_vacf needs 2 velocity frames to form a lag. Central differences drop the first and
     // last frame, so differentiated positions need 4
     min_frames: stored ? 2 : 4,
   })

@@ -197,7 +197,7 @@
     `<b>Synthetic G(T) data</b>: every composition has an ordered and a high-entropy polymorph, so hull membership shifts with temperature`,
   ]
   const gas_features = [
-    `<b>Chemical potential</b>: gas-forming elements (O, N, H, C, F) use μ(T, P) = μ°(T) + k<sub>B</sub>T·ln(P/P₀) / n<sub>atoms</sub> (per-atom convention, P in bar, P₀ = 1 bar)`,
+    `<b>Chemical potential</b>: elemental gases (O<sub>2</sub>, N<sub>2</sub>, H<sub>2</sub>, F<sub>2</sub>) set their element's reference, compound gases (CO, CO<sub>2</sub>, H<sub>2</sub>O) join the hull as phases; both use μ(T, P) = μ°(T) + k<sub>B</sub>T·ln(P/P₀) / n<sub>atoms</sub> (per-atom convention, P in bar, P₀ = 1 bar)`,
     `<b>Multi-gas support</b>: O<sub>2</sub>, N<sub>2</sub>, H<sub>2</sub>, CO, CO<sub>2</sub>, H<sub>2</sub>O, F<sub>2</sub>`,
   ]
   const quinary_stats_features = [

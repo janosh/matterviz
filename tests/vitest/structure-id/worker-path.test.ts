@@ -1,11 +1,11 @@
-// Exercises the Web Worker branch of calc_structure_id_async. happy-dom has no Worker, so
+// Exercises the Web Worker branch of compute_structure_id_async. happy-dom has no Worker, so
 // async-compute.test.ts only ever reaches the synchronous fallback; here a stub Worker is
 // installed before the module is imported so the real postMessage plumbing runs — including the
 // structured clone, which is where a Svelte $state proxy or a non-cloneable site property would
 // blow up in a browser. The generic client (request ids, dedupe, abort, error replies) is
 // covered by worker-client.test.ts; only the payload contract is asserted here.
-import type { calc_structure_id_async as CalcStructureIdAsync } from '#lib/structure-id/async-compute.svelte.js'
-import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
+import type { compute_structure_id_async as ComputeStructureIdAsync } from '#lib/structure-id/async-compute.svelte.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
 import type { StructureIdOptions } from '#lib/structure-id/index.js'
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
@@ -17,12 +17,12 @@ const stub = install_stub_worker<{
   id: number
   input: StructureIdPayload
   options: StructureIdOptions
-}>(({ input, options }) => calc_structure_id(structure_from_payload(input), options))
-let calc_structure_id_async: typeof CalcStructureIdAsync
+}>(({ input, options }) => compute_structure_id(structure_from_payload(input), options))
+let compute_structure_id_async: typeof ComputeStructureIdAsync
 
 beforeAll(async () => {
   // Imported after the stub so the module-level singleton picks it up
-  ;({ calc_structure_id_async } = await import(`#lib/structure-id/async-compute.svelte.js`))
+  ;({ compute_structure_id_async } = await import(`#lib/structure-id/async-compute.svelte.js`))
 })
 afterEach(stub.reset)
 
@@ -31,9 +31,9 @@ describe(`worker code path`, () => {
     const crystal = make_fcc([2, 2, 2])
     // A non-cloneable site property would throw inside structuredClone if it were forwarded
     crystal.sites[0].properties.on_click = () => {}
-    const result = await calc_structure_id_async(crystal)
+    const result = await compute_structure_id_async(crystal)
     expect(stub.posted).toHaveLength(1)
-    expect(result).toEqual(calc_structure_id(crystal))
+    expect(result).toEqual(compute_structure_id(crystal))
     expect_module_worker(stub.instances, `src/lib/structure-id/structure-id-worker.ts`)
     // Only what the analysis reads crosses the thread: one flat position buffer + lattice
     const { input: payload } = stub.posted[0].message

@@ -1,5 +1,5 @@
 import { encode_frame } from '#lib/trajectory/frame.js'
-import { collect_trajectory_rdf, rdf_shell } from '#lib/rdf/calc-trajectory-rdf.js'
+import { collect_trajectory_rdf, rdf_shell } from '#lib/rdf/compute-trajectory-rdf.js'
 import type { Crystal } from '#lib/structure/index.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
@@ -103,8 +103,8 @@ describe(`collect_trajectory_rdf`, () => {
         ? {
             ...site,
             species: [
-              { element: `Na`, occu: 0.5, oxidation_state: 0 },
-              { element: `K`, occu: 0.5, oxidation_state: 0 },
+              { element: `Na`, occu: 0.5 },
+              { element: `K`, occu: 0.5 },
             ],
           }
         : site,
@@ -127,8 +127,8 @@ describe(`collect_trajectory_rdf`, () => {
     // a frame whose minority species differs is a different composition, majority or not
     const shifted = { ...mixed, sites: mixed.sites.map((site) => ({ ...site })) }
     shifted.sites[0].species = [
-      { element: `Na`, occu: 0.6, oxidation_state: 0 },
-      { element: `K`, occu: 0.4, oxidation_state: 0 },
+      { element: `Na`, occu: 0.6 },
+      { element: `K`, occu: 0.4 },
     ]
     await expect(
       collect_trajectory_rdf(run_of([mixed, shifted]), { n_bins: 20 }),
@@ -179,7 +179,7 @@ describe(`collect_trajectory_rdf`, () => {
         const swapped = rocksalt()
         swapped.sites[0] = {
           ...swapped.sites[0],
-          species: [{ element: `K`, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `K`, occu: 1 }],
         }
         return run_of([rocksalt(), swapped])
       },

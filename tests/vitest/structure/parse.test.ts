@@ -1,8 +1,8 @@
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
+import { mul_3x3_vec3, transpose_3x3 } from '#lib/math.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { explicit_only } from '#lib/structure/bonding.js'
 import {
   detect_structure_type,
@@ -72,8 +72,8 @@ function expect_xyz_matches_abc(
   lattice: number[][],
   tol: number = TOL,
 ) {
-  const lattice_T = transpose_3x3_matrix(lattice as Matrix3x3)
-  expect_vec3_close(mat3x3_vec3_multiply(lattice_T, site.abc as Vec3), site.xyz, tol)
+  const lattice_T = transpose_3x3(lattice as Matrix3x3)
+  expect_vec3_close(mul_3x3_vec3(lattice_T, site.abc as Vec3), site.xyz, tol)
 }
 // Verify every site's xyz reconstructs from abc via the result's lattice matrix
 function expect_sites_reconstruct(
@@ -91,7 +91,7 @@ const make_json_site = (
   abc: number[],
   overrides: Record<string, unknown> = {},
 ) => ({
-  species: [{ element, occu: 1, oxidation_state: 0 }],
+  species: [{ element, occu: 1 }],
   abc,
   xyz: [0, 0, 0],
   label: element,
@@ -139,9 +139,8 @@ describe(`POSCAR Parser`, () => {
     // Fortran exponent on the SCALE line: parseFloat used to stop at the `D` and read 5.0,
     // inflating a 3 Å cube to 30 Å. 0.5 * 6 = 3 per axis, so volume 27.
     { name: `Fortran exponent scale factor`, content: `Test\n5.0D-01\n6.0 0.0 0.0\n0.0 6.0 0.0\n0.0 0.0 6.0\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
-    // VASP 4 has no symbol line, so groups get placeholders by index. Two groups, because
-    // the first placeholder is H and an index-0-only check can't tell the indexed placeholders
-    // apart from a blanket "unknown element becomes hydrogen".
+    // VASP 4 has no symbol line: placeholders by index (two groups, so H, He tells indexing
+    // apart from a blanket "unknown element becomes hydrogen")
     { name: `VASP 4 indexed element fallback`, content: vasp4_format, expected: { elements: [`H`, `H`, `He`] } },
     // ...unless the comment line names one species per count, as VASP's own inputs do
     { name: `VASP 4 species from a formula comment`, content: `SiC\n4.35\n0.5 0.5 0\n0 0.5 0.5\n0.5 0 0.5\n1 1\ndirect\n0 0 0\n0.25 0.25 0.25`, expected: { elements: [`Si`, `C`] } },
@@ -163,7 +162,6 @@ describe(`POSCAR Parser`, () => {
     { name: `lattice lines with trailing comments`, content: `Test\n1.0\n3.0 0.0 0.0 ! a\n0.0 3.0 0.0 ! b\n0.0 0.0 3.0 ! c\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
   ])(`should handle $name`, ({ content, expected }) => {
     const result = parse_poscar(content)
-
     if (expected.volume) expect(result.lattice.volume).toBeCloseTo(expected.volume, 1)
     if (expected.abc) expect(result.sites[0].abc).toEqual(expected.abc)
     if (expected.elements) {
@@ -171,9 +169,8 @@ describe(`POSCAR Parser`, () => {
     }
   })
 
-  // Edge cases: Cartesian xyz must be recomputed from wrapped abc; a blank first
-  // (comment) line and a 3-component per-axis scale line are valid POSCAR headers, and
-  // like VASP a blank coordinate-mode line means Direct
+  // Cartesian xyz is recomputed from wrapped abc; a blank comment line and per-axis scale
+  // line are valid headers, and like VASP a blank coordinate-mode line means Direct
   const scale3 = `Test\n2 1 3\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
   const cubic5 = `5 0 0\n0 5 0\n0 0 5`
   test.each([
@@ -194,9 +191,9 @@ describe(`POSCAR Parser`, () => {
 
   // VASP reads only the first letter of the `Selective dynamics` line and the T/F flags
   // case-insensitively, so files written that way must not lose their constraints
+  // oxfmt-ignore
   test.each([
-    [`Selective dynamics`, `T T F`, [true, true, false]],
-    [`Sel. dyn.`, `t f t`, [true, false, true]],
+    [`Selective dynamics`, `T T F`, [true, true, false]], [`Sel. dyn.`, `t f t`, [true, false, true]],
     [`selective`, `.TRUE. .FALSE. .TRUE.`, [true, false, true]],
   ])(`reads selective dynamics from '%s' with flags '%s'`, (sel_line, flags, expected) => {
     const result = parse_poscar(
@@ -219,13 +216,11 @@ describe(`POSCAR Parser`, () => {
   it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
     const result = parse_poscar(aviary_CuF3K_triolith)
     assert(`lattice` in result, `Failed to parse aviary-CuF3K-triolith.poscar`)
-
     expect(result.sites).toHaveLength(10) // 2 Zr + 2 Zn + 6 N atoms
     const elements = [0, 2, 4].map((idx) => result.sites[idx].species[0].element)
     expect(elements).toEqual([`Zr`, `Zn`, `N`])
     // First N atom's original z=1.00000000 must wrap to exactly 0
     expect(result.sites[4].abc[2]).toBe(0)
-
     const { a: lattice_a, b: lattice_b, c: lattice_c, matrix } = result.lattice
     for (const site of result.sites) {
       expect_abc_in_unit_cell(site)
@@ -282,7 +277,7 @@ describe(`XYZ Parser`, () => {
     const lattice = latt as Matrix3x3
     // fractional points including negatives and >1 to test wrapping
     for (const abc of [[-0.1, 0.2, 0.3], [0.4, 1.2, 0.6], [0.7, 0.8, -0.9]]) {
-      const xyz = mat3x3_vec3_multiply(transpose_3x3_matrix(lattice), abc as Vec3)
+      const xyz = mul_3x3_vec3(transpose_3x3(lattice), abc as Vec3)
       const result = parse_xyz(xyz_frame(lattice, xyz))
       assert(`lattice` in result, `Failed to parse parametric lattice`)
       expect_abc_in_unit_cell(result.sites[0])
@@ -312,9 +307,8 @@ describe(`XYZ Parser`, () => {
     expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
   })
 
-  // Same rules as the trajectory reader: symbols are case-normalised, unknown ones (ASE's
-  // `X` dummy atoms, placeholder species) are skipped with a warning rather than invented,
-  // and a frame with no recognised atom at all is an error
+  // As in the trajectory reader: symbols are case-normalised, unknown ones (ASE's `X`) are
+  // skipped with a warning, and a frame with no recognised atom is an error
   it(`case-normalises symbols and skips atoms with unknown ones`, () => {
     const result = parse_xyz(`3\nTest\nXx 0 0 0\nFE 1 1 1\nX 2 2 2\n`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Fe`])
@@ -324,16 +318,13 @@ describe(`XYZ Parser`, () => {
     )
   })
 
-  // ASE writes a bounding Lattice even for isolated molecules and marks them pbc="F F F".
-  // Ignoring that promoted the molecule to a 3D crystal and folded its atoms through faces
-  // that don't exist. Every quoting style ASE emits has to reach the same conclusion.
-  // A file declaring no pbc at all is fully periodic and still wraps into the cell
+  // ASE writes a bounding Lattice for isolated molecules marked pbc="F F F" (in any of its
+  // quoting styles), which must not be folded into the cell; no pbc at all is fully periodic
+  const no_pbc = [false, false, false]
+  // oxfmt-ignore
   it.each([
-    [`pbc="F F F"`, [false, false, false]],
-    [`pbc="FFF"`, [false, false, false]],
-    [`pbc=F`, [false, false, false]],
-    [`pbc="T T F"`, [true, true, false]],
-    [``, [true, true, true]],
+    [`pbc="F F F"`, no_pbc], [`pbc="FFF"`, no_pbc], [`pbc=F`, no_pbc],
+    [`pbc="T T F"`, [true, true, false]], [``, [true, true, true]],
   ])(`honors '%s' from the comment line`, (pbc_field, expected) => {
     const content = `1\nLattice="5 0 0 0 5 0 0 0 5" ${pbc_field}\nH 6.0 6.0 6.0\n`
     const result = parse_xyz(content)
@@ -378,7 +369,7 @@ C 1.23 0.7101408311032397 0.0`
       const completed = complete_lattice_matrix(chain)
       expect(completed[axis]).toEqual(vec)
       expect(math.det_3x3(completed)).toBeCloseTo(3, 14)
-      const gram = math.dot(completed, transpose_3x3_matrix(completed))
+      const gram = math.dot(completed, transpose_3x3(completed))
       for (const [row, gram_row] of gram.entries())
         for (const [col, value] of gram_row.entries())
           expect(value).toBeCloseTo(row !== col ? 0 : row === axis ? 9 : 1, 14)
@@ -508,7 +499,6 @@ describe(`Auto-detection & Error Handling`, () => {
     // Test triclinic lattice (non-orthogonal) - this would fail with simple division method
     const triclinic_poscar = `Triclinic test\n1.0\n5.0 0.0 0.0\n2.5 4.33 0.0\n1.0 1.0 4.0\nC N\n1 1\nCartesian\n1.0 1.0 1.0\n3.5 2.5 2.0`
     const triclinic_xyz = `2\nLattice="5.0 0.0 0.0 2.5 4.33 0.0 1.0 1.0 4.0"\nC 1.0 1.0 1.0\nN 3.5 2.5 2.0`
-
     const poscar_result = parse_poscar(triclinic_poscar)
     const xyz_result = parse_xyz(triclinic_xyz)
     expect([poscar_result.sites.length, xyz_result.sites.length]).toEqual([2, 2])
@@ -567,11 +557,18 @@ const cif_cell = (
     ...[value_a, value_b, value_c].map((len, idx) => `_cell_length_${`abc`[idx]}  ${len}`),
     ...angles.map((ang, idx) => `_cell_angle_${[`alpha`, `beta`, `gamma`][idx]}  ${ang}`),
   ].join(`\n`)
+// `loop_` header of the given _atom_site_ columns
+const atom_site_loop = (...columns: string[]): string =>
+  [`loop_`, ...columns.map((column) => `_atom_site_${column}`)].join(`\n`)
+// a symop loop listing quoted `ops` under `tag`
+const symop_rows = (ops: string[], tag = `_symmetry_equiv_pos_as_xyz`): string =>
+  [`loop_`, tag, ...ops.map((op) => `'${op}'`)].join(`\n`)
 // Cubic 5 Å cell plus the standard label/symbol/fract_x/y/z atom-site loop header
 const cell5 = cif_cell(`5.000`)
-const site_loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
+const fract_xyz = [`fract_x`, `fract_y`, `fract_z`]
+const site_loop = atom_site_loop(`label`, `type_symbol`, ...fract_xyz)
 // same loop without _atom_site_type_symbol, so the element has to come from the label
-const label_loop = `loop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy`
+const label_loop = atom_site_loop(`label`, ...fract_xyz, `occupancy`)
 
 // `_cell.*` tags for a cubic mmCIF cell of edge `len` Å
 const mmcif_cell_tags = (len: number): string =>
@@ -617,50 +614,29 @@ Si1  Si  0.470  0.000  0.000  1.000
 O1   O   0.410  0.270  0.120  1.000
 O2   O   0.410  0.140  0.880  1.000`
 
+  // quartz has no symop loop, so only the asymmetric unit is drawn, which must not pass silently
+  // oxfmt-ignore
   it.each([
-    {
-      name: `quartz (hexagonal)`,
-      cif: QUARTZ_CIF,
-      expected_lattice: { a: 4.916, b: 4.916, c: 5.405, alpha: 90, beta: 90, gamma: 120 },
-      expected_abc: [
-        { element: `Si`, abc: [0.47, 0.0, 0.0] },
-        { element: `O`, abc: [0.41, 0.27, 0.12] },
-        { element: `O`, abc: [0.41, 0.14, 0.88] },
-      ],
-      // no symop loop, so only the asymmetric unit is drawn, which must not pass silently
-      warning: `CIF declares space group P3121 but lists no symmetry operations; showing only the listed sites, not the full cell`,
-    },
-    {
-      name: `monoclinic (β ≠ 90°)`,
+    { name: `quartz (hexagonal)`, cif: QUARTZ_CIF, expected_lattice: { a: 4.916, b: 4.916, c: 5.405, alpha: 90, beta: 90, gamma: 120 },
+      expected_sites: [[`Si`, [0.47, 0, 0]], [`O`, [0.41, 0.27, 0.12]], [`O`, [0.41, 0.14, 0.88]]],
+      warning: `CIF declares space group P3121 but lists no symmetry operations; showing only the listed sites, not the full cell` },
+    { name: `monoclinic (β ≠ 90°)`, expected_lattice: { beta: 95 }, warning: undefined,
       cif: `data_monoclinic_test\n${cif_cell(10, 5, 8, [90, 95, 90])}\n${site_loop}\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
-      expected_lattice: { beta: 95 },
-      expected_abc: [
-        { element: `Ru`, abc: [0.0, 0.0, 0.0] },
-        { element: `P`, abc: [0.25, 0.25, 0.25] },
-        { element: `S`, abc: [0.5, 0.5, 0.5] },
-      ],
-      warning: undefined,
-    },
-  ])(
-    `should parse CIF format correctly: $name`,
-    ({ cif, expected_lattice, expected_abc, warning }) => {
-      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-      onTestFinished(() => warn_spy.mockRestore())
-      const result = parse_cif(cif)
-      expect(warn_spy.mock.calls).toEqual(warning ? [[warning]] : [])
-      expect(result.sites).toHaveLength(expected_abc.length)
-      for (const [param, expected_val] of Object.entries(expected_lattice)) {
-        expect(result.lattice[param as `a`], param).toBeCloseTo(expected_val, 6)
-      }
-      expected_abc.forEach((expected, idx) => {
-        const site = result.sites[idx]
-        expect(site.species[0].element).toBe(expected.element)
-        expect_vec3_close(site.abc, expected.abc, 12)
-        expect(site.species[0].occu).toBe(1.0)
-      })
-      expect_sites_reconstruct(result)
-    },
-  )
+      expected_sites: [[`Ru`, [0, 0, 0]], [`P`, [0.25, 0.25, 0.25]], [`S`, [0.5, 0.5, 0.5]]] },
+  ])(`should parse CIF format correctly: $name`, ({ cif, expected_lattice, expected_sites, warning }) => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => warn_spy.mockRestore())
+    const result = parse_cif(cif)
+    expect(warn_spy.mock.calls).toEqual(warning ? [[warning]] : [])
+    for (const [param, expected_val] of Object.entries(expected_lattice)) {
+      expect(result.lattice[param as `a`], param).toBeCloseTo(expected_val, 6)
+    }
+    const to_12dp = (abc: number[]) => abc.map((coord) => expect.closeTo(coord, 12))
+    expect(result.sites.map(({ species, abc }) => [species, abc])).toEqual(
+      expected_sites.map(([element, abc]) => [[{ element, occu: 1 }], to_12dp(abc as number[])]),
+    )
+    expect_sites_reconstruct(result)
+  })
 
   // the missing-symops warning is only for a cell left incomplete: a trailing comment is not
   // part of the symbol, and centering that reconciles the atom-type counts fills the cell
@@ -676,19 +652,7 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(warn_spy.mock.calls).toEqual([])
   })
 
-  it.each([
-    [`extension`, `quartz.cif`],
-    [`content`, undefined],
-  ])(`should detect CIF format by %s`, (_mode, filename) => {
-    const result = parse_structure_file(QUARTZ_CIF, filename)
-    assert(`lattice` in result)
-    expect(result.sites).toHaveLength(3)
-    expect(result.lattice.a).toBeCloseTo(4.916, 6)
-  })
-
-  // Cell tags are matched exactly on the first token whatever their order, so a trailing
-  // comment, an uncertainty, an `_su` tag listed first (prefix match used to read it as a),
-  // c listed before a (used to be reordered) and leading whitespace all read the same cell
+  // Cell tags are matched exactly on the first token in any order, so all these read one cell
   // oxfmt-ignore
   test.each([
     [`trailing comment`, `_cell_length_a 5.4309 # angstrom\n_cell_length_b 4\n_cell_length_c 3`],
@@ -708,9 +672,8 @@ O2   O   0.410  0.140  0.880  1.000`
     expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([5.4309, 4, 3])
   })
 
-  // Lattice-centering reconstruction from the space-group H-M symbol. Applied
-  // only when it reconciles _atom_type_number_in_cell exactly, so atom lists
-  // that already embed centering (e.g. COD 7008984) are never doubled.
+  // Centering from the H-M symbol, applied only when it reconciles _atom_type_number_in_cell
+  // exactly, so atom lists already embedding centering (COD 7008984) are never doubled
   describe(`CIF centering from space-group symbol`, () => {
     // Minimal CIF with an identity-only symop loop, optional `<symbol> <count>`
     // _atom_type rows and atom-site rows (defaults to a single Fe at the origin).
@@ -795,17 +758,16 @@ O2   O   0.410  0.140  0.880  1.000`
     })
 
     test(`rejects centering when only the total reconciles, not per-element counts`, () => {
-      // I symbol implies ×2. Expected Fe 1 / O 3 (total 4). Centering the shared Fe/O
-      // site at the origin yields Fe 2 / O 2 (total 4) — total matches but composition
-      // is wrong, so centering must be rejected and the single base site kept.
+      // I-centering the shared Fe/O origin site gives Fe 2 / O 2: the total 4 matches the
+      // expected Fe 1 / O 3 but the composition doesn't, so the single base site is kept
       const cif = make_cif(`I m -3 m`, {
         atom_types: [`Fe 1`, `O 3`],
         atom_sites: [`Fe1 Fe 0 0 0`, `O1 O 0 0 0`],
       })
       const result = parse_cif(cif)
-
-      expect(result.sites).toHaveLength(1)
-      expect(result.sites[0].species.map((spec) => spec.element)).toEqual([`Fe`, `O`])
+      expect(result.sites.map(({ species }) => species.map(({ element }) => element))).toEqual(
+        [[`Fe`, `O`]],
+      )
     })
 
     // C-centering reaches 4 Fe only together with the mcif (0,0,1/2)' and their sum
@@ -820,8 +782,6 @@ O2   O   0.410  0.140  0.880  1.000`
   it(`should parse CIF with only _atom_site_label (no _atom_site_type_symbol)`, () => {
     const rows = `Ru(1)  0.000  0.000  0.000  1.000\nP(1)   0.250  0.250  0.250  1.000\nS(2)   0.500  0.500  0.500  1.000\nN(1)   0.750  0.750  0.750  1.000`
     const result = parse_cif(`data_test_structure\n${cell5}\n${label_loop}\n${rows}`)
-    expect(result.sites).toHaveLength(4)
-
     // element must be inferred from the label, whose parenthesized index is kept verbatim
     // oxfmt-ignore
     const expected_sites = [
@@ -843,13 +803,10 @@ O2   O   0.410  0.140  0.880  1.000`
     expect_sites_reconstruct(result)
   })
 
-  // Uppercase symbols used to be read one letter at a time (`FE2+` -> F, `CL` -> C); the
-  // type symbol wins over the label, and the label fills in when the symbol names nothing.
-  // Labels are read first capital + trailing lowercase, and an all-caps label two letters
-  // first like pymatgen's `_parse_symbol` (`FE1` -> Fe); when both readings are elements
-  // (`CA`, `HO`, `FE`) the file warns once. Water, deuterium and polyatomic-group labels
-  // (pymatgen's special map plus common anions) name the atom they stand for without any
-  // ambiguity (`NO3` used to read as nobelium, `Ow1` as a per-row fallback element)
+  // The type symbol (case-normalised, `FE2+` -> Fe) wins over the label. Labels read first
+  // capital + trailing lowercase, all-caps two letters first like pymatgen (`FE1` -> Fe),
+  // warning once per file when both readings are elements (`CA`). Water, deuterium and group
+  // labels name their atom without ambiguity (`NO3` -> N, not nobelium)
   // oxfmt-ignore
   test.each([
     [`FE1 FE2+`, `Fe`, false], [`CL1 CL`, `Cl`, false], [`Na1 NA`, `Na`, false],
@@ -882,11 +839,9 @@ O2   O   0.410  0.140  0.880  1.000`
     warn_spy.mockRestore()
   })
 
-  // A plain CIF derived from a PDB keeps PDB atom names as labels (`CD` is a carbon, `NE2` a
-  // nitrogen, `HG11` a hydrogen) and marks itself with a residue / record-type column. With
-  // that column the first letter is the element and two letters are read only when one letter
-  // names nothing, like parse_mmcif; without it the all-caps label still reads two letters
-  // first (Cd, Ne, Hg) with the per-file ambiguity warning
+  // A residue / record-type column marks labels as PDB atom names (`CD` carbon, `HG11`
+  // hydrogen): first letter first, like parse_mmcif. Without it all-caps labels read two
+  // letters first (Cd, Hg) with the per-file ambiguity warning
   // oxfmt-ignore
   test.each([
     [`CD`, `C`, `Cd`], [`NE2`, `N`, `Ne`], [`ND1`, `N`, `Nd`], [`CE1`, `C`, `Ce`],
@@ -896,7 +851,6 @@ O2   O   0.410  0.140  0.880  1.000`
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const parse_with_loop = (loop: string, row: string) => {
       const result = parse_cif(`data_test\n${cell5}\n${loop}\n${row}`)
-
       return result.sites.map((site) => site.species[0].element)
     }
     const ambiguity_warnings = () =>
@@ -922,15 +876,13 @@ O2   O   0.410  0.140  0.880  1.000`
     const rows = `OH2 0.5 0.5 0.5 0.655\nOH2 0.25 0.25 0.25 0.655\nOH 0.25 0.25 0.25 0.345`
     const result = parse_cif(`data_test\n${cell5}\n${label_loop}\n${rows}`)
     expect(result.sites.map((site) => [site.label, site.species])).toEqual([
-      [`OH2`, [{ element: `O`, occu: 0.655, oxidation_state: 0 }]],
-      [`OH2`, [{ element: `O`, occu: 1, oxidation_state: 0 }]],
+      [`OH2`, [{ element: `O`, occu: 0.655 }]],
+      [`OH2`, [{ element: `O`, occu: 1 }]],
     ])
   })
 
-  // Symops may be listed unquoted next to a site id (`1 x,y,z`, or sloppily `1 x, y, z`), or
-  // several rows to a line;
-  // joining the whole row used to read `1x,y,z` as an op with zero coefficients, which
-  // generated phantom atoms at the translation vector
+  // Symops may be unquoted next to a site id (`1 x, y, z`) or several rows to a line; joining
+  // the whole row read `1x,y,z` as an op, generating phantom atoms
   // oxfmt-ignore
   test.each([
     [`quoted`, [`1 'x, y, z'`, `2 '-x, -y, -z'`]],
@@ -940,29 +892,24 @@ O2   O   0.410  0.140  0.880  1.000`
     // loop values are a token stream: several rows may share one line
     [`quoted rows sharing a line`, [`1 'x, y, z' 2 '-x, -y, -z'`]],
     [`unquoted rows sharing a line`, [`1 x,y,z 2 -x,-y,-z`]],
-  ])(`expands %s two-column symop rows without phantom atoms`, (_name, symop_rows) => {
-    const op_first = symop_rows[0].startsWith(`x`)
+  ])(`expands %s two-column symop rows without phantom atoms`, (_name, rows) => {
+    const op_first = rows[0].startsWith(`x`)
     const headers = op_first
       ? `_symmetry_equiv_pos_as_xyz\n_symmetry_equiv_pos_site_id`
       : `_symmetry_equiv_pos_site_id\n_symmetry_equiv_pos_as_xyz`
-    const cif = `data_test\n${cell5}\nloop_\n${headers}\n${symop_rows.join(`\n`)}\n${site_loop}\nNa1 Na 0.1 0.2 0.3`
+    const cif = `data_test\n${cell5}\nloop_\n${headers}\n${rows.join(`\n`)}\n${site_loop}\nNa1 Na 0.1 0.2 0.3`
     const result = parse_cif(cif)
     expect(rounded_abc(result.sites)).toEqual([[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]])
     // the row keeps its label, symmetry-generated images get a unique `_k` suffix
     expect(result.sites.map((site) => site.label)).toEqual([`Na1`, `Na1_1`])
   })
 
-  // CIF tags are case-insensitive and real files ship `'X, Y, Z'`. The x/y/z lookup was not,
-  // so every uppercase term fell through to the numeric branch, `Number('X')` was NaN and each
-  // dimension collapsed to 0 - the whole asymmetric unit mapped onto the origin, giving one
-  // fabricated atom there instead of the images the ops describe. The atom-site loop was
-  // found by a case-sensitive tag test too, so an uppercase file had "no valid atom site loop".
+  // CIF tags and ops are case-insensitive (real files ship `'X, Y, Z'`): a case-sensitive
+  // x/y/z lookup collapsed every image onto the origin
   test.each([`lower`, `upper`])(`reads %scase tags and symmetry ops alike`, (which) => {
     const ops = [`x, y, z`, `-x, -y, z`, `-x, y, -z`, `x, -y, -z`]
-    const rows = ops.map((operation) => `'${operation}'`).join(`\n`)
-    const cif = `data_t\n${cell5}\nloop_\n_symmetry_equiv_pos_as_xyz\n${rows}\n${site_loop}\nSi1 Si 0.25 0.1 0.3`
+    const cif = `data_t\n${cell5}\n${symop_rows(ops)}\n${site_loop}\nSi1 Si 0.25 0.1 0.3`
     const result = parse_cif(which === `upper` ? cif.toUpperCase() : cif)
-
     // oxfmt-ignore
     expect(rounded_abc(result.sites)).toEqual([
       [0.25, 0.1, 0.3], [0.75, 0.9, 0.3], [0.75, 0.1, 0.7], [0.25, 0.9, 0.7],
@@ -977,10 +924,8 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(rounded_abc(result.sites)).toEqual([[0.25, 0.1, 0.3]])
   })
 
-  // The tokenizer scans characters rather than running a `\s`-based regex, so its notion of
-  // whitespace has to cover the same set. Space and tab alone let a CRLF file's trailing `\r`
-  // ride along inside the last token, and left a quoted value at the end of a line
-  // unterminated, splitting `'x, y, z'` into three pieces.
+  // The character-scanning tokenizer must treat `\r` as whitespace like a `\s` regex, or a
+  // CRLF line's last token keeps it and a final quoted value stays unterminated
   test.each([
     [`a bare row`, `Na1 Na 0.1 0.2 0.3`, [`Na1`, `Na`, `0.1`, `0.2`, `0.3`]],
     [`a quoted value`, `'two words' x`, [`two words`, `x`]],
@@ -1028,14 +973,9 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites.map((site) => site.label)).toEqual([`C1'`, `O2'`, `H3`])
   })
 
-  // CIF data items belong to the `data_` block they are written in. A multi-block file (a
-  // global block plus one block per phase, as PF-sd-1601634.cif has) may declare a different
-  // cell, space group and symop list in each, and only the block holding the atom-site loop
-  // describes those atoms. Reading them file-wide used to take the global block's 20 Å cell
-  // for a 5 Å phase (64x the volume) and expand its atoms by the global block's symops.
-  // mmCIF is a CIF dialect with its own cell and symop readers, which had the same bug.
-  // the global block's inversion op would double the phase's single atom. CIF reserved words
-  // are case-insensitive, so `DATA_phase_1` opens a block just as `data_` does
+  // Cell and symops come from the atom loop's own `data_` block (mmCIF too): file-wide
+  // reading took the global block's 20 Å cell and inversion op for the 5 Å phase. Reserved
+  // words are case-insensitive, so `DATA_phase_1` opens a block too
   // oxfmt-ignore
   const multi_block_cif = (data: string, loop: string) =>
     [`${data}_global`, cif_cell(20), loop, `_symmetry_equiv_pos_as_xyz`, `'x, y, z'`, `'-x, -y, -z'`, `${data}_phase_1`, cell5, site_loop, `Na1 Na 0.5 0.5 0.5`].join(`\n`)
@@ -1065,11 +1005,8 @@ O2   O   0.410  0.140  0.880  1.000`
     `loop_\n${tag}\n'x, y, z'\n${next}`
   const atom_loop = `${site_loop}\nNa1 Na 0.1 0.2 0.3`
 
-  // A symop loop is equally valid before or after the atom-site loop (CIF imposes no ordering
-  // on data items) and a loop's data ends at the next data name, so neither a key-value item
-  // nor a semicolon text field's body is a loop row. The atom loop used to end the scan,
-  // silently dropping a later symop loop, and every trailing item used to be fed to the symop
-  // reader, generating phantom atoms.
+  // A symop loop may come before or after the atom-site loop, and neither a key-value item
+  // nor a semicolon text field after it is a loop row (they generated phantom atoms)
   // oxfmt-ignore
   test.each([
     [`a symop loop written before the atom loop`, `${symop_loop(`'-x, -y, -z'`)}\n${atom_loop}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
@@ -1107,6 +1044,155 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites.map((site) => site.label)).toEqual(expected)
   })
 
+  describe(`CIF magnetic moments and anisotropic displacement parameters`, () => {
+    // Sites as `abc -> property values`, both rounded to 1e-12 (the transforms add a few f64
+    // eps relative error, ~1e-18 on these values) and -0 folded into 0, so order can't matter
+    const by_position = (sites: AnyStructure[`sites`], key: string) =>
+      Object.fromEntries(
+        sites.map((site) => [
+          rounded_abc([site])[0].join(`;`),
+          (site.properties[key] as number[] | number[][])
+            .flat()
+            .map((val) => Math.round(val * 1e12) / 1e12 + 0),
+        ]),
+      )
+    const moment_tags = (separator: string): string[] =>
+      [`label`, `crystalaxis_x`, `crystalaxis_y`, `crystalaxis_z`].map(
+        (key) => `_atom_site_moment${separator}${key}`,
+      )
+    const magnetic_cif = (tags: string[]): string =>
+      [
+        `data_test`,
+        cif_cell(4, 5, 6),
+        symop_rows(
+          [`x,y,z,+1`, `-x,-y,z,+1`, `-x,-y,-z,-1`],
+          `_space_group_symop.magn_operation_xyz`,
+        ),
+        symop_rows([`x,y,z,+1`, `x+1/2,y+1/2,z,-1`], `_space_group_symop.magn_centering_xyz`),
+        site_loop,
+        `Fe1 Fe 0.1 0.2 0.3`,
+        `O1 O 0 0 0.5`,
+        `loop_`,
+        ...tags,
+        `Fe1 1 2 3`,
+      ].join(`\n`)
+
+    // 2z keeps an axial moment's z, -1' (inversion x time reversal) flips it all, and the
+    // (1/2,1/2,0)' anti-centering flips each image again; O has no moment (zero, like pymatgen)
+    test.each([
+      [`CIF2 dotted`, `.`],
+      [`CIF1 underscore`, `_`],
+    ])(`mCIF moments with %s tags transform under magnetic ops`, (_name, separator) => {
+      const { sites, lattice } = parse_cif(magnetic_cif(moment_tags(separator)))
+      // orthorhombic: axes along x, y, z, so crystal-axis components are Cartesian
+      // oxfmt-ignore
+      expect(lattice.matrix).toEqual([[4, 0, 0], [0, 5, 0], [0, 0, 6]])
+      // oxfmt-ignore
+      expect(by_position(sites, `magmom`)).toEqual({
+        [`0.1;0.2;0.3`]: [1, 2, 3], [`0.9;0.8;0.3`]: [-1, -2, 3], [`0.9;0.8;0.7`]: [-1, -2, -3],
+        [`0.6;0.7;0.3`]: [-1, -2, -3], [`0.4;0.3;0.3`]: [1, 2, -3], [`0.4;0.3;0.7`]: [1, 2, 3],
+        [`0;0;0.5`]: [0, 0, 0], [`0.5;0.5;0.5`]: [0, 0, 0],
+      })
+    })
+
+    // crystal-axis components are μB along the UNIT cell axes: in a hexagonal cell â + b̂ has
+    // length 1 (120° apart), so (1, 1, 0) is a 1 μB moment bisecting a and b
+    test(`mCIF crystal-axis moments use unit axis vectors`, () => {
+      const cif = [
+        `data_test`,
+        cif_cell(3, 3, 7, [90, 90, 120]),
+        site_loop,
+        `Co1 Co 0 0 0`,
+        `loop_`,
+        ...moment_tags(`.`),
+        `Co1 1 1 2`,
+      ].join(`\n`)
+      const { sites, lattice } = parse_cif(cif)
+      const magmom = sites[0].properties.magmom as Vec3
+      const [unit_a, unit_b, unit_c] = lattice.matrix.map((row) => math.normalize_vec(row))
+      const expected = math.add(unit_a, unit_b, math.scale(unit_c, 2))
+      expect(
+        Math.max(...magmom.map((val, axis) => Math.abs(val - expected[axis]))),
+      ).toBeLessThan(1e-15)
+      expect(Math.hypot(...magmom)).toBeCloseTo(Math.sqrt(5), 14)
+    })
+
+    const adp_cif = (cell: string, aniso_loop: string, ops = [`x,y,z`]): string =>
+      [
+        `data_test`,
+        cell,
+        symop_rows(ops),
+        site_loop,
+        `Fe1 Fe 0.1 0.2 0.3`,
+        `O1 O 0.6 0.7 0.8`,
+        aniso_loop,
+      ].join(`\n`)
+    const aniso_loop = (kind: string, row: string): string =>
+      [`loop_`, `_atom_site_aniso_label`, ...aniso_tags(kind), row].join(`\n`)
+    const aniso_tags = (kind: string): string[] =>
+      [`11`, `22`, `33`, `12`, `13`, `23`].map((ij) => `_atom_site_aniso_${kind}_${ij}`)
+    const max_abs_diff = (mat_a: Matrix3x3, mat_b: Matrix3x3): number =>
+      Math.max(...mat_a.flat().map((val, idx) => Math.abs(val - mat_b.flat()[idx])))
+
+    // orthogonal axes: N A = identity, so U_cart is the CIF U_ij; a 2-fold along b (-x,y,-z)
+    // flips U12 and U23 of its image and keeps U13. O has no aniso row, so no tensor.
+    test(`ADPs convert to Cartesian and transform under symmetry ops`, () => {
+      const loop = aniso_loop(`U`, `Fe1 0.01 0.02 0.03 0.004 0.005 0.006`)
+      const { sites } = parse_cif(adp_cif(cif_cell(4, 5, 6), loop, [`x,y,z`, `-x,y,-z`]))
+      const is_oxygen = (site: Site): boolean => site.species[0].element === `O`
+      // oxfmt-ignore
+      expect(by_position(sites.filter((site) => !is_oxygen(site)), `adp_U_cart`)).toEqual({
+        [`0.1;0.2;0.3`]: [0.01, 0.004, 0.005, 0.004, 0.02, 0.006, 0.005, 0.006, 0.03],
+        [`0.9;0.2;0.7`]: [0.01, -0.004, 0.005, -0.004, 0.02, -0.006, 0.005, -0.006, 0.03],
+      })
+      expect(sites.filter(is_oxygen).map(({ properties }) => properties)).toEqual([{}, {}])
+    })
+
+    // B = 8π² U and β_ij = 2π² a*_i a*_j U_ij describe the same tensor in an oblique cell
+    test(`U, B and beta ADP loops give the same Cartesian tensor`, () => {
+      const cell = cif_cell(5, 6, 7, [80, 100, 110])
+      const u_cif = [0.011, 0.022, 0.033, 0.004, -0.005, 0.006]
+      const read = (kind: string, values: number[]): Matrix3x3 => {
+        const loop = aniso_loop(kind, `Fe1 ${values.join(` `)}`)
+        return parse_cif(adp_cif(cell, loop)).sites[0].properties.adp_U_cart as Matrix3x3
+      }
+      const lattice = parse_cif(adp_cif(cell, ``)).lattice.matrix
+      const recip = math.reciprocal_lattice(lattice).map((row) => Math.hypot(...row))
+      // (i, j) axis pairs of the U11 U22 U33 U12 U13 U23 components
+      // oxfmt-ignore
+      const pairs = [[0, 0], [1, 1], [2, 2], [0, 1], [0, 2], [1, 2]]
+      const beta = pairs.map(
+        ([row, col], idx) => 2 * Math.PI ** 2 * recip[row] * recip[col] * u_cif[idx],
+      )
+      const from_u = read(`U`, u_cif)
+      // Cartesian U = A N U N A^T (A: lattice vectors as columns, N = diag(a*, b*, c*))
+      const [u11, u22, u33, u12, u13, u23] = u_cif
+      // oxfmt-ignore
+      const u_mat: Matrix3x3 = [[u11, u12, u13], [u12, u22, u23], [u13, u23, u33]]
+      const scale_columns = (row: Vec3): Vec3 =>
+        row.map((val, col) => val * recip[col]) as Vec3
+      const a_n = transpose_3x3(lattice).map(scale_columns) as Matrix3x3
+      const expected = math.dot(math.dot(a_n, u_mat), transpose_3x3(a_n))
+      // ~1e-17 Å² of f64 rounding on values ~0.03 (a few eps), bounded at 1e-16
+      expect(max_abs_diff(from_u, expected)).toBeLessThan(1e-16)
+      const b_cif = u_cif.map((val) => 8 * Math.PI ** 2 * val)
+      expect(max_abs_diff(read(`B`, b_cif), from_u)).toBeLessThan(1e-16)
+      expect(max_abs_diff(read(`beta`, beta), from_u)).toBeLessThan(1e-16)
+    })
+
+    // riding hydrogens often carry `?` aniso values: that row is skipped, the rest still read
+    test(`skips ADP rows with unset values`, () => {
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      onTestFinished(() => warn.mockRestore())
+      const loop = `${aniso_loop(`U`, `Fe1 0.01 0.01 0.01 0 0 0`)}\nO1 ? ? ? ? ? ?`
+      const { sites } = parse_cif(adp_cif(cif_cell(4), loop))
+      expect(sites.map((site) => `adp_U_cart` in site.properties)).toEqual([true, false])
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`skipped 1 anisotropic ADP row`),
+      )
+    })
+  })
+
   describe(`CIF Error Handling`, () => {
     // oxfmt-ignore
     it.each([
@@ -1127,9 +1213,8 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(() => parse_cif(content)).toThrow(expected_error)
     })
 
-    // A row with a non-numeric coordinate is dropped (Si1) while the valid O1 row survives;
-    // `#` comments and unknown tags interleaved with the data rows are skipped rather than
-    // ending the loop
+    // A row with a non-numeric coordinate is dropped; `#` comments and unknown tags between
+    // rows are skipped rather than ending the loop
     // oxfmt-ignore
     test.each([
       [`a non-numeric coordinate`, `Si1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`, [`O`]],
@@ -1139,20 +1224,16 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
     })
 
-    test.each([
-      [`0`, 0],
-      [`0.25`, 0.25],
-      [`.`, 1],
-      [`?`, 1],
-      [undefined, 1],
-    ])(`preserves occupancy token %p as %p`, (token, expected) => {
-      // `.` and `?` are CIF's "inapplicable"/"unknown" placeholders, both meaning occu 1
-      const occupancy_loop = token === undefined ? `` : `_atom_site_occupancy\n`
-      const cif = `data_occupancy\n${cell5}\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n${occupancy_loop}H1 0 0 0${
-        token === undefined ? `` : ` ${token}`
-      }`
-      expect(parse_cif(cif).sites[0]?.species[0]?.occu).toBe(expected)
-    })
+    // `.` and `?` are CIF's "inapplicable"/"unknown" placeholders, both meaning occu 1
+    // oxfmt-ignore
+    test.each([[`0`, 0], [`0.25`, 0.25], [`.`, 1], [`?`, 1], [undefined, 1]])(
+      `preserves occupancy token %p as %p`,
+      (token, expected) => {
+        const loop = atom_site_loop(`label`, ...fract_xyz, ...(token ? [`occupancy`] : []))
+        const cif = `data_occupancy\n${cell5}\n${loop}\nH1 0 0 0 ${token ?? ``}`
+        expect(parse_cif(cif).sites[0]?.species[0]?.occu).toBe(expected)
+      },
+    )
   })
 
   describe(`TiO2 CIF Oxidation State Tests`, () => {
@@ -1164,29 +1245,20 @@ O2   O   0.410  0.140  0.880  1.000`
 
     test(`parses TiO2 CIF`, () => {
       const result = parse_cif(tio2_cif)
-      assert(`lattice` in result, `Failed to parse TiO2 CIF`)
-
-      const { lattice } = result
-      const lengths = [lattice.a, lattice.b, lattice.c]
-      expect_vec3_close(lengths, [4.59983732, 4.59983732, 2.95921356], 8)
-      expect_vec3_close([lattice.alpha, lattice.beta, lattice.gamma], [90, 90, 90], 8)
-      expect(lattice.volume).toBeCloseTo(4.59983732 * 4.59983732 * 2.95921356, 6)
-
-      // _atom_site_label is kept verbatim (the file numbers from 0)
-      const labels = result.sites.map((site) => site.label)
-      expect(labels).toEqual([`Ti0`, `Ti1`, `O2`, `O3`, `O4`, `O5`])
-      const elements = result.sites.map((site) => site.species[0].element)
-      expect(elements).toEqual([`Ti`, `Ti`, `O`, `O`, `O`, `O`])
-
-      // Fractional coordinates, finite Cartesian coordinates, oxidation states read from the
+      const { a, b, c, alpha, beta, gamma, volume } = result.lattice
+      const [len_a, len_c] = [4.59983732, 2.95921356]
+      expect_vec3_close([a, b, c, alpha, beta, gamma], [len_a, len_a, len_c, 90, 90, 90], 8)
+      expect(volume).toBeCloseTo(len_a ** 2 * len_c, 6)
+      // labels kept verbatim (the file numbers from 0), oxidation states read from the
       // charged type symbols (Ti4+, O2-)
-      result.sites.forEach((site, idx) => {
-        expect_vec3_close(site.abc, expected_coords[idx])
-        expect(site.xyz.every(Number.isFinite)).toBe(true)
-        expect(site.species).toHaveLength(1)
-      })
-      const ox_states = result.sites.map(({ species }) => species[0].oxidation_state)
-      expect(ox_states).toEqual([4, 4, -2, -2, -2, -2])
+      const ti = { element: `Ti`, occu: 1, oxidation_state: 4 }
+      const oxygen = { element: `O`, occu: 1, oxidation_state: -2 }
+      expect(result.sites.map(({ label, species }) => [label, species])).toEqual([
+        ...[`Ti0`, `Ti1`].map((label) => [label, [ti]]),
+        ...[`O2`, `O3`, `O4`, `O5`].map((label) => [label, [oxygen]]),
+      ])
+      result.sites.forEach((site, idx) => expect_vec3_close(site.abc, expected_coords[idx]))
+      expect_sites_reconstruct(result)
     })
 
     test(`should normalize decorated _atom_type_symbol in _atom_type_number_in_cell loop`, () => {
@@ -1210,49 +1282,36 @@ O2 O2- 0.25 0.75 0.75
 O3 O2- 0.75 0.25 0.75`
 
       const result = parse_cif(cif_with_decorated_symbols)
-
-      expect(result.sites).toHaveLength(6) // 2 Sn + 1 Fe + 3 O = 6 total sites
       // decorated symbols must normalize to match the _atom_type_number_in_cell counts
       expect(element_counts(result)).toEqual({ Sn: 2, Fe: 1, O: 3 })
     })
 
     // A charged type symbol decorates the species (pymatgen's CifWriter writes `Ag+`, `O2-`,
     // `Fe2.5+`); a group symbol's charge (`NO3-`, `NH4+`) belongs to no single element
+    // `Fe0+` is a decorated zero charge, as pymatgen's CifWriter writes it
+    // oxfmt-ignore
     test.each([
-      [`Ag+`, `Ag`, 1],
-      [`O2-`, `O`, -2],
-      [`FE3+`, `Fe`, 3],
-      [`Fe2.5+`, `Fe`, 2.5],
-      [`Zr`, `Zr`, 0],
-      [`NO3-`, `N`, 0],
-      [`NH4+`, `N`, 0],
-      [`ND4+`, `N`, 0],
-      [`NO+`, `N`, 0],
-      [`NO2+`, `N`, 0],
-      [`NO2-`, `N`, 0],
-      [`HO-`, `O`, 0],
-      [`OD-`, `O`, 0],
-      [`H2O`, `O`, 0],
-      [`D2O`, `O`, 0],
-      // anion groups carry no positive charge, so these are the Co3+, Po4+ and Ho3+ ions
-      [`CO3+`, `Co`, 3],
-      [`PO4+`, `Po`, 4],
-      [`HO3+`, `Ho`, 3],
-      [`HO`, `Ho`, 0], // hydroxide carries a charge
+      [`Ag+`, `Ag`, 1], [`O2-`, `O`, -2], [`FE3+`, `Fe`, 3], [`Fe2.5+`, `Fe`, 2.5], [`Fe0+`, `Fe`, 0],
+      [`Zr`, `Zr`, undefined], [`NO3-`, `N`, undefined], [`NH4+`, `N`, undefined],
+      [`ND4+`, `N`, undefined], [`NO+`, `N`, undefined], [`NO2+`, `N`, undefined],
+      [`NO2-`, `N`, undefined], [`HO-`, `O`, undefined], [`OD-`, `O`, undefined],
+      [`H2O`, `O`, undefined], [`D2O`, `O`, undefined],
+      // anion groups carry no positive charge, so these are the Co3+, Po4+ and Ho3+ ions, but
+      // hydroxide carries a charge
+      [`CO3+`, `Co`, 3], [`PO4+`, `Po`, 4], [`HO3+`, `Ho`, 3], [`HO`, `Ho`, undefined],
       // unless the two letters spell an element that forms no ions (copernicium, nobelium)
-      [`CN+`, `C`, 0],
-      [`NO3+`, `N`, 0],
+      [`CN+`, `C`, undefined], [`NO3+`, `N`, undefined],
       // sign-first symbols are not the CIF convention: undecorated without a loop, as in pymatgen
-      [`O-2`, `O`, 0],
-      [`Fe+2`, `Fe`, 0],
-    ])(`reads type symbol %s as %s with oxidation state %d`, (symbol, element, ox) => {
+      [`O-2`, `O`, undefined], [`Fe+2`, `Fe`, undefined],
+    ])(`reads type symbol %s as %s with oxidation state %s`, (symbol, element, ox) => {
       const result = parse_cif(`data_t\n${cell5}\n${site_loop}\nX1 ${symbol} 0 0 0`)
-      expect(result.sites[0].species).toEqual([{ element, occu: 1, oxidation_state: ox }])
+      const expected =
+        ox === undefined ? { element, occu: 1 } : { element, occu: 1, oxidation_state: ox }
+      expect(result.sites[0].species).toStrictEqual([expected])
     })
 
-    // pymatgen decorates from _atom_type_oxidation_number, looked up by the row's exact type
-    // symbol (its element without a type-symbol column); the loop's number wins over a charged
-    // symbol's, keeping a rounded label's full precision
+    // _atom_type_oxidation_number decorates by the row's exact type symbol (else element), as
+    // in pymatgen, winning over a charged symbol's rounded value
     test.each([
       [`bare symbol`, `${site_loop}\nFe1 Fe 0 0 0`, `Fe 3`, 3],
       [`label-only row`, `${label_loop}\nFe1 0 0 0 1`, `Fe 3`, 3],
@@ -1267,7 +1326,12 @@ O3 O2- 0.75 0.25 0.75`
       // an unset type symbol (`?`) leaves the label's element to key the lookup
       [`unset type symbol`, `${site_loop}\nFe1 ? 0 0 0`, `Fe 3`, 3],
       // pymatgen also strips loop keys to `Fe`, reading a plain Fe next to Fe3+ as Fe3+
-      [`bare symbol with only a charged key`, `${site_loop}\nFe1 Fe 0 0 0`, `Fe3+ 3`, 0],
+      [
+        `bare symbol with only a charged key`,
+        `${site_loop}\nFe1 Fe 0 0 0`,
+        `Fe3+ 3`,
+        undefined,
+      ],
     ])(`_atom_type_oxidation_number decorates a %s`, (_desc, atoms, atom_type, ox) => {
       const types = `loop_\n_atom_type_symbol\n_atom_type_oxidation_number\n${atom_type}`
       const result = parse_cif(`data_t\n${cell5}\n${types}\n${atoms}`)
@@ -1290,7 +1354,6 @@ O3 O2- 0.75 0.25 0.75`
       [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`], [`Fe1`]],
     ])(`should infer elements from labels with %s`, (_name, rows, elements, labels) => {
       const result = parse_cif(label_cif(...rows))
-
       expect(result.sites.map((site) => site.species[0].element)).toEqual(elements)
       expect(result.sites.map((site) => site.label)).toEqual(labels)
       expect(result.lattice.volume).toBe(64.0)
@@ -1300,31 +1363,18 @@ O3 O2- 0.75 0.25 0.75`
     test(`names sites by element and index when the loop has no _atom_site_label`, () => {
       const loop = `loop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
       const result = parse_cif(`data_test\n${cell4}\n${loop}\nFe 0 0 0\nO 0.5 0.5 0.5`)
-
       expect(result.sites.map((site) => site.label)).toEqual([`Fe1`, `O2`])
     })
   })
 
-  // Rows sharing a position are ONE disordered site (pymatgen CifParser semantics): its
-  // species list carries each row's element and occupancy, same-element rows sum, and a
-  // symmetry image landing on an existing image of the same row is dropped, not doubled.
+  // Rows sharing a position are ONE disordered site (as in pymatgen): same-element rows sum,
+  // and an image landing on the same row's earlier image is dropped, not doubled
   test(`merges CIF rows at one position into a disordered site and expands them by symmetry`, () => {
+    const ops = [`x, y, z`, `-x, -y, -z`, `x+1/2, y+1/2, z+1/2`]
     const mixed_occupancy_cif = `data_mixed_occupancy
 ${cif_cell(5.5)}
-
-loop_
-_space_group_symop_operation_xyz
-   'x, y, z'
-   '-x, -y, -z'
-   'x+1/2, y+1/2, z+1/2'
-
-loop_
-   _atom_site_label
-   _atom_site_occupancy
-   _atom_site_fract_x
-   _atom_site_fract_y
-   _atom_site_fract_z
-   _atom_site_type_symbol
+${symop_rows(ops, `_space_group_symop_operation_xyz`)}
+${atom_site_loop(`label`, `occupancy`, ...fract_xyz, `type_symbol`)}
    Na1        0.7500  0.000000      0.000000      0.000000     Na
    K1         0.2500  0.000000      0.000000      0.000000     K
    Cl1        0.3000  0.250000      0.250000      0.250000     Cl
@@ -1338,25 +1388,27 @@ loop_
       result.sites
         .find((site) => site.abc.every((coord, axis) => Math.abs(coord - abc[axis]) < 1e-9))
         ?.species.map(({ element, occu }) => `${element}:${occu}`)
-    // Na/K: (0,0,0) is its own inversion image; the translation adds (1/2,1/2,1/2)
-    expect(species_at([0, 0, 0])).toEqual([`Na:0.75`, `K:0.25`])
-    expect(species_at([0.5, 0.5, 0.5])).toEqual([`Na:0.75`, `K:0.25`])
-    // Cl/I: inversion gives (3/4,3/4,3/4), the translation lands on both again
-    expect(species_at([0.25, 0.25, 0.25])).toEqual([`Cl:0.3`, `I:0.5`])
-    expect(species_at([0.75, 0.75, 0.75])).toEqual([`Cl:0.3`, `I:0.5`])
-    // two Fe rows (e.g. Fe2+/Fe3+) sum into one fully occupied Fe species
-    expect(species_at([0.5, 0, 0])).toEqual([`Fe:1`])
-    expect(species_at([0, 0.5, 0.5])).toEqual([`Fe:1`])
+    // Na/K: (0,0,0) is its own inversion image; the translation adds (1/2,1/2,1/2). Cl/I:
+    // inversion gives (3/4,3/4,3/4), the translation lands on both again. Two Fe rows (e.g.
+    // Fe2+/Fe3+) sum into one fully occupied Fe species
+    // oxfmt-ignore
+    const positions = [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75], [0.5, 0, 0], [0, 0.5, 0.5]]
+    expect(positions.map(species_at)).toEqual([
+      ...[1, 2].map(() => [`Na:0.75`, `K:0.25`]),
+      ...[1, 2].map(() => [`Cl:0.3`, `I:0.5`]),
+      ...[1, 2].map(() => [`Fe:1`]),
+    ])
     expect(result.sites).toHaveLength(6)
   })
 
-  // Same-element rows of different labels that symmetry maps onto each other list one atom
-  // twice rather than a disordered site, so summing gave Na:2 on both sites. pymatgen rejects
-  // the file (occupancy_tolerance=1) or rescales to 1 (occupancy_tolerance=2); the larger
-  // row's occupancy is kept here, with a warning. Differently charged rows (Na+ and Na) stay
-  // separate species but still share one Na occupancy, so the later one is dropped, even when
-  // its occupancy is larger (Na+ 0.6 then Na 0.9 keeps Na+ 0.6), as the warning says.
-  const na = (occu: number, oxidation_state = 0) => [{ element: `Na`, occu, oxidation_state }]
+  // Same-element rows overlapping past full occupancy list one atom twice (summing gave
+  // Na:2): the larger occupancy is kept with a warning. A differently charged later row (Na
+  // after Na+) is dropped even when its occupancy is larger (Na+ 0.6 then Na 0.9 keeps 0.6)
+  const na = (occu: number, oxidation_state?: number) => [
+    oxidation_state === undefined
+      ? { element: `Na`, occu }
+      : { element: `Na`, occu, oxidation_state },
+  ]
   const symops = `loop_\n_symmetry_equiv_pos_as_xyz\n'x,y,z'\n'x+1/2,y+1/2,z'`
   // oxfmt-ignore
   test.each([
@@ -1402,21 +1454,10 @@ _atom_type_oxidation_number
 Sn2+ 2
 As4+ 4
 Se2- -2
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_symmetry_multiplicity
-_atom_site_Wyckoff_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-_atom_site_B_iso_or_equiv
-_atom_site_occupancy
-_atom_site_attached_hydrogens
+${atom_site_loop(`label`, `type_symbol`, `symmetry_multiplicity`, `Wyckoff_symbol`, ...fract_xyz, `B_iso_or_equiv`, `occupancy`, `attached_hydrogens`)}
 Sn1 Sn2+ 2 a 0.5270(2) 0.3856(2) 0.7224(3) 0.0266(4) 1. 0
 As1 As4+ 2 a 0.6836(4) 0.1608(5) 0.8108(6) 0.0067(7) 1. 0
 Se1 Se2- 2 a 0.4898(4) 0.7511(6) 0.8491(6) 0.0110(6) 1. 0`
-
     const result = parse_cif(icsd_cif)
     // 3 unique sites × 2 symmetry operations
     expect(element_counts(result)).toEqual({ Sn: 2, As: 2, Se: 2 })
@@ -1429,25 +1470,15 @@ Se1 Se2- 2 a 0.4898(4) 0.7511(6) 0.8491(6) 0.0110(6) 1. 0`
   // GitHub issue #226: compound symmetry operations like x-y, -x+y
   test(`parses CIF with compound symmetry operations (x-y, -x+y) correctly`, () => {
     // P-3 space group has compound expressions: '-y, x-y, z', 'y, -x+y, -z', etc.
+    // oxfmt-ignore
+    const ops = [`x, y, z`, `-x, -y, -z`, `-y, x-y, z`, `y, -x+y, -z`, `-x+y, -x, z`, `x-y, x, -z`]
     const cif = `data_CsKB8
 ${cif_cell(6.6611, 6.6611, 8.184, [90, 90, 120])}
 loop_
  _symmetry_equiv_pos_site_id
  _symmetry_equiv_pos_as_xyz
-  1 'x, y, z'
-  2 '-x, -y, -z'
-  3 '-y, x-y, z'
-  4 'y, -x+y, -z'
-  5 '-x+y, -x, z'
-  6 'x-y, x, -z'
-loop_
- _atom_site_type_symbol
- _atom_site_label
- _atom_site_symmetry_multiplicity
- _atom_site_fract_x
- _atom_site_fract_y
- _atom_site_fract_z
- _atom_site_occupancy
+${ops.map((op, idx) => `  ${idx + 1} '${op}'`).join(`\n`)}
+${atom_site_loop(`type_symbol`, `label`, `symmetry_multiplicity`, ...fract_xyz, `occupancy`)}
   Cs Cs0 1 0.0 0.0 0.0 1.0
   K K1 1 0.0 0.0 0.5 1.0
   B B2 6 0.09755 0.50299 0.28944 1.0
@@ -1455,11 +1486,8 @@ loop_
   O O4 6 0.1244 0.66629 0.7146 1.0
   O O5 6 0.17015 0.73729 0.29321 1.0
   F F6 2 0.33333333 0.66666667 0.94541 1.0`
-
     const result = parse_cif(cif)
-
     // Formula: Cs1 K1 B8 O12 F2 = 24 sites
-    expect(result.sites).toHaveLength(24)
     expect(element_counts(result)).toEqual({ Cs: 1, K: 1, B: 8, O: 12, F: 2 })
     expect(result.lattice.gamma).toBeCloseTo(120, 1)
   })
@@ -1473,9 +1501,7 @@ loop_
       const ops = `x,y,z -y,x-y,z -x+y,-x,z -x,-y,z+1/2 y,-x+y,z+1/2 x-y,x,z+1/2`.split(` `)
       const cif = `data_Mg
 ${cif_cell(3.2094, 3.2094, 5.2108, [90, 90, 120])}
-loop_
-_symmetry_equiv_pos_as_xyz
-${ops.map((op) => `'${op}'`).join(`\n`)}
+${symop_rows(ops)}
 ${site_loop}
 Mg1 Mg ${third} ${two_thirds} 0.25`
       const result = parse_cif(cif)
@@ -1486,9 +1512,8 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     },
   )
 
-  // Rows straddling the periodic boundary merge exactly when their minimum-image distance is
-  // under the 0.05 Å tolerance, whatever the bucketing: 2 and 3 buckets per axis (repeated
-  // neighbour keys), a normal cell, and a 3e5 Å cell whose buckets get coarsened
+  // Rows straddling the boundary merge exactly below the 0.05 Å minimum-image tolerance for
+  // 2 and 3 buckets per axis, a normal cell and a 3e5 Å cell with coarsened buckets
   test.each(
     [0.12, 0.16, 5, 3e5].flatMap((len) => [
       [len, 0.049, 1],
@@ -1507,10 +1532,8 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
   })
 
   // P1 CIF with a 5 Å cubic cell whose symop loop and single atom-site row are supplied
-  const p1_cif = (ops: string[], atom_row: string) => {
-    const symop_rows = ops.map((symop) => `   '${symop}'`).join(`\n`)
-    return `data_test\n${cell5}\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\n${site_loop}\n${atom_row}`
-  }
+  const p1_cif = (ops: string[], atom_row: string) =>
+    `data_test\n${cell5}\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\n${symop_rows(ops, `_space_group_symop_operation_xyz`)}\n\n${site_loop}\n${atom_row}`
 
   test(`handles symmetry operations with dangling operators correctly`, () => {
     // oxfmt-ignore
@@ -1530,14 +1553,13 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
 
   test(`parses PF-sd-1601634 CIF with correct oxygen count`, () => {
     const result = parse_cif(pf_sd_1601634_cif)
-
     // 4 oxygen sites (no symmetry ops, so no expansion): the OH2 (0.655) and OH (0.345)
     // rows share one position and merge into a single fully occupied O site
     const oxygen_sites = result.sites.filter((site) => site.species[0].element === `O`)
     const oxygen_labels = oxygen_sites.map((site) => site.label)
     expect(oxygen_labels.toSorted()).toEqual([`O1`, `O2`, `O3`, `OH2`])
     for (const site of oxygen_sites) {
-      expect(site.species).toEqual([{ element: `O`, occu: 1, oxidation_state: 0 }])
+      expect(site.species).toEqual([{ element: `O`, occu: 1 }])
     }
 
     // 4 O + 1 As + 1 disordered Zn/Fe/Pb + 1 Pb
@@ -1547,17 +1569,14 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     expect(mixed?.species.map(({ element, occu }) => [element, occu])).toEqual([
       [`Zn`, 0.645], [`Fe`, 0.345], [`Pb`, 0.01],
     ])
-
     expect(result.lattice.a).toBeCloseTo(9.143, 3)
     expect(result.lattice.b).toBeCloseTo(6.335, 3)
     expect(result.lattice.c).toBeCloseTo(7.598, 3)
     expect(result.lattice.beta).toBeCloseTo(115.07, 2)
   })
 
-  // Per-element counts match the header's _atom_type_number_in_cell (COD 7008984, whose atom
-  // list already embeds centering) or pymatgen (Li10GeP2S12: P42/nmc, 16 ops, 4 disordered
-  // Ge/P sites; IRMOF-1: Fm-3m, 192 ops, 7 unique sites), so expansion neither over- nor
-  // under-generates
+  // Per-element counts match _atom_type_number_in_cell or pymatgen (Li10GeP2S12: 16 ops, 4
+  // disordered Ge/P sites; IRMOF-1: 192 ops, 7 unique sites)
   // oxfmt-ignore
   test.each([
     [`P24Ru4H252C296S24N16`, ru_p_complex_cif, { C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 }, {}, 0, 0],
@@ -1577,6 +1596,20 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
 })
 
 describe(`Phonopy YAML Parser`, () => {
+  // AgI cell under `key`; the unit cell's points also carry reduced_to lines
+  const agi_cell = (key: string, ag_extra = ``, i_extra = ``) => `${key}:
+  lattice:
+  - [     4.556340561269590,     0.000000000000000,     0.000000000000000 ]
+  - [    -2.278170280634795,     3.945906674352911,     0.000000000000000 ]
+  - [     0.000000000000000,     0.000000000000000,     7.446308720723541 ]
+  points:
+  - symbol: Ag
+    coordinates: [  0.333333333333333,  0.666666666666667,  0.001734192635380 ]
+    mass: 107.868200${ag_extra}
+  - symbol: I
+    coordinates: [  0.333333333333333,  0.666666666666667,  0.376708787364615 ]
+    mass: 126.904470${i_extra}
+`
   const simple_phonopy_yaml = `
 phono3py:
   version: 2.3.0
@@ -1587,34 +1620,8 @@ space_group:
   number: 186
   Hall_symbol: "P 6c -2c"
 
-primitive_cell:
-  lattice:
-  - [     4.556340561269590,     0.000000000000000,     0.000000000000000 ]
-  - [    -2.278170280634795,     3.945906674352911,     0.000000000000000 ]
-  - [     0.000000000000000,     0.000000000000000,     7.446308720723541 ]
-  points:
-  - symbol: Ag
-    coordinates: [  0.333333333333333,  0.666666666666667,  0.001734192635380 ]
-    mass: 107.868200
-  - symbol: I
-    coordinates: [  0.333333333333333,  0.666666666666667,  0.376708787364615 ]
-    mass: 126.904470
-
-unit_cell:
-  lattice:
-  - [     4.556340561269590,     0.000000000000000,     0.000000000000000 ]
-  - [    -2.278170280634795,     3.945906674352912,     0.000000000000000 ]
-  - [     0.000000000000000,     0.000000000000000,     7.446308720723541 ]
-  points:
-  - symbol: Ag
-    coordinates: [  0.333333333333333,  0.666666666666667,  0.001734192635380 ]
-    mass: 107.868200
-    reduced_to: 1
-  - symbol: I
-    coordinates: [  0.333333333333333,  0.666666666666667,  0.376708787364615 ]
-    mass: 126.904470
-    reduced_to: 3
-`
+${agi_cell(`primitive_cell`)}
+${agi_cell(`unit_cell`, `\n    reduced_to: 1`, `\n    reduced_to: 3`)}`
 
   // oxfmt-ignore
   it.each([
@@ -1660,15 +1667,12 @@ unit_cell:
 })
 
 describe(`parse_structure_file`, () => {
-  // Filenames from blob: object URLs (URL.createObjectURL) are extensionless UUIDs,
-  // so format detection must fall back to content sniffing — same bug class as
-  // https://github.com/janosh/matterviz/issues/353 for trajectories
+  // blob: object URL filenames are extensionless UUIDs, so detection sniffs the content
+  // (same bug class as https://github.com/janosh/matterviz/issues/353 for trajectories)
+  // oxfmt-ignore
   test.each([
-    [`CIF`, `Li10GeP2S12.cif`],
-    [`POSCAR`, `BaTiO3-tetragonal.poscar`],
-    [`pymatgen JSON`, `mp-1.json`],
-    [`extxyz`, `quartz.extxyz`],
-    [`phonopy YAML`, `BeO-zw12zc18p-phono3py.yaml.gz`],
+    [`CIF`, `Li10GeP2S12.cif`], [`POSCAR`, `BaTiO3-tetragonal.poscar`], [`pymatgen JSON`, `mp-1.json`],
+    [`extxyz`, `quartz.extxyz`], [`phonopy YAML`, `BeO-zw12zc18p-phono3py.yaml.gz`],
   ])(`detects %s content with blob-URL UUID filename`, (_label, fixture) => {
     const content = read_fixture(fixture)
     const result = parse_structure_file(content, `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
@@ -1721,12 +1725,10 @@ describe(`parse_structure_file`, () => {
       expect(result.lattice.volume).toBe(125)
     })
 
+    // oxfmt-ignore
     test.each([
-      [`empty object`, {}],
-      [`null structure`, { structure: null }],
-      [`invalid sites`, { sites: `not_an_array` }],
-      [`empty sites array`, { sites: [] }],
-      [`missing species`, { sites: [{ abc: [0, 0, 0] }] }],
+      [`empty object`, {}], [`null structure`, { structure: null }], [`invalid sites`, { sites: `not_an_array` }],
+      [`empty sites array`, { sites: [] }], [`missing species`, { sites: [{ abc: [0, 0, 0] }] }],
       [`malformed species`, { sites: [{ species: `not_array`, abc: [0, 0, 0] }] }],
       [`missing coordinates`, { sites: [{ species: [{ element: `H` }] }] }],
       [`array of invalid objects`, [{ no_structure: true }, { also_invalid: true }]],
@@ -1747,7 +1749,7 @@ describe(`parse_structure_file`, () => {
     test(`turns raw string species like ['H'] into Species`, () => {
       const raw = { data: { sites: [{ species: [`H`], xyz: [0, 0, 0] }] } }
       const result = parse_structure_file(JSON.stringify(raw), `test.json`)
-      expect(result.sites[0].species).toEqual([{ element: `H`, occu: 1, oxidation_state: 0 }])
+      expect(result.sites[0].species).toEqual([{ element: `H`, occu: 1 }])
     })
   })
 
@@ -1821,9 +1823,10 @@ describe(`parse_structure_file`, () => {
       expect_vec3_close(result.sites[0].abc, [0.5, 0.25, 0.5], 12)
       expect_vec3_close(result.sites[0].xyz, [1, 0.5, 1], 12)
       expect_vec3_close(result.sites[1].xyz, [0.5, 1, 1.5], 12)
-      // Undecorated species (Materials Project dicts carry no oxidation_state) satisfy Species
-      const plain = (element: string, occu = 1) => ({ element, occu, oxidation_state: 0 })
-      expect(result.sites.map(({ species }) => species)).toEqual([
+      // Undecorated species (Materials Project dicts carry no oxidation_state, pymatgen may
+      // write null) stay undecorated: no oxidation_state key
+      const plain = (element: string, occu = 1) => ({ element, occu })
+      expect(result.sites.map(({ species }) => species)).toStrictEqual([
         [plain(`C`)],
         [plain(`C`)],
         [plain(`Fe`, 0.5), plain(`Ni`)],
@@ -1882,11 +1885,10 @@ describe(`parse_structure_file`, () => {
       expect(result.sites[0]).toEqual(site)
     })
 
+    // oxfmt-ignore
     test.each([
-      [`malformed JSON`, `{invalid json`],
-      [`completely invalid structure`, `{ "no_structure": true }`],
-      [`empty string`, ``],
-      [`only whitespace`, `   \n\t   `],
+      [`malformed JSON`, `{invalid json`], [`completely invalid structure`, `{ "no_structure": true }`],
+      [`empty string`, ``], [`only whitespace`, `   \n\t   `],
     ])(`handles invalid input gracefully: %s`, (_description, invalid_content) => {
       expect(() => parse_structure_file(invalid_content, `test.json`)).toThrow(
         `Failed to parse structure from 'test.json'`,
@@ -1921,39 +1923,28 @@ describe(`optimade_to_structure`, () => {
   // oxfmt-ignore
   it.each([
     { name: `crystalline structure with lattice`, first_element: `Si`, attributes: {
-      elements: [`Si`, `O`],
-      lattice_vectors: [[4.91, 0, 0], [0, 4.91, 0], [0, 0, 5.43]],
+      elements: [`Si`, `O`], lattice_vectors: [[4.91, 0, 0], [0, 4.91, 0], [0, 0, 5.43]], species_at_sites: [`Si`, `O`, `O`, `O`],
       cartesian_site_positions: [[0, 0, 0], [2.455, 2.455, 1.3575], [2.455, 0, 2.715], [0, 2.455, 4.0725]],
-      species_at_sites: [`Si`, `O`, `O`, `O`],
     } },
     { name: `molecular structure without lattice`, first_element: `O`, attributes: {
-      elements: [`H`, `O`],
-      cartesian_site_positions: [[0, 0, 0], [0.957, 0, 0], [0.24, 0.927, 0]],
-      species_at_sites: [`O`, `H`, `H`],
+      elements: [`H`, `O`], cartesian_site_positions: [[0, 0, 0], [0.957, 0, 0], [0.24, 0.927, 0]], species_at_sites: [`O`, `H`, `H`],
     } },
     // wrappers: OPTIMADE responses nest the structure under `data`, as an object or an array
     { name: `wrapped in a data object`, first_element: `Si`, wrap: (obj: object) => ({ data: obj }), attributes: {
-      lattice_vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
-      cartesian_site_positions: [[0, 0, 0], [2, 2, 2]],
-      species_at_sites: [`Si`, `Si`],
+      lattice_vectors: cubic_matrix(4), cartesian_site_positions: [[0, 0, 0], [2, 2, 2]], species_at_sites: [`Si`, `Si`],
     } },
     { name: `wrapped in a data array`, first_element: `C`, wrap: (obj: object) => ({ data: [obj] }), attributes: {
-      cartesian_site_positions: [[0, 0, 0]],
-      species_at_sites: [`C`],
+      cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`C`],
     } },
     { name: `periodic data array`, first_element: `Si`, wrap: (obj: object) => ({ data: [obj] }), attributes: {
-      lattice_vectors: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
-      cartesian_site_positions: [[0, 0, 0]],
-      species_at_sites: [`Si`],
+      lattice_vectors: cubic_matrix(4), cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Si`],
     } },
     { name: `nested OPTIMADE entry`, first_element: `C`, wrap: (obj: object) => ({ metadata: { lattice: {} }, result: obj }), attributes: {
-      cartesian_site_positions: [[0, 0, 0]],
-      species_at_sites: [`C`],
+      cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`C`],
     } },
   ])(`parses $name from JSON`, ({ name, attributes, first_element, wrap = (obj: object) => obj }) => {
     const json = JSON.stringify(wrap({ id: name, type: `structures`, attributes }))
     const result = parse_structure_file(json, `${name}.json`)
-
     const { lattice_vectors, cartesian_site_positions } = attributes as {
       lattice_vectors?: number[][]
       cartesian_site_positions: number[][]
@@ -2062,9 +2053,8 @@ describe(`optimade_to_structure`, () => {
     expect(result.properties).toEqual(metadata)
   })
 
-  // a concentration of 1.0 is the default and not stored; named species resolve through
-  // chemical_symbols, and a disordered site takes the dominant element's (Ni, not
-  // chemical_symbols[0]) mass and concentration
+  // concentration 1.0 is the default and not stored; a disordered site takes the dominant
+  // element's (Ni, not chemical_symbols[0]) mass and concentration
   it(`extracts species mass and concentration and resolves named species`, () => {
     // oxfmt-ignore
     const result = optimade_to_structure(
@@ -2107,9 +2097,8 @@ describe(`OPTIMADE JSON Detection`, () => {
 })
 
 describe(`Structure File Detection`, () => {
-  // only checking filename recognition, files don't need to exist. A YAML/XML/JSON name
-  // only counts when it carries a structure keyword, and never when it carries a
-  // trajectory one.
+  // filename recognition only: a YAML/XML/JSON name needs a structure keyword, never a
+  // trajectory one
   // oxfmt-ignore
   test.each([
     // structure extensions (any case, optionally compressed) and bare VASP structure files
@@ -2145,13 +2134,9 @@ describe(`Structure File Detection`, () => {
 describe(`shared numeric coercion`, () => {
   // A blank token is NaN (Number(``) would be 0); parse_coordinate rejects what
   // parse_float_token cannot read as a finite number
-  test.each([
-    [`1.5`, 1.5],
-    [`1.0D-3`, 0.001],
-    [`   `, NaN],
-    [``, NaN],
-    [`1.0abc`, NaN],
-  ])(`parse_float_token(%j) is %d`, (token, expected) => {
+  // oxfmt-ignore
+  test.each([[`1.5`, 1.5], [`1.0D-3`, 0.001], [`   `, NaN], [``, NaN], [`1.0abc`, NaN]])(
+    `parse_float_token(%j) is %d`, (token, expected) => {
     expect(parse_float_token(token)).toBe(expected)
   })
 
@@ -2159,9 +2144,8 @@ describe(`shared numeric coercion`, () => {
     expect(() => parse_coordinate(token)).toThrow(`Invalid coordinate value: '${token}'`)
   })
 
-  // The char-code fast path must round exactly like Number(): every token below is compared
-  // bit for bit against parse_float_token, including the ones that must take the slow path
-  // (mantissas at and past 2^53, exponents past ±22, Fortran/unicode/hex spellings)
+  // The char-code fast path must round exactly like Number(), compared bit for bit, also on
+  // slow-path tokens (mantissas past 2^53, exponents past ±22, Fortran/unicode/hex spellings)
   test(`LineScanner tokenizes like split(/\\s+/) and decodes like parse_float_token`, () => {
     // oxfmt-ignore
     const tokens = [
@@ -2213,13 +2197,9 @@ describe(`detect_structure_type`, () => {
   test.each([
     [`structure.json`, `{"lattice": {"a": 5.0}}`, `crystal`],
     [`molecule.json`, `{"sites": []}`, `molecule`],
-    [`invalid.json`, `invalid`, `unknown`],
-    [`null.json`, `null`, `unknown`],
-    [`number.json`, `3`, `unknown`],
-    [`file.cif`, `any`, `crystal`],
-    [`POSCAR`, `any`, `crystal`],
-    [`file.poscar`, `any`, `crystal`],
-    [`Si.vasp`, `any`, `crystal`],
+    [`invalid.json`, `invalid`, `unknown`], [`null.json`, `null`, `unknown`], [`number.json`, `3`, `unknown`],
+    ...[`file.cif`, `POSCAR`, `file.poscar`, `Si.vasp`, `STRUCTURE.CIF`, `data.CIF`].map((name) => [name, `any`, `crystal`]),
+    ...[`file.ext`, `PHONOPY.YAML`, `test.YML`].map((name) => [name, `content`, `unknown`]),
     // detection shares parse_phonopy_yaml's cell keys: a header without a cell is no structure,
     // a cell without the header is one
     [`file.yaml`, `phonopy:\n  version: 2.0`, `unknown`],
@@ -2230,11 +2210,6 @@ describe(`detect_structure_type`, () => {
     [`file.yaml`, `other: content`, `unknown`],
     [`file.xyz`, `3\nLattice="5.0 0.0 0.0"\nH 0.0 0.0 0.0`, `crystal`],
     [`file.xyz`, `3\nwater\nH 0.0 0.0 0.0`, `molecule`],
-    [`file.ext`, `content`, `unknown`],
-    [`STRUCTURE.CIF`, `content`, `crystal`],
-    [`data.CIF`, `content`, `crystal`],
-    [`PHONOPY.YAML`, `content`, `unknown`],
-    [`test.YML`, `content`, `unknown`],
     [`optimade.json`, `{"data":{"attributes":{"lattice_vectors":[[1,0,0],[0,1,0],[0,0,1]]}}}`, `crystal`],
     [`optimade.json`, `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`, `molecule`],
     [`optimade.json`, `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`, `crystal`],
@@ -2246,16 +2221,13 @@ describe(`detect_structure_type`, () => {
     [`molecule.json`, `{"data": {"attributes": {"species": []}}}`, `molecule`],
     // Formats added alongside their parsers; without these every new fixture would
     // show the unknown-file icon in the demo picker
-    [`ethanol.mol`, ethanol_mol, `molecule`],
-    [`benzene.sdf`, benzene_sdf, `molecule`],
+    [`ethanol.mol`, ethanol_mol, `molecule`], [`benzene.sdf`, benzene_sdf, `molecule`],
     [`benzene.mol2`, benzene_mol2, `molecule`],
     [`crystal.mol2`, `@<TRIPOS>MOLECULE\nx\n@<TRIPOS>CRYSIN\n 4 4 4 90 90 90 1 1`, `crystal`],
-    [`glycine.pdb`, glycine_pdb, `molecule`],
-    [`NaCl-rocksalt.pdb`, nacl_rocksalt_pdb, `crystal`],
+    [`glycine.pdb`, glycine_pdb, `molecule`], [`NaCl-rocksalt.pdb`, nacl_rocksalt_pdb, `crystal`],
     [`Si-diamond.mmcif`, si_diamond_mmcif, `crystal`],
     [`magnetic.mcif`, `data_x\n_atom_site_fract_x`, `crystal`],
-    [`Cu-fcc.lmp`, cu_fcc_lmp, `crystal`],
-    [`water-dimer.data`, water_dimer_data, `crystal`],
+    [`Cu-fcc.lmp`, cu_fcc_lmp, `crystal`], [`water-dimer.data`, water_dimer_data, `crystal`],
     [`Al-fcc.dump`, al_fcc_dump, `crystal`],
     [`not-lammps.data`, `some,csv,file\n1,2,3`, `unknown`],
   ])(`%s -> %s`, (filename, content, expected) => {
@@ -2340,9 +2312,8 @@ describe(`Coordinate Normalization`, () => {
 })
 
 describe(`lattice params derived from matrix-only lattices`, () => {
-  // pymatgen's default Structure.as_dict() serializes the lattice as matrix+pbc
-  // only. Missing a/b/c/angles/volume used to flow NaN into camera auto-fit,
-  // rendering structures as blank canvases.
+  // pymatgen's default as_dict() writes the lattice as matrix+pbc only; missing a/b/c etc.
+  // flowed NaN into camera auto-fit
   const matrix_only_structure = (extra_lattice: object = {}) => ({
     '@class': `Structure`,
     '@module': `pymatgen.core.structure`,
@@ -2499,12 +2470,9 @@ describe(`molecular and LAMMPS structure formats`, () => {
 
   // The occupancy column is refinement metadata, kept as a site property: as species occu
   // it marked PDB atoms partially occupied and made XYZ/POSCAR export refuse them
+  // oxfmt-ignore
   test.each([
-    [`PDB`, `0.61`, 0.61],
-    [`PDB`, `0.00`, 0],
-    [`mmCIF`, `1.00`, 1],
-    [`mmCIF`, `0.61`, 0.61],
-    [`mmCIF`, `0.00`, 0],
+    [`PDB`, `0.61`, 0.61], [`PDB`, `0.00`, 0], [`mmCIF`, `1.00`, 1], [`mmCIF`, `0.61`, 0.61], [`mmCIF`, `0.00`, 0],
   ])(`%s occupancy %s is site property %s, species stay whole`, (format, token, occupancy) => {
     const content =
       format === `PDB`
@@ -2512,7 +2480,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
         : `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n_atom_site.occupancy\nN 0.0 0.0 0.0 ${token}`
     const site = parse_structure_file(content, format === `PDB` ? `gly.pdb` : `gly.mmcif`)
       .sites[0]
-    expect(site.species).toEqual([{ element: `N`, occu: 1, oxidation_state: 0 }])
+    expect(site.species).toEqual([{ element: `N`, occu: 1 }])
     expect(site.properties.occupancy).toBe(occupancy)
   })
 
@@ -2645,9 +2613,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].abc, [0.2, 0, 0], 8)
   })
 
-  // A value wrapping onto a continuation line leaves a row short of the coordinate columns,
-  // which is skipped rather than aborting the whole parse. Real mmCIF writers also omit
-  // trailing columns (here occupancy): the coordinates are still aligned, so that row stays
+  // A row cut short of the coordinate columns is skipped, not fatal; one only missing
+  // trailing columns (here occupancy) still has aligned coordinates and stays
   const occupancy_tags = [`type_symbol`, `Cartn_x`, `Cartn_y`, `Cartn_z`, `occupancy`]
     .map((tag) => `_atom_site.${tag}`)
     .join(`\n`)
@@ -2714,14 +2681,12 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_sites_reconstruct(result)
   })
 
-  // Absolute columns need the -2..2 box origin shifted off; the scaled variants are cell
-  // fractions that frac_to_cart already places relative to it, so shifting them again
-  // would put the atom at [3, 4, 5]
+  // Absolute columns need the -2..2 box origin shifted off; scaled ones are cell fractions
+  // already relative to it (shifting again would give [3, 4, 5])
+  // oxfmt-ignore
   test.each([
-    [`x y z`, `-1.0 0.0 1.0`],
-    [`xu yu zu`, `-1.0 0.0 1.0`],
-    [`xs ys zs`, `0.25 0.5 0.75`],
-    [`xsu ysu zsu`, `0.25 0.5 0.75`],
+    [`x y z`, `-1.0 0.0 1.0`], [`xu yu zu`, `-1.0 0.0 1.0`],
+    [`xs ys zs`, `0.25 0.5 0.75`], [`xsu ysu zsu`, `0.25 0.5 0.75`],
     // both present: xsu wins over the absolute triple, so x y z is ignored entirely
     [`x y z xsu ysu zsu`, `-1.0 0.0 1.0 0.25 0.5 0.75`],
     // a lone `xs` is not a scaled triple, so the parser falls back to x/y/z and the
@@ -2737,9 +2702,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_abc_in_unit_cell(result.sites[0])
   })
 
-  // Triclinic dumps write the axis-aligned bounding box, so recovering the origin means
-  // subtracting the tilt overhang. Negative tilts are the case where Math.min(0, ...) is
-  // non-zero, i.e. where this formula can drift from parse_lammps_box's copy of it.
+  // Triclinic dumps write the axis-aligned bounding box, so the origin subtracts the tilt
+  // overhang, which only negative tilts make non-zero
   test.each([
     [`positive tilts`, [`-2.0 3.0 1.0`, `-2.0 2.0 0.5`, `-2.0 2.0 0.25`], [2, 2, 2]],
     [`negative tilts`, [`-2.0 3.0 -1.0`, `-2.0 2.0 -0.5`, `-2.0 2.0 -0.25`], [0.5, 1.75, 2]],
@@ -2752,9 +2716,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].abc, [0.357142857142857, 0.5, 0.5], 8)
   })
 
-  // Undeclared atom styles are inferred from the column count; counts shared by two
-  // styles (6: charge/molecular, 7: full/sphere) are decided by which reading has a
-  // declared atom type in its type column on every row
+  // Undeclared atom styles are inferred from the column count; a count shared by two styles
+  // (6: charge/molecular, 7: full/sphere) by which reading finds a declared type on every row
   const lammps_no_style = (num_atom_types: number, rows: string[], style = ``) =>
     `# no style comment\n\n${rows.length} atoms\n${num_atom_types} atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nMasses\n\n1 63.546  # Cu\n2 26.9815 # Al\n\nAtoms${style}\n\n${rows.join(
       `\n`,
@@ -2791,9 +2754,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(() => parse_structure_file(lammps_no_style(types, rows, style), `test.lmp`)).toThrow(expected)
   })
 
-  // write_data writes wrapped coordinates plus `ix iy iz` image flags; ASE (and the dump
-  // reader) add ix·a + iy·b + iz·c. Ignoring them stretched this O-H bond across the box to
-  // 9.3 Å instead of ASE's 0.7 Å (H at [10.6, 5, 5]).
+  // write_data writes wrapped coordinates plus `ix iy iz` image flags, added as ix·a + iy·b +
+  // iz·c like ASE: ignoring them stretched this 0.7 Å O-H bond to 9.3 Å
   const lammps_images = (flags: string) =>
     `# images\n\n2 atoms\n1 bonds\n2 atom types\n1 bond types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\nMasses\n\n1 15.999\n2 1.008\n\nAtoms # full\n\n1 1 1 -0.8 9.9 5 5 0 0 0\n2 1 2 0.4 0.6 5 5 ${flags}\n\nBonds\n\n1 1 1 2\n`
   test(`LAMMPS data applies image flags so bonds stay intact across the box`, () => {
@@ -2813,9 +2775,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
 
   // oxfmt-ignore
   test.each([
-    [`pp pp pp`, [true, true, true]],
-    [`pp pp ff`, [true, true, false]],
-    [`ff ff ff`, [false, false, false]],
+    [`pp pp pp`, [true, true, true]], [`pp pp ff`, [true, true, false]], [`ff ff ff`, [false, false, false]],
   ])(`LAMMPS dump box flags %s survive as pbc %j`, (box_flags, expected_pbc) => {
     const content = lammps_dump(box_flags, `id element x y z`, [`1 Cu 1.0 1.0 1.0`])
     const structure = parse_structure_file(content, `test.dump`)
@@ -2921,10 +2881,8 @@ describe(`multi-model / multi-record structure files`, () => {
     if (warning) expect(warn_spy).toHaveBeenCalledWith(warning)
   })
 
-  // `END` terminates a PDB *entry*, and files get concatenated (VMD output, docking
-  // ensembles, `cat a.pdb b.pdb`). Merging them fused every entry's atoms into one structure
-  // under the first CRYST1 cell. A lone trailing END is the normal single-entry case, so the
-  // slicing must not swallow it.
+  // `END` terminates a PDB *entry* and files get concatenated (`cat a.pdb b.pdb`): only the
+  // first entry is read, while a lone trailing END is the normal single-entry case
   test.each([
     [`a lone trailing END`, false],
     [`concatenated END-terminated entries`, true],
@@ -2947,9 +2905,8 @@ describe(`multi-model / multi-record structure files`, () => {
   })
 })
 
-// SYBYL dummy (`Du`) and lone-pair (`LP`) rows are no atoms: `Du` used to read as H (its name
-// fell back to deuterium `D`) and `LP` failed the whole file. Bonds keep their atoms by id,
-// and a lone pair's bond goes with it.
+// SYBYL dummy (`Du`, not deuterium) and lone-pair (`LP`) rows are no atoms; bonds keep their
+// atoms by id, and a lone pair's bond goes with it
 test(`MOL2 skips dummy and lone-pair rows`, () => {
   const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
   onTestFinished(() => warn_spy.mockRestore())

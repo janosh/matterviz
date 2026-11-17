@@ -6,9 +6,8 @@ import { untrack } from 'svelte'
 import { type Camera, OrthographicCamera, type Scene, type Vector3 } from 'three/webgpu'
 import type { GizmoOptions } from './gizmo'
 
-// Reactive page visibility — pause auto-rotation while the tab/window is
-// hidden. Desktop embedders like Tauri often disable background throttling,
-// which would otherwise leave every auto-rotating 3D canvas burning GPU.
+// Reactive page visibility to pause auto-rotation in hidden tabs, which desktop embedders
+// (Tauri) often don't throttle, leaving auto-rotating canvases burning GPU
 export const page_visibility = $state({
   visible: typeof document === `undefined` || document.visibilityState === `visible`,
 })
@@ -54,10 +53,9 @@ export type SceneControlProps = {
   camera?: Camera // Active camera for external use
 }
 
-// The camera/lighting/interaction props above minus the bindables and the projection (whose
-// default differs per viewer), resolved against the structure viewer's tuned values so every
-// scene feels the same. Scenes destructure their own props and hand the rest to
-// resolve_scene_controls; `undefined` means "use the default", like a Svelte prop default.
+// The props above minus the bindables and the per-viewer projection, defaulting to the
+// structure viewer's tuned values so every scene feels the same. Scenes hand their rest props
+// to resolve_scene_controls, where `undefined` means the default, like a Svelte prop default.
 export type SceneControls = Required<
   Omit<SceneControlProps, `scene` | `camera` | `camera_projection` | `min_zoom` | `max_zoom`>
 > &
@@ -115,9 +113,8 @@ export const resize_orthographic_zoom = (
   max_zoom?: number,
 ): number => {
   const keeps_zoom = current_zoom !== undefined && current_zoom > 0 && previous_fit_zoom > 0
-  // An unchanged fit returns the zoom untouched rather than multiplying by one: (z * f) / f
-  // lands an ulp away from z for some values, and callers (bounds-tracking effects call this
-  // with the fit unchanged) write the result straight back into reactive state.
+  // An unchanged fit returns the zoom untouched: (z * f) / f can land an ulp off, and effects
+  // call this with the fit unchanged and write the result back into reactive state.
   const resized_zoom = !keeps_zoom
     ? next_fit_zoom
     : previous_fit_zoom === next_fit_zoom
@@ -127,11 +124,9 @@ export const resize_orthographic_zoom = (
   return clamp(resized_zoom, bounds.min_zoom, bounds.max_zoom)
 }
 
-// The auto-fit zoom, pinned to the extent of the last refit(). A trajectory's apparent size
-// is data (a volume scan), so only viewport resizes and explicit refits (new series, camera
-// reset, projection change) move the framing. The effect below only reads the extent of the
-// last refit: any re-run reading the live extent (a resize, a prop changing identity) landed the
-// accumulated change as a zoom jump (#459).
+// The auto-fit zoom, pinned to the extent of the last refit(): a trajectory's apparent size is
+// data, so only resizes and explicit refits (new series, camera reset, projection change) move
+// the framing. Re-runs reading the live extent landed its accumulated change as a jump (#459).
 export function create_fit_zoom<Extent>(opts: {
   initial_extent: () => Extent // fitted until the first refit()
   // Maps an extent to a zoom. Must read the viewport size so resizes re-run the effect below.
@@ -161,21 +156,17 @@ export function create_fit_zoom<Extent>(opts: {
   }
 }
 
-// Orthographic zoom that follows the auto-fit across resizes but yields to the user's wheel.
-// Pass `.zoom` to the camera and spread `orbit_zoom_props()` into build_orbit_props: the
-// gesture-end hook stores the zoom the user landed on as the baseline the next resize rescales.
+// Orthographic zoom following the auto-fit across resizes but yielding to the wheel. Pass
+// `.zoom` to the camera; orbit_zoom_props()'s gesture end stores the user's zoom as baseline.
 export function create_orthographic_zoom(opts: {
   fit_zoom: () => number
   min_zoom: () => number | undefined
   max_zoom: () => number | undefined
-  // False while the container has no size. Required, not optional: every caller needs it, and
-  // forgetting it silently halves a user's zoom when a hidden tab or fullscreen transition
-  // reports 0 — the placeholder fit inflates the zoom into the clamp, and the return trip
-  // cannot recover it.
+  // False while the container has no size. Required: without it a hidden tab or fullscreen
+  // transition reporting 0 inflates the zoom into the clamp, unrecoverable on the way back.
   measured: () => boolean
-  // The live camera. A fit change rescales the zoom the camera is actually at rather than the
-  // stored one: hosts also write camera.zoom directly (StructureViewport's reset and device-loss
-  // recovery), and a resize mid-gesture arrives before the end hook has stored the wheel.
+  // The live camera, whose zoom a fit change rescales: hosts set camera.zoom directly (reset,
+  // device loss), and a mid-gesture resize precedes the end hook.
   camera: () => Camera | undefined
 }) {
   let zoom = $state(untrack(opts.fit_zoom))
@@ -184,9 +175,8 @@ export function create_orthographic_zoom(opts: {
     const camera = untrack(opts.camera)
     return camera instanceof OrthographicCamera ? camera.zoom : zoom
   }
-  // Destructured into scalars, not exposed as the bounds object: callers spread these into
-  // Threlte, which re-applies every prop when any one changes identity — including `target`,
-  // which would snap a panned view back to the scene center on each resize.
+  // Scalars, not the bounds object: Threlte re-applies every spread prop when one changes
+  // identity, including `target`, which snapped panned views back on each resize.
   const { min_zoom, max_zoom } = $derived(
     get_orthographic_zoom_bounds(opts.fit_zoom(), opts.min_zoom(), opts.max_zoom()),
   )
@@ -272,10 +262,8 @@ export function build_orbit_props(opts: {
     return perspective_distance_for_zoom(zoom, viewport_px, fov)
   }
   // Callers disable hover raycasts while the camera moves. OrbitControls' `start` fires before
-  // threlte interactivity sees the same pointerdown, so flagging movement there would swallow
-  // the press (e.g. a click deleting a bond). Flag it on the gesture's first `change` instead:
-  // a click never moves the camera, nor does a press a scene claims by disabling the controls
-  // (TernaryPrismScene's plane drag).
+  // threlte sees the same pointerdown, so flagging it there would swallow the press (a click
+  // deleting a bond): flag the gesture's first `change`, which a click or claimed press lacks.
   let gesture_pending = false
   return {
     target: opts.target,
@@ -292,9 +280,8 @@ export function build_orbit_props(opts: {
     // falling back to OrbitControls' own defaults, i.e. unclamped either way
     minDistance: orbit_distance_for_zoom(max_zoom) ?? 0,
     maxDistance: orbit_distance_for_zoom(min_zoom) ?? Number.POSITIVE_INFINITY,
-    // pause auto-rotation while the page is hidden: callers build these props
-    // in $derived, so the visibility flip re-runs them and stops the per-frame
-    // OrbitControls task (threlte only runs it while autoRotate/damping is on)
+    // pause auto-rotation while the page is hidden: callers derive these props, so the flip
+    // stops threlte's per-frame OrbitControls task (run only while autoRotate/damping is on)
     autoRotate: Boolean(opts.auto_rotate) && page_visibility.visible,
     autoRotateSpeed: opts.auto_rotate,
     enableDamping: Boolean(opts.rotation_damping),
@@ -317,11 +304,9 @@ export function build_orbit_props(opts: {
   }
 }
 
-// Orthographic auto-fit zoom plus the OrbitControls props of a camera orbiting `target`: the
-// wiring BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene share.
-// `fit_zoom` is the orthographic zoom framing the scene at the current viewport and `measured`
-// is false while the container has no size (see create_orthographic_zoom). Pass `.zoom` to the
-// camera and `.orbit_props` to SceneCamera; `reset_to_fit` snaps back to the fit.
+// Orthographic auto-fit zoom plus the OrbitControls props of a camera orbiting `target`, as
+// the 3D scenes share. `fit_zoom` frames the scene at the current viewport, `measured` as in
+// create_orthographic_zoom. Pass `.zoom` to the camera and `.orbit_props` to SceneCamera.
 export function create_scene_camera(opts: {
   controls: () => Pick<
     SceneControls,
@@ -355,9 +340,8 @@ export function create_scene_camera(opts: {
     build_orbit_props({
       ...opts.controls(),
       target: opts.target(),
-      // fit-aware zoom limits (the fit may sit below the interaction floor for large scenes)
-      // replace the raw min/max above, plus the gesture-end sync that keeps the user's zoom as
-      // the resize baseline
+      // fit-aware zoom limits replace the raw min/max above, plus the gesture-end sync keeping
+      // the user's zoom as the resize baseline
       ...ortho_zoom.orbit_zoom_props(),
       viewport_px: opts.viewport_px?.(),
       fov: opts.fov?.(),

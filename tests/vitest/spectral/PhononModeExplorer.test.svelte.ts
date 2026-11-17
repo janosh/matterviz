@@ -86,8 +86,16 @@ const open_menu = async (target: HTMLElement, label: string): Promise<void> => {
   await tick()
 }
 
+const modes_expanded = (target: HTMLElement) =>
+  target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)
 const summary_text = (target: HTMLElement) =>
   target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
+
+// the structure controls' toggle (or `extra`-suffixed part) for the eigenvector arrows
+const vector_input = (target: HTMLElement, extra = ``) =>
+  target.querySelector<HTMLInputElement>(
+    `[data-key="vector_config:phonon_displacement"] input${extra}`,
+  )
 
 // structure settings mount on first open of the viewer's controls pane
 const open_structure_controls = (target: HTMLElement) =>
@@ -151,17 +159,17 @@ test(`renders a typed phonon dataset`, async () => {
   expect(target.querySelector(`.trajectory-controls .analysis-button`)).toBeNull()
   const fps_input = query<HTMLInputElement>(target, `input[aria-label="Frame rate"]`)
   expect([fps_input.min, fps_input.max, fps_input.step]).toEqual([`0`, `300`, `0.1`])
-  set_input(fps_input, 12)
-  await tick()
-  expect(props.fps).toBe(12)
-  // clearing the field mid-edit keeps the rate rather than stopping playback at 0
-  set_input(fps_input, ``)
-  await tick()
-  expect(props.fps).toBe(12)
+  // clearing the field mid-edit keeps the rate rather than stopping playback at 0, and
   // out-of-range rates clamp to the bar's range, as its own input does
-  set_input(fps_input, 1000)
-  await tick()
-  expect(props.fps).toBe(300)
+  for (const [value, expected] of [
+    [12, 12],
+    [``, 12],
+    [1000, 300],
+  ] as const) {
+    set_input(fps_input, value)
+    await tick()
+    expect(props.fps).toBe(expected)
+  }
   // the Brillouin zone inset has no file drop target, controls or fullscreen...
   const inset = await vi.waitFor(() => query(target, `.trajectory-pane .bz-inset`))
   // ...its one button grows it and back
@@ -181,13 +189,7 @@ test(`renders a typed phonon dataset`, async () => {
   await open_structure_controls(target)
   const eigenvectors = target.querySelector<HTMLInputElement>(`.checkbox input`)
   eigenvectors?.click()
-  await vi.waitFor(() =>
-    expect(
-      target.querySelector<HTMLInputElement>(
-        `[data-key="vector_config:phonon_displacement"] input`,
-      )?.checked,
-    ).toBe(true),
-  )
+  await vi.waitFor(() => expect(vector_input(target)?.checked).toBe(true))
   const thickness = query<HTMLInputElement>(target, `[aria-label="Eigenvector thickness"]`)
   const color = query<HTMLInputElement>(target, `[aria-label="Eigenvector color hex"]`)
   set_input(thickness, `2.5`)
@@ -196,18 +198,12 @@ test(`renders a typed phonon dataset`, async () => {
     expect(props.vector_thickness).toBe(2.5)
     expect(props.vector_color).toBe(`#123abc`)
     expect(target.querySelector(`.vector-thickness-control output`)?.textContent).toBe(`2.5×`)
-    expect(
-      target.querySelector<HTMLInputElement>(
-        `[data-key="vector_config:phonon_displacement"] input[type="color"]`,
-      )?.value,
-    ).toBe(`#123abc`)
+    expect(vector_input(target, `[type="color"]`)?.value).toBe(`#123abc`)
   })
   target.querySelector<HTMLButtonElement>(`.vector-color-control button`)?.click()
   await tick()
   expect(props.vector_color).toBeNull()
-  expect(target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)).toBe(
-    `true`,
-  )
+  expect(modes_expanded(target)).toBe(`true`)
   target.querySelector<HTMLButtonElement>(`.phonon-modes-pane .mode-list button`)?.click()
   await vi.waitFor(() => {
     expect(summary_text(target)).toContain(`Mode 1`)
@@ -297,11 +293,7 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
     // Phonon frames already include boundary coordination shells and are aperiodic,
     // so the viewer's image toggle has nothing to add and is gone.
     expect(target.querySelector(`[data-key="show_image_atoms"]`)).toBeNull()
-    expect(
-      target.querySelector<HTMLInputElement>(
-        `[data-key="vector_config:phonon_displacement"] input`,
-      )?.checked,
-    ).toBe(false)
+    expect(vector_input(target)?.checked).toBe(false)
     expect(normalize_label()).toBe(`3x3x3`)
     expect(displayed_site_count()).toBe(54)
   })
@@ -366,9 +358,7 @@ test(`offers the spectrum type only with Raman data and follows the dataset`, as
     expect(kind_states()).toEqual([])
     expect(target.querySelector(`.bz-inset`)).toBeNull() // needs more than one q-point
     expect(target.querySelector(`.plot-pane`)).toBeNull()
-    expect(target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)).toBe(
-      `true`,
-    )
+    expect(modes_expanded(target)).toBe(`true`)
     expect(summary_text(target)).toContain(`modes-only.yaml`)
     expect(target.querySelector(`[aria-label="q-point"]`)).toBeNull()
   })
@@ -417,16 +407,11 @@ test(`Shift+arrows step the q-point along the path and the mode`, async () => {
   expect(reached).toHaveBeenCalledTimes(3)
   // ...but with the pointer over it, the idle page's keys are the explorer's
   const root = query(target, `.phonon-mode-explorer`)
+  const at_q3 = { qpoint_idx: 3, mode_idx: 3 }
   root.dispatchEvent(new PointerEvent(`pointerenter`))
-  expect(press(`ArrowLeft`, { shiftKey: true }, document.body)).toEqual({
-    qpoint_idx: 3,
-    mode_idx: 3,
-  })
+  expect(press(`ArrowLeft`, undefined, document.body)).toEqual(at_q3)
   root.dispatchEvent(new PointerEvent(`pointerleave`))
-  expect(press(`ArrowLeft`, { shiftKey: true }, document.body)).toEqual({
-    qpoint_idx: 3,
-    mode_idx: 3,
-  })
+  expect(press(`ArrowLeft`, undefined, document.body)).toEqual(at_q3)
   // the summary announces each change, and the controls name their keys
   expect(query(target, `[data-testid="phonon-mode-summary"]`).getAttribute(`aria-live`)).toBe(
     `polite`,
@@ -543,12 +528,9 @@ test(`steps through animatable modes and disables eigenvector-less q-points`, as
   })
 })
 
+// oxfmt-ignore
 test.each([
-  [
-    `missing lattice`,
-    { phonons: { modes: { ...modes, lattice: null } } },
-    `animation needs a real-space lattice`,
-  ],
+  [`missing lattice`, { phonons: { modes: { ...modes, lattice: null } } }, `animation needs a real-space lattice`],
   [`oversized supercell`, { supercell: [400, 400, 1] }, `exceeding the 200000 limit`],
 ] as [string, Partial<ExplorerProps>, string][])(
   `reports %s errors in the UI`,

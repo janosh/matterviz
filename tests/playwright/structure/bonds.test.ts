@@ -91,7 +91,7 @@ const set_structure_bonds = (page: Page, bonds: unknown) =>
 
 // === Structure factories ===
 type Site = {
-  species: { element: string; occu: number; oxidation_state: number }[]
+  species: { element: string; occu: number; oxidation_state?: number }[]
   abc: number[]
   xyz: number[]
   label: string
@@ -103,7 +103,7 @@ const make_site = (
   abc = xyz,
   label = `${element}1`,
 ): Site => ({
-  species: [{ element, occu: 1, oxidation_state: 0 }],
+  species: [{ element, occu: 1 }],
   abc,
   xyz,
   label,
@@ -137,7 +137,7 @@ const dispatch_structure = (
 const front_camera = { camera_position: [0, 0, 8], camera_target: [0, 0, 0] }
 const labelled = { show_site_labels: true, site_label_offset: [0, 0, 0] }
 // bonding threshold that never auto-detects a bond
-const unbonded = { bonding_options: { strength_threshold: 10 } }
+const unbonded = { bonding_options: { electroneg_ratio: { strength_threshold: 10 } } }
 
 // CO2 (O=C=O) molecule with NO explicit bonds: the electroneg_ratio bonding strategy
 // auto-detects two C-O connectivity bonds. With auto_bond_order OFF they render single
@@ -523,7 +523,7 @@ test.describe(`Bond component`, () => {
       ])
 
       await dispatch_periodic_image_structure(page, {
-        bonding_options: { strategy: `electroneg_ratio` },
+        bonding_options: {},
         show_site_labels: true,
       })
       await expect_bonds(page, undefined)
@@ -580,7 +580,7 @@ test.describe(`Bond component`, () => {
 
         // auto-detected image bond: hovering highlights it, clicking deletes it
         await dispatch_periodic_image_structure(page, {
-          bonding_options: { strategy: `electroneg_ratio` },
+          bonding_options: {},
         })
         await page.getByTestId(`btn-set-edit-bonds`).click()
         await page.getByTestId(`btn-set-bond-delete`).click()

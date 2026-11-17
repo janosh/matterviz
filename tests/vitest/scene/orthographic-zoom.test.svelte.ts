@@ -154,9 +154,8 @@ const with_zoom = <Cam extends Camera>(
 const with_ortho_zoom = (run: Parameters<typeof with_zoom<OrthographicCamera>>[0]) =>
   with_zoom(run, new OrthographicCamera())
 
-// The only way into the stored zoom is the gesture-end hook reading the camera, as in the
-// renderers: OrbitControls writes camera.zoom, on_end_extra stores it. Between gestures the
-// camera sits at the stored zoom (Threlte applies it as a prop), mirrored here by hand.
+// As in the renderers, OrbitControls writes camera.zoom and the gesture-end hook stores it;
+// between gestures the camera sits at the stored zoom (a Threlte prop), mirrored here by hand.
 const wheel_to = (
   camera: OrthographicCamera,
   zoom: ReturnType<typeof create_orthographic_zoom>,
@@ -331,11 +330,10 @@ test(`create_scene_camera derives orbit props from controls, target and fit-awar
     flushSync()
     expect(scene_camera.zoom).toBe(100)
     expect(scene_camera.orbit_props.target).toEqual([1, 2, 3])
-    // the fit lies above max_zoom, so the ceiling lifts to keep it reachable
-    expect([scene_camera.orbit_props.minZoom, scene_camera.orbit_props.maxZoom]).toEqual([
-      10, 100,
-    ])
-    expect(scene_camera.orbit_props.zoomSpeed).toBe(2) // orthographic doubling
+    // the fit lies above max_zoom, so the ceiling lifts to keep it reachable; orthographic
+    // doubles the zoom speed
+    const { minZoom, maxZoom, zoomSpeed } = scene_camera.orbit_props
+    expect([minZoom, maxZoom, zoomSpeed]).toEqual([10, 100, 2])
 
     controls.rotate_speed = 0
     inputs.target = [0, 0, 0]
@@ -354,9 +352,8 @@ test(`create_scene_camera derives orbit props from controls, target and fit-awar
   cleanup()
 })
 
-// A reciprocal-space perspective camera stands where fit_extent's sphere fills the view along
-// the default direction (a fixed 10 |b| framed a zone at about half the viewport), set when
-// the viewport is first measured, not moved by a later resize; orthographic frames by zoom
+// A k-space perspective camera stands where fit_extent's sphere fills the view, set when the
+// viewport is first measured and not moved by later resizes; orthographic frames by zoom
 test.each([`perspective`, `orthographic`] as const)(
   `a %s k-space camera's distance follows the fit, not resizes`,
   (camera_projection) => {

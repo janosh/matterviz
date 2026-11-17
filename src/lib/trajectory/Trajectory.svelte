@@ -67,12 +67,13 @@
   } from '#lib/structure/index.js'
   import { site_stride } from '#lib/structure/site.js'
   import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
+  import { strategy_bonding_options } from '#lib/structure/bonding.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
   import { is_vector_key } from '#lib/structure/vectors.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
-  import { rdf_bin_site_index } from '#lib/rdf/calc-rdf.js'
+  import { rdf_bin_site_index } from '#lib/rdf/compute-rdf.js'
   import { element_site_indices, scene_site_indices, site_source_atoms } from './linked-sites'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
@@ -590,6 +591,7 @@
     if (!show_structure || !trajectory?.prepare_frame || trajectory.atom_count < 2000)
       return undefined
     const props = trail_scene_props
+    const bonding_strategy = props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy
     const crystal = `lattice` in trajectory.preview.structure
     const show_polyhedra = applies_to_structure(
       props.show_polyhedra ?? DEFAULTS.structure.show_polyhedra,
@@ -599,8 +601,11 @@
       bonds:
         applies_to_structure(props.show_bonds ?? DEFAULTS.structure.show_bonds, crystal) ||
         show_polyhedra,
-      bonding_strategy: props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
-      bonding_options: $state.snapshot(props.bonding_options ?? {}),
+      bonding_strategy,
+      // the options the scene bonds with, so its bond search hits the prepared frame's bonds
+      bonding_options: $state.snapshot(
+        strategy_bonding_options(props.bonding_options, bonding_strategy),
+      ),
       auto_bond_order: props.auto_bond_order ?? DEFAULTS.structure.auto_bond_order,
       ...(show_polyhedra && { polyhedra: polyhedra_options_from(props) }),
       ...((props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap) === 0 && {
@@ -1137,12 +1142,11 @@
     const { id, y: values, label, unit, line_style } = distribution_series
     return [{ id, values, label, unit, color: line_style?.stroke }]
   })
-  const distribution_count = $derived(
-    distribution_series?.y.reduce(
-      (count, value) => count + (Number.isFinite(value) ? 1 : 0),
-      0,
-    ) ?? 0,
-  )
+  const distribution_count = $derived.by(() => {
+    let count = 0
+    for (const value of distribution_series?.y ?? []) if (Number.isFinite(value)) count++
+    return count
+  })
   let distribution_axis = $derived({
     format: `.3~s`,
     ...histogram_props.x_axis,

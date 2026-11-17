@@ -71,10 +71,9 @@ describe(`create_orbit_link`, () => {
       orbit(members[lead], direction)
       for (const [idx, controls] of members.entries()) {
         expect_parallel(view_dir(controls), direction)
-        expect(controls.target.toArray()).toEqual(before[idx].target.toArray())
-        expect(Math.abs(distance(controls) - before[idx].distance)).toBeLessThan(
-          1e-12 * before[idx].distance,
-        )
+        const { target, distance: radius } = before[idx]
+        expect(controls.target.toArray()).toEqual(target.toArray())
+        expect(Math.abs(distance(controls) - radius)).toBeLessThan(1e-12 * radius)
         // re-aimed: the camera looks at its own target along the shared direction
         const forward = controls.object.getWorldDirection(new Vector3())
         expect_parallel(forward, direction.clone().negate())

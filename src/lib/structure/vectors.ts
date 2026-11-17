@@ -15,16 +15,9 @@ import type { AnyStructure, Site } from './index'
 // Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).
 // Both singular and plural forms are accepted. Keys matching exactly or starting
 // with one of these followed by `_` (e.g. `force_DFT`) are treated as vectors.
+// oxfmt-ignore
 const VECTOR_KEY_PREFIXES = [
-  `force`,
-  `forces`,
-  `magmom`,
-  `magmoms`,
-  `spin`,
-  `spins`,
-  `velocity`,
-  `velocities`,
-  `phonon`,
+  `force`, `forces`, `magmom`, `magmoms`, `spin`, `spins`, `velocity`, `velocities`, `phonon`,
   `dipole`,
 ] as const
 
@@ -51,13 +44,9 @@ export const is_vector_key = (key: string): boolean => {
 }
 
 // Default color palette for distinguishing multiple vector layers
+// oxfmt-ignore
 export const VECTOR_PALETTE = [
-  `#e74c3c`,
-  `#3498db`,
-  `#2ecc71`,
-  `#f39c12`,
-  `#9b59b6`,
-  `#1abc9c`,
+  `#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`, `#9b59b6`, `#1abc9c`,
 ] as const
 
 // Index tokens (`l0`, `s1`, `m-1`) tell a property's components apart, the rest of the key
@@ -508,11 +497,7 @@ export function write_arrow_placement(
   let quat_x = vector[2] / magnitude
   let quat_z = -(vector[0] / magnitude)
   let quat_w = vector[1] / magnitude + 1
-  if (quat_w < Number.EPSILON) {
-    quat_x = 0
-    quat_w = 0
-    quat_z = 1
-  }
+  if (quat_w < Number.EPSILON) [quat_x, quat_z, quat_w] = [0, 1, 0]
   const squared_norm = quat_x * quat_x + quat_z * quat_z + quat_w * quat_w
   // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- matches Quaternion.normalize arithmetic
   const inverse = 1 / Math.sqrt(squared_norm)

@@ -1,10 +1,8 @@
-// Cooperative wheel zoom for embedded 3D viewers. A page stacking viewers would otherwise
-// hijack its own scroll whenever the pointer crosses one: every canvas zooms on any wheel.
-// Here a plain wheel over an idle viewer scrolls the page and flashes a hint, ⌘/Ctrl + wheel
-// (and trackpad pinch, which browsers deliver as ctrl+wheel) always zooms, and a click, drag
-// or keyboard focus inside the viewer activates it so plain wheels zoom until the pointer
-// leaves, Esc or a click elsewhere. Fullscreen viewers always zoom. Double-click is not used:
-// it already resets the camera (Structure, ChemPotDiagram3D) or copies an entry (convex hulls).
+// Cooperative wheel zoom, so a page stacking viewers keeps its scroll: a plain wheel over an
+// idle viewer scrolls the page and flashes a hint, ⌘/Ctrl + wheel (and trackpad pinch) always
+// zooms, and a click, drag or keyboard focus activates the viewer until the pointer leaves,
+// Esc or a click elsewhere. Fullscreen viewers always zoom. Not double-click: it already
+// resets the camera (Structure, ChemPotDiagram3D) or copies an entry (convex hulls).
 import { host } from '#lib/host.js'
 import { getContext, mount, setContext, unmount } from 'svelte'
 import WheelZoomHint from './WheelZoomHint.svelte'
@@ -48,11 +46,9 @@ export class WheelZoomGate {
     }
   }
 
-  // Attach to the viewer's root, which also renders the hint. The capture-phase listener runs
-  // before OrbitControls' own (on the canvas wrapper) or a hull canvas's handler: stopping a
-  // blocked wheel there keeps it from zooming, and leaving the default unprevented lets the
-  // page scroll. Plain addEventListener, not svelte's `on`, which defers wheel and pointer
-  // listeners a microtask.
+  // Attach to the viewer's root, which renders the hint. The capture-phase listener runs
+  // before OrbitControls', stopping blocked wheels while their default scrolls the page. Plain
+  // addEventListener: svelte's `on` defers wheel listeners.
   attach = (root: HTMLElement): (() => void) => {
     const controller = new AbortController()
     const { signal } = controller

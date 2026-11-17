@@ -38,17 +38,16 @@ function lattice_plane_offsets(hkl: Vec3): number[] {
   return Array.from({ length: n_planes }, (_, idx) => lower + idx)
 }
 
-// Block-frame Miller indices scale with cell repeats, preserving spacing and orientation.
-// Explicit offsets retain their planes; automatic offsets enumerate the whole block.
-export const tile_lattice_planes = (planes: LatticePlane[], tiling: Vec3): LatticePlane[] =>
-  tiling.every((count) => count === 1)
+// Planes of a cell in the basis of its supercell M · lattice: fractional coordinates map as
+// x_cell = x_super · M, so h · x_cell = (M h) · x_super, i.e. indices M h at the same offsets.
+// Explicit offsets therefore name the same planes; automatic ones enumerate the supercell.
+export const tile_lattice_planes = (
+  planes: LatticePlane[],
+  supercell: Matrix3x3,
+): LatticePlane[] =>
+  supercell.every((row, row_idx) => row.every((val, col) => val === (row_idx === col ? 1 : 0)))
     ? planes
-    : planes.map((plane) => ({
-        ...plane,
-        hkl: plane.hkl.map(
-          (index, axis) => index * Math.max(1, Math.floor(tiling[axis])),
-        ) as Vec3,
-      }))
+    : planes.map((plane) => ({ ...plane, hkl: math.dot(supercell, plane.hkl) }))
 
 // Cartesian polygons of the planes in `plane` clipped to the cell. Planes that miss the cell
 // or only touch a corner or an edge come back empty from the clipper and are dropped, and a

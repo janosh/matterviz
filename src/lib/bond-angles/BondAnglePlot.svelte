@@ -13,10 +13,10 @@
   import {
     bin_bond_angles,
     bond_angle_bin_sites,
-    calc_bond_angles,
+    compute_bond_angles,
     BOND_ANGLE_DEFAULT_BIN_WIDTH,
     MAX_BOND_ANGLE,
-  } from './calc-bond-angles'
+  } from './compute-bond-angles'
   import type { BondAngleNormalizeMode, BondAngleSplitMode } from './index'
   import { type BondAngleMetadata, to_angle_bar_series } from './series'
 
@@ -60,12 +60,12 @@
   // the neighbor search rejects is reported, not thrown through the render. The search is
   // memoized per structure object, so one more dropped file searches that file alone.
   const opts = $derived({ strategy, center_elements, neighbor_elements })
-  const angles_of = memo_by_identity<ReturnType<typeof calc_bond_angles>>()
+  const angles_of = memo_by_identity<ReturnType<typeof compute_bond_angles>>()
   const computed = $derived(
     compute_structure_entries(
       [...to_structure_entries(structures), ...dropped_entries],
       (structure) =>
-        angles_of(structure, value_key(opts), () => calc_bond_angles(structure, opts)),
+        angles_of(structure, value_key(opts), () => compute_bond_angles(structure, opts)),
     ),
   )
 

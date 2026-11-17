@@ -164,7 +164,7 @@ function binned_density(
 }
 
 // Estimate a smooth density from raw samples via a Gaussian kernel.
-export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}): KdeResult {
+export function gaussian_kde(samples: Iterable<number>, opts: KdeOptions = {}): KdeResult {
   // oxfmt-ignore
   const { bandwidth = `silverman`, n_points = 100, points_per_bandwidth, cut = 2, clip, range, max_samples, grid_transform } = opts
 
@@ -186,7 +186,8 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
     throw new RangeError(`KDE cut must be finite and non-negative, got ${cut}`)
   }
 
-  const finite = samples.filter((val) => Number.isFinite(val))
+  const finite: number[] = []
+  for (const val of samples) if (Number.isFinite(val)) finite.push(val)
   const n_vals = finite.length
   if (n_vals === 0) return { grid: [], density: [], bandwidth: 0 }
 

@@ -13,47 +13,40 @@ import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/w
 import { describe, expect, test } from 'vite-plus/test'
 
 const expectVecClose = (actual: Vec3, expected: Vec3): void => {
-  for (const [idx, val] of actual.entries()) {
-    expect(val).toBeCloseTo(expected[idx])
-  }
+  for (const [idx, val] of actual.entries()) expect(val).toBeCloseTo(expected[idx])
+}
+
+// Point `camera` from `from` at `target` with its matrices refreshed
+const aim = <Cam extends PerspectiveCamera | OrthographicCamera>(
+  camera: Cam,
+  from: Vec3 = [0, 0, 5],
+  target: Vec3 = [0, 0, 0],
+): Cam => {
+  camera.position.set(...from)
+  camera.lookAt(...target)
+  camera.updateMatrixWorld()
+  camera.updateProjectionMatrix()
+  return camera
 }
 
 describe(`label placement`, () => {
-  test(`keeps configured label offset when site has no bonds`, () => {
+  test(`choose_site_label_offset keeps an unbonded offset, else turns it off the bonds`, () => {
     const base_offset: Vec3 = [0, 0.5, 0]
-
     expect(choose_site_label_offset([], base_offset)).toBe(base_offset)
-  })
-
-  test(`moves label away from a bond aligned with the default upward offset`, () => {
-    const base_offset: Vec3 = [0, 0.5, 0]
+    // a bond along the default upward offset flips it down
     // oxfmt-ignore
     const bond_directions: Vec3[] = [[-1, 0, 0], [1, 0, 0], [0, 1, 0]]
-
-    const offset = choose_site_label_offset(bond_directions, base_offset)
-
-    expectVecClose(offset, [0, -0.5, 0])
-  })
-
-  test(`preserves label offset length when choosing another direction`, () => {
-    const base_offset: Vec3 = [0, 0.5, 0]
-    const bond_directions: Vec3[] = [[0, 1, 0]]
-
-    const offset = choose_site_label_offset(bond_directions, base_offset)
-
+    expectVecClose(choose_site_label_offset(bond_directions, base_offset), [0, -0.5, 0])
+    // another direction keeps the offset's length
+    const offset = choose_site_label_offset([[0, 1, 0]], base_offset)
     expect(Math.hypot(...offset)).toBeCloseTo(Math.hypot(...base_offset))
     expect(math.dot(math.normalize_vec(offset), [0, 1, 0])).toBeLessThan(0.5)
   })
 
   test(`site_label_offsets turns each site's label away from all bonds at both ends`, () => {
     const base_offset: Vec3 = [0, 0.5, 0]
-    const positions: Vec3[] = [
-      [0, 0, 0],
-      [0, 2, 0],
-      [0, -2, 0],
-      [5, 0, 0],
-      [5, 0, 0],
-    ]
+    // oxfmt-ignore
+    const positions: Vec3[] = [[0, 0, 0], [0, 2, 0], [0, -2, 0], [5, 0, 0], [5, 0, 0]]
     const bond = (site_idx_1: number, site_idx_2: number) => ({
       site_idx_1,
       site_idx_2,
@@ -71,25 +64,14 @@ describe(`label placement`, () => {
     expect(site_label_offsets(frame, base_offset)).toEqual(offsets)
     expect([...offsets.keys()]).toEqual([0, 1, 2])
     // site 0 must weigh both bonds (up and down blocked → sideways); 1 and 2 face away from 0
-    const expected: Vec3[] = [
-      [0.5, 0, 0],
-      [0, 0.5, 0],
-      [0, -0.5, 0],
-    ]
-    for (const [idx, offset] of [...offsets.values()].entries()) {
+    // oxfmt-ignore
+    const expected: Vec3[] = [[0.5, 0, 0], [0, 0.5, 0], [0, -0.5, 0]]
+    for (const [idx, offset] of [...offsets.values()].entries())
       expectVecClose(offset, expected[idx])
-    }
     expect(site_label_offsets([], base_offset).size).toBe(0)
   })
 
-  const make_ortho_camera = (): OrthographicCamera => {
-    const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
-    camera.position.set(0, 0, 5)
-    camera.lookAt(0, 0, 0)
-    camera.updateMatrixWorld()
-    camera.updateProjectionMatrix()
-    return camera
-  }
+  const make_ortho_camera = () => aim(new OrthographicCamera(-1, 1, 1, -1, 0.1, 10))
   const size = { width: 100, height: 100 }
   const place = (
     projector: LabelProjector,
@@ -128,13 +110,8 @@ describe(`label placement`, () => {
   })
 
   test(`perspective projection places labels at projected screen position`, () => {
-    const camera = new PerspectiveCamera(90, 1, 0.1, 100)
-    camera.position.set(0, 0, 5)
-    camera.lookAt(0, 0, 0)
-    camera.updateMatrixWorld()
-    camera.updateProjectionMatrix()
     const projector = new LabelProjector()
-    projector.update(camera, new Matrix4(), size, 0)
+    projector.update(aim(new PerspectiveCamera(90, 1, 0.1, 100)), new Matrix4(), size, 0)
 
     // fov 90 at distance 5 spans 10 world units over 100 px => 10 px per unit.
     // Atom at x=1 projects to 50 + 10 = 60 px; radius 0.5 projects to 5 px.
@@ -192,15 +169,8 @@ describe(`label placement`, () => {
     }
   }
 
-  const look_from_corner = <Cam extends PerspectiveCamera | OrthographicCamera>(
-    camera: Cam,
-  ) => {
-    camera.position.set(7, 5, 9)
-    camera.lookAt(1, -1, 0)
-    camera.updateMatrixWorld()
-    camera.updateProjectionMatrix()
-    return camera
-  }
+  const look_from_corner = <Cam extends PerspectiveCamera | OrthographicCamera>(camera: Cam) =>
+    aim(camera, [7, 5, 9], [1, -1, 0])
   const aspect = 800 / 600
   // rotation + translation anchor (matches the scene's nested rotation groups)
   const rotated_anchor = new Matrix4()

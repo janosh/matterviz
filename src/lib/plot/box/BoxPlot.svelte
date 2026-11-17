@@ -85,24 +85,10 @@
     stroke_color?: string
     border_radius?: number
   }
-  interface WhiskerStyle {
-    width?: number
-    color?: string
-    cap_fraction?: number
-  }
-  interface BoxLineStyle {
-    width?: number
-    color?: string
-  }
-  interface SampleStyle {
-    radius?: number
-    opacity?: number
-    stroke_width?: number
-  }
-  interface ViolinStyle {
-    opacity?: number
-    stroke_width?: number
-  }
+  type WhiskerStyle = { width?: number; color?: string; cap_fraction?: number }
+  type BoxLineStyle = { width?: number; color?: string }
+  type SampleStyle = { radius?: number; opacity?: number; stroke_width?: number }
+  type ViolinStyle = { opacity?: number; stroke_width?: number }
 
   // Hover state carries the box payload plus the pixel anchor for the tooltip
   type BoxHover = BoxHandlerProps<Metadata> & { cx: number; cy: number }
@@ -305,8 +291,7 @@
   const box_color = (idx: number): string => series[idx]?.color ?? plot_color(idx)
   // Unlabeled boxes are numbered from 1 alike in slot ticks, legend, aria-labels and export
   const default_box_label = (idx: number): string => `Box ${idx + 1}`
-  // Per-series hatch/texture tiles over the box/violin fill (null: plain); ids scoped to
-  // this instance so several box plots on a page never share <pattern>s
+  // Per-series hatch/texture tiles over the box/violin fill (null: plain), ids per instance
   const pattern_uid = unique_id(`box`)
   let series_patterns = $derived(
     series.map((srs, idx) =>
@@ -354,8 +339,7 @@
   )
 
   let slot_indices = $derived(slot_list.map((_, idx) => idx))
-  // A slot's tick label is colored only when a single series occupies it. Precompute
-  // slot -> color in one pass so the PlotAxis tick_color callback stays O(1) per tick.
+  // A slot's tick label is colored only when a single series occupies it
   let slot_colors = $derived.by(() => {
     const colors = new Map<number, string | undefined>()
     for (const [idx, slot] of slot_of.entries()) {
@@ -383,19 +367,23 @@
   )
 
   type ViolinKde = KdeResult & { max_density: number }
-  // The logarithmic axes as one string key (e.g. `x y2`), so a new axis object (label, ticks)
-  // that keeps its scale type doesn't recompute every KDE
+  // The log axes as one string key (e.g. `x y2`), so a new axis object keeping its scale type
+  // doesn't recompute every KDE
   const log_axes = $derived(
     (Object.keys(plot_axes) as (keyof typeof plot_axes)[])
       .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
       .join(` `),
   )
   // KDEs read series_in so legend toggles don't recompute them. On log axes density is
-  // estimated in log10 space (bandwidth in decades); non-positive clip bounds stay open.
+  // estimated over log10 of the positive samples (bandwidth in decades), in input order.
+  const log10_positive = (values: Iterable<number>): number[] => {
+    const logs: number[] = []
+    for (const val of values) if (val > 0) logs.push(Math.log10(val))
+    return logs
+  }
   const to_log = (bound: number | null) =>
     bound !== null && bound > 0 ? Math.log10(bound) : null
-  // Which series draw a violin as one key (1/0 per series), so switching between `violin` and
-  // `violin+box` re-estimates no KDE
+  // Which series draw a violin as one key, so `violin` <-> `violin+box` re-estimates no KDE
   const violin_flags = $derived(series_in.map((srs) => (draws_violin(srs) ? 1 : 0)).join(``))
   let violin_kdes = $derived.by(() => {
     const map = new Map<number, ViolinKde>()
@@ -403,7 +391,7 @@
       if (violin_flags[series_idx] !== `1`) continue
       const clip = srs.clip ?? kde_clip
       const log = log_axes.split(` `).includes(val_axis_key(srs))
-      const samples = log ? srs.y.filter((val) => val > 0).map(Math.log10) : srs.y
+      const samples = log ? log10_positive(srs.y) : srs.y
       const kde = gaussian_kde(samples, {
         ...VIOLIN_KDE_OPTS,
         bandwidth: srs.bandwidth ?? bandwidth,
@@ -418,9 +406,8 @@
   // === Strip / swarm sample points ===
   // Marker centers are range-bounded; their full circles may reach into the plot padding
   const in_plot = ([px_x, px_y]: Vec2): boolean => frame.in_plot(px_x, px_y)
-  // Each visible box's drawn samples (a log value axis drops non-positive ones) and their
-  // cross-axis offsets. Packed in px, so they re-lay out on resize/zoom, but in a frame scaled
-  // like the plot's and not offset: a pan along either axis reuses them.
+  // Each visible box's drawn samples (minus non-positive ones on a log axis) and their
+  // cross-axis offsets, packed in a px frame scaled like the plot's but not offset (pans reuse it)
   let box_offsets = $derived.by(() => {
     const map = new Map<number, { values: number[]; offsets: Float64Array }>()
     for (const { series: srs, idx } of visible_boxes) {
@@ -435,8 +422,7 @@
       const body = violin_kdes.has(idx)
         ? (srs.violin_width ?? violin_width)
         : box_width_of(srs, idx)
-      // Swarms may fill the body; strip jitter keeps to half of it, reading as noise around
-      // the center line
+      // Swarms may fill the body; strip jitter keeps to half of it
       const spread = mode === `strip` ? body / 2 : body
       const offsets = box_point_offsets(value_px, mode, {
         radius: sample_state.radius,
@@ -474,8 +460,7 @@
     srs.box_width ??
     (violin_kdes.has(idx) ? DEFAULTS.box.violin_box_width : DEFAULTS.box.box_width)
 
-  // The horizontal category pixel axis is inverted, so flip the half-violin side to keep
-  // `positive` meaning "above the center line" (vertical/`both` pass through unchanged)
+  // The horizontal category pixel axis is inverted, so flip the half-violin side there
   const to_screen_side = (eff_side: ViolinSide): ViolinSide =>
     vertical || eff_side === `both`
       ? eff_side
@@ -492,13 +477,11 @@
   let has_secondary = $derived(
     secondary_boxes.some(({ stats }) => Number.isFinite(stats.median)),
   )
-  // Secondary value axis: x2 (top) when horizontal, y2 (right) when vertical. Derived once
-  // so rendering, ticks, range writes, picking and marginals stay in sync.
+  // Secondary value axis: x2 (top) when horizontal, y2 (right) when vertical
   let show_x2 = $derived(has_secondary && orientation === `horizontal`)
   let show_y2 = $derived(has_secondary && vertical)
 
-  // Value-axis points for auto-range. Log axes drop non-positive stats, which would pin the
-  // floor at LOG_EPS and stretch the axis across a dozen decades.
+  // Value-axis points for auto-range; log axes drop non-positive stats (they'd pin LOG_EPS)
   const range_values = (boxes: Box[], log_axis: boolean): number[] =>
     boxes.flatMap(({ series: srs, idx, stats }) => {
       const { outliers } = stats
@@ -507,8 +490,7 @@
       if (show_mean) vals.push(stats.mean)
       // Drawn samples reach the data extremes, past whiskers and hidden outliers alike
       if (point_mode(srs) !== `none`) vals.push(stats.min, stats.max)
-      // outliers are sorted ascending; auto-range only needs their extremes (avoids
-      // spreading a potentially huge array as call args)
+      // outliers are sorted ascending; auto-range only needs their extremes
       if (show_outliers && outliers.length > 0)
         vals.push(outliers[0], outliers[outliers.length - 1])
       const kde = violin_kdes.get(idx)
@@ -558,8 +540,7 @@
       : { x: value_primary, x2: value_secondary, y: cat_range, y2: [0, 1] as Vec2 }
   })
 
-  // Obstacle field in normalized [0,1] coords (y=0 at top): each drawn body (IQR box or whole
-  // violin) plus its whiskers as a cap-wide bar
+  // Normalized obstacle field: each drawn body (IQR box or violin) plus its cap-wide whiskers
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_boxes.length > 0, () => {
       const { current } = frame.ranges
@@ -611,8 +592,7 @@
       }
     }),
   )
-  // Log-safe value scale for a box (vertical -> y/y2, horizontal -> x/x2): stats <= 0 clamp
-  // to the range floor so whiskers/boxes end at the plot edge instead of NaN coords
+  // Log-safe value scale for a box: stats <= 0 clamp to the range floor instead of NaN
   const box_val_scale = (srs: BoxPlotSeries<Metadata>, scales = frame.scales) =>
     frame.value_scale(val_axis_key(srs), scales)
 
@@ -634,10 +614,9 @@
   )
 
   // === Tooltip / hover ===
-  // Box index only, so a resting tooltip follows new data and closes once its box is gone, and
-  // pointer moves within one box leave its content alone. The pointer (null on keyboard focus:
-  // whisker-tip anchor) only moves the tooltip. A click pins the hovered box's tooltip unless
-  // on_box_click takes the click.
+  // Keyed by box index, so a resting tooltip follows new data and closes once its box is gone.
+  // The pointer (null on keyboard focus: whisker-tip anchor) only moves the tooltip. A click
+  // pins it unless on_box_click takes the click.
   type BoxKey = { idx: number }
   let hover_pointer = $state<Point2D | null>(null)
   const box_info = (key: BoxKey): BoxHover | null => {
@@ -686,8 +665,7 @@
     }
   }
 
-  // FocusEvents anchor at the whisker tip; pointer events follow the mouse since boxes and
-  // violins are wide and a fixed anchor lands far from the pointer
+  // FocusEvents anchor at the whisker tip; pointer events follow the mouse
   const handle_box_hover = (box_item: Box) => (event: MouseEvent | FocusEvent) => {
     hovered = true
     hover_pointer = pointer_pos(event, frame.svg_element)
@@ -702,8 +680,7 @@
     )
 
   // === Export ===
-  // Five-number summaries get their own CSV columns rather than the shared long format.
-  // whisker_low/high are what the chart draws; min/max are the raw extremes
+  // Five-number summary columns: whisker_low/high as drawn, min/max the raw extremes
   type StatCol = Exclude<keyof Box[`stats`], `outliers`>
   const cols = [
     `n`,
@@ -781,18 +758,15 @@
       {on_axis_change}
     />
 
-    <!-- Chart content is clipped in two groups so reference lines can interleave
-         at their z positions while staying outside the chart clip: each line still
-         self-clips to the plot area inside ReferenceLine, only its annotation text
-         is allowed to overflow the plot edges. -->
+    <!-- Clipped in groups so reference lines interleave at their z positions outside the
+         chart clip (they self-clip; only annotation text may overflow the plot edges) -->
     <g clip-path="url(#{frame.clip_path_id})">
       <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
     <ReferenceLinesLayer {frame} z="below-lines" />
 
-    <!-- Continuous box/violin geometry clips to the chart. Outlier marker centers are
-         range-bounded, but their complete circles may extend into the plot padding. -->
+    <!-- Box/violin geometry clips to the chart; outlier circles may reach into the padding -->
     <g>
       <defs><PatternDefs patterns={series_patterns} /></defs>
       {#each visible_boxes as box_item (box_item.series.id ?? box_item.idx)}
@@ -1046,9 +1020,8 @@
             orientation === `vertical` ? hover_info.y_axis : hover_info.x_axis}
           {@const fmt = value_axis.format}
           {@const stat = hover_info.stats}
-          <!-- float noise (a mean of [0.1, 0.2, -0.3] is 1.85e-17, an interpolated quartile of
-               [-0.3, 0.1] 5.55e-17) reads as 0; the bound is the summation error n·ε·max|x|, so
-               a genuinely small statistic beside large ones is shown as it is -->
+          <!-- float noise (a mean of [0.1, 0.2, -0.3] is 1.85e-17) reads as 0, bounded by the
+               summation error n·ε·max|x| so genuinely small statistics still show -->
           {@const noise =
             Math.max(stat.n, 4) *
             Number.EPSILON *

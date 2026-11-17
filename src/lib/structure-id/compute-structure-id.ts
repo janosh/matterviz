@@ -2,14 +2,14 @@
 // fixed-cutoff CNA runs on the cutoff query that defines it.
 import type { AnyStructure, Pbc } from '#lib/structure/index.js'
 import { neighbor_query } from '#lib/structure/neighbor-list.js'
-import type { CnaMode, CnaTypeName } from './calc-cna'
-import { calc_cna, CNA_TYPE_NAMES, CNA_TYPES } from './calc-cna'
-import { calc_centrosymmetry, validate_csp_neighbors } from './calc-csp'
+import type { CnaMode, CnaTypeName } from './compute-cna'
+import { compute_cna, CNA_TYPE_NAMES, CNA_TYPES } from './compute-cna'
+import { compute_centrosymmetry, validate_csp_neighbors } from './compute-csp'
 
 // Neighbors a-CNA needs: 8 first-shell + 6 second-shell bcc candidates
 const N_ADAPTIVE_CNA_NEIGHBORS = 14
 
-// CSP's neighbor count is a property of the lattice (see calc-csp.ts): 12 close-packed, 8 bcc.
+// CSP's neighbor count is a property of the lattice (see compute-csp.ts): 12 close-packed, 8 bcc.
 // The close-packed 12 on bcc pulls in 4 arbitrary members of its degenerate second shell, so a
 // DEFECT-FREE bcc Fe crystal (a = 2.87 A) reads a vacancy-sized 0.75*a^2 = 6.18 A^2. CNA in the
 // same call already names the phase, so the default reads it off.
@@ -68,7 +68,7 @@ export interface StructureIdResult {
   neighbor_cutoff: number
 }
 
-export function calc_structure_id(
+export function compute_structure_id(
   structure: AnyStructure,
   options: StructureIdOptions = {},
 ): StructureIdResult {
@@ -76,10 +76,10 @@ export function calc_structure_id(
   const n_csp_option = options.n_csp_neighbors
 
   const n_atoms = structure.sites.length
-  if (n_atoms === 0) throw new Error(`calc_structure_id: structure has no sites`)
+  if (n_atoms === 0) throw new Error(`compute_structure_id: structure has no sites`)
   if (skip_cna && skip_csp) {
     throw new Error(
-      `calc_structure_id: skip_cna and skip_csp are both set, nothing to compute`,
+      `compute_structure_id: skip_cna and skip_csp are both set, nothing to compute`,
     )
   }
   // Reject bad N before the k-nearest search grows a cutoff for a k that can never be satisfied.
@@ -92,12 +92,12 @@ export function calc_structure_id(
   const fixed_cutoff = cna_mode === `fixed` && !skip_cna ? (cutoff ?? NaN) : null
   if (fixed_cutoff !== null && !(fixed_cutoff > 0)) {
     throw new Error(
-      `calc_structure_id: cna_mode 'fixed' needs a positive cutoff (0.854 * a_fcc or ` +
+      `compute_structure_id: cna_mode 'fixed' needs a positive cutoff (0.854 * a_fcc or ` +
         `1.207 * a_bcc for the phase under study), got ${cutoff}`,
     )
   }
   // The phase-derived default is unknown until CNA has run, so size the query from the OPTION
-  // (the larger candidate): calc_centrosymmetry takes a prefix of each sorted block, and
+  // (the larger candidate): compute_centrosymmetry takes a prefix of each sorted block, and
   // shrinking this to 8 for bcc would change what CNA sees.
   let n_csp_neighbors = n_csp_option ?? CSP_NEIGHBORS_CLOSE_PACKED
   const k_neighbors = Math.max(
@@ -109,15 +109,15 @@ export function calc_structure_id(
   let neighbor_cutoff = 0
   if (fixed_cutoff !== null) {
     const list = neighbor_query(structure, { cutoff: fixed_cutoff, pbc })
-    cna_types = calc_cna(list, `fixed`)
+    cna_types = compute_cna(list, `fixed`)
     neighbor_cutoff = list.cutoff
   }
   if (k_neighbors > 0) {
     const list = neighbor_query(structure, { k: k_neighbors, pbc })
-    if (!skip_cna && fixed_cutoff === null) cna_types = calc_cna(list, cna_mode)
+    if (!skip_cna && fixed_cutoff === null) cna_types = compute_cna(list, cna_mode)
     if (!skip_csp) {
       n_csp_neighbors = n_csp_option ?? default_csp_neighbors(cna_types)
-      centrosymmetry = calc_centrosymmetry(list, n_csp_neighbors)
+      centrosymmetry = compute_centrosymmetry(list, n_csp_neighbors)
     }
     neighbor_cutoff = Math.max(neighbor_cutoff, list.cutoff)
   }

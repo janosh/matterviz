@@ -23,10 +23,9 @@ const triclinic: Matrix3x3 = [
 ]
 const cubic = cubic_matrix(3.5)
 
-// Reference directions from numpy: [uvw] as unit(indices @ A), (hkl) as unit(indices @ inv(A).T).
-// The (hkl) values were independently confirmed against the plane through the axis intercepts
-// a/h, b/k, c/l (max component difference 1.1e-16, i.e. below f64 eps of 2.2e-16), and
-// inv(A).T matched ase.cell.Cell.reciprocal() to 1.2e-16.
+// Reference directions from numpy: [uvw] as unit(indices @ A), (hkl) as unit(indices @
+// inv(A).T), cross-checked against the plane through the intercepts a/h, b/k, c/l and ase's
+// reciprocal cell (both within 1.2e-16, below f64 eps 2.2e-16).
 const DIRECTION_TOL = 1e-12
 
 test.each([
@@ -61,10 +60,8 @@ test.each([
   expect(get_orthographic_zoom_bounds(fit_zoom).max_zoom).toBe(Number.POSITIVE_INFINITY)
 })
 
-// The bounds are absolute pixels per Angstrom while the fit zoom is min(canvas_px) / extent, so
-// defaults that suit one structure size pin the camera at the fit for another: the former 10/500
-// pair left a 60 A cell (fit 10 on a 600 px canvas) unable to zoom out at all, and a 3 A molecule
-// (fit 200) able to zoom in only 2.5x
+// Bounds are px/Å while the fit zoom is min(canvas_px) / extent: the old 10/500 defaults left
+// a 60 A cell no zoom-out and a 3 A molecule only 2.5x zoom-in
 test.each([[3], [10], [60], [200]])(
   `default zoom bounds leave at least 10x in and out of a %s A structure`,
   (extent_angstrom) => {
@@ -126,6 +123,7 @@ describe(`zone axis directions`, () => {
   ])(
     `reports the same axis for scaled indices and the opposite one for negated %s`,
     (_name, indices) => {
+      expect(is_valid_zone_axis(indices)).toBe(true)
       const scaled = (factor: number) =>
         zone_axis_direction(triclinic, indices.map((index) => index * factor) as Vec3, `uvw`)
       const [base, doubled, negated] = [1, 2, -1].map(scaled)
@@ -146,18 +144,11 @@ describe(`zone axis directions`, () => {
   })
 
   test(`refuses a singular lattice when the reciprocal lattice is required`, () => {
-    const flat: Matrix3x3 = [
-      [1, 0, 0],
-      [2, 0, 0],
-      [0, 0, 1],
-    ]
+    // oxfmt-ignore
+    const flat: Matrix3x3 = [[1, 0, 0], [2, 0, 0], [0, 0, 1]]
     expect(() => zone_axis_direction(flat, [1, 0, 0], `hkl`)).toThrow(/singular/)
     // the direct-lattice direction is still well defined without inverting
     expect(zone_axis_direction(flat, [1, 0, 0], `uvw`)).toEqual([1, 0, 0])
-  })
-
-  test.each([[[0, 0, 1] as Vec3], [[-1, 0, 0] as Vec3]])(`accepts indices %s`, (indices) => {
-    expect(is_valid_zone_axis(indices)).toBe(true)
   })
 })
 
@@ -195,15 +186,8 @@ describe(`camera fly-to`, () => {
       on_end: () => hook_calls.push(`end`),
     })
     const offset = () => camera.position.clone().sub(controls.target)
-    return {
-      camera,
-      controls,
-      fly,
-      make_fly,
-      hook_calls,
-      invalidations: () => invalidations,
-      offset,
-    }
+    const rig = { camera, controls, fly, make_fly, hook_calls, offset }
+    return { ...rig, invalidations: () => invalidations }
   }
   const to_array = (vec: Vector3): Vec3 => [vec.x, vec.y, vec.z]
 
@@ -231,9 +215,8 @@ describe(`camera fly-to`, () => {
     )
   })
 
-  // Offsets from the orbit target partway through a 400 ms swing from +z to +x: the camera has
-  // turned ease_in_out(elapsed / 400) of the 90 degrees at radius 10. A lerp of the endpoints
-  // would sit at atan(1/7) = 8.1 degrees instead of 11.25 after the first quarter.
+  // Partway through a 400 ms swing from +z to +x the camera has turned ease_in_out(t / 400) of
+  // 90 degrees at radius 10 (a lerp would sit at 8.1 instead of 11.25 degrees after a quarter)
   test.each([
     [0.1, 11.25], // 25% of the flight, eased to 12.5%
     [0.2, 45], // halfway: the exact bisector
@@ -257,9 +240,8 @@ describe(`camera fly-to`, () => {
     expect(forward.distanceTo(to_target)).toBeLessThan(1e-12)
   })
 
-  // A lerp between opposite offsets passes through zero: the camera held still, spent a frame
-  // on the orbit target (radius 0, scene gone) and snapped to the far side. The flight has to
-  // orbit the whole way round at full radius, around the camera's up axis so it stays level.
+  // A lerp between opposite offsets passes through the target: the flight must orbit at full
+  // radius, about the camera's up axis so it stays level
   test.each([
     [`+x to -x`, [10, 0, 0], [-1, 0, 0], [0, 1, 0], [0, 0, -10]],
     [`+z to -z`, [0, 0, 10], [0, 0, -1], [0, 1, 0], [10, 0, 0]],

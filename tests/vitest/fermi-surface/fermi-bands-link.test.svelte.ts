@@ -27,6 +27,7 @@ const band_data: BandGridData = {
   k_grid: [2, 2, 2],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 1,
+  energy_unit: `eV`,
   n_bands: 2,
   n_spins: 2,
 }
@@ -142,6 +143,22 @@ test(`a band click pins its energy and isolates its sheet, a second click ends i
     flushSync()
     expect(shown()).toEqual([-0.25, null, null])
   }
+})
+
+// band structures are eV, so a grid of another or an unknown unit (BXSF and FRMSF name none)
+// cannot preview, pin or mark energies on them; band highlighting still links
+test.each([null, `Ry`] as const)(`a %s grid links no energies to the bands`, (energy_unit) => {
+  const { link, host } = make_link()
+  host.band_data = { ...band_data, energy_unit }
+  host.mu = 0.25
+  link.band_hover(band_event(1, 1.5))
+  flushSync()
+  const { fermi_energy, mu, previewing, highlighted_band } = link
+  expect([fermi_energy, mu, previewing, highlighted_band]).toEqual([undefined, 0.25, false, 1])
+  link.band_click(band_event(1, 1.25))
+  flushSync()
+  expect([host.mu, link.isolated_band]).toEqual([0.25, null])
+  expect(link.crossings).toEqual([])
 })
 
 test(`hovering a grid band previews its energy, another band only highlights`, () => {

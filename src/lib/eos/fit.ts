@@ -2,6 +2,7 @@
 // Birch–Murnaghan (3rd order), Murnaghan and Vinet forms, and a least-squares fit of their four
 // parameters (E0, V0, B0, B0') by Levenberg–Marquardt seeded from a parabola through the data.
 // Energies in eV, volumes in A^3, so B0 comes out in eV/A^3 (× EV_PER_A3_TO_GPA for GPa).
+import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { array_max, array_min, dot, solve_linear_system } from '#lib/math.js'
 
 export const EOS_KINDS = [`birch_murnaghan`, `murnaghan`, `vinet`] as const
@@ -23,6 +24,11 @@ export interface EosParams {
 export interface EosFit extends EosParams {
   kind: EosKind
   rmse: number // root-mean-square energy residual, eV
+  b0_gpa: number // b0 in GPa
+  // One-sigma standard errors of the parameters (same units; std_errors.b0 in eV/A^3) from the
+  // covariance s²·(JᵀJ)⁻¹ at the optimum, s² = SSR / (n − 4), as scipy's curve_fit reports
+  // them. Null for a 4-point scan, which the 4 parameters interpolate with no residual dof.
+  std_errors: EosParams | null
 }
 
 // E(V) of each form. Birch–Murnaghan is the Eulerian-strain series to 3rd order, Murnaghan
@@ -137,11 +143,9 @@ function parabola_guess(volumes: readonly number[], energies: readonly number[])
     .map((_, idx) => idx)
     .toSorted((idx_a, idx_b) => volumes[idx_a] - volumes[idx_b])
   const min_pos = order.indexOf(energies.indexOf(array_min(energies)))
-  // Same guard as pymatgen's EOS: a scan that does not bracket its minimum starts the
-  // 4-parameter fit far from the truth and can settle in a wrong local minimum without any
-  // symptom other than a large RMSE, so refuse it up front. Judged by the lowest-energy point,
-  // not the parabola vertex: anharmonicity biases the vertex low, so a scan with more expansion
-  // than compression can put the vertex outside the range while V0 itself is well inside.
+  // Same guard as pymatgen's EOS: an unbracketed minimum can settle the fit in a wrong local
+  // minimum with no symptom but a large RMSE. Judged by the lowest-energy point, not the
+  // parabola vertex, which anharmonicity biases low (outside the range while V0 is inside).
   if (min_pos === 0 || min_pos === order.length - 1) {
     throw new Error(
       `EOS fit: lowest energy is at the edge of the scan (V=${volumes[order[min_pos]]} of [${volumes[order[0]]}, ${volumes[order.at(-1) ?? 0]}]); the scan must bracket the energy minimum`,
@@ -166,6 +170,45 @@ function parabola_guess(volumes: readonly number[], energies: readonly number[])
     b0: 2 * curvature * equilibrium_volume,
     b0_prime: 4,
   }
+}
+
+// Residual Jacobian columns at `params` scaled to unit norm (Marquardt scaling: the eV, A^3 and
+// eV/A^3 columns can differ by 1e10, which the solver's pivot test would reject as singular),
+// their normal matrix (unit diagonal) and the column norms
+function scaled_jacobian(kind: EosKind, params: EosParams, volumes: readonly number[]) {
+  const gradients = volumes.map((vol) => eos_gradient(kind, params, vol))
+  const scale = PARAM_KEYS.map((key) => Math.hypot(...gradients.map((grad) => grad[key])))
+  const jacobian = PARAM_KEYS.map((key, col) =>
+    gradients.map((grad) => grad[key] / scale[col]),
+  )
+  const normal = jacobian.map((col_a) => jacobian.map((col_b) => dot(col_a, col_b)))
+  return { jacobian, normal, scale }
+}
+
+// Standard errors sqrt(diag(s²·(JᵀJ)⁻¹)): with J = J_s·D for the scaled Jacobian J_s and
+// column norms D, (JᵀJ)⁻¹ = D⁻¹·(J_sᵀJ_s)⁻¹·D⁻¹, so each diagonal entry divides by scale²
+function parameter_std_errors(
+  kind: EosKind,
+  params: EosParams,
+  volumes: readonly number[],
+  sum_sq_residuals: number,
+): EosParams | null {
+  const n_dof = volumes.length - PARAM_KEYS.length
+  if (n_dof < 1) return null
+  const { normal, scale } = scaled_jacobian(kind, params, volumes)
+  const variance = sum_sq_residuals / n_dof
+  const [e0, v0, b0, b0_prime] = PARAM_KEYS.map((_key, idx) => {
+    const unit = PARAM_KEYS.map((_other, jdx) => (jdx === idx ? 1 : 0))
+    const column = solve_linear_system(normal, unit)
+    if (!column) {
+      throw new Error(
+        `EOS fit (${kind}): the parameters are not identifiable from ${volumes.length} volumes ` +
+          `(singular normal matrix at ${JSON.stringify(params)})`,
+      )
+    }
+    return Math.sqrt(variance * column[idx]) / scale[idx]
+  })
+  return { e0, v0, b0, b0_prime }
 }
 
 const MAX_ITERATIONS = 500
@@ -207,17 +250,9 @@ export function fit_eos(
   let damping = 1e-3
   let converged = false
   for (let iter = 0; iter < MAX_ITERATIONS && !converged; iter++) {
-    // Jacobian of the residuals, one column per parameter, with Marquardt scaling: each column
-    // is normalized so the normal matrix has a unit diagonal. The eV, A^3 and eV/A^3 columns can
-    // differ by 1e10 (soft materials, tiny cells), which the solver's largest-entry pivot test
-    // would otherwise reject as singular, and it lets one damping factor act on every parameter
-    // relative to its own curvature
-    const gradients = volumes.map((vol) => eos_gradient(kind, params, vol))
-    const scale = PARAM_KEYS.map((key) => Math.hypot(...gradients.map((grad) => grad[key])))
-    const jacobian = PARAM_KEYS.map((key, col) =>
-      gradients.map((grad) => grad[key] / scale[col]),
-    )
-    const normal = jacobian.map((col_a) => jacobian.map((col_b) => dot(col_a, col_b)))
+    // the unit diagonal also lets one damping factor act on every parameter relative to its
+    // own curvature
+    const { jacobian, normal, scale } = scaled_jacobian(kind, params, volumes)
     const rhs = jacobian.map((col) => -dot(col, res))
 
     // Restart the ladder each outer iteration, as textbook LM does: a carried-over damping of
@@ -231,15 +266,8 @@ export function fit_eos(
         damping *= 4
         continue
       }
-      const [equilibrium_energy, equilibrium_volume, bulk_modulus, b0_prime] = PARAM_KEYS.map(
-        (key, idx) => params[key] + step[idx],
-      )
-      const trial = {
-        e0: equilibrium_energy,
-        v0: equilibrium_volume,
-        b0: bulk_modulus,
-        b0_prime,
-      }
+      const [e0, v0, b0, b0_prime] = PARAM_KEYS.map((key, idx) => params[key] + step[idx])
+      const trial = { e0, v0, b0, b0_prime }
       const trial_res = residuals(trial)
       const trial_cost = dot(trial_res, trial_res)
       // uphill and non-finite trials raise the damping
@@ -285,5 +313,11 @@ export function fit_eos(
       `EOS fit (${kind}) is unphysical: V0 = ${equilibrium_volume} A^3 must lie inside the scanned range [${v_min}, ${v_max}] A^3 and B0' = ${b0_prime} must exceed 1`,
     )
   }
-  return { kind, ...params, rmse: Math.sqrt(current_cost / volumes.length) }
+  return {
+    kind,
+    ...params,
+    rmse: Math.sqrt(current_cost / volumes.length),
+    b0_gpa: bulk_modulus * EV_PER_A3_TO_GPA,
+    std_errors: parameter_std_errors(kind, params, volumes, current_cost),
+  }
 }

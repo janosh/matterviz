@@ -2,8 +2,8 @@
 import { display_idx } from '#lib/labels.js'
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { sweep_frames } from '#lib/trajectory/analysis.js'
-import { calc_structure_id_async } from './async-compute.svelte'
-import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
+import { compute_structure_id_async } from './async-compute.svelte'
+import type { StructureIdOptions, StructureIdResult } from './compute-structure-id'
 
 // a-CNA costs ~9-14 µs per atom, so a 5000-frame run of 10k atoms is 8-12 minutes of
 // worker time. Every sweep therefore samples an evenly spaced subset rather than the whole
@@ -47,7 +47,7 @@ export async function collect_structure_id_sweep(
     run,
     { max_frames, on_progress, signal, start_frame, end_frame },
     async (frame, frame_number) => {
-      const result = await calc_structure_id_async(frame.structure, options, { signal })
+      const result = await compute_structure_id_async(frame.structure, options, { signal })
       first ??= { frame_number, n_atoms: result.n_atoms }
       if (result.n_atoms !== first.n_atoms) {
         throw new Error(

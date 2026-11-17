@@ -91,7 +91,7 @@ export function k_lattice_inverse(k_lattice: Matrix3x3 | undefined): Matrix3x3 |
 export const cartesian_to_fractional = (
   k_lattice_inv: Matrix3x3 | null,
   cart: Vec3,
-): Vec3 | null => k_lattice_inv && math.mat3x3_vec3_multiply(k_lattice_inv, cart)
+): Vec3 | null => k_lattice_inv && math.mul_3x3_vec3(k_lattice_inv, cart)
 
 // Tooltip record for a k-point hovered on the zone, its IBZ wedge or a k-path
 export function bz_hover_data(

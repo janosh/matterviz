@@ -177,14 +177,8 @@ describe(`derive_regions`, () => {
   // Joining, trimming and extending never depend on the boundary order. Chained ends
   // (u = 0.500, 0.508, 0.516: neighbors close, outer pair not) used to split by order when
   // grouped around the first end found.
-  const permutations = [
-    [0, 1, 2],
-    [0, 2, 1],
-    [1, 0, 2],
-    [1, 2, 0],
-    [2, 0, 1],
-    [2, 1, 0],
-  ]
+  // oxfmt-ignore
+  const permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
   // oxfmt-ignore
   test.each([
     [`chained ends`, triple(at_center, [[5.08, 5]], [[5.16, 5]])],
@@ -232,13 +226,8 @@ describe(`derive_regions`, () => {
       const seg_idx = Math.min(Math.floor(pos), points.length - 2)
       return lerp_vec2(points[seg_idx], points[seg_idx + 1], pos - seg_idx)
     })
-  test.each([
-    [0, 200],
-    [1, 200],
-    [2, 200],
-    [0, 1000],
-    [1, 1000],
-  ])(`noisy iron (seed %d, %d points per line) keeps every field`, (seed, count) => {
+  // oxfmt-ignore
+  test.each([[0, 200], [1, 200], [2, 200], [0, 1000], [1, 1000]])(`noisy iron (seed %d, %d points per line) keeps every field`, (seed, count) => {
     const rng = mulberry32(seed)
     const boundaries = iron_pt_diagram.boundaries.map(
       ({ sigma_t: _t, sigma_p: _p, ...line }): PtBoundary => ({
@@ -318,22 +307,16 @@ describe(`segment and polygon helpers`, () => {
     expect(nearest_on_polylines([0, 0], [[[1, 1]]])).toBeNull()
   })
 
+  // oxfmt-ignore
   test.each([
-    [[1, 3, 7], 0, 0.5, 2],
-    [[1, 3, 7], 1, 0.25, 4],
-    [[1, 3, 7], 1, 1, 7],
-    [undefined, 0, 0.5, null],
+    [[1, 3, 7], 0, 0.5, 2], [[1, 3, 7], 1, 0.25, 4], [[1, 3, 7], 1, 1, 7], [undefined, 0, 0.5, null],
   ] as const)(`interpolate_at(%j, %d, %d) = %j`, (values, seg_idx, param, expected) => {
     expect(interpolate_at(values, seg_idx, param)).toBe(expected)
   })
 
   // Axis-aligned clips of small integers are exact
-  const square = (min: number, size: number): Vec2[] => [
-    [min, min],
-    [min + size, min],
-    [min + size, min + size],
-    [min, min + size],
-  ]
+  // oxfmt-ignore
+  const square = (min: number, size: number): Vec2[] => [[min, min], [min + size, min], [min + size, min + size], [min, min + size]]
   test.each([
     [`partial overlap`, square(0, 10), [5, 5, 15, 15], 25],
     [`fully inside`, square(2, 4), [0, 0, 10, 10], 16],

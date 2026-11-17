@@ -194,11 +194,8 @@ export const ase_stress_metadata = (stress: unknown): StressMetadata | undefined
   }
   if (values.length !== 6) return undefined
   const [xx, yy, zz, yz, xz, xy] = values.map(to_gpa)
-  return stress_metadata([
-    [xx, xy, xz],
-    [xy, yy, yz],
-    [xz, yz, zz],
-  ])
+  // oxfmt-ignore
+  return stress_metadata([[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]])
 }
 
 // POTIM is the time step (fs) only when IBRION = 0; relaxations reuse the tag as a step scale

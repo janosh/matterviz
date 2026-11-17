@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileInfo } from '#lib'
+  import type { FileInfo } from '#lib/io/index.js'
   import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
   import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
   import FilePicker from '#lib/FilePicker.svelte'

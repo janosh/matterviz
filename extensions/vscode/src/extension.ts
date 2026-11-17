@@ -27,6 +27,7 @@ import { open_trajectory } from '#lib/trajectory/open.js'
 import { post_new_warnings } from '#lib/trajectory/parse/shared.js'
 import { summarize_run, type TrajectoryRun } from '#lib/trajectory/run.js'
 import { Buffer } from 'node:buffer'
+import { randomBytes } from 'node:crypto'
 import * as file_system from 'node:fs'
 import * as operating_system from 'node:os'
 import * as path from 'node:path'
@@ -286,7 +287,10 @@ export const create_html = (
   context: ExtensionContextLike,
   data: WebviewBootstrapData,
 ): string => {
-  const nonce = Math.random().toString(36).slice(2, 34)
+  // 128 bits from the CSPRNG: Math.random() gave ~52 bits (11 base-36 chars) of a generator
+  // whose state is recoverable from its outputs, and the CSP nonce is all that keeps markup
+  // injected through file content from running as script
+  const nonce = randomBytes(16).toString(`hex`)
   const ext_path = context.extensionUri.fsPath
   // Webview-loadable URL for a file under dist/
   const dist_uri = (...segments: string[]): string =>

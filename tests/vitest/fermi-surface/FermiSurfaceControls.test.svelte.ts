@@ -40,29 +40,44 @@ const render_controls = async (state: ComponentProps<typeof FermiSurfaceControls
 const color_by = () => doc_query<HTMLSelectElement>(`.fermi-controls select`)
 
 describe(`FermiSurfaceControls`, () => {
-  test.each([false, true])(
-    `chemical-potential controls require a band grid: %s`,
-    async (has_grid) => {
+  // energies -3.5 to 3.5: the slider spans 10% of that 7 to either side of E_F, in 0.01 steps,
+  // and labels read the grid's own unit, saying so when a format named none
+  test.each([
+    [false, `eV`, `eV`],
+    [true, `eV`, `eV`],
+    [true, `Ry`, `Ry`],
+    [true, null, `unknown unit`],
+  ] as const)(
+    `chemical-potential controls require a band grid: %s (%s)`,
+    async (has_grid, energy_unit, unit_text) => {
+      const values = Float64Array.from({ length: 8 }, (_, idx) => idx - 3.5)
       const band_data: BandGridData = {
-        energies: [[{ values: new Float64Array(8), dims: [2, 2, 2], order: `z_fastest` }]],
+        energies: [[{ values, dims: [2, 2, 2], order: `z_fastest` }]],
         k_grid: [2, 2, 2],
         k_lattice: IDENTITY_MATRIX3,
         fermi_energy: 0,
+        energy_unit,
         n_bands: 1,
         n_spins: 1,
       }
       const state = {
         mu: 0,
-        fermi_data: make_fermi_data(),
+        fermi_data: { ...make_fermi_data(), energy_unit },
         band_data: has_grid ? band_data : undefined,
       }
       await render_controls(state)
-      const offset = [
-        ...document.querySelectorAll<HTMLInputElement>(`input[type="number"]`),
-      ].find((input) => input.closest(`label`)?.textContent?.includes(`μ offset`))
-      expect(document.querySelector(`small`)?.innerHTML).toMatch(/^E<sub[^>]*>F<\/sub> = /)
-      expect(Boolean(offset)).toBe(has_grid)
-      if (offset) {
+      const mu_label = [...document.querySelectorAll(`label`)].find((label) =>
+        label.textContent?.includes(`μ offset`),
+      )
+      expect(document.querySelector(`small`)?.innerHTML).toMatch(
+        new RegExp(`^E<sub[^>]*>F</sub> = 0 ${unit_text}$`),
+      )
+      expect(Boolean(mu_label)).toBe(has_grid)
+      if (mu_label) {
+        expect(mu_label.querySelector(`span`)?.textContent).toBe(`μ offset (${unit_text})`)
+        const [offset, slider] = mu_label.querySelectorAll(`input`)
+        const { min, max, step } = slider
+        expect([min, max, step, offset.step]).toEqual([`-0.7`, `0.7`, `0.01`, `0.01`])
         set_input(offset, `0.25`)
         expect(state.mu).toBe(0.25)
       }

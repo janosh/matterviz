@@ -121,15 +121,9 @@ test.each([0, 200])(
         clientY: rect.y + ((1 - point.y) * rect.height) / 2,
       }
       // a press that left the canvas was released elsewhere: a later release must not fly
-      for (const type of [
-        `pointerdown`,
-        `pointerleave`,
-        `pointerup`,
-        `pointerdown`,
-        `pointerup`,
-      ]) {
+      const presses = [`pointerdown`, `pointerleave`, `pointerup`, `pointerdown`, `pointerup`]
+      for (const type of presses)
         renderer.domElement.dispatchEvent(new PointerEvent(type, click_position))
-      }
       expect(on_start).toHaveBeenCalledOnce()
       props.visible = false
       flushSync()
@@ -141,9 +135,8 @@ test.each([0, 200])(
       expect(frame()).toEqual([])
       expect(renderer.autoClear).toBe(true)
 
-      // Threlte's resize task can setSize() mid-frame while its `size` store still holds
-      // the old canvas until the next effect flush. Laying out from the stale 400x300 put
-      // the scissor at y=225 on a 150 px tall attachment, which WebGPU rejects.
+      // A mid-frame setSize() while Threlte's `size` store still says 400x300: laying out
+      // from it put the scissor at y=225 on a 150 px attachment, which WebGPU rejects
       committed.height = 150
       renderer.setScissor.mockClear()
       renderer.setViewport.mockClear()

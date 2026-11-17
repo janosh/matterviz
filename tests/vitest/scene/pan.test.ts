@@ -21,15 +21,8 @@ describe(`pan offset on the camera view`, () => {
     set_pan_offset(camera, [30, -12], 800, 600)
     // Positive shift moves the image right/down, which three expresses as a negative offset
     // of the visible window; full-size sub-view keeps the projection otherwise unchanged
-    expect(camera.view).toMatchObject({
-      enabled: true,
-      fullWidth: 800,
-      fullHeight: 600,
-      offsetX: -30,
-      offsetY: 12,
-      width: 800,
-      height: 600,
-    })
+    expect(camera.view).toMatchObject({ enabled: true, offsetX: -30, offsetY: 12, width: 800 })
+    expect(camera.view).toMatchObject({ fullWidth: 800, fullHeight: 600, height: 600 })
     expect(read_pan_offset(camera)).toEqual([30, -12])
     camera.position.set(3, 4, 5)
     camera.lookAt(1, 2, 3)

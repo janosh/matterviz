@@ -1,4 +1,5 @@
-import type { FileInfo, FileTypePaint } from '#lib'
+import type { FileInfo, FileTypePaint } from '#lib/io/index.js'
+import type { ElectronEnergyUnit } from '#lib/spectral/types.js'
 import { file_type_paint } from '#lib/io/file-type-paint.js'
 import { fixture_ext, site_file_info } from '#site/imports.js'
 
@@ -17,6 +18,17 @@ const FRMSF_COLOR_DATA_FILES = new Set([
   `pb_vf3D.frmsf.gz`, // Pb with 3D Fermi velocity (vx, vy, vz)
   `srvo3_orb.frmsf.gz`, // SrVO3 with orbital character
 ])
+
+// Energy units of band grids with a known producer (QE's fs.x and the simulated cu_fcc_bands
+// write eV). BXSF and FRMSF name none, so all other files load with an unknown unit.
+export const FERMI_FILE_ENERGY_UNITS: Record<string, ElectronEnergyUnit> = {
+  'cu_fcc_bands.bxsf.gz': `eV`,
+  'cu_fs.bxsf.gz': `eV`,
+  'ni_fs.bxsf.gz': `eV`,
+  'ni_fsup.bxsf.gz': `eV`,
+  'ni_fsdw.bxsf.gz': `eV`,
+  'pb.bxsf.gz': `eV`,
+}
 
 // Picker category + icon per base format (.json files are assumed IFermi format)
 const CATEGORY_BY_EXT: Record<string, { category: string; category_icon: string }> = {

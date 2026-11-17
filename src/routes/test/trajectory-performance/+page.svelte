@@ -27,7 +27,7 @@
       [0, 0, cell],
     ]
     const pbc: Pbc = [true, true, true]
-    const lattice = { matrix, pbc, ...math.calc_lattice_params(matrix) }
+    const lattice = { matrix, pbc, ...math.compute_lattice_params(matrix) }
     const base = Array.from({ length: n_atoms }, () => [rng(), rng(), rng()] as Vec3)
     return Array.from({ length: n_frames }, (_, frame_idx) => ({
       step: frame_idx,
@@ -43,7 +43,6 @@
               {
                 element: atom_idx % 4 === 0 ? `Zn` : atom_idx % 4 === 1 ? `O` : `C`,
                 occu: 1,
-                oxidation_state: 0,
               },
             ],
             abc,

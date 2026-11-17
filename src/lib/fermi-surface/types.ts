@@ -5,6 +5,7 @@ import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { DefaultSettings } from '#lib/settings.js'
+import type { ElectronEnergyUnit } from '#lib/spectral/frequency-units.js'
 import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 
 // Viewer settings FermiSurface forwards to FermiSurfaceControls (bound) and FermiSurfaceScene
@@ -45,7 +46,8 @@ export const vertex_count = (surface: Pick<FermiIsosurface, `positions`>): numbe
 export interface FermiSurfaceData {
   isosurfaces: FermiIsosurface[]
   k_lattice: Matrix3x3 // reciprocal lattice vectors
-  fermi_energy: number // Fermi level in eV
+  fermi_energy: number // Fermi level, in energy_unit
+  energy_unit: ElectronEnergyUnit | null // the band grid's (null: unknown); IFermi's eV
   reciprocal_cell: ReciprocalCellType
   metadata: FermiSurfaceMetadata
 }
@@ -66,7 +68,10 @@ export interface BandGridData {
   energies: BandEnergyGrid[][]
   k_grid: Vec3 // grid dimensions
   k_lattice: Matrix3x3 // reciprocal lattice vectors
-  fermi_energy: number
+  fermi_energy: number // in energy_unit, as are the energies
+  // BXSF and FRMSF name none, so read as null (unknown) unless declared (parse_fermi_file's
+  // energy_unit option, with_energy_unit): QE fs.x writes eV, WIEN2k for SKEAF Ry
+  energy_unit: ElectronEnergyUnit | null
   n_bands: number
   n_spins: number // 1 or 2
   // true: points sit at k=i/n with no duplicated endpoint (FRMSF); false/undefined:

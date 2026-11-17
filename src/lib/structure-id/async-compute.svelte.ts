@@ -1,13 +1,13 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// Async wrapper for calc_structure_id via a persistent Web Worker.
+// Async wrapper for compute_structure_id via a persistent Web Worker.
 // Falls back to synchronous main-thread computation during SSR / where Worker is missing.
 import type { AnyStructure } from '#lib/structure/index.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
-import { calc_structure_id } from './calc-structure-id'
-import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
+import { compute_structure_id } from './compute-structure-id'
+import type { StructureIdOptions, StructureIdResult } from './compute-structure-id'
 import { to_structure_id_payload } from './worker-payload'
 
-export const calc_structure_id_async = create_worker_client<
+export const compute_structure_id_async = create_worker_client<
   AnyStructure,
   StructureIdOptions,
   StructureIdResult
@@ -15,7 +15,7 @@ export const calc_structure_id_async = create_worker_client<
   label: `structure-id`,
   create_worker: () =>
     new Worker(new URL(`./structure-id-worker.js`, import.meta.url), { type: `module` }),
-  compute_sync: calc_structure_id,
+  compute_sync: compute_structure_id,
   // Positions and lattice only (see worker-payload.ts); site properties can hold arbitrary
   // non-cloneable values (functions, DOM nodes) and nothing in the analysis reads them
   build_payload: to_structure_id_payload,

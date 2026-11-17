@@ -64,9 +64,8 @@ test(`css_to_linear_rgb memoizes without changing results, and stays bounded`, (
   // every caller shares that tuple, so a stray write must not be able to repaint later reads
   expect(Object.isFrozen(first)).toBe(true)
 
-  // A continuous property color scale mints a distinct string per value, so the cache has to
-  // evict — 5000 unique keys against a 4096 cap. Correctness of an evicted key must not depend
-  // on it still being resident, and eviction must not strand a wrong value behind a live key.
+  // A continuous scale's distinct strings (5000 against a 4096 cap) force evictions, which
+  // must neither break an evicted key's value nor strand a wrong value behind a live key
   const many_colors = Array.from(
     { length: 5000 },
     (_, idx) => `rgb(${idx % 256}, ${Math.floor(idx / 256)}, 9)`,

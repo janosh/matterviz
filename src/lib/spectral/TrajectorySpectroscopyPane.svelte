@@ -105,9 +105,8 @@
   let completed_settings_key = $state<string>()
   let current_settings_key = $derived(value_key(settings_snapshot()))
   let settings_dirty = $derived(
-    Boolean(
-      result && completed_settings_key && completed_settings_key !== current_settings_key,
-    ),
+    Boolean(result && completed_settings_key) &&
+      completed_settings_key !== current_settings_key,
   )
 
   let previous_run: TrajectoryRun | undefined
@@ -131,20 +130,15 @@
     calculation_phase = `idle`
     progress = null
     details_open = false
-    const default_ir = INFRARED_SIGNAL_KEYS.find((key) => infrared_keys.includes(key)) ?? ``
-    infrared_key = default_ir
-    infrared_kind = default_ir ? infrared_kind_from_key(default_ir) : `dipole`
+    infrared_key = INFRARED_SIGNAL_KEYS.find((key) => infrared_keys.includes(key)) ?? ``
+    infrared_kind = infrared_key ? infrared_kind_from_key(infrared_key) : `dipole`
     polarization_branch_continuous = false
     raman_key = RAMAN_SIGNAL_KEYS.find((key) => raman_keys.includes(key)) ?? ``
     analysis_time_step = run?.time_step?.value
     analysis_time_unit = run?.time_step?.unit ?? `fs`
-    const first_structure = run?.preview.structure
-    preprocessing =
-      first_structure &&
-      `lattice` in first_structure &&
-      first_structure.lattice.pbc.some(Boolean)
-        ? `remove_com`
-        : `body_fixed`
+    const structure = run?.preview.structure
+    const periodic = structure && `lattice` in structure && structure.lattice.pbc.some(Boolean)
+    preprocessing = periodic ? `remove_com` : `body_fixed`
   })
 
   async function calculate(): Promise<void> {
@@ -222,16 +216,8 @@
   // The inline trajectory analysis is ready on first entry. Attempt it once per run so
   // invalid data reports once instead of retrying after the handled error clears busy state.
   $effect(() => {
-    if (
-      !inline ||
-      !pane_open ||
-      !run ||
-      result ||
-      calculation_busy ||
-      auto_calculation_attempted
-    ) {
-      return
-    }
+    const ready = inline && pane_open && run && !result && !calculation_busy
+    if (!ready || auto_calculation_attempted) return
     auto_calculation_attempted = true
     void calculate()
   })
@@ -257,9 +243,8 @@
         <label
           >IR signal type
           <select bind:value={infrared_kind}>
-            <option value="dipole">dipole</option><option value="polarization"
-              >polarization</option
-            ><option value="current">current</option>
+            {#each INFRARED_SIGNAL_KEYS as kind (kind)}<option value={kind}>{kind}</option
+              >{/each}
           </select>
         </label>
       {/if}
@@ -415,7 +400,8 @@
     grid-template-columns: auto 1fr;
     justify-content: start;
   }
-  .spectroscopy-controls > label > :is(select, input:not([type='checkbox']), span) {
+  .spectroscopy-controls > label > :is(select, input:not([type='checkbox']), span),
+  .compact-inputs input {
     width: 100%;
     min-width: 0;
     max-width: none;
@@ -425,11 +411,6 @@
     display: flex;
     align-items: center;
     gap: 0.35em;
-  }
-  .compact-inputs input {
-    min-width: 0;
-    width: 100%;
-    font: inherit;
   }
   .provenance,
   .progress,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileInfo } from '#lib'
+  import type { FileInfo } from '#lib/io/index.js'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
   import FilePicker from '#lib/FilePicker.svelte'

@@ -25,10 +25,7 @@ import type {
 
 export const DEFAULT_POSITION_STREAM_MAX_BYTES = 512 * 1024 * 1024
 
-type StreamChannels = {
-  vector_keys: string[]
-  signal_keys: string[]
-}
+type StreamChannels = { vector_keys: string[]; signal_keys: string[] }
 const NO_CHANNELS: StreamChannels = { vector_keys: [], signal_keys: [] }
 type PositionFrame = TrajectoryFrame | NumericFrame
 

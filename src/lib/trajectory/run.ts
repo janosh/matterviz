@@ -350,8 +350,8 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
     ...((Boolean(source_atoms) || atom_count <= ATOM_BATCH_SIZE) && {
       compute_hotspots: async (options: HotspotRequest) => {
         live()
-        const { calculate_hotspots } = await import('./hotspots')
-        return calculate_hotspots(frame_count, read_atoms, options)
+        const { compute_hotspots } = await import('./hotspots')
+        return compute_hotspots(frame_count, read_atoms, options)
       },
     }),
     frame_count,

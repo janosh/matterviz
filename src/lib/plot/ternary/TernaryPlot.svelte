@@ -247,9 +247,7 @@
     const [px_x, px_y] = pixel(point)
     return { x: pad.l + px_x, y: pad.t + px_y }
   }
-  const same_point = (key: PointKey | null, point: PlacedPoint): boolean =>
-    key?.series_idx === point.series_idx && key.point_idx === point.point_idx
-  const is_hovered = (point: PlacedPoint): boolean => same_point(hover_key, point)
+  const is_hovered = (point: PlacedPoint): boolean => pin.same(hover_key, point)
 
   // Lines connect each visible series directly from its ordered point group.
   let line_paths = $derived(
@@ -445,7 +443,7 @@
   // announced. Apart from hover_key, so the pointer sweeping over markers announces nothing.
   let kbd_key = $state<PointKey | null>(null)
   const kbd_idx = $derived(
-    kbd_key ? rendered.findIndex((point) => same_point(kbd_key, point)) : -1,
+    kbd_key ? rendered.findIndex((point) => pin.same(kbd_key, point)) : -1,
   )
   const live_message = $derived(kbd_idx < 0 ? `` : accessible_label(rendered[kbd_idx]))
   function handle_canvas_keydown(event: KeyboardEvent) {

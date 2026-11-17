@@ -2,18 +2,18 @@ import {
   angle_bin_centers,
   angle_bin_index,
   bond_angle_bin_sites,
-  calc_bond_angle_distribution,
-  calc_bond_angles,
+  compute_bond_angle_distribution,
+  compute_bond_angles,
   resolve_angle_bins,
-} from '#lib/bond-angles/calc-bond-angles.js'
-import * as calc_module from '#lib/bond-angles/calc-bond-angles.js'
+} from '#lib/bond-angles/compute-bond-angles.js'
+import * as calc_module from '#lib/bond-angles/compute-bond-angles.js'
 import BondAnglePlot from '#lib/bond-angles/BondAnglePlot.svelte'
 import { to_angle_bar_series } from '#lib/bond-angles/series.js'
 import type { BondAngleOptions, BondAngleSplitMode } from '#lib/bond-angles/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { Vec3 } from '#lib/math.js'
 import type { Crystal, Molecule } from '#lib/structure/index.js'
-import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import { compute_coordination_nums } from '#lib/coordination/compute-coordination.js'
 import { structure_map } from '#site/structures.js'
 import { tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
@@ -47,9 +47,11 @@ const tally = (keys: readonly string[]): Record<string, number> => {
   for (const key of keys) counts[key] = (counts[key] ?? 0) + 1
   return counts
 }
-// calc_bond_angles' columns as one record per angle, so expectations read per angle
-const triplets_of = (...args: Parameters<typeof calc_bond_angles>) => {
-  const { angles, center_idxs, neighbor_idxs, label_ids, labels } = calc_bond_angles(...args)
+// compute_bond_angles' columns as one record per angle, so expectations read per angle
+const triplets_of = (...args: Parameters<typeof compute_bond_angles>) => {
+  const { angles, center_idxs, neighbor_idxs, label_ids, labels } = compute_bond_angles(
+    ...args,
+  )
   return Array.from(angles, (angle, idx) => ({
     angle,
     center_idx: center_idxs[idx],
@@ -62,8 +64,8 @@ const angle_tally = (triplets: readonly { angle: number }[]): Record<string, num
   tally(triplets.map((triplet) => triplet.angle.toFixed(4)))
 // ...and the same for the `A-B-C` triplet labels of a freshly computed structure
 const label_tally = (
-  structure: Parameters<typeof calc_bond_angles>[0],
-  options: Parameters<typeof calc_bond_angles>[1] = {},
+  structure: Parameters<typeof compute_bond_angles>[0],
+  options: Parameters<typeof compute_bond_angles>[1] = {},
 ): Record<string, number> =>
   tally(triplets_of(structure, options).map((triplet) => triplet.triplet))
 
@@ -98,7 +100,7 @@ const na_sites = [0, 1, 2, 3]
 const cl_sites = [4, 5, 6, 7]
 const palladium = fixture(`mp-2`)
 
-describe(`calc_bond_angles analytic geometry`, () => {
+describe(`compute_bond_angles analytic geometry`, () => {
   // angle_tally buckets every triplet, so the tally values also pin the total angle count
   test.each([
     [`tetrahedral methane`, methane, { [TETRAHEDRAL_ANGLE.toFixed(4)]: 6 }, `H-C-H`],
@@ -156,14 +158,14 @@ test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
   `%s yields exactly sum_atoms C(coordination_number, 2) angles`,
   (identifier) => {
     const structure = fixture(identifier)
-    const { coordination_nums } = calc_coordination_nums(structure)
+    const { coordination_nums } = compute_coordination_nums(structure)
     const expected = coordination_nums.reduce(
       (sum, coordination_num) => sum + (coordination_num * (coordination_num - 1)) / 2,
       0,
     )
     expect(expected).toBeGreaterThan(0)
     // columns at their exact length: one object per angle cost 108 MiB at 11k atoms
-    const { angles, center_idxs, label_ids, neighbor_idxs } = calc_bond_angles(structure)
+    const { angles, center_idxs, label_ids, neighbor_idxs } = compute_bond_angles(structure)
     const lengths = [angles, center_idxs, label_ids, neighbor_idxs].map(({ length }) => length)
     expect(lengths).toEqual([expected, expected, expected, 2 * expected])
   },
@@ -185,14 +187,16 @@ test.each([
         .sites.slice(1)
         .map(({ species, abc }) => ({ element: species[0].element, abc })),
     ])
-    expect(calc_coordination_nums(split_rocksalt).coordination_nums).toEqual(Array(9).fill(6))
+    expect(compute_coordination_nums(split_rocksalt).coordination_nums).toEqual(
+      Array(9).fill(6),
+    )
     const triplets = triplets_of(split_rocksalt)
     expect(angle_tally(triplets)).toEqual({ '90.0000': 9 * 12, '180.0000': 9 * 3 })
     // Cl-centred angles name the split site (and its periodic images) by the tie-broken K
     const labels = [...new Set(triplets.map(({ triplet }) => triplet))].toSorted()
     expect(labels).toEqual([`Cl-K-Cl`, `Cl-Na-Cl`, `K-Cl-K`, `K-Cl-Na`, `Na-Cl-Na`])
     // filtering by Na keeps the split site too: all 6 neighbours of each of the 4 Cl, C(6, 2)
-    const { angles } = calc_bond_angles(split_rocksalt, { neighbor_elements: [`Na`] })
+    const { angles } = compute_bond_angles(split_rocksalt, { neighbor_elements: [`Na`] })
     expect(angles).toHaveLength(4 * 15)
   },
 )
@@ -399,15 +403,15 @@ describe(`binning`, () => {
   })
 })
 
-describe(`calc_bond_angle_distribution`, () => {
+describe(`compute_bond_angle_distribution`, () => {
   test(`octahedron histogram puts 12 counts at 90 deg and 3 at 180 deg`, () => {
-    const data = calc_bond_angle_distribution(octahedron, { bin_width: 2 })
+    const data = compute_bond_angle_distribution(octahedron, { bin_width: 2 })
     expect(data.n_angles).toBe(15)
     expect(data.total.counts[angle_bin_index(90, data.n_bins, data.bin_width)]).toBe(12)
     expect(data.total.counts.at(-1)).toBe(3)
     expect(data.total.counts.reduce((sum, count) => sum + count, 0)).toBe(15)
     expect(data.by_triplet.map((series) => series.triplet)).toEqual([`F-S-F`])
-    const unsplit = calc_bond_angle_distribution(octahedron, {
+    const unsplit = compute_bond_angle_distribution(octahedron, {
       bin_width: 2,
       split_by_triplet: false,
     })
@@ -416,7 +420,7 @@ describe(`calc_bond_angle_distribution`, () => {
   })
 
   test(`per-triplet counts partition the total`, () => {
-    const data = calc_bond_angle_distribution(rocksalt, { bin_width: 3 })
+    const data = compute_bond_angle_distribution(rocksalt, { bin_width: 3 })
     expect(data.by_triplet.map((series) => series.triplet)).toEqual([`Cl-Na-Cl`, `Na-Cl-Na`])
     expect(data.by_triplet.map((series) => series.n_angles)).toEqual([60, 60])
     for (const [bin_idx, total] of data.total.counts.entries()) {
@@ -428,7 +432,7 @@ describe(`calc_bond_angle_distribution`, () => {
 
   test(`empty and angle-free structures give zeroed histograms rather than NaN`, () => {
     for (const structure of [make_molecule([]), make_molecule([[`H`, [0, 0, 0]]])]) {
-      const data = calc_bond_angle_distribution(structure)
+      const data = compute_bond_angle_distribution(structure)
       expect(data.n_angles).toBe(0)
       expect(data.total.counts.every((count) => count === 0)).toBe(true)
     }
@@ -436,7 +440,7 @@ describe(`calc_bond_angle_distribution`, () => {
 })
 
 describe(`bond_angle_bin_sites`, () => {
-  const [sf6, nacl] = [calc_bond_angles(octahedron), calc_bond_angles(rocksalt)]
+  const [sf6, nacl] = [compute_bond_angles(octahedron), compute_bond_angles(rocksalt)]
   const fluorines = [1, 2, 3, 4, 5, 6]
   const na_cl_na = { bin_width: 2, bin_idx: 45, triplet: `Na-Cl-Na` }
   test.each<[string, ...Parameters<typeof bond_angle_bin_sites>, number[], number[]]>([
@@ -468,7 +472,7 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   const mount_plot = (props: Record<string, unknown>) =>
     mount_sized(BondAnglePlot, props, { selector: `.bar-plot, .status-message, section` })
 
-  // Input shapes are covered by the to_structure_entries table in calc-coordination.test.ts
+  // Input shapes are covered by the to_structure_entries table in compute-coordination.test.ts
   const pair = { NaCl: rocksalt, Pd: palladium }
   test.each([
     // 180 is the inclusive upper bound in resolve_angle_bins, so it must still plot
@@ -541,7 +545,7 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     [true, `Drag and drop structure files`],
     [false, `No bond angles to display`],
   ])(`allow_file_drop=%s shows %s when empty`, async (allow_file_drop, message) => {
-    const calc_spy = vi.spyOn(calc_module, `calc_bond_angles`)
+    const calc_spy = vi.spyOn(calc_module, `compute_bond_angles`)
     onTestFinished(() => calc_spy.mockRestore())
     const root = await mount_plot({ structures: {}, allow_file_drop })
     expect(root.textContent).toContain(message)
@@ -592,10 +596,10 @@ describe(`to_angle_bar_series density weighting`, () => {
   const BIN_WIDTH = 3
   const entries = [rocksalt, palladium].map((structure, idx) => ({
     label: [`NaCl`, `Pd`][idx],
-    data: calc_bond_angle_distribution(structure, { bin_width: BIN_WIDTH }),
+    data: compute_bond_angle_distribution(structure, { bin_width: BIN_WIDTH }),
   }))
-  const integral_of = (y_values: readonly number[]): number =>
-    y_values.reduce((sum, value) => sum + value, 0) * BIN_WIDTH
+  const integral_of = (y_values: ArrayLike<number>): number =>
+    Array.from(y_values).reduce((sum, value) => sum + value, 0) * BIN_WIDTH
 
   // a structure without angles (isolated atoms) has no distribution to average in
   const { data } = entries[0]
@@ -631,8 +635,8 @@ describe(`to_angle_bar_series density weighting`, () => {
 
   test(`normalize=counts leaves the raw angle counts untouched`, () => {
     const series = to_angle_bar_series(entries, `by_structure`, `counts`)
-    expect(series.map((one) => one.y.reduce((sum, value) => sum + value, 0))).toEqual(
-      entries.map((entry) => entry.data.n_angles),
-    )
+    expect(
+      series.map((one) => Array.from(one.y).reduce((sum, value) => sum + value, 0)),
+    ).toEqual(entries.map((entry) => entry.data.n_angles))
   })
 })

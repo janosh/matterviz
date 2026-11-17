@@ -26,6 +26,10 @@ import { crystal, flush_set, make_session, type SessionHost } from './session-ha
 const bond_lengths = (structure: AnyStructure | undefined): number[] =>
   explicit_only(structure ?? { sites: [] }).map((bond) => Number(bond.bond_length.toFixed(9)))
 
+// Integer supercell matrix scaling a, b, c by the given counts
+const diagonal = (...counts: number[]): number[][] =>
+  counts.map((count, row) => counts.map((_, col) => (row === col ? count : 0)))
+
 beforeEach(() => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] }))
 afterEach(() => vi.useRealTimers())
 
@@ -39,7 +43,7 @@ describe(`display pipeline`, () => {
     flush_set(host, { supercell_scaling: `2x1x1` })
     expect(session.supercell_structure?.sites).toHaveLength(6)
     expect(session.scaled_cell_displayed).toBe(true)
-    expect(session.supercell_tiling).toEqual([2, 1, 1])
+    expect(session.supercell_matrix).toEqual(diagonal(2, 1, 1))
     expect(session.bond_edits_enabled).toBe(false)
     const original_input = session.tool_input
     session.element_mapping = { H: `Na` }
@@ -105,6 +109,19 @@ describe(`display pipeline`, () => {
     expect(session.plain_input).toBe(plain)
   })
 
+  // a typed 9-integer matrix builds the rotated supercell and reaches the scene unchanged
+  it(`builds non-diagonal supercells from a typed matrix`, () => {
+    const { host, session } = make_session({ structure: crystal(3) })
+    flush_set(host, { supercell_scaling: `1 1 0, -1 1 0, 0 0 1` })
+    expect(session.supercell_structure?.sites).toHaveLength(6)
+    expect(session.scaled_cell_displayed).toBe(true)
+    expect(session.supercell_matrix.flat()).toEqual([1, 1, 0, -1, 1, 0, 0, 0, 1])
+    // a matrix that does not parse (singular) shows the input cell
+    flush_set(host, { supercell_scaling: `1 1 0, 1 1 0, 0 0 1` })
+    expect(session.supercell_structure?.sites).toHaveLength(3)
+    expect(session.supercell_matrix).toEqual(diagonal(1, 1, 1))
+  })
+
   // A large supercell builds in the same update as its input, as each trajectory frame's must
   // (a deferred build flashed a spinner and held the cell tiling at 1 every frame), and
   // edit-atoms keeps the input's sites selected: they lead the supercell
@@ -115,11 +132,11 @@ describe(`display pipeline`, () => {
     })
     flush_set(host, { selected_sites: [0, 5], supercell_scaling: `2x2x2` })
     expect(session.displayed_structure?.sites).toHaveLength(1600)
-    expect(session.supercell_tiling).toEqual([2, 2, 2])
+    expect(session.supercell_matrix).toEqual(diagonal(2, 2, 2))
     expect(host.selected_sites).toEqual([0, 5])
     flush_set(host, { structure: crystal(200) }) // the next frame
     expect(session.displayed_structure?.sites).toHaveLength(1600)
-    expect(session.supercell_tiling).toEqual([2, 2, 2])
+    expect(session.supercell_matrix).toEqual(diagonal(2, 2, 2))
   })
 
   // A caller-supplied supercell (phonon mode explorer) carries unit_cell_idx into a cell

@@ -55,48 +55,23 @@ describe(`parse_xy_file`, () => {
   const glitched = (n_points: number, glitch_at: number[]) =>
     Array.from({ length: n_points }, (_, idx) => (glitch_at.includes(idx) ? idx - 1.5 : idx))
 
+  // oxfmt-ignore
   test.each([
     [`empty content`, ``, /no rows with two numeric columns/],
     [`only comments`, `# a\n# b`, /no rows with two numeric columns/],
     // five counts per row read as columns: x is the first count of each row
-    [
-      `a block of counts`,
-      Array.from({ length: 20 }, (_, row) => `${noise(row)} 2 3 4 5`).join(`\n`),
-      /column 1 reverses direction in 3 of 19 steps.* look like a block of bare counts, 5 per row/,
-    ],
+    [`a block of counts`, Array.from({ length: 20 }, (_, row) => `${noise(row)} 2 3 4 5`).join(`\n`),
+      /column 1 reverses direction in 3 of 19 steps.* look like a block of bare counts, 5 per row/],
     // a tiny block still alternates: 2 reversals in 4 steps is more than one glitch
-    [
-      `a five-row block of counts`,
-      `10 1 29\n500 1 2 3 4\n1 2 3 4 5\n500 1 2 3 4\n1 2 3 4 5`,
-      /reverses direction in 2 of 4 steps/,
-    ],
-    [
-      `two columns of (intensity, error) pairs`,
-      Array.from({ length: 30 }, (_, row) => `${noise(row)} ${Math.sqrt(noise(row))}`).join(
-        `\n`,
-      ),
-      /column 1 reverses direction in \d+ of 29 steps.*the 30 rows look like \(intensity, error\) pairs/,
-    ],
+    [`a five-row block of counts`, `10 1 29\n500 1 2 3 4\n1 2 3 4 5\n500 1 2 3 4\n1 2 3 4 5`, /reverses direction in 2 of 4 steps/],
+    [`two columns of (intensity, error) pairs`, Array.from({ length: 30 }, (_, row) => `${noise(row)} ${Math.sqrt(noise(row))}`).join(`\n`),
+      /column 1 reverses direction in \d+ of 29 steps.*the 30 rows look like \(intensity, error\) pairs/],
     // three numbers per row are one more than a (2theta, intensity) pair or an error pair
-    [
-      `a three-column block of counts`,
-      Array.from({ length: 20 }, (_, row) => `${noise(row)} 2 3`).join(`\n`),
-      /look like a block of bare counts, 3 per row/,
-    ],
+    [`a three-column block of counts`, Array.from({ length: 20 }, (_, row) => `${noise(row)} 2 3`).join(`\n`), /look like a block of bare counts, 3 per row/],
     // just over one per ten steps: 3 of 25 (the 10% bound is not rounded up to 3)
-    [
-      `a 26-point scan with three glitches`,
-      glitched(26, [5, 12, 20])
-        .map((angle, idx) => `${angle} ${idx + 1}`)
-        .join(`\n`),
-      /reverses direction in 3 of 25 steps/,
-    ],
+    [`a 26-point scan with three glitches`, glitched(26, [5, 12, 20]).map((angle, idx) => `${angle} ${idx + 1}`).join(`\n`), /reverses direction in 3 of 25 steps/],
     // whitespace-separated columns with decimal commas: x = 10, 10, 10, … never reverses
-    [
-      `decimal commas`,
-      Array.from({ length: 40 }, (_, idx) => `10,${2 * idx}\t${100 + idx}`).join(`\n`),
-      /'10,0' in row '10,0\t100' uses a decimal comma/,
-    ],
+    [`decimal commas`, Array.from({ length: 40 }, (_, idx) => `10,${2 * idx}\t${100 + idx}`).join(`\n`), /'10,0' in row '10,0\t100' uses a decimal comma/],
     [`a decimal-comma intensity`, `10.0 1,5\n20.0 2,5`, /'1,5' .* decimal comma/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_xy_file(content)).toThrow(pattern),
@@ -210,18 +185,11 @@ describe(`parse_ras_file`, () => {
   const wrap = (data: string, header = ``) =>
     `*RAS_HEADER_START\n${header}*RAS_HEADER_END\n*RAS_INT_START\n${data}\n*RAS_INT_END`
 
+  // oxfmt-ignore
   test.each([
-    [
-      `three-column rows (2theta, intensity, attenuation) use the row angles`,
-      wrap(`10.0 100 1.0\n20.0 200 1.0\n30.0 300 1.0`),
-    ],
-    [
-      `single-column counts use the quoted *MEAS_SCAN_START / *MEAS_SCAN_STEP`,
-      wrap(
-        `100\n200\n300`,
-        `*MEAS_SCAN_START "10.0000000000"\n*MEAS_SCAN_START_TIME "11/01/12"\n*MEAS_SCAN_STEP "10.0000000000"\n`,
-      ),
-    ],
+    [`three-column rows (2theta, intensity, attenuation) use the row angles`, wrap(`10.0 100 1.0\n20.0 200 1.0\n30.0 300 1.0`)],
+    [`single-column counts use the quoted *MEAS_SCAN_START / *MEAS_SCAN_STEP`,
+      wrap(`100\n200\n300`, `*MEAS_SCAN_START "10.0000000000"\n*MEAS_SCAN_START_TIME "11/01/12"\n*MEAS_SCAN_STEP "10.0000000000"\n`)],
   ])(`%s`, (_name, content) => expect(rounded(parse_ras_file(content))).toEqual(THREE_POINTS))
 
   test.each([
@@ -258,12 +226,10 @@ describe(`parse_uxd_file`, () => {
 
 describe(`parse_gsas_file`, () => {
   // CONST start and step are centidegrees; FXYE banks carry their own centidegree x
+  // oxfmt-ignore
   test.each([
     [`CONST`, `BANK 1 3 1 CONST 1000 1000 0 0\n100 200 300`],
-    [
-      `CONS (as GSAS-II exports it)`,
-      `BANK 1 3 1 CONS 1000.00 1000.00 0 0 FXYE\n1000 100 5 2000 200 7 3000 300 9`,
-    ],
+    [`CONS (as GSAS-II exports it)`, `BANK 1 3 1 CONS 1000.00 1000.00 0 0 FXYE\n1000 100 5 2000 200 7 3000 300 9`],
     // NCHAN = 3 but the last record is zero-padded to a full line
     [`zero-padded STD`, `title\nBANK 1 3 1 CONST 1000.0 1000.0 0 0 STD\n100 200 300 0 0`],
     [`ESD with interleaved sigmas`, `BANK 1 3 1 CONST 1000 1000 0 0 ESD\n100 5 200 7 300 9`],
@@ -352,6 +318,7 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     expect(result.y).toEqual([25, 50, 75, 12.5, 100])
   })
 
+  // oxfmt-ignore
   test.each([
     ...[`RAW2.00`, `RAW4.00`].map((version): [string, () => ArrayBuffer, RegExp] => [
       `a ${version} file`,
@@ -359,42 +326,14 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
       new RegExp(`version '${version}' is not supported`),
     ]),
     [`an unrelated binary`, () => new ArrayBuffer(100), /bad magic/],
-    [
-      `a truncated header`,
-      () => new TextEncoder().encode(`RAW1.01`).buffer,
-      /shorter than the 1016-byte headers/,
-    ],
-    [
-      `a range that overruns the file`,
-      () => one_range([1, 2, 3]).slice(0, 712 + 304 + 40 + 8),
-      /range 1 of 1 announces 3 float32 counts .* but the file ends/,
-    ],
-    [
-      `a second range header cut off by the end of the file`,
-      patched(12, 2),
-      /range 2 of 2 header at byte 1068 runs past the end of the 1068-byte file/,
-    ],
-    [
-      `a second range with a zero step size`,
-      after_valid_range({ counts: [1], start: 20, step: 0 }),
-      /range 2 of 2 header has steps=1, start=20, step=0/,
-    ],
-    [
-      `a range with no steps`,
-      after_valid_range({ counts: [], start: 20, step: 1 }),
-      /range 2 of 2 header has steps=0, start=20, step=1/,
-    ],
-    [
-      `a negative step size`,
-      () => make_raw101([{ counts: [1, 2], start: 10, step: -1 }]),
-      /range 1 of 1 header has steps=2, start=10, step=-1/,
-    ],
+    [`a truncated header`, () => new TextEncoder().encode(`RAW1.01`).buffer, /shorter than the 1016-byte headers/],
+    [`a range that overruns the file`, () => one_range([1, 2, 3]).slice(0, 712 + 304 + 40 + 8), /range 1 of 1 announces 3 float32 counts .* but the file ends/],
+    [`a second range header cut off by the end of the file`, patched(12, 2), /range 2 of 2 header at byte 1068 runs past the end of the 1068-byte file/],
+    [`a second range with a zero step size`, after_valid_range({ counts: [1], start: 20, step: 0 }), /range 2 of 2 header has steps=1, start=20, step=0/],
+    [`a range with no steps`, after_valid_range({ counts: [], start: 20, step: 1 }), /range 2 of 2 header has steps=0, start=20, step=1/],
+    [`a negative step size`, () => make_raw101([{ counts: [1, 2], start: 10, step: -1 }]), /range 1 of 1 header has steps=2, start=10, step=-1/],
     // a zero header length would place the counts on top of the header fields
-    [
-      `a range header shorter than its own fields`,
-      patched(712, 0),
-      /range 1 of 1 header has steps=3, start=10, step=0.5, length=0/,
-    ],
+    [`a range header shorter than its own fields`, patched(712, 0), /range 1 of 1 header has steps=3, start=10, step=0.5, length=0/],
     [`a zero range count`, patched(12, 0), /announces 0 ranges/],
   ])(`throws on %s`, (_name, make_buffer, pattern) => {
     expect(() => parse_bruker_raw_file(make_buffer())).toThrow(pattern)
@@ -426,24 +365,14 @@ describe(`parse_xrdml_file`, () => {
     expect({ ...rounded(pattern), kind: pattern.kind }).toEqual({ ...expected, kind: `profile` })
   })
 
+  // oxfmt-ignore
   test.each([
     [`invalid XML`, `not xml`, /invalid XML/],
     [`missing dataPoints`, `<?xml version="1.0"?><xrdMeasurements/>`, /no <dataPoints>/],
-    [
-      `missing 2Theta positions`,
-      `<xrdMeasurements><scan><dataPoints><intensities>1 2</intensities></dataPoints></scan></xrdMeasurements>`,
-      /needs numeric startPosition and endPosition/,
-    ],
+    [`missing 2Theta positions`, `<xrdMeasurements><scan><dataPoints><intensities>1 2</intensities></dataPoints></scan></xrdMeasurements>`, /needs numeric startPosition and endPosition/],
     [`empty intensities`, xrdml(``), /empty <intensities>/],
     [`listPositions of another length`, xrdml(`1 2`, listed), /3 angles but 2/],
-    [
-      `attenuation factors of another length`,
-      xrdml(`1 2 3`, undefined, `counts`).replace(
-        `<counts`,
-        `<beamAttenuationFactors>1 1</beamAttenuationFactors><counts`,
-      ),
-      /2 <beamAttenuationFactors> for 3 <counts>/,
-    ],
+    [`attenuation factors of another length`, xrdml(`1 2 3`, undefined, `counts`).replace(`<counts`, `<beamAttenuationFactors>1 1</beamAttenuationFactors><counts`), /2 <beamAttenuationFactors> for 3 <counts>/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_xrdml_file(content)).toThrow(pattern),
   )
@@ -569,39 +498,16 @@ describe(`parse_brml_file`, () => {
     expect(result.x).toEqual([30, 30.01])
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `invalid ZIP data`,
-      () => new TextEncoder().encode(`not a zip`).buffer,
-      /not a ZIP archive/,
-    ],
-    [
-      `a ZIP without XRD data`,
-      () => zip({ 'readme.txt': `hi` }),
-      /no RawData XML among 1 archive entries/,
-    ],
-    [
-      `RawData without intensities`,
-      () => zip({ 'RawData0.xml': `<RawData/>` }),
-      /neither <Datum> rows nor/,
-    ],
-    [
-      `2θ neither a column nor on a matching ScanAxisInfo grid`,
-      () =>
-        zip({
-          'RawData0.xml': raw_data(
-            data_views([[`RecordedRawDataView`, 0, 1, counts_view]]),
-            [`5`, `10`, `15`],
-            `<ScanAxisInfo AxisId="TwoTheta"><Start>10</Start><Stop>10.1</Stop><Increment>0.1</Increment></ScanAxisInfo>`,
-          ),
-        }),
-      /does not describe the 3 rows/,
-    ],
-    [
-      `a list without a grid`,
-      () => zip({ 'RawData0.xml': `<RawData><Counts>1 2</Counts></RawData>` }),
-      /without a usable <Start>/,
-    ],
+    [`invalid ZIP data`, () => new TextEncoder().encode(`not a zip`).buffer, /not a ZIP archive/],
+    [`a ZIP without XRD data`, () => zip({ 'readme.txt': `hi` }), /no RawData XML among 1 archive entries/],
+    [`RawData without intensities`, () => zip({ 'RawData0.xml': `<RawData/>` }), /neither <Datum> rows nor/],
+    [`2θ neither a column nor on a matching ScanAxisInfo grid`, () => zip({
+      'RawData0.xml': raw_data(data_views([[`RecordedRawDataView`, 0, 1, counts_view]]), [`5`, `10`, `15`],
+        `<ScanAxisInfo AxisId="TwoTheta"><Start>10</Start><Stop>10.1</Stop><Increment>0.1</Increment></ScanAxisInfo>`),
+    }), /does not describe the 3 rows/],
+    [`a list without a grid`, () => zip({ 'RawData0.xml': `<RawData><Counts>1 2</Counts></RawData>` }), /without a usable <Start>/],
   ])(`throws on %s`, async (_name, make_buffer, pattern) => {
     await expect(parse_brml_file(make_buffer())).rejects.toThrow(pattern)
   })
@@ -609,6 +515,7 @@ describe(`parse_brml_file`, () => {
 
 describe(`parse_xrd_file routing`, () => {
   const coords_xy = `10.0 100\n20.0 200`
+  // oxfmt-ignore
   test.each([
     [`data.xy`, coords_xy],
     [`data.xy`, new TextEncoder().encode(coords_xy).buffer], // ArrayBuffer text
@@ -623,34 +530,20 @@ describe(`parse_xrd_file routing`, () => {
     [`scan.ras`, `*RAS_INT_START\n10 100 1\n20 200 1\n*RAS_INT_END`],
     [`scan.uxd`, `_START=10\n_STEPSIZE=10\n_COUNTS\n100 200`],
     [`scan.gsas`, `BANK 1 2 1 CONST 1000 1000 0 0\n100 200`],
-    [
-      `scan.xrdml`,
-      `<xrdMeasurements><scan><dataPoints><positions axis="2Theta"><startPosition>10</startPosition><endPosition>20</endPosition></positions><intensities>100 200</intensities></dataPoints></scan></xrdMeasurements>`,
-    ],
-    [
-      `scan.brml`,
-      zipSync({
-        'RawData0.xml': new TextEncoder().encode(
-          `<RawData><Start>10</Start><Step>10</Step><Intensities>100 200</Intensities></RawData>`,
-        ),
-      }).buffer,
-    ],
+    [`scan.xrdml`, `<xrdMeasurements><scan><dataPoints><positions axis="2Theta"><startPosition>10</startPosition><endPosition>20</endPosition></positions><intensities>100 200</intensities></dataPoints></scan></xrdMeasurements>`],
+    [`scan.brml`, zipSync({ 'RawData0.xml': new TextEncoder().encode(`<RawData><Start>10</Start><Step>10</Step><Intensities>100 200</Intensities></RawData>`) }).buffer],
   ])(`routes %s to the right parser`, async (filename, content) => {
-    expect(await parse_xrd_file(content, filename)).toEqual({
-      x: [10, 20],
-      y: [50, 100],
-      kind: `profile`,
-    })
+    const expected = { x: [10, 20], y: [50, 100], kind: `profile` }
+    expect(await parse_xrd_file(content, filename)).toEqual(expected)
   })
 
   test(`routes a count block under the catch-all .dat to the block parser`, async () => {
     // Read as columns this reverses on every other row, which is what rules out xy
     const rows = [`500 1 2 3 4`, `1 2 3 4 5`, `500 1 2 3 4`, `1 2 3 4 5`]
     const result = await parse_xrd_file([`10 1 29`, ...rows].join(`\n`), `counts.dat`)
-    expect(result.x).toHaveLength(20)
-    expect(result.x[0]).toBe(10)
-    expect(result.x[19]).toBe(29)
-    expect(result.y[0]).toBe(100)
+    expect([result.x.length, result.x[0], result.x[19], result.y[0]]).toEqual([
+      20, 10, 29, 100,
+    ])
   })
 
   test.each([`data.pdf`, `datafile`])(`rejects %s`, async (filename) => {

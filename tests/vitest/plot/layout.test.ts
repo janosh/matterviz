@@ -5,7 +5,7 @@ import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
   axis_title_wrap_width,
-  calc_auto_padding,
+  compute_auto_padding,
   centered_rect,
   compute_element_placement,
   DEFAULT_PLOT_PADDING,
@@ -22,7 +22,7 @@ import {
   Y_TITLE_EDGE_AIR,
 } from '#lib/plot/core/layout.js'
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
-import type { MeasuredAxis } from '#lib/plot/core/tick-layout.js'
+import type { MeasuredAxis, TickStrategy } from '#lib/plot/core/tick-layout.js'
 import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
@@ -226,7 +226,7 @@ describe(`layout utility functions`, () => {
         const { tick_positions: _tick_positions, ...axis_config } = axis ?? {}
         return slot_axis(axis_config.tick_values ?? fallback_ticks, axis_config, inner)
       }
-      return calc_auto_padding({
+      return compute_auto_padding({
         padding: {},
         default_padding: DEFAULT_PLOT_PADDING,
         width: 400,
@@ -385,7 +385,6 @@ describe(`layout utility functions`, () => {
           tick_label: { max_lines: 4, auto_layout: { strategies: [`upright`, `wrap`] } },
         }).labels[0].lines,
       ).toEqual([`alpha`, `- beta`])
-      expect(resolved_lines(x_layout([`-alpha`], 10))).toEqual([[`-alpha`]])
     })
 
     // Named explicitly: these differ only by invisible code points, so `%s` would print
@@ -394,6 +393,7 @@ describe(`layout utility functions`, () => {
       [`a non-breaking hyphen`, `solid\u2011state`],
       [`a no-break space`, `10\u00A0eV`],
       [`a narrow no-break space`, `10\u202FeV`],
+      [`a leading separator`, `-alpha`],
     ])(`does not split across %s`, (_name, label) => {
       expect(resolved_lines(x_layout([label], 10))).toEqual([[label]])
     })
@@ -532,10 +532,10 @@ describe(`layout utility functions`, () => {
     it(`reserves room for wrapped labels above an x2 axis`, () => {
       // Wide enough that the labels don't rotate, tight enough that they wrap. End labels
       // may overhang into the side padding, so the band has to be measured over the same
-      // extent calc_auto_padding projects onto (zero padding here, so [0, axis_size]).
+      // extent compute_auto_padding projects onto (zero padding here, so [0, axis_size]).
       const axis_size = 160
       const x2_axis = slot_axis(state_labels, {}, axis_size)
-      const { t: pad_top } = calc_auto_padding({
+      const { t: pad_top } = compute_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
         width: axis_size,
@@ -576,40 +576,35 @@ describe(`layout utility functions`, () => {
         height: 300,
         controls_row,
       }
-      expect(calc_auto_padding({ ...config, ...(y2_axis && { y2_axis }) }).t).toBe(expected)
+      expect(compute_auto_padding({ ...config, ...(y2_axis && { y2_axis }) }).t).toBe(expected)
     })
 
+    // A host that cannot fullscreen renders no button, so the row it alone held is not reserved.
     it.each([
-      [`hover`, true, true],
-      [`never`, true, false],
-      [false, true, false],
-      [{ mode: `always`, hidden: [`controls`] }, true, true], // the fullscreen button remains
-      [{ mode: `always`, hidden: [`controls`] }, false, false],
-      [{ mode: `hover`, hidden: [`controls`, `fullscreen`] }, true, false],
+      [`hover`, true, true, true],
+      [`never`, true, true, false],
+      [false, true, true, false],
+      [{ mode: `always`, hidden: [`controls`] }, true, true, true], // the fullscreen button remains
+      [{ mode: `always`, hidden: [`controls`] }, false, true, false],
+      [{ mode: `hover`, hidden: [`controls`, `fullscreen`] }, true, true, false],
+      [{ mode: `always`, hidden: [`controls`] }, true, false, false],
+      [`hover`, true, false, true],
     ] as const)(
-      `has_controls_row(%o, fullscreen_toggle=%s) is %s`,
-      (show_controls, fullscreen_toggle, expected) => {
+      `has_controls_row(%o, fullscreen_toggle=%s) with host.fullscreen=%s is %s`,
+      (show_controls, fullscreen_toggle, host_fullscreen, expected) => {
         const prop =
           typeof show_controls === `object`
             ? { ...show_controls, hidden: [...show_controls.hidden] }
             : show_controls
-        expect(has_controls_row(prop, fullscreen_toggle)).toBe(expected)
+        const orig_fullscreen = host.fullscreen
+        host.fullscreen = host_fullscreen
+        try {
+          expect(has_controls_row(prop, fullscreen_toggle)).toBe(expected)
+        } finally {
+          host.fullscreen = orig_fullscreen
+        }
       },
     )
-
-    // A host that cannot fullscreen renders no button, so the row it alone held is not reserved.
-    it(`has_controls_row reserves no row for a fullscreen button the host hides`, () => {
-      const hidden_controls = { mode: `always`, hidden: [`controls`] } as const
-      expect(has_controls_row(hidden_controls, true)).toBe(true)
-      const orig_fullscreen = host.fullscreen
-      host.fullscreen = false
-      try {
-        expect(has_controls_row(hidden_controls, true)).toBe(false)
-        expect(has_controls_row(`hover`, true)).toBe(true)
-      } finally {
-        host.fullscreen = orig_fullscreen
-      }
-    })
 
     const default_b = DEFAULT_PLOT_PADDING.b
     it.each([
@@ -647,39 +642,33 @@ describe(`layout utility functions`, () => {
         axis_size,
       )
 
-    it(`uses irregular projected positions for bounded thinning`, () => {
-      const tick_values = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
-      const layout = tick_layout(positioned_axis(tick_values, [0, 42, 47, 200], 200), 200, {
-        auto_layout: {
-          strategies: [`upright`, `thin`],
-          min_visible_ticks: 2,
-          endpoint_policy: `preserve`,
-        },
+    const long_axis = Array.from(
+      { length: 500 },
+      (_unused, tick_idx) => `Phase ${tick_idx} formation energy average temperature`,
+    )
+    // A 500-tick axis thins by density, so both endpoints survive and the interior collapses to
+    // one tick: a collision-pair count would have thinned all the way down to min_visible_ticks.
+    it.each<[string, MeasuredAxis, TickStrategy[], number[]]>([
+      [
+        `irregular projected positions`,
+        positioned_axis(
+          [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`],
+          [0, 42, 47, 200],
+          200,
+        ),
+        [`upright`, `thin`],
+        [0, 3],
+      ],
+      [`density for a 500-tick axis`, uniform_axis(long_axis, 1200), [`thin`], [0, 250, 499]],
+    ])(`bounded thinning uses %s`, (_name, axis, strategies, visible_indices) => {
+      const layout = tick_layout(axis, axis.axis_extent?.end ?? 0, {
+        auto_layout: { strategies, min_visible_ticks: 2, endpoint_policy: `preserve` },
       })
       expect(layout.strategy).toBe(`thin`)
-      expect(layout.visible_tick_indices).toEqual([0, 3])
-      expect(layout.labels.map(({ visible }) => visible)).toEqual([true, false, false, true])
-    })
-
-    it(`uses density rather than collision-pair count for a 500-tick axis`, () => {
-      const tick_count = 500
-      const axis_size = 1200
-      const tick_values = Array.from(
-        { length: tick_count },
-        (_unused, tick_idx) => `Phase ${tick_idx} formation energy average temperature`,
+      expect(layout.visible_tick_indices).toEqual(visible_indices)
+      expect(layout.labels.map(({ visible }) => visible)).toEqual(
+        axis.tick_positions.map((_, idx) => visible_indices.includes(idx)),
       )
-      const layout = tick_layout(uniform_axis(tick_values, axis_size), axis_size, {
-        auto_layout: {
-          strategies: [`thin`],
-          min_visible_ticks: 2,
-          endpoint_policy: `preserve`,
-        },
-      })
-
-      // Density-based, so both endpoints survive and the interior collapses to one tick —
-      // a collision-pair count would have thinned all the way down to min_visible_ticks.
-      expect(layout.strategy).toBe(`thin`)
-      expect(layout.visible_tick_indices).toEqual([0, 250, 499])
     })
 
     it(`combines bounded thinning with rotation when neither strategy fits alone`, () => {
@@ -881,18 +870,26 @@ describe(`layout utility functions`, () => {
     })
   })
 
-  describe(`calc_auto_padding`, () => {
+  describe(`compute_auto_padding`, () => {
     const defaults = { t: 20, b: 60, l: 60, r: 20 }
     const no_padding = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
     afterEach(() => vi.restoreAllMocks())
 
-    it(`preserves explicit padding, fills missing from defaults`, () => {
-      const result = calc_auto_padding({
+    it(`preserves explicit padding over auto-computed, fills missing from defaults`, () => {
+      const result = compute_auto_padding({
         padding: { t: 10, l: 80 },
         default_padding: defaults,
       })
       // no y2 ticks -> r is the plain default (no tick-label/title reservation)
       expect(result).toEqual({ t: 10, l: 80, b: 60, r: 20 })
+      const overridden = compute_auto_padding({
+        padding: { l: 10, r: 10, t: 10 },
+        default_padding: defaults,
+        y_axis: slot_axis([100000, 200000]),
+        y2_axis: slot_axis([100000, 200000]),
+        x2_axis: slot_axis([1, 2, 3], { label: `Top` }),
+      })
+      expect(overridden).toMatchObject({ l: 10, r: 10, t: 10 })
     })
 
     it(`keeps provided tick positions when plot width/height are omitted`, () => {
@@ -907,27 +904,16 @@ describe(`layout utility functions`, () => {
         },
       }
       // Collapsing every tick onto 0 would under-reserve compared with the sized layout.
-      expect(calc_auto_padding(config).b).toBe(calc_auto_padding({ ...config, width: 100 }).b)
-    })
-
-    it(`explicit padding overrides auto-computed padding`, () => {
-      const result = calc_auto_padding({
-        padding: { l: 10, r: 10, t: 10 },
-        default_padding: defaults,
-        y_axis: slot_axis([100000, 200000]),
-        y2_axis: slot_axis([100000, 200000]),
-        x2_axis: slot_axis([1, 2, 3], { label: `Top` }),
-      })
-      expect(result.l).toBe(10)
-      expect(result.r).toBe(10)
-      expect(result.t).toBe(10)
+      expect(compute_auto_padding(config).b).toBe(
+        compute_auto_padding({ ...config, width: 100 }).b,
+      )
     })
 
     it.each([
       [`ticks`, [0, 1, 2], TICK_LABEL_HEIGHT + 8],
       [`no ticks`, [], defaults.t],
     ])(`sets top padding for x2 with %s`, (_label, tick_values, expected) => {
-      const { t: pad_top } = calc_auto_padding({
+      const { t: pad_top } = compute_auto_padding({
         padding: {},
         default_padding: defaults,
         x2_axis: slot_axis(tick_values),
@@ -937,7 +923,7 @@ describe(`layout utility functions`, () => {
 
     it(`reserves x2 titles at their rendered offset without double counting`, () => {
       const top_padding = (tick_values: number[], axis: Partial<MeasuredAxis> = {}) =>
-        calc_auto_padding({ ...no_padding, x2_axis: slot_axis(tick_values, axis) }).t
+        compute_auto_padding({ ...no_padding, x2_axis: slot_axis(tick_values, axis) }).t
       const title_axis = { label: `Energy` }
       const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2 + TITLE_EDGE_AIR
       expect([top_padding([], title_axis), top_padding([1, 2], title_axis)]).toEqual([
@@ -960,7 +946,7 @@ describe(`layout utility functions`, () => {
       `%s pad grows with an outward %s shift`,
       (side, axis_key, base, shift, delta) => {
         const pad = (extra: Partial<MeasuredAxis>) =>
-          calc_auto_padding({
+          compute_auto_padding({
             ...no_padding,
             [axis_key]: slot_axis([1, 10], { ...base, ...extra }),
           })[side]
@@ -976,14 +962,14 @@ describe(`layout utility functions`, () => {
       [`r`, `y2_axis`],
     ] as const)(`%s padding reserves tick offset and title band for %s`, (side, axis_key) => {
       const pad = (extra: Partial<MeasuredAxis> = {}) =>
-        calc_auto_padding({ ...no_padding, [axis_key]: slot_axis([1, 2], extra) })[side]
+        compute_auto_padding({ ...no_padding, [axis_key]: slot_axis([1, 2], extra) })[side]
       expect(pad()).toBeCloseTo(15.2)
       expect(pad({ label: `Energy (eV)` }) - pad()).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
     })
 
     it(`reserves a title band for interactive options without a literal label`, () => {
       const axis = slot_axis([], { options: [{ key: `energy`, label: `Energy` }] })
-      expect(calc_auto_padding({ ...no_padding, y2_axis: axis }).r).toBe(
+      expect(compute_auto_padding({ ...no_padding, y2_axis: axis }).r).toBe(
         resolve_axis_title_layout(axis).height + Y_TITLE_EDGE_AIR,
       )
     })
@@ -991,24 +977,29 @@ describe(`layout utility functions`, () => {
     it(`measures multiline x and y title bands instead of using a fixed estimate`, () => {
       mock_text_measurement(7)
       const padding_for = (axis_key: `x_axis` | `y_axis`, label: string) =>
-        calc_auto_padding({ ...no_padding, width: 240, [axis_key]: slot_axis([], { label }) })
+        compute_auto_padding({
+          ...no_padding,
+          width: 240,
+          [axis_key]: slot_axis([], { label }),
+        })
       // a wrapped x title keeps its first line in place and stacks the rest below, so each extra
       // line costs a full line of padding (centering the block would lift it into the ticks)
-      expect(
-        padding_for(`x_axis`, `Formation energy\nper atom`).b -
-          padding_for(`x_axis`, `Formation energy`).b,
-      ).toBe(AXIS_LABEL_HEIGHT)
-      expect(
-        padding_for(`y_axis`, `Formation energy\nper atom`).l -
-          padding_for(`y_axis`, `Formation energy`).l,
-      ).toBe(AXIS_LABEL_HEIGHT)
+      for (const [axis_key, side] of [
+        [`x_axis`, `b`],
+        [`y_axis`, `l`],
+      ] as const) {
+        const two_lines = padding_for(axis_key, `Formation energy\nper atom`)[side]
+        expect(two_lines - padding_for(axis_key, `Formation energy`)[side]).toBe(
+          AXIS_LABEL_HEIGHT,
+        )
+      }
     })
 
     it(`wraps a y title longer than its plot's height and places it by its wrapped band`, () => {
       mock_text_measurement(7) // `Electron DOS (states/eV)`: 24 chars, 168px on one line
       const axis = slot_axis([], { label: `Electron DOS (states/eV)` })
       const left_pad = (height?: number) =>
-        calc_auto_padding({ ...no_padding, width: 240, height, y_axis: axis }).l
+        compute_auto_padding({ ...no_padding, width: 240, height, y_axis: axis }).l
       // a 100px plot (no top/bottom padding) wraps it to two lines, a tall or unknown one doesn't
       expect(left_pad(100) - left_pad(400)).toBe(AXIS_LABEL_HEIGHT)
       expect(left_pad()).toBe(left_pad(400))
@@ -1019,7 +1010,7 @@ describe(`layout utility functions`, () => {
       // however narrow the plot (a DOS squeezed mid-layout reserved four lines, rendered two)
       const x_axis = slot_axis([], { label: `Electron DOS (states/eV)` })
       const bottom_pad = (width: number) =>
-        calc_auto_padding({ ...no_padding, width, height: 300, x_axis }).b
+        compute_auto_padding({ ...no_padding, width, height: 300, x_axis }).b
       expect(bottom_pad(60)).toBe(bottom_pad(400))
       expect(axis_title_wrap_width(false, 100)).toBe(100)
       expect(axis_title_wrap_width(false, 10)).toBeGreaterThan(10) // floored, not word by word

@@ -287,9 +287,8 @@ describe(`3D Export Color Preservation`, () => {
       },
     )
 
-    // Per-instance and non-standard color attributes break GLTF accessor-count validation,
-    // so the clone is stripped of them while the standard `position`/`color` stay and the
-    // live scene's geometry is untouched
+    // Per-instance and non-standard color attributes (which break GLTF validation) leave the
+    // clone, the standard `position`/`color` stay, and the live geometry is untouched
     test(`cleans cloned geometry without mutating the live scene`, () => {
       const scene = new Scene()
       const geometry = new BufferGeometry()
@@ -321,11 +320,9 @@ describe(`3D Export Color Preservation`, () => {
     const named = (name: string, params: MeshStandardMaterialParameters) =>
       Object.assign(new MeshStandardMaterial(params), { name })
 
-    // Kd is written in sRGB, so the endpoints pass through but mid-tones do not: 0.5 working
-    // (linear) is 0.735361 sRGB. Emitting the linear value instead reads back ~2x too dark.
-    // Ka is 20% of the diffuse in LINEAR light, then encoded — scaling the encoded value
-    // instead would decode to ~4% and leave the ambient term far too dark. Ka is string-only
-    // (MTLLoader ignores it); Kd must also round-trip through MTLLoader, which reads sRGB.
+    // Kd is sRGB (linear 0.5 is 0.735361; the linear value reads back ~2x too dark) and must
+    // round-trip through MTLLoader. Ka (string-only, MTLLoader ignores it) is 20% of the
+    // diffuse in linear light, then encoded: scaling the encoded value would decode to ~4%.
     test.each([
       [`red`, [1, 0, 0], `1.000000 0.000000 0.000000`, `0.484535 0.000000 0.000000`],
       [`green`, [0, 1, 0], `0.000000 1.000000 0.000000`, `0.000000 0.484535 0.000000`],

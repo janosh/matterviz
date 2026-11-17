@@ -1,4 +1,5 @@
-import type { AnyStructure, ElementCategory, ElementSymbol, Vec3 } from '#lib'
+import type { AnyStructure, ElementCategory, ElementSymbol } from '#lib'
+import type { Vec3 } from '#lib/math.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { FermiIsosurface, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { flatten_grid } from '#lib/isosurface/grid.js'
@@ -69,6 +70,7 @@ export const make_volume = (
       ],
       origin: [0, 0, 0],
       periodic: true,
+      units: `e/A^3`,
     }),
     ...overrides,
   }
@@ -193,7 +195,7 @@ export const make_trajectory_frame = (
   structure: {
     charge: 0,
     sites: Array.from({ length: site_count }, (_, idx) => ({
-      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+      species: [{ element: `H`, occu: 1 }],
       xyz: [idx, 0, 0] as Vec3,
       abc: [idx / 10, 0, 0] as Vec3,
       label: `H${idx + 1}`,
@@ -262,7 +264,7 @@ export const get_dummy_structure = (
   with_lattice = false,
 ): Crystal => ({
   sites: Array.from({ length: atoms }, (_, idx) => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
+    species: [{ element, occu: 1 }],
     abc: [0, 0, 0] as Vec3,
     xyz: [idx, 0, 0] as Vec3,
     label: `${element}${idx + 1}`,
@@ -318,7 +320,7 @@ export function make_crystal(
   // degenerate (singular) lattices as long as all sites pass abc coords
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
   let cart_to_frac: ((vec: Vec3) => Vec3) | undefined
-  const lattice_params = math.calc_lattice_params(lattice_matrix)
+  const lattice_params = math.compute_lattice_params(lattice_matrix)
 
   const sites: Site[] = site_inputs.map((raw_input, idx) => {
     const input = Array.isArray(raw_input)
@@ -343,7 +345,9 @@ export function make_crystal(
         {
           element,
           occu: input.occu ?? 1,
-          oxidation_state: input.oxidation_state ?? 0,
+          ...(input.oxidation_state === undefined
+            ? {}
+            : { oxidation_state: input.oxidation_state }),
         },
       ],
       abc,
@@ -377,7 +381,7 @@ export const make_struct = (
 // Lattice-free structure from [element, xyz] pairs; abc is meaningless without a cell
 export const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
   sites: atoms.map(([element, xyz], idx) => ({
-    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+    species: [{ element: element as ElementSymbol, occu: 1 }],
     abc: [0, 0, 0] as Vec3,
     xyz,
     label: `${element}${idx}`,
@@ -543,6 +547,7 @@ export const make_fermi_surface = (
   isosurfaces,
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 0,
+  energy_unit: `eV`,
   reciprocal_cell: `wigner_seitz`,
   metadata: {
     n_bands: new Set(isosurfaces.map((iso) => iso.band_index)).size,
@@ -578,7 +583,7 @@ export const make_bxsf = (fermi_energy = 7) =>
   `# Sample BXSF file\n# Fermi energy: ${fermi_energy} eV\n\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
 
 // Encode a 3x3 matrix as a flat 9-array in COLUMN-major order — how moyo/nalgebra serialize
-// rotation matrices on the wire (inverse of mat3_from_flat_col_major in symmetry-elements).
+// rotation matrices on the wire (inverse of math.mat3x3_from_flat_col_major).
 export const col_major = (mat: math.Matrix3x3): number[] =>
   mat[0].flatMap((_value, idx) => [mat[0][idx], mat[1][idx], mat[2][idx]])
 

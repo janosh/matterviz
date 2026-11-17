@@ -5,6 +5,7 @@ import {
   update_atom_coordinates,
   update_ordered_atom_positions,
 } from '#lib/structure/atom-instances.js'
+import type { Vec3 } from '#lib/math.js'
 import { make_site } from '#lib/structure/site.js'
 import { raycast_bond } from '#lib/structure/bond-mesh.js'
 import { write_bond_transform } from '#lib/structure/bond-rendering.js'
@@ -40,10 +41,16 @@ import { make_rng } from '../numeric-helpers'
 const cell = new Matrix4().set(8, 2, 1, 11, 0, 7, 2, -4, 0, 0, 9, 3, 0, 0, 0, 1)
 const cell_point = (axis: StructureCutaway[`axis`], depth: number) =>
   new Vector3(0.5, 0.5, 0.5).setComponent(axis, depth).applyMatrix4(cell)
+const make_cutaway = (
+  mode: StructureCutaway[`mode`],
+  axis: StructureCutaway[`axis`],
+  thickness: number,
+  cartesian_to_fractional = cell.clone().invert(),
+): StructureCutaway => ({ mode, axis, position: 0.5, thickness, cartesian_to_fractional })
 // Hit records without the object, which differs between the compared meshes
 const strip_object = (hits: Intersection[]) => hits.map(({ object: _object, ...hit }) => hit)
 // An invisible edit target picking analytic spheres, as BondEditTargets uses for atoms
-const sphere_target = (position: [number, number, number], radius: number, hit_scale = 1) => {
+const sphere_target = (position: Vec3, radius: number, hit_scale = 1) => {
   const target = new Mesh()
   target.raycast = (raycaster, hits) =>
     raycast_atom_spheres(target, [{ position, radius }], hit_scale, raycaster, hits)
@@ -58,15 +65,7 @@ test.each([
   const group = new StructureCutawayGroup()
   const atom = sphere_target([0, 0, 0.3], 0.02, 1.15) // drawn radius 0.01, target 0.0115
   group.add(atom)
-  group.set_cutaway(
-    mode && {
-      mode,
-      axis: 2,
-      position: 0.5,
-      thickness: 0.25,
-      cartesian_to_fractional: new Matrix4(),
-    },
-  )
+  group.set_cutaway(mode && make_cutaway(mode, 2, 0.25, new Matrix4()))
   const raycaster = new Raycaster(new Vector3(0.0108, 0, 0), new Vector3(0, 0, 1))
   expect(raycaster.intersectObject(atom)).toHaveLength(1)
 })
@@ -75,13 +74,7 @@ test.each([1, 2, 3] as const)(
   `enlarged edit targets cannot pick fully clipped atoms or order-%i bonds`,
   (bond_order) => {
     const group = new StructureCutawayGroup()
-    const cutaway: StructureCutaway = {
-      mode: `plane`,
-      axis: 2,
-      position: 0.5,
-      thickness: 0.25,
-      cartesian_to_fractional: new Matrix4(),
-    }
+    const cutaway = make_cutaway(`plane`, 2, 0.25, new Matrix4())
     const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, 1))
     const atom = sphere_target([0, 0, 0.5105], 0.02, 1.15)
     group.add(atom)
@@ -176,13 +169,7 @@ test.each(
 )(
   `%s cutaway axis %i preserves atom buffers and rejects hidden surface hits in a rotated triclinic cell`,
   (projection, axis) => {
-    const cutaway: StructureCutaway = {
-      mode: `slab`,
-      axis,
-      position: 0.5,
-      thickness: 0.3,
-      cartesian_to_fractional: cell.clone().invert(),
-    }
+    const cutaway = make_cutaway(`slab`, axis, 0.3)
     const geometry = new SphereGeometry(0.5, 20, 20)
     const material = new MeshBasicMaterial({ side: DoubleSide })
     const atoms = [0.15, 0.5, 0.85].map((depth) => ({
@@ -258,13 +245,7 @@ test.each(
 test.each([0, 1, 2] as const)(
   `cutaway axis %i retains the requested fractional interval including a shifted cell origin`,
   (axis) => {
-    const cutaway: StructureCutaway = {
-      mode: `slab`,
-      axis,
-      position: 0.5,
-      thickness: 0.2,
-      cartesian_to_fractional: cell.clone().invert(),
-    }
+    const cutaway = make_cutaway(`slab`, axis, 0.2)
     expect(cutaway_bounds(cutaway)).toEqual([0.4, 0.6])
     for (const [mode, coordinate, visible] of [
       [`slab`, 0.1, false],
@@ -297,22 +278,17 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
     color: `blue`,
     is_image_atom: false,
   }))
-  const moved = sites.map((site) => ({
-    ...site,
-    xyz: [site.xyz[0] + 0.25, 0, 0] as [number, number, number],
-  }))
+  const moved = sites.map((site) => ({ ...site, xyz: [site.xyz[0] + 0.25, 0, 0] as Vec3 }))
   const updated = update_ordered_atom_positions(atoms, moved)
   expect(updated).not.toBe(atoms)
   expect(updated?.[0]).toBe(atoms[0])
-  expect(updated?.map(({ position }) => position)).toEqual([
-    [0.25, 0, 0],
-    [1.25, 0, 0],
-  ])
+  // oxfmt-ignore
+  expect(updated?.map(({ position }) => position)).toEqual([[0.25, 0, 0], [1.25, 0, 0]])
   expect(sites[0].xyz).toEqual([0, 0, 0])
   expect(atoms[0].position).not.toBe(moved[0].xyz)
   const [first, last] = moved
   for (const changed of [
-    { ...last, species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }] },
+    { ...last, species: [{ element: `C` as const, occu: 1 }] },
     { ...last, species: [{ ...last.species[0], occu: 0.5 }] },
     { ...last, provenance: { image_of: 1 } },
     { ...last, provenance: { completion: true } },
@@ -370,7 +346,7 @@ test.each([8, 15, 20])(
         (idx % 6) * 2.3,
         (Math.floor(idx / 6) % 5) * 2.7,
         Math.floor(idx / 30) * 3.1,
-      ] as [number, number, number],
+      ] as Vec3,
       radius: 0.7 + (idx % 3) * 0.3,
     }))
     const actual = new AtomInstances(geometry, material, atoms.length)
@@ -400,9 +376,9 @@ test.each([8, 15, 20])(
       for (const scale of [
         [1, 1, 1],
         [0.5, 2, 1.5],
-      ]) {
+      ] as Vec3[]) {
         for (const mesh of [actual, native]) {
-          mesh.scale.set(...(scale as [number, number, number]))
+          mesh.scale.set(...scale)
           mesh.rotation.set(0.2, 0.7, -0.3)
           mesh.position.set(-4, 3, 5)
           mesh.updateMatrixWorld(true)

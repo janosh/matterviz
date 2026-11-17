@@ -84,14 +84,11 @@ describe(`decimal tokens in parse_float_block`, () => {
     parse_float_block(`  ${token} 7\n`, 0, 2, data)
     return Array.from(data)
   }
-  test.each([...fast_path, ...fortran, ...fallback, ...invalid])(
-    `%s matches Number()`,
-    (token) => {
-      const reference = Number(normalize_scientific_notation(token))
-      if (Number.isNaN(reference)) expect(() => block_values(token)).toThrow(`Unreadable`)
-      else expect(block_values(token)).toEqual([reference, 7])
-    },
-  )
+  test.each([...fast_path, ...fortran, ...fallback, ...invalid])(`%s = Number()`, (token) => {
+    const reference = Number(normalize_scientific_notation(token))
+    if (Number.isNaN(reference)) expect(() => block_values(token)).toThrow(`Unreadable`)
+    else expect(block_values(token)).toEqual([reference, 7])
+  })
 
   // Fortran drops the exponent letter for 3-digit exponents; two digits still need a letter
   test.each([
@@ -440,8 +437,21 @@ describe(`parse_cube`, () => {
       0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
     ])
     expect(grid_at(result)(1, 0, 0)).toBe(0.005)
+    // the header names no quantity, so the values keep (and are labelled with) atomic units
+    expect(result?.volumes[0].units).toBe(`a.u.`)
     // Pin CODATA 2022 through parser output so conversion changes must be deliberate.
     expect(result?.structure.lattice?.a).toBeCloseTo(2 * 1.889726 * 0.529177210544, 10)
+  })
+
+  // A caller that knows the cube holds a density gets CHGCAR's e/A^3: 1 e/Bohr^3 is
+  // 1 / 0.529177210544^3 = 6.7483345 e/A^3 (CODATA 2022 Bohr radius)
+  test(`density: true converts e/Bohr^3 to e/A^3`, () => {
+    const data = `1 0 0 0 0 0 0 0.5`
+    const [converted] = parse_cube(make_cube({ data }), { density: true }).volumes
+    expect(converted.units).toBe(`e/A^3`)
+    expect(converted.values[0]).toBeCloseTo(6.7483345, 6)
+    expect(converted.values[7]).toBeCloseTo(0.5 * 6.7483345, 6)
+    expect(converted.data_range.max).toBeCloseTo(6.7483345, 6)
   })
 
   // oxfmt-ignore
@@ -472,11 +482,13 @@ describe(`parse_cube`, () => {
   })
 
   test(`handles orbital header (negative n_atoms)`, () => {
-    const result = parse_cube(
-      make_cube({ n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `    1    1` }),
-    )
+    const cube = make_cube({ n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `1 1` })
+    const result = parse_cube(cube)
     expect(result?.structure.sites).toHaveLength(1)
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
+    expect(result?.volumes[0].units).toBe(`Bohr^-3/2`) // orbital amplitudes
+    // amplitudes are no density to convert
+    expect(() => parse_cube(cube, { density: true })).toThrow(/declares orbital data/)
   })
 
   // A cube with N values per grid point interleaves N fields in one data block (as ASE reads
@@ -769,6 +781,8 @@ describe(`parse_volumetric_file`, () => {
   ])(`detects VASP volumetric from %s as %s`, (filename, label, divided_by_volume) => {
     const result = parse_volumetric_file(minimal_chgcar, filename)
     expect(result?.volumes.map((volume) => volume.label)).toEqual([label])
+    const units = { 'charge density': `e/A^3`, ELF: ``, 'local potential': `eV` }[label]
+    expect(result?.volumes.map((volume) => volume.units)).toEqual([units])
     const cell_volume = result?.structure.lattice.volume ?? NaN
     expect(grid_at(result)(1, 1, 1)).toBeCloseTo(divided_by_volume ? 8 / cell_volume : 8, 10)
   })

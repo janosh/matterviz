@@ -3,7 +3,7 @@
 
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { BinaryPhaseDiagram, DiagramRegion, GibbsEnergyGrid } from './types'
-import { calculate_lever_rule, find_isotherm_intersections, find_region_at } from './utils'
+import { compute_lever_rule, find_isotherm_intersections, find_region_at } from './utils'
 
 // === Isopleth ===
 
@@ -36,7 +36,7 @@ function phase_fractions(
 ): [string, number][] {
   if (!region) return []
   if (region.phases.length === 1) return [[region.phases[0], 1]]
-  const lever = calculate_lever_rule(region, composition, temperature)
+  const lever = compute_lever_rule(region, composition, temperature)
   if (!lever) return []
   return [
     [lever.left_phase, lever.fraction_left],

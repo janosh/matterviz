@@ -2,7 +2,7 @@ import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { calc_vacf } from '#lib/vacf/calc-vacf.js'
+import { compute_vacf } from '#lib/vacf/compute-vacf.js'
 import { collect_vacf_input, vacf_buffers, VELOCITY_SITE_PROPERTY } from '#lib/vacf/collect.js'
 import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis.js'
 import { describe, expect, it, vi } from 'vite-plus/test'
@@ -29,7 +29,7 @@ describe(`collect_vacf_input`, () => {
     expect((await collect_vacf_input(declared)).velocity_unit).toBe(`A/ps`)
     const omega = 2 * Math.PI * 0.03
     expect(collected.velocities?.[0]).toBeCloseTo(1.5 * omega, 12)
-    const result = calc_vacf(collected)
+    const result = compute_vacf(collected)
     expect(result.velocity_source).toBe(`stored`)
     expect(
       max_abs_error(
@@ -73,7 +73,7 @@ describe(`collect_vacf_input`, () => {
             .flatMap((scale) => [((2 * scale) / mass) * FS_IN_ASE_TIME, 0, 0]),
         ),
       )
-      const result = calc_vacf(collected)
+      const result = compute_vacf(collected)
       expect(result).toMatchObject({ velocity_source: `stored`, velocity_unit: `(A/fs)^2` })
       run.dispose()
     }
@@ -82,7 +82,7 @@ describe(`collect_vacf_input`, () => {
   it(`falls back to central differences when no velocities are stored`, async () => {
     const collected = await collect_vacf_input(make_run(50, false))
     expect(collected.velocities).toBeNull()
-    expect(calc_vacf(collected).velocity_source).toBe(`central_difference`)
+    expect(compute_vacf(collected).velocity_source).toBe(`central_difference`)
   })
 
   it(`strides velocities in lockstep with positions`, async () => {
@@ -93,7 +93,7 @@ describe(`collect_vacf_input`, () => {
     expect(collected.velocities?.[3]).toBeCloseTo(1.5 * omega * Math.cos(omega * 3), 12)
   })
 
-  // calc_vacf needs 2 velocity frames; differentiating positions drops the two endpoints
+  // compute_vacf needs 2 velocity frames; differentiating positions drops the two endpoints
   it.each([
     [1, true, 2],
     [3, false, 4],
@@ -102,7 +102,7 @@ describe(`collect_vacf_input`, () => {
       `need at least ${min_frames} frames`,
     )
     const shortest = await collect_vacf_input(make_run(min_frames, stored))
-    expect(calc_vacf(shortest).lags).toHaveLength(2)
+    expect(compute_vacf(shortest).lags).toHaveLength(2)
   })
 
   it(`requests the velocity channel from a streaming run`, async () => {
@@ -143,7 +143,7 @@ describe(`collect_vacf_input`, () => {
     [`unwrapped-derived`, { box_length: 5, coords_unwrapped: true }, [1, 1, 2], [1, 1, 1]],
     [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2]],
   ])(
-    `budgets every buffer calc_vacf holds for %s velocities`,
+    `budgets every buffer compute_vacf holds for %s velocities`,
     (_label, frame_options, strides, window_strides) => {
       const run = trajectory_from_frames(
         Array.from({ length: 1000 }, (_, idx) => make_frame(idx, [[0, 0, 0]], frame_options)),

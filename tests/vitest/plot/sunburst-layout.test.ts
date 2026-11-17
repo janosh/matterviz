@@ -447,15 +447,6 @@ describe(`min_fraction 'Other' bucketing`, () => {
     expect(arcs.map((arc) => arc.other_count)).toEqual([undefined, undefined, undefined, 2])
   })
 
-  test(`does not bucket a single small sibling; min_fraction 0 disables`, () => {
-    const { arcs } = compute_sunburst_layout(leaves([95, 5]), { min_fraction: 0.06 })
-    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `a`, `b`])
-
-    const off = compute_sunburst_layout(long_tail, { min_fraction: 0 })
-    expect(off.arcs).toHaveLength(5)
-    expect(off.arcs.some((arc) => arc.is_other)).toBe(false)
-  })
-
   test(`buckets per parent with custom label and inherited color`, () => {
     const children = leaves([60, 1, 1])
     const { arcs } = compute_sunburst_layout([{ label: `P`, color: `teal`, children }], {
@@ -607,6 +598,8 @@ describe(`min_fraction 'Other' bucketing`, () => {
     nodes.map((node) => (labels.includes(node.label ?? ``) ? { ...node, keep: true } : node))
   // oxfmt-ignore
   test.each<[string, SunburstNode[], SunburstLayoutOptions, string[]]>([
+    [`a single small sibling is never bucketed`, leaves([95, 5]), { min_fraction: 0.06 }, [`a`, `b`]],
+    [`min_fraction 0 disables bucketing`, long_tail, { min_fraction: 0 }, [`big`, `s1`, `s2`, `s3`]],
     // Not a hard cap: the >= 2 rule wins, because one child under a bucket's name
     // says strictly less than the child itself does.
     [`max_children lets a lone over-the-limit child through`, four, { max_children: 3 }, [`a`, `b`, `c`, `d`]],

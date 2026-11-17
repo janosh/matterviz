@@ -1,7 +1,7 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { create_frac_to_cart, euclidean_dist } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
+import type { Crystal, StructureBond } from '#lib/structure/index.js'
 import {
   find_drawn_completion_sites,
   find_image_atoms,
@@ -36,6 +36,7 @@ import {
   make_srtio3,
   SRTIO3_A,
 } from '../test-fixtures'
+import { max_abs_error } from '../numeric-helpers'
 
 const mp_1_struct = structure_map.get(`mp-1`) as Crystal
 const mp_2_struct = structure_map.get(`mp-2`) as Crystal
@@ -105,45 +106,22 @@ function completion_problems(
 }
 const NO_PROBLEMS = { stray: [], truncated: [] }
 
-function assert_xyz_matches_lattice(
-  lattice_matrix: Matrix3x3,
-  frac: Vec3,
-  xyz: Vec3,
-  digits: number,
-) {
-  const frac_to_cart = create_frac_to_cart(lattice_matrix)
-  const expected = frac_to_cart(frac)
-  for (let dim = 0; dim < 3; dim++) {
-    expect(xyz[dim]).toBeCloseTo(expected[dim], digits)
-  }
-}
-
-// image_abc is a nonzero integer translation of orig_abc
-function assert_integer_translation(orig_abc: Vec3, image_abc: Vec3, tol: number) {
-  const shifts = image_abc.map((coord, dim) => coord - orig_abc[dim])
-  for (const shift of shifts) expect(Math.abs(shift - Math.round(shift))).toBeLessThan(tol)
-  expect(shifts.some((shift) => Math.abs(Math.round(shift)) > 0)).toBe(true)
-}
-
+// Every image is a nonzero integer translation of its source site, at least min_dist away,
+// with xyz = L^T abc
 function validate_image_tuples(
   structure: Crystal,
   image_atoms: ImageAtom[],
-  opts?: { min_dist?: number; tol?: number },
+  { min_dist = 0.01, tol = 1e-8 } = {},
 ): void {
-  const { min_dist = 0.01, tol = 1e-8 } = opts ?? {}
+  const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
   for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
-    expect(orig_idx).toBeGreaterThanOrEqual(0)
-    expect(orig_idx).toBeLessThan(structure.sites.length)
-    expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)
-    expect(image_abc.every((coord) => Number.isFinite(coord))).toBe(true)
-
-    const orig_xyz = structure.sites[orig_idx].xyz
-    const distance = euclidean_dist(orig_xyz, image_xyz)
-    expect(distance).toBeGreaterThan(min_dist)
-
-    const orig_abc = structure.sites[orig_idx].abc
-    assert_integer_translation(orig_abc, image_abc, tol)
-    assert_xyz_matches_lattice(structure.lattice.matrix, image_abc, image_xyz, 10)
+    const { xyz, abc } = structure.sites[orig_idx]
+    expect([...image_xyz, ...image_abc].every(Number.isFinite)).toBe(true)
+    expect(euclidean_dist(xyz, image_xyz)).toBeGreaterThan(min_dist)
+    const shifts = math.subtract(image_abc, abc)
+    expect(max_abs_error(shifts, shifts.map(Math.round))).toBeLessThan(tol)
+    expect(shifts.some((shift) => Math.round(shift) !== 0)).toBe(true)
+    expect(max_abs_error(image_xyz, frac_to_cart(image_abc))).toBeLessThan(5e-11)
   }
 }
 
@@ -174,25 +152,23 @@ test.each([
   const { sites } = get_pbc_image_sites(structure, image_options())
   const stamps = sites.map((site) => site.provenance?.polyhedron_center)
   expect(stamps.every((stamp) => (stamp === undefined) !== stamped)).toBe(true)
-})
-
-// Hidden polyhedra (the viewer passes no polyhedra options) complete no corners: their copies
-// would still end drawn bonds and float beyond the faces. Boundary mode keeps the face-atom
-// bonds, and nothing is stamped either way.
-test.each([
-  [`srtio3_ti_corner`, { polyhedra: {}, boundary: { O: 24 } }],
-  [`srtio3_ti_body`, { polyhedra: {}, boundary: { Ti: 6 } }],
-] as const)(`hidden polyhedra complete no corners on %s`, (name, expected) => {
-  const structure = completion_fixtures[name]()
+  // Hidden polyhedra (the viewer passes no polyhedra options) complete no corners: their
+  // copies would still end drawn bonds and float beyond the faces. Boundary mode keeps the
+  // face-atom bonds, and nothing is stamped either way.
   for (const completion of [`polyhedra`, `boundary`] as const) {
-    const options = {
+    const hidden = {
       completion,
       bonding_strategy: `electroneg_ratio`,
       bonding_options: {},
     } as const
-    expect(completion_counts(structure, options), completion).toEqual(expected[completion])
-    const { sites } = get_pbc_image_sites(structure, options)
-    expect(sites.some((site) => site.provenance?.polyhedron_center !== undefined)).toBe(false)
+    const expected_hidden = completion === `boundary` ? expected.boundary : {}
+    expect(completion_counts(structure, hidden), `hidden ${completion}`).toEqual(
+      expected_hidden,
+    )
+    const hidden_sites = get_pbc_image_sites(structure, hidden).sites
+    expect(hidden_sites.some((site) => site.provenance?.polyhedron_center !== undefined)).toBe(
+      false,
+    )
   }
 })
 
@@ -349,21 +325,15 @@ test.each(COMPLETIONS)(
   },
 )
 
+// Two parallel lattice vectors give zero volume and ill-defined cell heights, which naively
+// divide by zero: every height is Infinity, so every face tolerance is 0 (also along the healthy
+// c axis Na sits on), and the periodic bond search is skipped instead of throwing
 test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, () => {
-  // two parallel lattice vectors -> zero volume; perpendicular heights are
-  // ill-defined and naively divide by zero, which must not crash or yield NaN
-  const degenerate_matrix: Matrix3x3 = [
-    [10, 0, 0],
-    [10, 0, 0], // parallel to the first vector
-    [0, 0, 10],
-  ]
-  const degenerate = make_crystal(degenerate_matrix, [
+  // oxfmt-ignore
+  const degenerate = make_crystal([[10, 0, 0], [10, 0, 0], [0, 0, 10]], [
     [`Na`, [0.05, 0.5, 0.005]],
     [`Cl`, [0.5, 0.5, 0.6]],
   ])
-
-  // zero volume makes every cell height Infinity, so every face tolerance is 0 (also along the
-  // healthy c axis Na sits on), and the periodic bond search is skipped instead of throwing
   for (const completion of COMPLETIONS)
     expect(find_image_atoms(degenerate, image_options(completion))).toEqual([])
 })
@@ -408,22 +378,13 @@ test.each([
   run.dispose()
   if (!structure.lattice) throw new Error(`Structure should have lattice`)
 
-  const images = find_image_atoms(structure, image_options())
+  expect(find_image_atoms(structure, image_options()).length > 0).toBe(expect_images)
   const imaged_sites = get_pbc_image_sites(structure, image_options()).sites
-  if (expect_images) {
-    expect(images.length).toBeGreaterThan(0)
-    expect(imaged_sites.length).toBeGreaterThan(structure.sites.length)
-  } else {
-    expect(images).toHaveLength(0)
-    expect(imaged_sites).toHaveLength(structure.sites.length)
-  }
-
+  expect(imaged_sites.length > structure.sites.length).toBe(expect_images)
   const atoms_outside = structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
-  const threshold = structure.sites.length * 0.1
-  if (expect_images) expect(atoms_outside.length).toBeLessThanOrEqual(threshold)
-  else expect(atoms_outside.length).toBeGreaterThan(threshold)
+  expect(atoms_outside.length > structure.sites.length * 0.1).toBe(!expect_images)
 })
 
 // In-cell atoms sit within face tolerance, so only the trajectory heuristic can suppress images
@@ -439,8 +400,7 @@ test.each([
     })),
   )
 
-  const images = find_image_atoms(structure, image_options())
-  expect(images.length === 0).toBe(expect_skip)
+  expect(find_image_atoms(structure, image_options()).length === 0).toBe(expect_skip)
   expect(
     get_pbc_image_sites(structure, image_options()).sites.length > structure.sites.length,
   ).toBe(!expect_skip)
@@ -496,13 +456,9 @@ test.each(lattices)(
     const image_sites = get_pbc_image_sites(structure, image_options()).sites.slice(
       structure.sites.length,
     )
-    expect(image_sites).toHaveLength(image_atoms.length)
-    for (const [idx, [, expected_xyz, expected_abc]] of image_atoms.entries()) {
-      for (let dim = 0; dim < 3; dim++) {
-        expect(image_sites[idx].xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
-        expect(image_sites[idx].abc[dim]).toBeCloseTo(expected_abc[dim], 10)
-      }
-    }
+    expect(image_sites.map(({ xyz, abc }) => [xyz, abc])).toEqual(
+      image_atoms.map(([, xyz, abc]) => [xyz, abc]),
+    )
   },
 )
 
@@ -535,16 +491,13 @@ test(`get_pbc_image_sites preserves explicit periodic bond metadata`, () => {
     [`C`, [0.995, 0.5, 0.5]],
     [`O`, [0.005, 0.5, 0.5]],
   ])
-  structure.properties = {
-    bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
-  }
-
-  const with_images = get_pbc_image_sites(structure, image_options())
-
-  expect(with_images.sites).toHaveLength(4)
-  expect(with_images.properties?.bonds).toEqual([
+  const bonds: StructureBond[] = [
     { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
-  ])
+  ]
+  structure.properties = { bonds: structuredClone(bonds) }
+  const with_images = get_pbc_image_sites(structure, image_options())
+  expect(with_images.sites).toHaveLength(4)
+  expect(with_images.properties?.bonds).toEqual(bonds)
 })
 
 // Default (polyhedra) completion: face copies plus the corners of polyhedra crossing a face.
@@ -565,13 +518,9 @@ test.each([
 ])(
   `find_image_atoms with real structures: $description`,
   ({ content, filename, n_images, min_dist, tol }) => {
-    let structure: Crystal
-    if (filename.endsWith(`.json`)) structure = content as Crystal
-    else {
-      const parsed = parse_structure_file(content as string, filename)
-      if (!(`lattice` in parsed)) throw new Error(`no lattice found in ${filename}`)
-      structure = parsed
-    }
+    const structure = (
+      typeof content === `string` ? parse_structure_file(content, filename) : content
+    ) as Crystal
 
     const image_atoms = find_image_atoms(structure, image_options())
     expect(image_atoms).toHaveLength(n_images)
@@ -638,11 +587,8 @@ describe(`wrap_to_unit_cell`, () => {
     { input: [1.0, -2.0, 0.0], expected: [0.0, 0.0, 0.0], desc: `exact ints -> 0` },
   ] as { input: Vec3; expected: Vec3; desc: string }[])(`$desc`, ({ input, expected }) => {
     const result = wrap_to_unit_cell(input)
-    for (let dim = 0; dim < 3; dim++) {
-      expect(result[dim]).toBeCloseTo(expected[dim], 8)
-      expect(result[dim]).toBeGreaterThanOrEqual(0)
-      expect(result[dim]).toBeLessThan(1)
-    }
+    expect(max_abs_error(result, expected)).toBeLessThan(5e-9)
+    expect(result.every((coord) => coord >= 0 && coord < 1)).toBe(true)
   })
 
   // Values within epsilon of 1 snap to 0 to suppress floating-point noise. The snap epsilon is

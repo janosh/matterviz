@@ -1,4 +1,4 @@
-import type { FileInfo } from '#lib'
+import type { FileInfo } from '#lib/io/index.js'
 import { site_file_info } from '#site/imports.js'
 
 // FilePicker type for a trajectory fixture: format name rather than the bare extension, so

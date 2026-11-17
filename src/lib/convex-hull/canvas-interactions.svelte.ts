@@ -185,14 +185,11 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
       allow: inputs.allow_file_drop,
       on_drop: async (source) => {
         const opened = await open_material(source)
+        const { type, data: entries } = opened
         try {
-          if (
-            ![`convex_hull`, `json_browser`].includes(opened.type) ||
-            !Array.isArray(opened.data)
-          ) {
+          if (![`convex_hull`, `json_browser`].includes(type) || !Array.isArray(entries)) {
             throw new Error(`${opened.filename} is not a convex hull entries array`)
           }
-          const entries = opened.data
           process_hull_entries(entries)
           inputs.on_file_load()?.({ entries, ...opened.provenance })
         } finally {
@@ -315,11 +312,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     get_energy_color_scale(inputs.color_mode(), inputs.color_scale(), inputs.plot_entries()),
   )
   const get_point_color = $derived.by(() => {
-    const [color_mode, colors, scale] = [
-      inputs.color_mode(),
-      inputs.colors(),
-      energy_color_scale,
-    ]
+    const [color_mode, colors] = [inputs.color_mode(), inputs.colors()]
+    const scale = energy_color_scale
     return (entry: ConvexHullEntry): string =>
       get_point_color_for_entry(entry, color_mode, colors, scale)
   })

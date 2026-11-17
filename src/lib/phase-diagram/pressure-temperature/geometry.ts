@@ -422,12 +422,8 @@ export function derive_regions(
       return critical && to_unit(critical)
     }),
   )
-  const corners: Vec2[] = [
-    [0, 0],
-    [1, 0],
-    [1, 1],
-    [0, 1],
-  ]
+  // oxfmt-ignore
+  const corners: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
   const segments: Segment[] = corners.map((corner, idx) => ({
     start: corner,
     end: corners[(idx + 1) % 4],
@@ -630,12 +626,8 @@ export function clip_polygon_to_rect(
   [x_min, y_min, x_max, y_max]: [number, number, number, number],
 ): Vec2[] {
   // [axis, bound, side]: a point is inside when side * (point[axis] - bound) >= 0
-  const half_planes: [0 | 1, number, 1 | -1][] = [
-    [0, x_min, 1],
-    [0, x_max, -1],
-    [1, y_min, 1],
-    [1, y_max, -1],
-  ]
+  // oxfmt-ignore
+  const half_planes: [0 | 1, number, 1 | -1][] = [[0, x_min, 1], [0, x_max, -1], [1, y_min, 1], [1, y_max, -1]]
   let output = [...vertices]
   for (const [axis, bound, side] of half_planes) {
     const inside = (point: Vec2) => side * (point[axis] - bound) >= 0

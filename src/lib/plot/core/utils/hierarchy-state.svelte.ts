@@ -123,8 +123,6 @@ interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
   > & { min_fraction: number; max_children: number }
   readonly label_text: () => SunburstLabelText | null
   readonly value_format: () => string
-  readonly width: () => number
-  readonly height: () => number
   readonly padding: () => Sides
   readonly color_values: () => ((arc: PositionedArc<Metadata>) => number | null) | undefined
   readonly color_scale: () => ColorScale
@@ -164,6 +162,9 @@ export class HierarchyChartState<
 
   svg_element: SVGSVGElement | null = $state(null)
   wrapper: HTMLDivElement | undefined = $state()
+  // Container size, bound by the chart's ChartShell
+  width = $state(0)
+  height = $state(0)
   hovered_idx: number | null = $state(null)
   hover_info: NodeProps<Metadata> | null = $state(null)
   hover_pos: Point = $state({ x: 0, y: 0 })
@@ -236,6 +237,11 @@ export class HierarchyChartState<
   color_for = (arc: PositionedArc<Metadata>): string =>
     this.metric?.colors[arc.node_idx] ?? arc.color
   node_dim = $derived(compute_node_dim(this.arcs, this.muted_ids))
+  // A node's painted fill (its pattern tile, else its color) and dimmed opacity
+  node_paint = (node_idx: number): { fill: string; opacity: number } => {
+    const { pattern, fill } = this.node_infos[node_idx]
+    return { fill: pattern?.url ?? fill, opacity: this.node_dim(node_idx).opacity }
+  }
 
   label_font = $derived(resolve_label_font(this.svg_element))
   node_infos = $derived.by(() => {
@@ -264,8 +270,6 @@ export class HierarchyChartState<
   )
 
   // Inputs HierarchyShell and the charts read back verbatim
-  width = $derived.by(() => this.#opts.width())
-  height = $derived.by(() => this.#opts.height())
   value_format = $derived.by(() => this.#opts.value_format())
   color_bar = $derived.by(() => this.#opts.color_bar())
   color_scale = $derived.by(() => this.#opts.color_scale())
@@ -379,6 +383,13 @@ export class HierarchyChartState<
     this.svg_element
       ?.querySelector<SVGGraphicsElement>(`[${this.node_attr}="${idx}"]`)
       ?.focus()
+  }
+
+  // Focus the zoom root's first child (pre-order node_idx + 1), the root itself when it is a
+  // leaf, or `fallback` at the data root
+  focus_zoom_child = (fallback: number | null): void => {
+    const { zoom_root } = this
+    this.focus_node(zoom_root ? zoom_root.node_idx + Number(!zoom_root.is_leaf) : fallback)
   }
 
   // Arrow-key navigation (see arrow_nav_target) plus Enter/Space activation

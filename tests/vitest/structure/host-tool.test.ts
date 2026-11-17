@@ -12,13 +12,13 @@ import {
   apply_tool_geometry,
   prediction_to_json,
   prediction_from_json,
+  type StructureToolGeometry,
 } from '#lib/structure/prediction.js'
 import { replace_tool_volumes } from '#lib/structure/host-tool-volumes.js'
 import { auto_volume_layer, type IsosurfaceLayer } from '#lib/isosurface/types.js'
 import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host-tool/demo'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import type { AnyStructure } from '#lib/structure/index.js'
-import type { StructureToolGeometry } from '#lib/structure/prediction.js'
 import { structure_to_json_str } from '#lib/structure/export.js'
 import { create_frac_to_cart, det_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import {
@@ -171,12 +171,9 @@ describe(`host prediction ownership`, () => {
       site_properties: [{ charge: 0.5, dipole: [1, 2, 3] }],
       volumes: [volume(`density`)],
     }
-    if (shared) {
-      overlay.volumes[0].values = new Float64Array(
-        new SharedArrayBuffer(8 * Float64Array.BYTES_PER_ELEMENT),
-      )
-      overlay.volumes[0].values.fill(1)
-    }
+    // 8 f64 values of 8 bytes each
+    if (shared)
+      overlay.volumes[0].values = new Float64Array(new SharedArrayBuffer(8 * 8)).fill(1)
     run.on_overlay(overlay)
     const prediction = on_prediction.mock.lastCall?.[0]
     if (!prediction) throw new Error(`Missing prediction`)
@@ -388,7 +385,7 @@ test(`prediction import preserves input, fields and provenance, recomputes range
   }
   const text = prediction_to_json(prediction)
   const restored = prediction_from_json(text)
-  // undecorated species drop oxidation_state on export (pymatgen would read Cu0+), get 0 back
+  // undecorated species carry no oxidation_state key on export (pymatgen would read Cu0+)
   expect(JSON.parse(text).input.sites[0].species).toEqual([{ element: `Cu`, occu: 1 }])
   expect(restored.input).toEqual(input)
   expect(restored.volumes?.[0].values).toEqual(density.values)
@@ -410,12 +407,15 @@ test(`prediction import preserves input, fields and provenance, recomputes range
     malformed.input.sites[0][key] = value
     expect(() => prediction_from_json(malformed)).toThrow(`input.sites[0].${key}`)
   }
-  expect(() => prediction_from_json(text.replace(`"Cu"`, `"DefinitelyNotAnElement"`))).toThrow(
-    `input.sites[0].species.element`,
-  )
-  expect(() =>
-    prediction_from_json(text.replace(`"occu":1`, `"occu":1,"oxidation_state":"2+"`)),
-  ).toThrow(`input.sites[0].species.oxidation_state`)
+  // oxfmt-ignore
+  for (const [from, to, message] of [
+    [`"Cu"`, `"DefinitelyNotAnElement"`, `input.sites[0].species.element`],
+    [`"occu":1`, `"occu":1,"oxidation_state":"2+"`, `input.sites[0].species.oxidation_state`],
+    [`"run_id":3`, `"run_id":0`, `run_id`],
+    [`"occu":1`, `"occu":-1`, `occu`],
+    [`"xyz":[`, `"xyz":null,"old_xyz":[`, `xyz`],
+  ])
+    expect(() => prediction_from_json(text.replace(from, to))).toThrow(message)
   for (const key of [`pbc`, `a`, `volume`]) {
     const malformed = JSON.parse(text)
     Reflect.deleteProperty(malformed.input.lattice, key)
@@ -426,19 +426,12 @@ test(`prediction import preserves input, fields and provenance, recomputes range
   await expect(
     parse_file_content(text.replace(`prediction-v1`, `prediction-v2`), `prediction.json`),
   ).rejects.toThrow(`schema`)
-  expect(() => prediction_from_json(text.replace(`"run_id":3`, `"run_id":0`))).toThrow(
-    `run_id`,
-  )
-  expect(() => prediction_from_json(text.replace(`"occu":1`, `"occu":-1`))).toThrow(`occu`)
   // Exports leave a run's trail out, so an import carrying one is not an export.
   const trail = [{ positions: input.sites.map(({ xyz }) => xyz) }]
   expect(prediction_to_json({ ...prediction, trail })).toBe(text)
   expect(() => prediction_from_json({ ...JSON.parse(text), trail })).toThrow(
     `prediction.trail: trails are how a viewer draws a run, never exported`,
   )
-  expect(() =>
-    prediction_from_json(text.replace(`"xyz":[`, `"xyz":null,"old_xyz":[`)),
-  ).toThrow(`xyz`)
 })
 
 const two_site_crystal = () =>
@@ -453,17 +446,13 @@ const relaxed_cell: Matrix3x3 = [[4.2, 0, 0], [0, 4.2, 0], [0.1, 0, 4.4]]
 const singular_cell: Matrix3x3 = [[1, 0, 0], [2, 0, 0], [0, 0, 1]]
 // oxfmt-ignore
 const overflowing_cell: Matrix3x3 = [[1e308, 1e308, 0], [1e308, -1e308, 0], [0, 0, 1]]
-const two_row_cell = [
-  [1, 0, 0],
-  [0, 1, 0],
-]
+// oxfmt-ignore
+const two_row_cell = [[1, 0, 0], [0, 1, 0]]
 const second_at = (position: number[]) => ({ positions: [[0, 0, 0], position] })
 const unit = second_at([1, 1, 1])
 const invertible = `prediction.geometry.lattice: lattice must be invertible`
-const molecule = make_molecule([
-  [`H`, [0, 0, 0]],
-  [`H`, [0, 0, 0.74]],
-])
+// oxfmt-ignore
+const molecule = make_molecule([[`H`, [0, 0, 0]], [`H`, [0, 0, 0.74]]])
 // oxfmt-ignore
 test.each<[string, unknown, string, AnyStructure?]>([
   [`a non-object`, [], `prediction.geometry`],
@@ -500,10 +489,8 @@ test.each([
   const input = two_site_crystal()
   const { state, controller, on_prediction } = controller_fixture(input)
   const run = controller.start_run(provenance)
-  const positions: Vec3[] = [
-    [0.1, 0, 0],
-    [2.2, 2.1, 2.3],
-  ]
+  // oxfmt-ignore
+  const positions: Vec3[] = [[0.1, 0, 0], [2.2, 2.1, 2.3]]
   const geometry = lattice ? { positions, lattice } : { positions }
   run.on_overlay({ geometry })
   const prediction = on_prediction.mock.lastCall?.[0]
@@ -549,10 +536,8 @@ test.each([
 })
 
 test(`molecule geometry moves xyz and mirrors it into abc`, () => {
-  const positions: Vec3[] = [
-    [0, 0.1, 0],
-    [0, 0, 0.8],
-  ]
+  // oxfmt-ignore
+  const positions: Vec3[] = [[0, 0.1, 0], [0, 0, 0.8]]
   expect(apply_tool_geometry(molecule, { positions })).toEqual({
     ...molecule,
     sites: molecule.sites.map((site, idx) => ({

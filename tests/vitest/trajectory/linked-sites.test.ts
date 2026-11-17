@@ -1,5 +1,5 @@
 import type { Vec3 } from '#lib/math.js'
-import type { StructureIdResult } from '#lib/structure-id/calc-structure-id.js'
+import type { StructureIdResult } from '#lib/structure-id/compute-structure-id.js'
 import type { StructureIdSweep } from '#lib/structure-id/collect.js'
 import {
   cna_type_source_atoms,

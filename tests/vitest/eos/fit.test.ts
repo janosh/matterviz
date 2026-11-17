@@ -38,17 +38,26 @@ const REFERENCE = {
   string,
   { volumes: number[]; energies: number[]; fits: Record<EosKind, number[]> }
 >
-const to_params = ([
-  equilibrium_energy,
-  equilibrium_volume,
-  bulk_modulus,
-  b0_prime,
-]: number[]): EosParams => ({
-  e0: equilibrium_energy,
-  v0: equilibrium_volume,
-  b0: bulk_modulus,
-  b0_prime,
-})
+
+// One-sigma standard errors [E0, V0, B0, B0'] of the REFERENCE fits from scipy's
+// curve_fit(method="lm") with an accurate (central-difference) Jacobian: its default forward
+// differences carry ~1e-4 relative error into the covariance. Our fits sit at a (slightly
+// lower-SSR) optimum within 6e-8 of scipy's, and the errors agree to 1.3e-8 (8e-8 on 7-31 point
+// noisy synthetic scans of all three forms).
+// oxfmt-ignore
+const STD_ERRORS: Record<keyof typeof REFERENCE, Record<EosKind, number[]>> = {
+  cu_like: {
+    birch_murnaghan: [0.0003707604317, 0.009168897529, 0.008144432286, 0.4109394051],
+    murnaghan: [0.0004038011779, 0.009752477229, 0.009244716898, 0.4331693965],
+    vinet: [0.0003611252206, 0.008884009012, 0.007984193108, 0.3973835554],
+  },
+  ase_ag: {
+    birch_murnaghan: [0.0005971656497, 0.01510102039, 0.007818579176, 0.3347534552],
+    murnaghan: [0.0004672758847, 0.01113455282, 0.006431154373, 0.2342720736],
+    vinet: [0.0006570172683, 0.0165970032, 0.008602149319, 0.3676824574],
+  },
+}
+const to_params = ([e0, v0, b0, b0_prime]: number[]): EosParams => ({ e0, v0, b0, b0_prime })
 const rel_err = (val: number, ref: number) => Math.abs(val - ref) / Math.abs(ref)
 const rmse = (kind: EosKind, params: EosParams, volumes: number[], energies: number[]) =>
   Math.hypot(...volumes.map((vol, idx) => eos_energy(kind, params, vol) - energies[idx])) /
@@ -60,7 +69,8 @@ const cases = Object.entries(REFERENCE).flatMap(([name, data]) =>
 
 describe(`fit_eos`, () => {
   const truth: EosParams = { e0: -10.5, v0: 40, b0: 0.6, b0_prime: 4.5 }
-  test.each(cases)(`%s / %s matches pymatgen`, (_name, kind, { volumes, energies, fits }) => {
+  test.each(cases)(`%s / %s matches pymatgen and scipy`, (name, kind, data) => {
+    const { volumes, energies, fits } = data
     const fit = fit_eos(volumes, energies, kind)
     const ref = to_params(fits[kind])
     // scipy's leastsq and our LM stop at slightly different points on a flat 4-parameter
@@ -72,6 +82,20 @@ describe(`fit_eos`, () => {
     // the fit is a least-squares optimum: the pymatgen parameters cannot do better
     expect(fit.rmse).toBeCloseTo(rmse(kind, fit, volumes, energies), 12)
     expect(fit.rmse).toBeLessThanOrEqual(rmse(kind, ref, volumes, energies) * (1 + 1e-9))
+    // standard errors match scipy's curve_fit
+    const expected = to_params(STD_ERRORS[name as keyof typeof REFERENCE][kind])
+    for (const key of PARAM_KEYS) {
+      expect(rel_err(fit.std_errors?.[key] ?? NaN, expected[key])).toBeLessThan(1e-7)
+    }
+    // 1 eV/A^3 = e·1e21 Pa = 160.2176634 GPa (exact since the 2019 SI)
+    expect(fit.b0_gpa / fit.b0).toBeCloseTo(160.2176634, 6)
+  })
+
+  // 4 parameters through 4 points leave no residual degree of freedom to estimate noise from
+  test(`a 4-point scan has no standard errors`, () => {
+    const volumes = [36, 38, 42, 44]
+    const energies = volumes.map((vol) => eos_energy(`birch_murnaghan`, truth, vol))
+    expect(fit_eos(volumes, energies).std_errors).toBeNull()
   })
 
   // Beyond the typical solid (v0 40 A^3, b0 0.6 eV/A^3): a soft material (b0 1e-3), a tiny

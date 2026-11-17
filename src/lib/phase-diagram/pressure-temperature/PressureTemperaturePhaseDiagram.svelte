@@ -644,17 +644,10 @@
   )
 
   // === Controls ===
-  const UNCERTAINTY_MODES: [PtUncertaintyMode, string][] = [
-    [`band`, `Band`],
-    [`bars`, `Error bars`],
-    [`both`, `Band + bars`],
-    [`none`, `Hidden`],
-  ]
-  const SIGMA_LEVELS: [number, string][] = [
-    [1, `1σ (68%)`],
-    [2, `2σ (95%)`],
-    [3, `3σ (99.7%)`],
-  ]
+  // oxfmt-ignore
+  const UNCERTAINTY_MODES: [PtUncertaintyMode, string][] = [[`band`, `Band`], [`bars`, `Error bars`], [`both`, `Band + bars`], [`none`, `Hidden`]]
+  // oxfmt-ignore
+  const SIGMA_LEVELS: [number, string][] = [[1, `1σ (68%)`], [2, `2σ (95%)`], [3, `3σ (99.7%)`]]
   // A width set from code (e.g. 1.96) stays listed and selected
   const sigma_options = $derived(
     SIGMA_LEVELS.some(([level]) => level === n_sigma)

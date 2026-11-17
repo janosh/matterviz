@@ -58,11 +58,9 @@ const pdb_element = (line: string, atom_idx: number): ElementSymbol => {
 
 export const parse_pdb = (content: string): AnyStructure => {
   const all_lines = content.split(/\r?\n/)
-  // `END` terminates a PDB entry, and files are concatenated (VMD multi-frame output,
-  // docking ensembles, `cat a.pdb b.pdb`). Only the first entry is parsed, as parse_mol
-  // does for `$$$$`: merging them silently fused every entry's atoms into one structure
-  // under the first CRYST1 cell, and fused their CONECT records with it. MODEL/ENDMDL
-  // inside one entry is a different thing, counted separately below.
+  // `END` terminates a PDB entry, and files get concatenated (VMD multi-frame output, docking
+  // ensembles, `cat a.pdb b.pdb`). Only the first entry is parsed, as parse_mol does for
+  // `$$$$`, so entries' atoms and CONECT records never fuse. MODEL/ENDMDL is counted separately below.
   const end_idx = all_lines.findIndex(
     (line) => line.slice(0, 6).trim().toUpperCase() === `END`,
   )
@@ -70,9 +68,8 @@ export const parse_pdb = (content: string): AnyStructure => {
   const has_further_entry =
     end_idx !== -1 &&
     all_lines.slice(end_idx + 1).some((line) => line.slice(0, 6).trim() !== ``)
-  if (has_further_entry) {
+  if (has_further_entry)
     parse_warn(`PDB contains multiple END-terminated entries; parsed the first`)
-  }
 
   let cell_params: readonly number[] | null = null
   let model_count = 0
@@ -110,9 +107,8 @@ export const parse_pdb = (content: string): AnyStructure => {
         .filter(Number.isFinite)
       // PDB carries no bond orders: repeated CONECT entries are how some writers encode
       // multiplicity, but that is not part of the spec, so every bond is recorded single
-      for (const partner of partners) {
+      for (const partner of partners)
         raw_bonds.push({ atom_id_1: central, atom_id_2: partner, order: 1 })
-      }
       continue
     }
 
@@ -128,11 +124,10 @@ export const parse_pdb = (content: string): AnyStructure => {
   }
 
   if (model_lines.length === 0) throw new Error(`No ATOM or HETATM records found in PDB file`)
-  if (model_count > 1) {
+  if (model_count > 1)
     parse_warn(
       `PDB contains ${model_count} models; parsed the first and skipped ${model_count - 1}`,
     )
-  }
   // altLoc is column 17; a residue is chain + resSeq + iCode (columns 22-27). resName
   // stays out of the key: microheterogeneity lists different residues per conformer.
   const atom_lines = keep_first_alt_locs(
@@ -141,11 +136,10 @@ export const parse_pdb = (content: string): AnyStructure => {
     (line) => line.slice(21, 27),
     (line) => line.slice(12, 16),
   )
-  if (atom_lines.length < model_lines.length) {
+  if (atom_lines.length < model_lines.length)
     parse_warn(
       `PDB: skipped ${model_lines.length - atom_lines.length} atom(s) with alternate location indicators`,
     )
-  }
   const atom_serials = atom_lines.map((line) => num_field(line, 6, 11))
 
   // Cartesian coordinates stay authoritative and are NOT wrapped into the cell:
@@ -161,8 +155,6 @@ export const parse_pdb = (content: string): AnyStructure => {
       [30, 38, 46].map((start) => num_field(line, start, start + 8)),
       `PDB atom coordinates on '${line.trim()}'`,
     )
-    const abc = to_frac(xyz)
-
     const occupancy = num_field(line, 54, 60)
     const b_factor = num_field(line, 60, 66)
     const residue = line.slice(17, 20).trim()
@@ -176,7 +168,7 @@ export const parse_pdb = (content: string): AnyStructure => {
       ...(Number.isFinite(b_factor) && { b_factor }),
     }
 
-    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`, properties))
+    sites.push(make_site(element, to_frac(xyz), xyz, `${element}${atom_idx + 1}`, properties))
     record_atom_id(site_idx_by_serial, atom_serials[atom_idx], sites.length - 1)
   }
 

@@ -114,11 +114,10 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
   })
 
   // Every iron boundary has sigmas; special-point bars show for every mode but `none`
+  // oxfmt-ignore
   test.each([
-    [`band`, { bands: 7, has_bars: false, special_bars: 3 }],
-    [`bars`, { bands: 0, has_bars: true, special_bars: 3 }],
-    [`both`, { bands: 7, has_bars: true, special_bars: 3 }],
-    [`none`, { bands: 0, has_bars: false, special_bars: 0 }],
+    [`band`, { bands: 7, has_bars: false, special_bars: 3 }], [`bars`, { bands: 0, has_bars: true, special_bars: 3 }],
+    [`both`, { bands: 7, has_bars: true, special_bars: 3 }], [`none`, { bands: 0, has_bars: false, special_bars: 0 }],
   ] as const)(`uncertainty=%s`, async (uncertainty, expected) => {
     const wrapper = await mount_diagram({ uncertainty })
     expect({

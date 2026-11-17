@@ -74,10 +74,10 @@ export function angle_between_vectors(vector_1: Vec3, vector_2: Vec3): number {
 
 // Arc marking the angle at `center` between two edges: points slerped from the first edge's
 // direction to the second's, the label spot on its bisector between the vertex atom's surface
-// and the arc, and the angle in degrees. The radius is `radius_fraction` of the shorter edge, but
-// at least 0.2 Å past `atom_radius` (the drawn vertex atom, which would hide a depth-tested arc)
-// and at most 0.9 of the shorter edge (no arc if that leaves it inside the atom). Null for a zero-length edge. A straight (or zero) angle
-// spans no plane to bend in: no arc, label on the first edge.
+// and the arc, and the angle in degrees. The radius is `radius_fraction` of the shorter edge,
+// but at least 0.2 Å past `atom_radius` (the drawn vertex atom, which would hide a depth-tested
+// arc) and at most 0.9 of the shorter edge (no arc if that leaves it inside the atom). Null for
+// a zero-length edge. A straight (or zero) angle spans no plane: no arc, label on the first edge.
 export function angle_arc(
   center: Vec3,
   vector_1: Vec3,
@@ -164,11 +164,10 @@ export type DisplacementSummary =
   | { rmsd?: undefined; max_displacement?: undefined; error: string }
 
 // Per-site displacement from a reference geometry to the current one, e.g. unrelaxed vs relaxed.
-// Uses minimum-image displacements rather than raw coordinate subtraction: an atom that relaxed
-// across a cell face has moved a fraction of an Angstrom, but its coordinates jump by a whole
-// lattice vector, which would draw an arrow spanning the entire box and wreck the RMSD.
-// Sites pair up by index, so both a count mismatch and a species mismatch throw — zipping the
-// shorter list or dropping Si onto O would report a confidently wrong number.
+// Minimum-image, not raw subtraction: an atom relaxing across a cell face moves a fraction of an
+// Angstrom while its coordinates jump a lattice vector (a box-spanning arrow, a wrecked RMSD).
+// Sites pair up by index, so count and species mismatches throw rather than zipping the shorter
+// list or dropping Si onto O.
 export function compute_displacements(
   reference_sites: Site[],
   current_sites: Site[],
@@ -211,14 +210,11 @@ export function compute_displacements(
   }
 }
 
-// Signed torsion (dihedral) angle of the chain p1-p2-p3-p4, in (-180, 180] degrees.
-// Chains three minimum-image displacements instead of differencing Cartesian coordinates,
-// so a torsion whose atoms straddle a cell boundary measures the real bonded geometry
-// rather than the angle to a distant periodic image.
-// atan2 (not acos) is what makes the result signed: the sign follows the IUPAC convention,
-// i.e. viewed along p2->p3, a positive angle means the front bond p2->p1 must rotate clockwise
-// to eclipse the rear bond p3->p4. Enantiomers and gauche+/gauche- conformers therefore stay
-// distinguishable, and the sign labels their handedness correctly.
+// Signed torsion (dihedral) angle of the chain p1-p2-p3-p4, in (-180, 180] degrees. Chains three
+// minimum-image displacements, so atoms straddling a cell boundary measure the bonded geometry,
+// not the angle to a distant image. atan2 (not acos) makes it signed, by the IUPAC convention:
+// viewed along p2->p3, a positive angle means the front bond p2->p1 rotates clockwise to eclipse
+// the rear bond p3->p4, so enantiomers and gauche+/gauche- conformers stay distinguishable.
 export function dihedral_angle(
   point_1: Vec3,
   point_2: Vec3,

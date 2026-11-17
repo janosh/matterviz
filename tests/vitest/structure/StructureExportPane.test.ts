@@ -110,12 +110,8 @@ describe(`StructureExportPane`, () => {
     expect(document.querySelector(`.export-pane.viewer-pane-open`)).not.toBeNull()
   })
 
-  test.each([
-    [false, false],
-    [true, false],
-    [false, true],
-    [true, true],
-  ])(`prediction actions require their callbacks (clear=%s, reset=%s)`, (clear, reset) => {
+  // oxfmt-ignore
+  test.each([[false, false], [true, false], [false, true], [true, true]])(`prediction actions require their callbacks (clear=%s, reset=%s)`, (clear, reset) => {
     const on_clear_prediction = vi.fn()
     const on_reset_prediction_surfaces = vi.fn()
     mount_pane({
@@ -165,29 +161,22 @@ describe(`StructureExportPane`, () => {
   test(`shows checkmark feedback after successful copy`, async () => {
     vi.useFakeTimers()
     mount_pane({ structure: simple_structure })
-
     const copy_btn = get_button(`Copy JSON`)
     expect(copy_btn.textContent).toContain(`📋`)
-
     copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
     await vi.waitFor(() => expect(copy_btn.textContent).toContain(`✅`))
-
     vi.advanceTimersByTime(1000)
     await vi.waitFor(() => expect(copy_btn.textContent).toContain(`📋`))
-
     vi.useRealTimers()
   })
 
   test(`PNG DPI input seeds the download title and updates it on edit`, async () => {
     mount_pane({ structure: simple_structure, wrapper: wrapper_div, png_dpi: 150 })
-
     const dpi_input = doc_query<HTMLInputElement>(
       `input[type="number"][title*="dots per inch"]`,
     )
     expect(dpi_input.value).toBe(`150`)
     expect(get_button(`PNG`).title).toContain(`(150 DPI)`)
-
     // editing the DPI updates the download button's title
     set_input(dpi_input, `200`)
     await tick()
@@ -216,10 +205,8 @@ describe(`StructureExportPane`, () => {
     ]
     expect(observe.mock.calls.filter(([target]) => target === wrapper_div)).toHaveLength(1)
     expect(disabled_buttons()).toEqual([true, true])
-
     wrapper_div.append(document.createElement(`canvas`))
     await vi.waitFor(() => expect(disabled_buttons()).toEqual([false, false]))
-
     wrapper_div.innerHTML = ``
     await vi.waitFor(() => expect(disabled_buttons()).toEqual([true, true]))
   })
@@ -305,7 +292,6 @@ describe(`StructureExportPane`, () => {
       image_filename: `charge-density-slice`,
       enable_3d_export: false,
     })
-
     get_button(`PNG`).click()
     await vi.waitFor(() => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
@@ -320,18 +306,13 @@ describe(`StructureExportPane`, () => {
     expect(document.querySelector(`.structure-flight-toggle`)).toBeNull()
   })
 
-  test.each([
-    { format: `glb`, label: `GLB` },
-    { format: `obj`, label: `OBJ` },
-  ] as const)(
-    `$label 3D export hands the scene to export_scene_as`,
-    async ({ format, label }) => {
+  test.each([`glb`, `obj`] as const)(
+    `%s 3D export hands the scene to export_scene_as`,
+    async (format) => {
       vi.mocked(export_scene_as).mockClear()
       mount_pane({ structure: simple_structure, scene: mock_scene })
-
-      const download_btn = get_button(`Download ${label}`)
+      const download_btn = get_button(`Download ${format.toUpperCase()}`)
       expect(download_btn.disabled).toBe(false)
-
       download_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
       await vi.waitFor(() =>
         expect(export_scene_as).toHaveBeenCalledWith(
@@ -351,17 +332,15 @@ describe(`StructureExportPane`, () => {
     expect(get_button(`Download OBJ`).disabled).toBe(true)
   })
 
-  test.each([
-    [false, `Export Structure`],
-    [true, ``],
-  ])(`toggle button title when export_pane_open=%s`, (export_pane_open, expected_title) => {
+  // oxfmt-ignore
+  test.each([[false, `Export Structure`], [true, ``]])(`toggle button title when export_pane_open=%s`, (export_pane_open, expected_title) => {
     mount_pane({ export_pane_open })
     expect(doc_query(`.structure-export-toggle`).title).toBe(expected_title)
   })
 
   const without_abc = simple_structure.sites.map(({ abc: _abc, ...site }) => site)
   const [first_site, ...other_sites] = simple_structure.sites
-  const cu_half = [{ element: `Cu` as const, occu: 0.5, oxidation_state: 0 }]
+  const cu_half = [{ element: `Cu` as const, occu: 0.5 }]
   // Each format's eligibility reason disables its download and copy buttons, shown in the
   // title and the aria-describedby hint; the other formats stay enabled
   // oxfmt-ignore
@@ -401,7 +380,6 @@ describe(`StructureExportPane`, () => {
       })
       const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
       mount_pane({ structure: simple_structure })
-
       expect(() => get_button(`${action} CIF`).click()).not.toThrow()
       expect(console_error_spy).toHaveBeenCalledWith(
         expect.stringContaining(
@@ -421,11 +399,9 @@ describe(`StructureExportPane`, () => {
       export_pane_open: false,
       toggle_props: { class: `custom-export-toggle` },
     })
-
     const pane = doc_query(`.export-pane`)
     expect(pane.classList.contains(`custom-export-pane`)).toBe(true)
     expect(pane.style.maxHeight).toBe(`400px`)
-
     const toggle = doc_query(`.structure-export-toggle`)
     expect(toggle.classList.contains(`custom-export-toggle`)).toBe(true)
   })
@@ -440,11 +416,9 @@ describe(`StructureExportPane`, () => {
       scene: mock_scene,
       ...props,
     })
-
     const png_btn = get_button(`PNG`)
     await vi.waitFor(() => expect(png_btn.disabled).toBe(false))
     png_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
     await vi.waitFor(() => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
         wrapper_div.querySelector(`canvas`),

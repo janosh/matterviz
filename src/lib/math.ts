@@ -17,8 +17,7 @@ export const grow_capacity = (capacity: number, required: number): number =>
 export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
   if (typeof values !== `object` || values === null) return false
   const array_like = values as ArrayLike<unknown>
-  // Number.isFinite does not coerce, so non-numbers fail too. Unrolled so per-site hot loops
-  // (trajectory/runs/memory.ts) allocate nothing.
+  // Number.isFinite does not coerce; unrolled so per-site hot loops allocate nothing
   return (
     array_like.length === 3 &&
     Number.isFinite(array_like[0]) &&
@@ -61,15 +60,13 @@ export type Matrix4Tuple = [
 
 // Generate all k-element combinations from an array.
 export function combinations<T>(arr: T[], order: number): T[][] {
-  // Neither base case catches a negative k (`arr.length < k` is false for one), so the
-  // recursion ran away into a stack overflow instead of reporting the caller's bad argument
+  // neither base case catches a negative k, which would recurse into a stack overflow
   if (!Number.isInteger(order) || order < 0) {
     throw new RangeError(`combinations needs a non-negative integer k, got ${order}`)
   }
   if (order === 0) return [[]]
   if (arr.length < order) return []
-  // Backtracking, same lexicographic order; 12x faster than the recursive spread/concat
-  // form, which allocated two arrays plus a spread per sub-combination per level (n=30 k=5).
+  // Backtracking in lexicographic order: 12x faster than recursive spread/concat (n=30 k=5)
   const out: T[][] = []
   const combo: T[] = Array.from({ length: order })
   const walk = (start: number, depth: number): void => {
@@ -137,9 +134,8 @@ export const assert_non_negative = (
 export const sorted_numbers = (values: Iterable<number>): number[] =>
   [...values].toSorted((val_a, val_b) => val_a - val_b)
 
-// Index of the value closest to `target` (ties go to the earlier index). Maps a hovered plot
-// position on a non-index axis (reaction coordinates, sampled frame numbers) back to its
-// nearest data point, where rounding would only be right if the axis were the index.
+// Index of the value closest to `target` (ties go to the earlier index), e.g. to map a hovered
+// position on a non-index axis (reaction coordinate, sampled frames) to its nearest data point
 export function nearest_value_idx(values: readonly number[], target: number): number {
   if (values.length === 0) throw new Error(`nearest_value_idx got an empty array`)
   return values.reduce(
@@ -164,9 +160,8 @@ export const partition_point = <Value>(
   return lower_idx
 }
 
-// Index of the first entry that is not strictly greater than its predecessor (a NaN fails
-// the comparison too), or null when the sequence increases strictly. Step axes, time axes
-// and sorted grids all need this check and the offending index for their error message.
+// Index of the first entry not strictly greater than its predecessor (NaN fails too), or null
+// when the sequence increases strictly
 export const first_non_increasing_index = (values: ArrayLike<number>): number | null => {
   for (let idx = 1; idx < values.length; idx++) {
     if (!(values[idx] > values[idx - 1])) return idx
@@ -190,25 +185,18 @@ export const same_values = <Value>(
 }
 
 // Calculate all lattice parameters in a single efficient pass
-export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
+export function compute_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix
   const [length_a, length_b, length_c] = matrix.map((vec) => Math.hypot(...vec))
   const volume = Math.abs(det_3x3(matrix))
 
-  // Convert to angles in degrees. Two ways this yields NaN without the guard: parallel
-  // vectors, where the dot product and the two hypot calls round differently and the
-  // ratio exceeds 1 (a_vec = b_vec = (1,1,1) gives 1.0000000000000002), and a zero-length
-  // vector giving 0/0 - which is exactly what 2D/slab/molecule parse paths produce. The
-  // NaN then propagates silently into every derived quantity. angle_between_vectors in
-  // measure.ts needs the same [-1, 1] clamp for the same reason.
-  //
-  // Its zero-length sentinel is 0, not 90, and the difference is deliberate: for bond
-  // vectors 0 means "no direction", but a slab reported as alpha = beta = 0 drives the
-  // triclinic volume radicand 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ to -1, so
-  // cell_to_lattice_matrix rejects the cell. 90 keeps it at 1 and round-trips.
+  // Clamped since parallel vectors can round the cosine past 1 ((1,1,1)·(1,1,1) gives
+  // 1.0000000000000002, acos NaN). Zero-length axes (2D/slab/molecule parses) get 90, not 0
+  // as in measure.ts: alpha = beta = 0 drives the triclinic radicand to -1 so
+  // cell_to_lattice_matrix would reject the cell, while 90 keeps it at 1 and round-trips.
   const safe_angle = (dot: number, len_1: number, len_2: number): number => {
     const denom = len_1 * len_2
-    if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
+    if (denom === 0) return 90
     return Math.acos(clamp(dot / denom, -1, 1)) * RAD_TO_DEG
   }
   const alpha = safe_angle(dot(b_vec, c_vec), length_b, length_c)
@@ -218,13 +206,15 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
   return { a: length_a, b: length_b, c: length_c, alpha, beta, gamma, volume }
 }
 
+// Vec3 inputs (the per-site/per-vertex case) take a literal instead of .map: same values,
+// 2.4-4.5x faster per call. Array.isArray keeps typed arrays on .map, which preserves their type.
 export const scale = <T extends number[]>(vec: T, factor: number): T =>
-  vec.map((component) => component * factor) as T
+  (vec.length === 3 && Array.isArray(vec)
+    ? [vec[0] * factor, vec[1] * factor, vec[2] * factor]
+    : vec.map((component) => component * factor)) as T
 
 export function euclidean_dist(vec1: readonly number[], vec2: readonly number[]): number {
-  if (vec1.length !== vec2.length) {
-    throw new Error(`Vectors must be of same length`)
-  }
+  if (vec1.length !== vec2.length) throw new Error(`Vectors must be of same length`)
   let sum_sq = 0
   for (let idx = 0; idx < vec1.length; idx++) {
     const delta = vec1[idx] - vec2[idx]
@@ -233,13 +223,10 @@ export function euclidean_dist(vec1: readonly number[], vec2: readonly number[])
   return Math.sqrt(sum_sq)
 }
 
-// Exact minimum-image displacement `to - from` for row-vector lattices. Rounded
-// fractional wrapping is only approximate for skewed cells, so it is the starting guess
-// and the integer shifts that reciprocal-space bounds say could still beat that Cartesian
-// radius are then searched (in the pbc-specific basis of LatticeConverters.search_basis,
-// which keeps that search a handful of candidates however sheared the cell is). Runs per
-// atom pair in RDF/MSD/bonding loops, so it works in scalars and allocates only the
-// returned Vec3.
+// Exact minimum-image displacement `target - from` for row-vector lattices. Rounded fractional
+// wrapping (only approximate for skewed cells) is the starting guess, then integer shifts that
+// reciprocal-space bounds say could beat it are searched in LatticeConverters.search_basis.
+// Runs per atom pair in RDF/MSD/bonding loops, so it works in scalars.
 export const min_image_displacement = (
   from: Vec3,
   target: Vec3,
@@ -272,9 +259,8 @@ export function min_image_displacement_into(
   const { lattice, reciprocal, reciprocal_axis_norms } = (
     converters ?? create_lattice_converters(lattice_matrix)
   ).search_basis(pbc)
-  // An exactly diagonal cell has independent axes: rounding each periodic fractional
-  // component already minimizes the Cartesian distance, including negative cell vectors.
-  // Avoid per-atom matrix products and candidate enumeration for ordinary MD boxes.
+  // Exactly diagonal cell (ordinary MD boxes): axes are independent, so rounding each periodic
+  // fractional component already minimizes the distance, no candidate search needed
   if (
     lattice[0][1] === 0 &&
     lattice[0][2] === 0 &&
@@ -372,8 +358,7 @@ export const pbc_dist = (
 ): number => Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
 
 export function det_3x3(matrix: Matrix3x3): number {
-  // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
-  // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
+  // cofactor expansion along the first row
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix
   return (
     m00 * (m11 * m22 - m12 * m21) -
@@ -382,12 +367,9 @@ export function det_3x3(matrix: Matrix3x3): number {
   )
 }
 
-// Inverse, or null when the rows are (numerically) linearly dependent. The test is
-// |det| relative to the product of row norms, i.e. the volume of the parallelepiped the
-// unit rows span, so it is scale-invariant: a lattice in nm or a reciprocal lattice of a
-// large supercell (entries ~1e-3) is just as invertible as one in Å. An absolute |det|
-// threshold would reject those while accepting a genuinely ill-conditioned cell with
-// large entries.
+// Inverse, or null when the rows are (numerically) linearly dependent. |det| is compared to
+// the product of row norms, so the test is scale-invariant: an absolute threshold would reject
+// small-entry lattices (nm units, large-supercell reciprocals) yet pass ill-conditioned big ones.
 const invert_3x3 = (matrix: Matrix3x3): Matrix3x3 | null => {
   const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix
   const det = det_3x3(matrix)
@@ -414,7 +396,7 @@ const invert_3x3 = (matrix: Matrix3x3): Matrix3x3 | null => {
   ]
 }
 
-export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
+export function inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   const inverse = invert_3x3(matrix)
   if (!inverse) {
     throw new Error(
@@ -424,15 +406,11 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   return inverse
 }
 
-// Pairwise (Lagrange–Gauss) size reduction of a lattice basis: subtract the nearest integer
-// multiple of one vector from another while that shortens it. Every step is unimodular, so
-// the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
-// bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
-// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the
-// radius-bounded G enumeration in compute_brillouin_zone grows as s⁴ (47 s at s = 3, out of
-// memory by s = 30). Also used by lattice_point_group_matrices, whose {-1,0,1} integer-matrix
-// search assumes a reduced basis. `rows` restricts the reduction to those rows (the periodic
-// ones of a slab or wire); the others are copied unchanged.
+// Pairwise (Lagrange–Gauss) size reduction: subtract the nearest integer multiple of one row
+// from another while that shortens it. Steps are unimodular (same lattice), and the ±1 shell
+// of the result bounds a near-true Wigner-Seitz cell: for a sheared basis the G enumeration of
+// compute_brillouin_zone otherwise grows as s⁴ (out of memory by shear s = 30), and the {-1,0,1}
+// search of lattice_point_group_matrices assumes it. `rows` restricts reduction to those rows.
 export function reduce_basis(
   basis: Matrix3x3,
   rows: readonly number[] = [0, 1, 2],
@@ -460,11 +438,7 @@ export function reduce_basis(
 }
 
 // Multiply a 3x3 matrix by a 3D vector
-export function mat3x3_vec3_multiply(
-  matrix: Matrix3x3,
-  vector: Vec3,
-  target: Vec3 = [0, 0, 0],
-): Vec3 {
+export function mul_3x3_vec3(matrix: Matrix3x3, vector: Vec3, target: Vec3 = [0, 0, 0]): Vec3 {
   const [row_a, row_b, row_c] = matrix
   const [coord_x, coord_y, coord_z] = vector
   target[0] = row_a[0] * coord_x + row_a[1] * coord_y + row_a[2] * coord_z
@@ -481,6 +455,16 @@ export function add<T extends number[]>(...vecs: T[]): T {
   if (vecs.some((vec) => vec.length !== length)) {
     throw new Error(`All vectors must have the same length`)
   }
+  // Vec3 fast path (see scale); sums start at 0 like the general loop, so -0 + -0 stays +0
+  if (length === 3) {
+    let [sum_x, sum_y, sum_z] = [0, 0, 0]
+    for (const vec of vecs) {
+      sum_x += vec[0]
+      sum_y += vec[1]
+      sum_z += vec[2]
+    }
+    return [sum_x, sum_y, sum_z] as T
+  }
 
   // oxlint-disable-next-line unicorn/no-new-array -- Allocate once without Array.from's element iteration.
   const result = new Array<number>(length).fill(0)
@@ -493,8 +477,10 @@ export function add<T extends number[]>(...vecs: T[]): T {
 }
 
 export function subtract<T extends number[]>(vec1: T, vec2: T): T {
-  if (vec1.length !== vec2.length) {
-    throw new Error(`Vectors must be of same length`)
+  if (vec1.length !== vec2.length) throw new Error(`Vectors must be of same length`)
+  // Vec3 fast path (see scale)
+  if (vec1.length === 3 && Array.isArray(vec1)) {
+    return [vec1[0] - vec2[0], vec1[1] - vec2[1], vec1[2] - vec2[2]] as T
   }
   return vec1.map((val, idx) => val - vec2[idx]) as T
 }
@@ -507,9 +493,7 @@ function validate_matrix(mat: number[][], name: string): number {
   }
   const cols = mat[0].length
   if (cols === 0) throw new Error(`${name} must have at least one column`)
-  if (!mat.every((row) => row.length === cols)) {
-    throw new Error(`${name} must be rectangular`)
-  }
+  if (!mat.every((row) => row.length === cols)) throw new Error(`${name} must be rectangular`)
   return cols
 }
 
@@ -530,9 +514,7 @@ export function dot(
   if (!vec1_is_matrix && !vec2_is_matrix) {
     const left_vec = vec1 as readonly number[]
     const right_vec = vec2 as readonly number[]
-    if (left_vec.length !== right_vec.length) {
-      throw new Error(`Vectors must be of same length`)
-    }
+    if (left_vec.length !== right_vec.length) throw new Error(`Vectors must be of same length`)
     let sum = 0
     for (let idx = 0; idx < left_vec.length; idx++) sum += left_vec[idx] * right_vec[idx]
     return sum
@@ -543,9 +525,7 @@ export function dot(
     const mat = vec1 as number[][]
     const vec = vec2 as readonly number[]
     const cols = validate_matrix(mat, `Matrix`)
-    if (cols !== vec.length) {
-      throw new Error(`Matrix columns must equal vector length`)
-    }
+    if (cols !== vec.length) throw new Error(`Matrix columns must equal vector length`)
     return mat.map((row) => dot(row, vec))
   }
 
@@ -570,15 +550,29 @@ export function dot(
   throw new Error(`Unsupported input types for dot product`)
 }
 
-// Convert flat 9-element array to 3x3 tensor (row-major order)
-export function vec9_to_mat3x3(flat_array: number[]): Matrix3x3 {
-  if (flat_array.length !== 9) {
-    throw new Error(`Expected 9-element array, got ${flat_array.length} elements`)
-  }
+const assert_flat_3x3 = (flat: readonly number[]): void => {
+  if (flat.length !== 9)
+    throw new Error(`Expected 9-element array, got ${flat.length} elements`)
+}
+
+// 3x3 matrix from a flat 9-element array in row-major order ([a00, a01, a02, a10, ...])
+export function mat3x3_from_flat_row_major(flat: readonly number[]): Matrix3x3 {
+  assert_flat_3x3(flat)
   return [
-    [flat_array[0], flat_array[1], flat_array[2]],
-    [flat_array[3], flat_array[4], flat_array[5]],
-    [flat_array[6], flat_array[7], flat_array[8]],
+    [flat[0], flat[1], flat[2]],
+    [flat[3], flat[4], flat[5]],
+    [flat[6], flat[7], flat[8]],
+  ]
+}
+
+// 3x3 matrix from a flat 9-element array in column-major order ([a00, a10, a20, a01, ...]),
+// how moyo-wasm serializes nalgebra matrices
+export function mat3x3_from_flat_col_major(flat: readonly number[]): Matrix3x3 {
+  assert_flat_3x3(flat)
+  return [
+    [flat[0], flat[3], flat[6]],
+    [flat[1], flat[4], flat[7]],
+    [flat[2], flat[5], flat[8]],
   ]
 }
 
@@ -587,7 +581,7 @@ export function vec9_to_mat3x3(flat_array: number[]): Matrix3x3 {
 export const IDENTITY_3X3: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 
 // Transpose a 3x3 matrix
-export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
+export const transpose_3x3 = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][0], matrix[1][0], matrix[2][0]],
   [matrix[0][1], matrix[1][1], matrix[2][1]],
   [matrix[0][2], matrix[1][2], matrix[2][2]],
@@ -607,33 +601,31 @@ export function reciprocal_lattice(
   options: { two_pi?: boolean } = {},
 ): Matrix3x3 {
   const factor = options.two_pi ? 2 * Math.PI : 1
-  const inverse_transposed = transpose_3x3_matrix(matrix_inverse_3x3(lattice))
+  const inverse_transposed = transpose_3x3(inverse_3x3(lattice))
   return inverse_transposed.map((row) => scale(row, factor)) as Matrix3x3
 }
 
 // Curried fractional→Cartesian converter: cart = frac · lattice (row-vector convention)
 export const create_frac_to_cart = (lattice: Matrix3x3) => {
-  const transposed = transpose_3x3_matrix(lattice)
-  return (frac: Vec3, target?: Vec3): Vec3 => mat3x3_vec3_multiply(transposed, frac, target)
+  const transposed = transpose_3x3(lattice)
+  return (frac: Vec3, target?: Vec3): Vec3 => mul_3x3_vec3(transposed, frac, target)
 }
 
 // Curried Cartesian→fractional converter: frac_i = b_i · cart with b_i the reciprocal rows
 export const create_cart_to_frac = (lattice: Matrix3x3) => {
   const reciprocal = reciprocal_lattice(lattice)
-  return (cart: Vec3, target?: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart, target)
+  return (cart: Vec3, target?: Vec3): Vec3 => mul_3x3_vec3(reciprocal, cart, target)
 }
 
 // A basis with its reciprocal (rows b_i with b_i · a_j = δ_ij) and the reciprocal row norms
 type LatticeBasis = { lattice: Matrix3x3; reciprocal: Matrix3x3; reciprocal_axis_norms: Vec3 }
 
-// Paired converters for a lattice, built once and reused across every site or frame.
-// The raw matrices are exposed for allocation-free scalar arithmetic in hot loops
-// (min_image_displacement); reciprocal_axis_norms[i] = |b_i| bounds how far a Cartesian
-// radius can reach along fractional axis i.
+// Paired converters for a lattice, built once and reused across every site or frame. Raw
+// matrices are exposed for scalar hot loops; reciprocal_axis_norms[i] = |b_i| bounds how far a
+// Cartesian radius reaches along fractional axis i.
 export type LatticeConverters = LatticeBasis & {
-  // The basis the minimum-image search under `pbc` runs in (see min_image_search_basis),
-  // built on first use per periodicity: a sheared basis's candidate box grows with the
-  // shear (and throws)
+  // Basis the minimum-image search under `pbc` runs in (see min_image_search_basis), built on
+  // first use per periodicity
   search_basis: (pbc: Pbc) => LatticeBasis
   cart_to_frac: (cart: Vec3) => Vec3
   frac_to_cart: (frac: Vec3) => Vec3
@@ -645,20 +637,16 @@ const lattice_basis = (lattice: Matrix3x3): LatticeBasis => {
   return { lattice, reciprocal, reciprocal_axis_norms }
 }
 
-// Images only ever shift along the periodic rows, so any basis whose periodic rows span the
-// same lattice gives the same minimum image. The periodic rows are Gauss-reduced among
-// themselves (unimodular), and each non-periodic row, which only expresses fractional
-// coordinates, is replaced by its component orthogonal to the periodic rows. That keeps the
-// periodic |b_i| (hence the candidate box) at their in-plane size: reducing only fully
-// periodic cells made a sheared slab ([[3,0,0],[200,3,0],[0,0,30]], z open) test 303756
-// candidates and throw.
+// Images only shift along periodic rows, so any basis whose periodic rows span the same lattice
+// gives the same minimum image: Gauss-reduce the periodic rows and replace each non-periodic row
+// by its component orthogonal to them. That keeps the candidate box small for sheared slabs
+// ([[3,0,0],[200,3,0],[0,0,30]] with z open otherwise tested 303756 candidates and threw).
 function min_image_search_basis(lattice: Matrix3x3, pbc: Pbc): Matrix3x3 {
   const periodic = [0, 1, 2].filter((axis) => pbc[axis])
   const basis = reduce_basis(lattice, periodic)
   if (periodic.length === 0 || periodic.length === 3) return basis
-  // project out the periodic row, or keep only the component along the two rows' normal.
-  // Rows already orthogonal stay bit-identical, so orthogonal boxes keep their exact
-  // diagonal fast path.
+  // project out the periodic row, or keep only the component along two rows' normal. Already
+  // orthogonal rows stay bit-identical so orthogonal boxes keep the diagonal fast path.
   const [first, second] = periodic.map((axis) => basis[axis])
   const normal = second ? cross_3d(first, second) : undefined
   for (const axis of [0, 1, 2]) {
@@ -682,7 +670,7 @@ export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters
       const mask = (pbc[0] ? 1 : 0) | (pbc[1] ? 2 : 0) | (pbc[2] ? 4 : 0)
       return (search_bases[mask] ??= lattice_basis(min_image_search_basis(lattice, pbc)))
     },
-    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(basis.reciprocal, cart),
+    cart_to_frac: (cart: Vec3): Vec3 => mul_3x3_vec3(basis.reciprocal, cart),
     frac_to_cart: create_frac_to_cart(lattice),
   }
 }
@@ -699,10 +687,8 @@ export function cell_to_lattice_matrix(
   // built only for the error messages: parsers call this once per frame or file
   const cell_desc = () =>
     `a=${len_a} b=${len_b} c=${len_c} alpha=${alpha} beta=${beta} gamma=${gamma}`
-  // A NaN parameter slips past both checks below (every comparison with it is false), a
-  // negative length mirrors its axis and an angle past [0°, 180°] (210° has the cosine of
-  // 150°) flips sin(gamma), so each silently corrupted every coordinate. Zero lengths and
-  // 0°/180° angles stay valid: calc_lattice_params reports 2D/slab/molecule cells that way.
+  // NaN, negative lengths and angles outside [0°, 180°] would silently corrupt coordinates.
+  // Zero lengths and 0°/180° stay valid: compute_lattice_params reports 2D/slab cells that way.
   if (
     ![len_a, len_b, len_c].every((len) => len >= 0 && Number.isFinite(len)) ||
     ![alpha, beta, gamma].every((angle) => angle >= 0 && angle <= 180)
@@ -711,20 +697,19 @@ export function cell_to_lattice_matrix(
       `Cell parameters need finite non-negative lengths and angles in [0°, 180°] (${cell_desc()})`,
     )
   }
-  const cos_alpha = Math.cos(alpha * DEG_TO_RAD)
-  const cos_beta = Math.cos(beta * DEG_TO_RAD)
-  const cos_gamma = Math.cos(gamma * DEG_TO_RAD)
-  const sin_gamma = Math.sin(gamma * DEG_TO_RAD)
+  // Exact right angles (Math.cos(π/2) is 6.1e-17): orthogonal cells must stay exactly diagonal
+  // to hit the 2.4x faster diagonal path of min_image_displacement_into
+  const cos_deg = (angle: number): number => (angle === 90 ? 0 : Math.cos(angle * DEG_TO_RAD))
+  const cos_alpha = cos_deg(alpha)
+  const cos_beta = cos_deg(beta)
+  const cos_gamma = cos_deg(gamma)
+  const sin_gamma = gamma === 90 ? 1 : Math.sin(gamma * DEG_TO_RAD)
 
-  // Triclinic volume factor. Fail fast, naming the cell: a negative radicand (angles that
-  // violate the triclinic inequality) or sin_gamma = 0 (gamma 0/180) would silently make
-  // every Cartesian coordinate NaN.
+  // Triclinic volume factor. A negative radicand or sin_gamma = 0 would make every coordinate
+  // NaN. sin_gamma is checked first (with a tolerance: Math.sin(Math.PI) is 1.22e-16) since at
+  // 180° the radicand is also negative and "collinear" is the more actionable diagnosis.
   const radicand =
     1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
-  // sin_gamma first: at gamma = 180° the radicand also lands (just) below zero, and
-  // "a and b are collinear" is the more actionable of the two diagnoses
-  // Tolerance, not === 0: Math.sin(Math.PI) is 1.22e-16, so gamma = 180° would slip past
-  // an exact test and surface as the less useful "not realizable" error below
   if (Math.abs(sin_gamma) < 1e-12) {
     throw new Error(
       `Cell has gamma=${gamma}° (${cell_desc()}), making the a and b axes collinear and the ` +
@@ -765,17 +750,15 @@ export function gcd(val_a: number, val_b: number): number {
 export const gcd_all = (values: number[]): number =>
   values.reduce((acc, val) => gcd(acc, val), 0)
 
-// Reduce Miller indices to the smallest equivalent integer triple, e.g. (2,2,0) →
-// (1,1,0). (0,0,0) picks out no plane, so it is returned unchanged instead of
-// dividing by zero. Signs are kept: (h,k,l) and (-h,-k,-l) are opposite surfaces.
+// Smallest equivalent integer triple, e.g. (2,2,0) → (1,1,0); (0,0,0) is returned unchanged.
+// Signs are kept: (h,k,l) and (-h,-k,-l) are opposite surfaces.
 export function reduce_miller_indices(hkl: Vec3): Vec3 {
   const divisor = gcd_all(hkl)
   if (divisor === 0) return [hkl[0], hkl[1], hkl[2]]
   return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
 }
 
-// Euclid and Lagrange reduction converge in a handful of steps; a cap turns a hypothetical
-// non-terminating case into a loud failure instead of a frozen tab.
+// Euclid/Lagrange reduction converge in a few steps; the cap fails loudly instead of hanging
 const MAX_REDUCTION_STEPS = 64
 
 // Unimodular integer U with U · vec = (1, 0, 0) for a primitive integer `vec`: row 0 is a dual
@@ -787,11 +770,7 @@ export function unimodular_completion(
   embed: (int_vec: Vec3) => Vec3 = (int_vec) => int_vec,
 ): Matrix3x3 {
   const working: Vec3 = [...vec]
-  const rows: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+  const rows = IDENTITY_3X3.map((row) => [...row]) as Matrix3x3
   // Repeatedly reduce every entry modulo the smallest non-zero one until one entry is left.
   // Scalar loops: symmetry classification runs this for every distinct rotation matrix.
   for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
@@ -817,11 +796,9 @@ export function unimodular_completion(
   }
   if (working[pivot] < 0) rows[pivot] = scale(rows[pivot], -1)
   let [short, long] = rows.filter((_, axis) => axis !== pivot)
-  // Hexagonal cells put dot/norm exactly on a ±1/2 tie that float error splits
-  // (-0.5000000000000001), so Math.round swung `long` between ±short until the step cap. Near-ties
-  // snap to the half-integer and equal lengths do not swap. 1e-9 is far above the ~1e-15 error
-  // of these few-term dot products and below the 1/(2·norm_short) distance from a half-integer
-  // that exact integer inputs keep (norms < 5e8), so those reduce bit-identically.
+  // Hexagonal cells put dot/norm on a ±1/2 tie that float error splits, swinging `long` between
+  // ±short until the step cap, so near-ties snap to the half-integer and equal lengths don't
+  // swap. 1e-9 >> ~1e-15 dot error, yet exact integer inputs (norms < 5e8) stay bit-identical.
   const tie_eps = 1e-9
   for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
     const [cart_short, cart_long] = [embed(short), embed(long)]
@@ -862,7 +839,7 @@ export function validate_miller_indices(hkl: Vec3): void {
 // G = h·b1 + k·b2 + l·b3, which with the rows b_i of transpose(inv(A)) is inv(A) · hkl. Not
 // normalized: |G| = 1 / d_hkl.
 export const miller_plane_normal = (lattice: Matrix3x3, hkl: Vec3): Vec3 =>
-  dot(matrix_inverse_3x3(lattice), hkl)
+  dot(inverse_3x3(lattice), hkl)
 
 // === Descriptive statistics ===
 // Plain loops, not reduce: these run over per-frame trajectory series and box-plot samples.
@@ -925,10 +902,9 @@ function det_4x4(matrix: Matrix4x4): number {
   )
 }
 
-// LU decomposition with partial pivoting on a working copy: L's factors land below the
-// diagonal, U on and above it, `perm` is the row order applied and `n_swaps` its parity.
-// Returns null when a pivot is <= EPS * largest |entry|, so a matrix and its scalar
-// multiples get the same singular/non-singular verdict.
+// LU decomposition with partial pivoting on a copy: L below the diagonal, U on and above it,
+// `perm` the row order, `n_swaps` its parity. null when a pivot is <= EPS * largest |entry|
+// (scale-invariant singularity verdict).
 const lu_decompose = (
   matrix: number[][],
 ): { lu: number[][]; perm: number[]; n_swaps: number } | null => {
@@ -967,17 +943,13 @@ const lu_decompose = (
   return { lu: lu_matrix, perm, n_swaps }
 }
 
-// Compute NxN determinant using LU decomposition with partial pivoting
-// More numerically stable than cofactor expansion for N > 4
-// Returns 0 for singular/near-singular matrices (pivot <= EPS * largest entry)
+// NxN determinant: closed forms up to 4x4, else LU with partial pivoting (0 when singular)
 export function det_nxn(matrix: number[][]): number {
   const mat_size = matrix.length
   if (mat_size === 0) return 1
   if (!matrix.every((row) => row.length === mat_size)) {
     throw new Error(`det_nxn requires a square matrix`)
   }
-
-  // Fast paths for small matrices
   if (mat_size === 1) return matrix[0][0]
   if (mat_size === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
   if (mat_size === 3) return det_3x3(matrix as Matrix3x3)
@@ -998,10 +970,8 @@ export const cross_3d = (vec1: ArrayLike<number>, vec2: ArrayLike<number>): Vec3
   vec1[0] * vec2[1] - vec1[1] * vec2[0],
 ]
 
-// Perpendicular distance between opposite cell faces per axis: volume / opposite-
-// face area. This (not the lattice vector length) is the correct denominator for
-// per-axis fractional reach in oblique cells. Degenerate (zero-volume) cells →
-// Infinity so callers' `dist / height` collapses to 0.
+// Perpendicular distance between opposite cell faces per axis (volume / face area), the right
+// denominator for fractional reach in oblique cells. Zero-volume cells → Infinity.
 export function cell_heights(matrix: Matrix3x3): Vec3 {
   const [a_vec, b_vec, c_vec] = matrix
   const cross_bc = cross_3d(b_vec, c_vec)
@@ -1041,6 +1011,10 @@ export function normalize_vec<T extends readonly number[]>(
   let sum_sq = 0
   for (const coord of vec) sum_sq += coord * coord
   const len = Math.sqrt(sum_sq)
+  // Vec3 fast path (see scale)
+  if (len >= EPS && vec.length === 3 && Array.isArray(vec)) {
+    return [vec[0] / len, vec[1] / len, vec[2] / len] as Normalized<T>
+  }
   const unit = len < EPS ? (fallback ?? vec.map(() => 0)) : vec.map((coord) => coord / len)
   return unit as Normalized<T>
 }
@@ -1110,10 +1084,8 @@ export function plane_polyhedron_section(
   return corners.toSorted((first, second) => angle(first) - angle(second))
 }
 
-// Merge coplanar adjacent triangles in a flat non-indexed position array.
-// Takes 9 floats per triangle (3 vertices x 3 coords), groups adjacent coplanar
-// triangles via union-find, then re-triangulates each group with fan triangulation
-// to eliminate internal diagonal edges.
+// Merge coplanar adjacent triangles in a flat non-indexed position array (9 floats per
+// triangle): union-find groups them, then each group is fan-triangulated to drop diagonals.
 export function merge_coplanar_triangles(
   positions: Float32Array,
   tolerance = 1e-4,
@@ -1162,9 +1134,7 @@ export function merge_coplanar_triangles(
   // === Step 2: Build adjacency via edge hash map ===
   // Quantize vertex to integer grid for hashing (only used for equality, not coords)
   const vert_key = (vert: Vec3): string =>
-    `${Math.round(vert[0] / tolerance)},${Math.round(vert[1] / tolerance)},${Math.round(
-      vert[2] / tolerance,
-    )}`
+    vert.map((coord) => Math.round(coord / tolerance)).join(`,`)
   const edge_key = (vert_a: Vec3, vert_b: Vec3): string => {
     const key_a = vert_key(vert_a)
     const key_b = vert_key(vert_b)
@@ -1297,11 +1267,8 @@ export function merge_coplanar_triangles(
       continue
     }
 
-    // Fan-triangulate from hull vertex 0. Reversed when canonicalizing the plane normal negated
-    // it: the 2D basis is built from the canonical normal, so convex_hull_2d winds CCW about
-    // that rather than about the face's real outward normal. On a closed mesh that is every
-    // face whose normal leads with a negative component - half a cube's - and their fans came
-    // out wound inward. DoubleSide rendering hid it; exported geometry kept the bad winding.
+    // Fan-triangulate from hull vertex 0, reversed when canonicalization flipped the normal:
+    // the hull winds CCW about the canonical normal, so those fans would otherwise face inward.
     const reverse = tri_planes[members[0]].canon_flipped
     for (let idx = 1; idx < hull_3d.length - 1; idx++) {
       if (reverse) emit_tri(hull_3d[0], hull_3d[idx + 1], hull_3d[idx])
@@ -1321,8 +1288,7 @@ export const is_square_matrix = (matrix: unknown, dim: number): matrix is number
 
 // === 2D geometry ===
 
-// Point-in-polygon test using ray casting algorithm
-// Returns true if point (x, y) is inside the polygon defined by vertices
+// Whether point (x, y) is inside the polygon (ray casting)
 export function point_in_polygon(
   point_x: number,
   point_y: number,
@@ -1372,9 +1338,8 @@ export function compute_bounding_box_2d(vertices: readonly Vec2[]): {
   return { min: [min_x, min_y], max: [max_x, max_y], width, height }
 }
 
-// Calculate true geometric centroid of a polygon using shoelace formula
-// Falls back to vertex average for < 3 vertices or zero area relative to the bounding box
-// (an absolute cutoff called every polygon under 1e-5 wide degenerate)
+// Polygon centroid via the shoelace formula; vertex average for < 3 vertices or zero area
+// relative to the bounding box (an absolute cutoff misjudged polygons under 1e-5 wide)
 export function polygon_centroid(vertices: readonly Vec2[]): Vec2 {
   if (vertices.length === 0) return [0, 0]
   const vertex_average = (): Vec2 => [
@@ -1430,10 +1395,8 @@ function polygon_span(vertices: readonly Vec2[], point: Vec2, axis: 0 | 1): Vec2
   return widest
 }
 
-// A point inside a polygon, for labels and probes: the middle of the horizontal span through
-// its centroid (the span holding the centroid, else the widest one, for concave shapes), with
-// the polygon's width and height through that point. null for degenerate (zero-area relative
-// to their bounding box) polygons.
+// Label point inside a polygon: middle of the horizontal span through its centroid (see
+// polygon_span), with the polygon's width and height through that point. null if degenerate.
 export function polygon_label_point(
   vertices: readonly Vec2[],
 ): { at: Vec2; width: number; height: number } | null {
@@ -1448,12 +1411,9 @@ export function polygon_label_point(
   return { at, width: row[1] - row[0], height: col ? col[1] - col[0] : 0 }
 }
 
-// Solve the linear system `coefficients · x = rhs` via LU decomposition with partial
-// pivoting. Returns null if the system is singular (no unique solution). Singularity is
-// judged relative to the largest coefficient so scaling the system does not change the
-// verdict. Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse). A non-finite
-// coefficient or rhs entry also gives null, on every path: Cramer and LU (whose pivot test
-// every NaN comparison fails) returned all-NaN "solutions" where the 3x3 inverse said null.
+// Solve `coefficients · x = rhs` (Cramer for 2x2, inverse for 3x3, else LU with partial
+// pivoting). null when singular relative to the coefficient scale, or for any non-finite
+// input (Cramer and LU would otherwise return all-NaN "solutions").
 export function solve_linear_system(
   coefficients: number[][], // NxN coefficient matrix
   rhs: number[], // N-element right-hand side
@@ -1479,7 +1439,7 @@ export function solve_linear_system(
   // 3x3 fast path via matrix inverse
   if (size === 3) {
     const inverse = invert_3x3(coefficients as Matrix3x3)
-    return inverse && mat3x3_vec3_multiply(inverse, rhs as Vec3)
+    return inverse && mul_3x3_vec3(inverse, rhs as Vec3)
   }
 
   // General NxN: LU decomposition with partial pivoting + forward/back substitution
@@ -1526,8 +1486,7 @@ const monotone_chain = (sorted: Vec2[], tolerance = 0): Vec2[] => {
   return chain
 }
 
-// Full 2D convex hull via Andrew's monotone chain algorithm.
-// Returns vertices in counter-clockwise order.
+// 2D convex hull via Andrew's monotone chain, counter-clockwise
 export function convex_hull_2d(points: Vec2[], tolerance = 0): Vec2[] {
   if (points.length < 3) return [...points]
 
@@ -1561,11 +1520,7 @@ export function array_extent(values: readonly number[]): Vec2 {
 }
 
 // Quantile + selection helpers. quickselect partially sorts in place, so quantile_unordered
-// mutates its input.
-//
-// Unguarded contract: both assume values.length > 0 and 0 <= p <= 1. Out-of-range inputs
-// index past the array and yield undefined/NaN, so callers must length- and p-range-check.
-
+// mutates its input. Unguarded: callers must ensure values.length > 0 and 0 <= p <= 1.
 export function quickselect(values: number[], kth: number): number {
   let left = 0
   let right = values.length - 1
@@ -1646,14 +1601,10 @@ export function solve_linear_program(
     return { status: `optimal`, solution: zeros(), objective: 0 }
   }
 
-  // Tableau columns: [original (n_cols) | artificial (n_rows) | rhs]. Rows flipped so b >= 0.
-  // Each row is also divided by its largest coefficient, which leaves the feasible set alone
-  // (scaling an equality by a positive constant is the same constraint) and puts every row on
-  // the same order of magnitude. `tolerance` is applied as an absolute cutoff in the ratio test
-  // and the linear-dependence check below, so without this a small but perfectly good pivot was
-  // read as zero: `s*x0 + s*x1 = s` reported `unbounded` from s = 1e-9 down, and a two-row
-  // problem whose second row carried 1e-10 coefficients had that row dropped as dependent and
-  // returned a confidently wrong optimum.
+  // Tableau columns: [original (n_cols) | artificial (n_rows) | rhs]. Rows flipped so b >= 0
+  // and divided by their largest coefficient (same constraint): `tolerance` is an absolute
+  // cutoff in the ratio test and dependence check, so unscaled tiny rows were read as zero
+  // (`s*x0 + s*x1 = s` was `unbounded` for s <= 1e-9, 1e-10 rows were dropped as dependent).
   const n_art = n_rows
   const rhs_col = n_cols + n_art
   const tableau = constraints.map((row, row_idx) => {

@@ -12,7 +12,7 @@
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
   import { memo_by_identity } from '#lib/utils.js'
-  import { calc_coordination_nums, coordination_bar_sites } from './calc-coordination'
+  import { compute_coordination_nums, coordination_bar_sites } from './compute-coordination'
   import type { CoordinationSplitMode } from './index'
 
   // Series identity travels as string metadata, which StructureBarPlot turns into the tooltip
@@ -55,13 +55,13 @@
   // boundary-atom coordination matches it. A structure the neighbor search rejects is
   // reported through error_msg rather than crashing the plot. The search is memoized per
   // structure object, so one more dropped file searches that file alone.
-  const coordination_of = memo_by_identity<ReturnType<typeof calc_coordination_nums>>()
+  const coordination_of = memo_by_identity<ReturnType<typeof compute_coordination_nums>>()
   const computed = $derived(
     compute_structure_entries(
       [...to_structure_entries(structures), ...dropped_entries],
       (structure) =>
         coordination_of(structure, strategy, () =>
-          calc_coordination_nums(structure, { strategy }),
+          compute_coordination_nums(structure, { strategy }),
         ),
     ),
   )

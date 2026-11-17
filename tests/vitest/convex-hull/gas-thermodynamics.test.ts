@@ -6,7 +6,7 @@ import {
   compute_gas_chemical_potential,
   compute_element_mu_shift,
   compute_gas_correction,
-  DEFAULT_ELEMENT_TO_GAS,
+  ELEMENTAL_GASES,
   format_chemical_potential,
   GAS_STOICHIOMETRY,
   gas_pressure_term,
@@ -18,18 +18,21 @@ import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
 import { compute_hull_model } from '#lib/convex-hull/model.js'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/index.js'
 import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy.js'
 import { describe, expect, test } from 'vite-plus/test'
-import { make_phase } from '../test-fixtures'
+import { load_json, make_phase } from '../test-fixtures'
+import { process_hull_entries } from '#lib/convex-hull/thermodynamics.js'
+import { compute_section, prepare_diagram } from '#lib/phase-diagram/ternary/compute.js'
+import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 
 const provider = get_default_gas_provider()
 
 // a typo in the stoichiometry/gas-mapping tables silently skews all corrections, so each row
 // must match its gas's own formula
-test(`GAS_STOICHIOMETRY and DEFAULT_ELEMENT_TO_GAS hold the standard gas data`, () => {
+test(`GAS_STOICHIOMETRY and ELEMENTAL_GASES hold the standard gas data`, () => {
   for (const gas of GAS_SPECIES) expect(GAS_STOICHIOMETRY[gas]).toEqual(parse_formula(gas))
-  expect(DEFAULT_ELEMENT_TO_GAS).toEqual({ O: `O2`, N: `N2`, H: `H2`, F: `F2`, C: `CO2` })
+  // only one-element gases set an element's chemical potential (no C: CO2 is a phase)
+  expect(ELEMENTAL_GASES).toEqual({ O: `O2`, N: `N2`, H: `H2`, F: `F2` })
 })
 
 describe(`gas-thermodynamics: default provider`, () => {
@@ -116,41 +119,30 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
 })
 
 describe(`gas-thermodynamics: analyze_gas_data`, () => {
-  // oxfmt-ignore
-  test.each([
-    [`no enabled gases`, { Fe: 1, O: 2 }, {}, [], []],
-    [`O from enabled O2`, { Fe: 2, O: 3 }, { enabled_gases: [`O2`] }, [`O`], [`O2`]],
+  // a gas acts on a system when all of its elements are present (CO2 needs C and O)
+  test.each<[string, Record<string, number>, GasThermodynamicsConfig, GasSpecies[]]>([
+    [`no enabled gases`, { Fe: 1, O: 2 }, {}, []],
+    [`O from enabled O2`, { Fe: 2, O: 3 }, { enabled_gases: [`O2`] }, [`O2`]],
+    [`multiple gases`, { Fe: 1, O: 1, N: 1 }, { enabled_gases: [`O2`, `N2`] }, [`O2`, `N2`]],
     [
-      `multiple gas elements`,
-      { Fe: 1, O: 1, N: 1 },
-      { enabled_gases: [`O2`, `N2`] },
-      [`O`, `N`],
-      [`O2`, `N2`],
+      `elements not from enabled gases ignored`,
+      { Fe: 1, O: 1 },
+      { enabled_gases: [`N2`] },
+      [],
     ],
-    [`elements not from enabled gases ignored`, { Fe: 1, O: 1 }, { enabled_gases: [`N2`] }, [], []],
+    [`CO2 without C`, { Ca: 1, O: 1 }, { enabled_gases: [`O2`, `CO2`] }, [`O2`]],
     [
-      `custom element_to_gas mapping (Xe from O2)`,
-      { Fe: 1, Xe: 1 },
-      { enabled_gases: [`O2`], element_to_gas: { Xe: `O2` } },
-      [`Xe`],
-      [`O2`],
+      `CO2 with C and O`,
+      { Ca: 1, C: 1, O: 3 },
+      { enabled_gases: [`CO2`, `O2`] },
+      [`CO2`, `O2`],
     ],
-    [
-      `three gas elements in a quaternary`,
-      { Fe: 0.5, O: 0.25, N: 0.25, H: 0.1 },
-      { enabled_gases: [`O2`, `N2`, `H2`] },
-      [`O`, `N`, `H`],
-      [`O2`, `N2`, `H2`],
-    ],
-  ] as [string, Record<string, number>, GasThermodynamicsConfig, string[], GasSpecies[]][])(
-    `%s`,
-    (_label, composition, config, gas_elements, relevant_gases) => {
-      const result = analyze_gas_data([make_phase(composition)], config)
-      expect(result.has_gas_dependent_elements).toBe(gas_elements.length > 0)
-      expect(result.gas_elements.toSorted()).toEqual(gas_elements.toSorted())
-      expect(result.relevant_gases.toSorted()).toEqual(relevant_gases.toSorted())
-    },
-  )
+    [`H2O without O`, { Li: 1, H: 1 }, { enabled_gases: [`H2O`, `H2`] }, [`H2`]],
+  ])(`%s`, (_label, composition, config, relevant_gases) => {
+    expect(analyze_gas_data([make_phase(composition)], config).relevant_gases).toEqual(
+      relevant_gases,
+    )
+  })
 })
 
 describe(`gas-thermodynamics: get_effective_pressures`, () => {
@@ -269,6 +261,24 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
         [-3, 2 / 3],
       ],
     ],
+    // the gas element itself has no unary entry: its reference is the hull's E_form = 0
+    // corner, which moves all the same (the atmosphere was silently ignored: FeO stayed at -1.5)
+    [
+      `no O reference`,
+      [fe_ref, e_form_only({ Fe: 1, O: 1 }, -1.5), e_form_only({ Fe: 2, O: 3 }, -1.7)],
+      [
+        [-1.5, 0.5],
+        [-1.7, 0.6],
+      ],
+    ],
+    [
+      `no reference entries at all`,
+      [e_form_only({ Fe: 1, O: 1 }, -1.5), e_form_only({ Fe: 2, O: 3 }, -1.7)],
+      [
+        [-1.5, 0.5],
+        [-1.7, 0.6],
+      ],
+    ],
   ])(`E_form-only entries shift by the gas term (%s)`, (_desc, entries, expected) => {
     const config: GasThermodynamicsConfig = { enabled_gases: [`O2`], pressures: { O2: 1 } }
     const pressures = get_effective_pressures(config)
@@ -380,43 +390,114 @@ test(`a tabulated O2 reference only gets the pressure term, matching the ternary
   expect(ternary.phases[2].dg_form(temperature)).toBeCloseTo(expected_dg, 12)
 })
 
-describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
-  const setup = (config: GasThermodynamicsConfig, temperature: number) => {
-    const pressures = get_effective_pressures(config)
-    const shift = (element: string) =>
-      compute_element_mu_shift(element as ElementSymbol, config, temperature, pressures)
-    // Δμ of a whole molecule at (T, P) relative to (0 K, 1 bar)
-    const molecule_shift = (gas: GasSpecies) =>
-      (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
-        provider.get_standard_chemical_potential(gas, 0)) *
-      Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
-    return { shift, molecule_shift }
-  }
+// Compound gases used to shift C as a "CO2 reservoir" by the CO2 molecule's (T, p) shift minus
+// 2 Δμ_O, which dropped CO2's formation enthalpy: CaCO3 stayed on the Ca-C-O hull in air at
+// every temperature while synthesis planning decomposed it from 800 K. A compound gas is now a
+// hull phase at μ(T, p), as in synthesis planning, and no solid element moves.
+describe(`gas-thermodynamics: compound gases are hull phases`, () => {
+  const pressures = { O2: 0.21, CO2: 4e-4 }
+  const config: GasThermodynamicsConfig = { enabled_gases: [`O2`, `CO2`], pressures }
 
-  // A gas fixes only the stoichiometric sum of its elements' shifts (Δμ_C + 2 Δμ_O = Δμ(CO2)):
-  // a partner pinned by its own reservoir (O by O2) leaves the element the remainder
-  test.each<[GasSpecies[], GasThermodynamicsConfig[`element_to_gas`], number]>([
-    [[`O2`, `CO2`], {}, 1000],
-    [[`CO2`], {}, 1000],
-    [[`O2`, `H2O`], { H: `H2O` }, 800],
-  ])(`sum rule holds for %o (%o) at %d K`, (enabled_gases, element_to_gas, temperature) => {
-    const { shift, molecule_shift } = setup({ enabled_gases, element_to_gas }, temperature)
-    for (const gas of enabled_gases) {
-      const sum = Object.entries(GAS_STOICHIOMETRY[gas]).reduce(
-        (acc, [element, count]) => acc + count * shift(element),
-        0,
-      )
-      expect(sum).toBeCloseTo(molecule_shift(gas), 12)
+  test(`a CO2 phase at mu(T, p) replaces CO2 entries and graphite stays put`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ C: 1 }, -9.2, { entry_id: `C` }),
+      make_phase({ O: 2 }, -4.9, { entry_id: `O2` }),
+      make_phase({ Ca: 1 }, -2, { entry_id: `Ca` }),
+      make_phase({ C: 2, O: 4 }, -8, {
+        entry_id: `CO2 solid`,
+        e_above_hull: 0,
+        is_stable: true,
+      }),
+      make_phase({ Ca: 1, C: 1, O: 3 }, -7, { entry_id: `CaCO3` }),
+    ]
+    const temperature = 1000
+    const corrected = apply_gas_corrections(entries, config, temperature)
+    const by_id = (entry_id: string) => corrected.find((entry) => entry.entry_id === entry_id)
+    const effective = get_effective_pressures(config)
+    const delta_mu_o = compute_element_mu_shift(`O`, config, temperature, effective)
+    expect(compute_element_mu_shift(`C`, config, temperature, effective)).toBe(0)
+    expect(by_id(`C`)?.energy_per_atom).toBe(-9.2)
+    expect(by_id(`O2`)?.energy_per_atom).toBeCloseTo(-4.9 + delta_mu_o, 12)
+    expect(by_id(`CO2 solid`)).toMatchObject({
+      exclude_from_hull: true,
+      e_above_hull: undefined,
+      is_stable: undefined,
+    })
+    const mu_co2 = compute_gas_chemical_potential(provider, `CO2`, temperature, 4e-4)
+    const gas = by_id(`gas:CO2`)
+    expect(gas).toMatchObject({ gas: `CO2`, composition: { C: 1, O: 2 } })
+    // on the 0 K references' energy scale, its E_form re-referenced to the moved O level
+    expect(gas?.energy_per_atom).toBeCloseTo(mu_co2 + (-9.2 + 2 * -4.9) / 3, 12)
+    const e_form = mu_co2 - (2 / 3) * delta_mu_o
+    expect(gas?.e_form_per_atom).toBeCloseTo(e_form, 12)
+    // E_form recomputed from the absolute energies lands on the same value
+    const model = compute_hull_model(corrected, { energy_source_mode: `on-the-fly` })
+    const gas_vertex = model.entries.find((entry) => entry.entry_id === `gas:CO2`)
+    expect(gas_vertex?.e_form_per_atom).toBeCloseTo(e_form, 12)
+  })
+
+  // with no elemental gas nothing shifts, yet the new phase reshapes the hull: precomputed hull
+  // distances (kept in precomputed mode) went stale and CaCO3 read 0 at 2000 K in 1 bar CO2
+  test(`a compound gas drops every cached hull distance`, () => {
+    const entries: PhaseData[] = [
+      { composition: { Ca: 1, C: 2 }, energy: 0, e_form_per_atom: -0.1, e_above_hull: 0.05 },
+      {
+        composition: { Ca: 1, C: 1, O: 3 },
+        energy: 0,
+        e_form_per_atom: -2.7,
+        is_stable: true,
+      },
+    ]
+    const corrected = apply_gas_corrections(entries, { enabled_gases: [`CO2`] }, 2000)
+    for (const entry of corrected.slice(0, 2)) {
+      expect(entry).toMatchObject({ e_above_hull: undefined, is_stable: undefined })
     }
+    expect(corrected.map(({ e_form_per_atom }) => e_form_per_atom)).toEqual([
+      -0.1,
+      -2.7,
+      compute_gas_chemical_potential(provider, `CO2`, 2000, DEFAULT_GAS_PRESSURES.CO2),
+    ])
   })
 
-  test.each([
-    [`C`, { O: `CO2`, C: `CO2` }, /depend on each other/],
-    [`N`, { N: `O2` }, /maps N to O2, which has no N/],
-  ] as const)(`%s: rejects element_to_gas %o`, (element, element_to_gas, message) => {
-    const { shift } = setup({ enabled_gases: [`O2`, `CO2`], element_to_gas }, 1000)
-    expect(() => shift(element)).toThrow(message)
+  // Hull, ternary T-x model and synthesis planner treat the gases alike: CaCO3 in air is stable
+  // at 300 K and decomposes to CaO + CO2 by 1000 K. Measured agreement is <= 2.4e-15 eV/atom
+  // over every entry (f64 round-off on ~3 eV energies), so 12 digits leave a wide margin.
+  const ca_c_o = load_json<PhaseData[]>(`src/site/phase-diagrams/ternary/Ca-C-O.json.gz`)
+  const is_caco3 = ({ Ca = 0, C = 0, O = 0, ...rest }: Partial<Record<string, number>>) =>
+    Ca > 0 && C === Ca && O === 3 * Ca && Object.keys(rest).length === 0
+  const ternary = prepare_diagram(ca_c_o, {
+    free_energy: { mode: `static`, gas_config: config },
   })
+  test.each([
+    [300, 0, true],
+    [1000, 0.2034, false],
+  ])(
+    `CaCO3 in air at %d K: %f eV/atom above the hull everywhere`,
+    (temperature, e_hull, stable) => {
+      const { entries } = process_hull_entries(ca_c_o)
+      const model = compute_hull_model(apply_gas_corrections(entries, config, temperature))
+      const hull = Math.min(
+        ...model.entries
+          .filter((entry) => is_caco3(entry.composition))
+          .map((entry) => entry.e_above_hull ?? NaN),
+      )
+      expect(hull).toBeCloseTo(e_hull, 4)
+      const plan = plan_synthesis({
+        entries: ca_c_o,
+        target: `CaCO3`,
+        conditions: { temperature, open_species: [`O2`, `CO2`], partial_pressures: pressures },
+      })
+      expect(plan.target_stability).toMatchObject({ is_stable: stable })
+      expect(plan.target_stability.e_above_hull).toBeCloseTo(hull, 12)
+      const section = compute_section(ternary, temperature)
+      const ternary_hull = Math.min(
+        ...ternary.phases
+          .filter((phase) => is_caco3(phase.entry.composition))
+          .map((phase) => section.e_above_hull[phase.idx]),
+      )
+      expect(ternary_hull).toBeCloseTo(hull, 12)
+    },
+  )
 })
 
 describe(`gas-thermodynamics: formatting`, () => {

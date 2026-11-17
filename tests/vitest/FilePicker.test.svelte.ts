@@ -1,5 +1,5 @@
 import FilePicker from '#lib/FilePicker.svelte'
-import type { FileInfo } from '#lib'
+import type { FileInfo } from '#lib/io/index.js'
 import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-paint.js'
 import { color as d3_color } from 'd3-color'
 import { flushSync, mount, unmount } from 'svelte'

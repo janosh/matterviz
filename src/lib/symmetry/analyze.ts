@@ -9,7 +9,7 @@ import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
-import { is_identity, mat3_from_flat_col_major } from './symmetry-elements'
+import { is_identity } from './symmetry-elements'
 import type {
   InitInput,
   MoyoCell,
@@ -244,7 +244,7 @@ export function count_symmetry_op_kinds(
   for (const { rotation, translation } of operations) {
     const has_translation = translation.some((coord) => Math.abs(coord) > 1e-10)
     if (!has_translation) counts.rotations++
-    else if (is_identity(mat3_from_flat_col_major(rotation))) counts.translations++
+    else if (is_identity(math.mat3x3_from_flat_col_major(rotation))) counts.translations++
     else counts.roto_translations++
   }
   return counts
@@ -258,7 +258,7 @@ export function point_group_rotations(
 ): math.Matrix3x3[] {
   const by_key = new Map<string, math.Matrix3x3>()
   for (const { rotation } of operations)
-    by_key.set(rotation.join(`,`), mat3_from_flat_col_major(rotation))
+    by_key.set(rotation.join(`,`), math.mat3x3_from_flat_col_major(rotation))
   return [...by_key.values()]
 }
 
@@ -309,7 +309,7 @@ export const transform_cell = (
     cell_type
   ]
   if (!cell) throw new Error(`Unknown cell_type "${cell_type}"`)
-  const matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
+  const matrix = math.mat3x3_from_flat_row_major([...cell.lattice.basis])
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const sites = cell.positions.map((abc, idx) => {
     const element = element_from_atomic_number(cell.numbers[idx])
@@ -322,7 +322,7 @@ export const transform_cell = (
   const { bonds: _bonds, ...properties } = all_properties ?? {}
   const n_input = sym_data.input_cell.positions.length
   return {
-    lattice: { matrix, pbc: lattice.pbc, ...math.calc_lattice_params(matrix) },
+    lattice: { matrix, pbc: lattice.pbc, ...math.compute_lattice_params(matrix) },
     sites,
     charge: charge && (charge * cell.positions.length) / n_input,
     id,

@@ -3,8 +3,8 @@
 import { display_idx } from '#lib/labels.js'
 import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
-import { calc_lattice_params, det_3x3, is_pbc, is_valid_index } from '#lib/math.js'
-import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { compute_lattice_params, det_3x3, is_pbc, is_valid_index } from '#lib/math.js'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import {
   ATOM_BATCH_SIZE,
   atom_batch_masses,
@@ -151,7 +151,7 @@ export const parse_md_h5_file = (
     throw new Error(`${FORMAT} region/period IDs must be nonnegative integers`)
   const cell_values = read_static(`cell`, [3, 3])
   // Cell lattice vectors are stored as rows.
-  const cell = matrix3x3_from_rows(
+  const cell = mat3x3_from_rows(
     [
       Array.from(cell_values.slice(0, 3)),
       Array.from(cell_values.slice(3, 6)),
@@ -166,7 +166,7 @@ export const parse_md_h5_file = (
   if (!is_pbc(raw_pbc))
     throw new Error(`${FORMAT} requires three boolean periodic boundary flags`)
   const pbc: [boolean, boolean, boolean] = [...raw_pbc]
-  const volume = calc_lattice_params(cell).volume
+  const volume = compute_lattice_params(cell).volume
   const metadata_text = string_value(attr(file, `metadata_json`))
   const producer: unknown = metadata_text ? JSON.parse(metadata_text) : null
   if (!producer || typeof producer !== `object` || Array.isArray(producer))

@@ -211,23 +211,20 @@ describe(`Isosurface`, () => {
     [0.3, true, [blue, blue, red, red]],
     [-0.3, true, [blue, blue, red, red]],
     [-0.3, false, [blue, blue]],
-  ])(
-    `lobe colours for isovalue %s with show_negative=%s`,
-    async (isovalue, show_negative, expected_colors) => {
-      mount_isosurface({
-        volumes: [signed_volume()],
-        settings: with_layers([layer(isovalue, { show_negative })]),
-      })
-      await settle()
-      const x_of = (idx: number) => geometry_of(meshes()[idx]).getAttribute(`position`).getX(0)
-      // ordered by x: the positive blob sits at grid (3,3,3), the negative one at (7,7,7), and
-      // both passes of a lobe share its colour
-      const colors = [...meshes().keys()]
-        .toSorted((idx_a, idx_b) => x_of(idx_a) - x_of(idx_b))
-        .map((idx) => materials()[idx].props.color)
-      expect(colors).toEqual(expected_colors)
-    },
-  )
+  ])(`lobes at %s, show_negative=%s`, async (isovalue, show_negative, expected_colors) => {
+    mount_isosurface({
+      volumes: [signed_volume()],
+      settings: with_layers([layer(isovalue, { show_negative })]),
+    })
+    await settle()
+    const x_of = (idx: number) => geometry_of(meshes()[idx]).getAttribute(`position`).getX(0)
+    // ordered by x: the positive blob sits at grid (3,3,3), the negative one at (7,7,7), and
+    // both passes of a lobe share its colour
+    const colors = [...meshes().keys()]
+      .toSorted((idx_a, idx_b) => x_of(idx_a) - x_of(idx_b))
+      .map((idx) => materials()[idx].props.color)
+    expect(colors).toEqual(expected_colors)
+  })
 
   test(`layers skip missing volume IDs without retargeting`, async () => {
     const base = layer(0.3, { color: `#112233`, opacity: 1 })

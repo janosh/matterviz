@@ -52,6 +52,24 @@ export const convert_atomic_numbers = (numbers: ArrayLike<number>): ElementSymbo
 export const elem_symbol_from_token = (token: string): ElementSymbol | undefined =>
   coerce_elem_symbol(token) ?? coerce_elem_symbol(capitalize_symbol(token))
 
+// Element of a CIF/CP2K/GROMACS species label (`O1`, `Fe_hs`, `Fe2+`, `OW`): its leading two
+// letters (`Co1` -> Co, `Cl2` -> Cl), else one (`OW1` -> O); a third letter means none (`Type1`)
+export const element_from_species_label = (token: string): ElementSymbol | undefined => {
+  const letters = /^[A-Za-z]{1,2}(?![A-Za-z])/.exec(token)?.[0]
+  if (!letters) return undefined
+  return (
+    (letters.length === 2 ? coerce_elem_symbol(capitalize_symbol(letters)) : undefined) ??
+    coerce_elem_symbol(letters[0].toUpperCase())
+  )
+}
+
+// Species tokens the XYZ frame walk accepts: a symbol or LAMMPS type (<= 3 chars), or a label
+// of <= 8 chars starting with a letter (`O_water`, `Fe_hs`)
+const is_species_token = (scanner: LineScanner, col: number): boolean => {
+  const length = scanner.token_length(col)
+  return length <= 3 || (length <= 8 && /^[A-Za-z]/.test(scanner.str(col)))
+}
+
 // "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl] (XDATCAR header, vaspout/vaspwave ion_types)
 // `available` bounds the declared total against how many ion records the input can hold: a
 // 113-byte XDATCAR declaring 2e8 ions allocated 1551 MB before throwing a bare RangeError
@@ -192,6 +210,15 @@ export const create_plot_row_frame = (
   return frame
 }
 
+// Site labels a file wrote in place of symbols (`O1`, `Fe_hs`), over the default `O1`-style ones
+export const label_sites = (
+  { structure }: TrajectoryFrame,
+  labels: readonly (string | undefined)[],
+): void => {
+  for (const [idx, label] of labels.entries())
+    if (label !== undefined) structure.sites[idx].label = label
+}
+
 // Atom stride of a sampled preview, so it renders at most ~2000 of a huge frame's atoms
 export const preview_atom_stride = (n_atoms: number): number => Math.ceil(n_atoms / 2000)
 
@@ -233,7 +260,7 @@ export const position_stream_transferables = (
   return [...buffers]
 }
 
-export function calc_force_stats(
+export function compute_force_stats(
   forces: number[][],
 ): { force_max: number; force_norm: number } | null {
   if (forces.length === 0) return null
@@ -472,14 +499,14 @@ export function decode_finite_frames<Frame>(
   return frames
 }
 
-// Whether the scanned line reads `symbol x y z`: a symbol (<= 3 chars, non-numeric) followed by
+// Whether the scanned line reads `symbol x y z`: a species (is_species_token, non-numeric) then
 // three finite coordinates (an `Infinity` line, like a `nan` one, forms no frame). Coordinates
 // go through the same strict parser as the frame reader so a Fortran `1.0D-3` token counts.
 // With `atom_types`, a positive integer stands in for the symbol: LAMMPS `dump xyz` writes
 // atom types there unless dump_modify element names them.
 const is_scanned_xyz_atom_line = (scanner: LineScanner, atom_types = false): boolean =>
   scanner.count >= 4 &&
-  scanner.token_length(0) <= 3 &&
+  is_species_token(scanner, 0) &&
   (Number.isNaN(scanner.num(0)) ||
     (atom_types && Number.isInteger(scanner.num(0)) && scanner.num(0) > 0)) &&
   Number.isFinite(scanner.num(1)) &&
@@ -588,7 +615,7 @@ function make_xyz_atom_line_test(comment: string): (scanner: LineScanner) => boo
     if (scanner.count < min_cols) return false
     if (
       species_col >= 0 &&
-      (scanner.token_length(species_col) > 3 || !Number.isNaN(scanner.num(species_col)))
+      (!is_species_token(scanner, species_col) || !Number.isNaN(scanner.num(species_col)))
     )
       return false
     return (

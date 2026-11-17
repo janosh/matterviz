@@ -1,9 +1,6 @@
 import * as draw from '#lib/convex-hull/canvas-draw.js'
 import * as helpers from '#lib/convex-hull/helpers.js'
-import {
-  calculate_e_above_hull,
-  get_energy_per_atom,
-} from '#lib/convex-hull/thermodynamics.js'
+import { compute_e_above_hull, get_energy_per_atom } from '#lib/convex-hull/thermodynamics.js'
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -323,10 +320,10 @@ describe(`canvas-draw: markers and hit testing`, () => {
 })
 
 describe(`helpers: thresholds and tooltips`, () => {
-  test(`calc_max_hull_dist_in_data returns robust default and range`, () => {
-    expect(helpers.calc_max_hull_dist_in_data([])).toBeCloseTo(0.5)
+  test(`compute_max_hull_dist_in_data returns robust default and range`, () => {
+    expect(helpers.compute_max_hull_dist_in_data([])).toBeCloseTo(0.5)
     const dists = [{ e_above_hull: 0 }, { e_above_hull: 0.2 }] as PhaseData[]
-    expect(helpers.calc_max_hull_dist_in_data(dists)).toBeCloseTo(0.201, 10)
+    expect(helpers.compute_max_hull_dist_in_data(dists)).toBeCloseTo(0.201, 10)
   })
 
   test(`auto_threshold_reset re-derives on source change unless the user moved the slider`, () => {
@@ -687,7 +684,7 @@ describe(`helpers: temperature interpolation`, () => {
 
       const at_temp = (temperature: number): number => {
         const [filtered] = helpers.filter_entries_at_temperature([compound], temperature)
-        return calculate_e_above_hull(filtered, refs)
+        return compute_e_above_hull(filtered, refs)
       }
 
       expect(at_temp(300)).toBeCloseTo(1.4, 10)

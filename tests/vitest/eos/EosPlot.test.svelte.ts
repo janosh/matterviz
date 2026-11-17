@@ -61,7 +61,14 @@ describe(`EosPlot`, () => {
       `fit with params`,
       1,
       {},
-      [`Birch–Murnaghan fit`, `V: 10.2 Å³`, `B0: 139.1 GPa`, `RMSE: 0.54 meV`],
+      // ± the one-sigma errors fit_eos reports (B0's 0.00814 eV/Å³ is 1.3 GPa)
+      [
+        `Birch–Murnaghan fit`,
+        `V: 10.2 Å³`,
+        `B0: 139.1 ± 1.3 GPa`,
+        `B0': 5.26 ± 0.41`,
+        `RMSE: 0.54 meV`,
+      ],
       [],
     ],
     [`fit without params`, 1, { show_fit_params: false }, [`Birch–Murnaghan fit`], [`B0`]],

@@ -9,7 +9,7 @@ import {
   saed_camera_pose,
   saed_pattern_radius,
 } from '#lib/xrd/saed.js'
-import { electron_wavelength } from '#lib/xrd/calc-xrd.js'
+import { electron_wavelength } from '#lib/xrd/compute-xrd.js'
 import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 

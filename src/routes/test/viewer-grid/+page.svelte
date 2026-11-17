@@ -5,7 +5,7 @@
   // this route exists to keep that regression visible: every canvas should stay drawn.
   import type { Crystal, ElementSymbol } from '#lib'
   import { renderer_registry } from '#lib/io/export.js'
-  import { calc_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
+  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
   import type { Pbc } from '#lib/structure/index.js'
   import Structure from '#lib/structure/Structure.svelte'
   import TestSection from '../TestSection.svelte'
@@ -25,7 +25,7 @@
     [0, 0, cell],
   ]
   const elements: ElementSymbol[] = [`Fe`, `Cu`, `O`, `Si`, `C`, `N`]
-  const lattice = { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+  const lattice = { matrix, pbc: [true, true, true] as Pbc, ...compute_lattice_params(matrix) }
   const make_structure = (seed: number): Crystal => ({
     lattice,
     charge: 0,
@@ -37,7 +37,7 @@
       ]
       const element = elements[(seed + idx) % elements.length]
       return {
-        species: [{ element, occu: 1, oxidation_state: 0 }],
+        species: [{ element, occu: 1 }],
         abc,
         xyz: abc.map((frac) => frac * cell) as Vec3,
         label: `${element}${idx + 1}`,

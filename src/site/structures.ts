@@ -1,4 +1,5 @@
-import type { AnyStructure, FileInfo } from '#lib'
+import type { AnyStructure } from '#lib'
+import type { FileInfo } from '#lib/io/index.js'
 import {
   detect_structure_type,
   is_structure_like,

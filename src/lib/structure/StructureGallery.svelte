@@ -64,8 +64,7 @@
     // that key and tints the whole key/value pair in this scheme, picking a text
     // colour against each tint. Unset lists values untinted.
     property_color_scheme?: D3InterpolateName
-    // flips which end of the scheme the smallest value takes (d3 ships no
-    // reversed variants)
+    // flips which end of the scheme the smallest value takes (d3 ships no reversed variants)
     property_color_reverse?: boolean
   }
 
@@ -314,8 +313,7 @@
     }
     return pairs
   }
-  // an underscore in a key marks a subscript: `E_hull` captions as E with a
-  // subscripted hull
+  // an underscore in a key marks a subscript: `E_hull` captions as E with a subscripted hull
   const split_subscript = (key: string): [string, string] => {
     const break_at = key.indexOf(`_`)
     return break_at === -1 ? [key, ``] : [key.slice(0, break_at), key.slice(break_at + 1)]

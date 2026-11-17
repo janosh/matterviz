@@ -17,7 +17,7 @@
   import { value_key } from '#lib/utils.js'
   import { getAbortSignal, type Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
-  import { calc_rdfs_async, mount_rdf_workers } from './async-compute.svelte'
+  import { compute_rdfs_async, mount_rdf_workers } from './async-compute.svelte'
   import { label_structures, rdf_baseline, rdf_bin_site_index } from './index'
   import type { RdfEntry, RdfPattern } from './index'
   import { bind_error_report } from './error-report.svelte'
@@ -128,7 +128,8 @@
     const requests = struct_list.map(async ({ struct, label }) => {
       try {
         const hit = computed_rdfs.get(struct)
-        const rdfs = hit?.[request_key] ?? (await calc_rdfs_async(struct, options, { signal }))
+        const rdfs =
+          hit?.[request_key] ?? (await compute_rdfs_async(struct, options, { signal }))
         computed_rdfs.set(struct, { [request_key]: rdfs })
         return rdfs.map((pattern): ComputedEntry => ({
           label: pattern.element_pair?.join(`-`) ?? label,

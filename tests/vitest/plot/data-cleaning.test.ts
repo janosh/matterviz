@@ -267,6 +267,9 @@ describe(`clean_series`, () => {
       point_hover: [0, 1, 2, 3, 4].map((scale) => ({ scale })),
       point_label: [0, 1, 2, 3, 4].map((idx) => ({ text: `${idx}` })),
       point_offset: [0, 1, 2, 3, 4].map((coord) => ({ x: coord, y: coord })),
+      point_ids: [`a`, `b`, `c`, `d`, `e`],
+      // the break on the dropped point moves to the next survivor, merging with the one there
+      line_breaks: [1, 2, 4],
     }
     const { series: cleaned, quality } = clean_series(series, { in_place })
     expect(cleaned === series).toBe(in_place)
@@ -286,7 +289,12 @@ describe(`clean_series`, () => {
       point_hover: [0, 2, 3, 4].map((scale) => ({ scale })),
       point_label: [0, 2, 3, 4].map((idx) => ({ text: `${idx}` })),
       point_offset: [0, 2, 3, 4].map((coord) => ({ x: coord, y: coord })),
+      point_ids: [`a`, `c`, `d`, `e`],
+      line_breaks: [1, 3],
     })
+    // breaks with no surviving point before or after them start no stretch
+    const edge_breaks = { x: [0, 1, 2, 3], y: [NaN, 5, 6, NaN], line_breaks: [1, 3] }
+    expect(clean_series(edge_breaks).series.line_breaks).toEqual([])
     const null_colors = clean_series({
       x: [0, 1],
       y: [0, NaN],
@@ -433,7 +441,8 @@ describe(`clean_series`, () => {
     )
 
     // The odd/min/max window clamps must still leave a symmetric kernel that reproduces
-    // polynomials up to `order` at interior points
+    // polynomials up to `order`, at the edges too (fitted to the outermost full window: a
+    // truncated renormalized kernel read 4.31 for this quadratic's 5 at idx 0, window 5)
     it.each([
       { length: 21, window: 3, order: 2, half: 1 }, // max(window, order + 2) -> even 4 -> 3
       { length: 21, window: 1, order: 2, half: 1 },
@@ -446,9 +455,8 @@ describe(`clean_series`, () => {
         const quad = Array.from({ length }, (_, idx) => 2 * idx * idx - 3 * idx + 5)
         const out = savgol(quad, window, order)
         expect(out).toHaveLength(length)
-        // interior points only: truncated edge kernels are renormalized, not exact
-        for (let idx = half; idx < length - half; idx++)
-          expect(out[idx]).toBeCloseTo(quad[idx], 6)
+        expect(half).toBeLessThan(length / 2)
+        for (let idx = 0; idx < length; idx++) expect(out[idx]).toBeCloseTo(quad[idx], 6)
       },
     )
 
@@ -460,6 +468,10 @@ describe(`clean_series`, () => {
       expect(smoothed.slice(0, 2).concat(smoothed.slice(3)).every(Number.isFinite)).toBe(true)
       // A fully determined fit (window = order + 1) has no neighbours to smooth a NaN center with
       expect(savgol([1, 2, NaN, 4, 5], 3, 2, `propagate`)[2]).toBeNaN()
+      // an edge window holding a gap keeps the renormalized estimate, the clean edge is fitted
+      const gapped = savgol([NaN, 1, 2, 3, 4, 5, 6, 7], 5, 2, `propagate`)
+      expect(gapped[0]).toBeCloseTo(2 / 3, 9) // renormalized over [1, 2], not the fit's 0
+      expect(gapped.slice(-2)).toEqual([expect.closeTo(6, 9), expect.closeTo(7, 9)])
     })
   })
 

@@ -1,5 +1,5 @@
 import type { StructureIdResult } from '#lib/structure-id/index.js'
-import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
 import StructureTypePlot from '#lib/structure-id/StructureTypePlot.svelte'
 import * as async_compute from '#lib/structure-id/async-compute.svelte.js'
 import type { StructureInput } from '#lib/plot/core/structure-input.js'
@@ -37,9 +37,9 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     }
   }
 
-  const fcc_result = calc_structure_id(make_fcc([2, 2, 2]), { skip_csp: true })
-  const bcc_result = calc_structure_id(make_bcc([2, 2, 2]), { skip_csp: true })
-  const hcp_result = calc_structure_id(make_hcp([2, 2, 2]), { skip_csp: true })
+  const fcc_result = compute_structure_id(make_fcc([2, 2, 2]), { skip_csp: true })
+  const bcc_result = compute_structure_id(make_bcc([2, 2, 2]), { skip_csp: true })
+  const hcp_result = compute_structure_id(make_hcp([2, 2, 2]), { skip_csp: true })
   const frames: StructureIdResult[] = [fcc_result, hcp_result, bcc_result]
 
   // `over_frames` without labels is covered by the explicit frame_labels case below
@@ -148,7 +148,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
 
   // a dropped structure reaches the compute as plain data, not a $state proxy
   test(`analyses a dropped file's structure as plain data`, async () => {
-    const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
+    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
     const root = await mount_plot({ structures: {} })
     root.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `si.cif`)))
     await vi.waitFor(() => expect(compute_spy).toHaveBeenCalledTimes(1))
@@ -196,7 +196,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     async (settlement) => {
       const pending_compute = Promise.withResolvers<StructureIdResult>()
       const signals: (AbortSignal | undefined)[] = []
-      vi.spyOn(async_compute, `calc_structure_id_async`).mockImplementation(
+      vi.spyOn(async_compute, `compute_structure_id_async`).mockImplementation(
         (_structure, _options, request_options) => {
           const signal = request_options?.signal
           signals.push(signal)
@@ -244,7 +244,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   // once replaced (while the replacement computes) or removed
   test(`clears the error and results once their structures are replaced or removed`, async () => {
     const compute_spy = vi
-      .spyOn(async_compute, `calc_structure_id_async`)
+      .spyOn(async_compute, `compute_structure_id_async`)
       .mockRejectedValueOnce(new Error(`synthetic failure`))
     const state = $state<{
       structures: StructureInput | undefined
@@ -277,7 +277,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   })
 
   test(`equivalent recreated ID options and kept structures do not recompute`, async () => {
-    const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
+    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
     const structure = make_fcc([1, 1, 1])
     const props = $state({
       structures: [{ label: `cell`, structure }],

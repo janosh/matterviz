@@ -7,6 +7,7 @@ import {
   intern_site_elements,
   is_spectator_center,
   lattice_shift,
+  type BondingOptions,
   type BondingStrategy,
 } from './bonding'
 import { BondFrame, bond_site_1, bond_site_2, type BondData } from './bond-rendering'
@@ -61,11 +62,8 @@ export const wrap_frac_coord = (coord: number): number => {
 
 // Wrap fractional coords to [0, 1). Non-periodic axes keep their out-of-cell coordinate
 // (matching normalize_fractional_coords) — folding a slab along its vacuum direction tears it.
-export const wrap_to_unit_cell = (frac: Vec3, pbc: Pbc = [true, true, true]): Vec3 => [
-  pbc[0] ? wrap_frac_coord(frac[0]) : frac[0],
-  pbc[1] ? wrap_frac_coord(frac[1]) : frac[1],
-  pbc[2] ? wrap_frac_coord(frac[2]) : frac[2],
-]
+export const wrap_to_unit_cell = (frac: Vec3, pbc: Pbc = [true, true, true]): Vec3 =>
+  frac.map((coord, axis) => (pbc[axis] ? wrap_frac_coord(coord) : coord)) as Vec3
 
 // Trajectory-like data: >10% of atoms far outside the unit cell along a periodic axis (a
 // slab may extend past its vacuum axis). Image-atom generation is skipped for such structures.
@@ -85,7 +83,7 @@ export type ImageAtomOptions =
       completion: `polyhedra` | `boundary`
       polyhedra?: ResolvedPolyhedraOptions
       bonding_strategy: BondingStrategy
-      bonding_options: Record<string, unknown>
+      bonding_options: BondingOptions
     }
 export type ImageAtomCompletion = ImageAtomOptions[`completion`]
 // [atom_idx, image_xyz, image_abc, is_completion]: is_completion marks phase-2 images that

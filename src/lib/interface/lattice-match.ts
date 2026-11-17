@@ -29,7 +29,7 @@ const MIN_SIN_ANGLE = 1e-6
 const MAX_REDUCED_ANGLE = (2 * Math.PI) / 3
 
 const dot2 = (vec_1: Vec2, vec_2: Vec2): number => vec_1[0] * vec_2[0] + vec_1[1] * vec_2[1]
-export const det2 = ([[a00, a01], [a10, a11]]: Matrix2x2): number => a00 * a11 - a01 * a10
+export const det_2x2 = ([[a00, a01], [a10, a11]]: Matrix2x2): number => a00 * a11 - a01 * a10
 export const mul2 = (
   [[a00, a01], [a10, a11]]: Matrix2x2,
   [[b00, b01], [b10, b11]]: Matrix2x2,
@@ -74,7 +74,7 @@ export function surface_frame({ lattice }: Crystal): SurfaceFrame {
 export function match_strain(film: Matrix2x2, substrate: Matrix2x2): MatchStrain {
   const [[fa0, fa1], [fb0, fb1]] = film
   const [[sa0, sa1], [sb0, sb1]] = substrate
-  const det_f = det2(film)
+  const det_f = det_2x2(film)
   // F = (B_f⁻¹·B_s)ᵀ with B_f⁻¹ = adj(B_f) / det
   const f00 = (fb1 * sa0 - fa1 * sb0) / det_f
   const f01 = (fa0 * sb0 - fb0 * sa0) / det_f
@@ -103,12 +103,12 @@ export function match_of_matrices(
   film: Matrix2x2,
   { film_matrix, substrate_matrix }: MatchMatrices,
 ): LatticeMatch {
-  const n_substrate_cells = det2(substrate_matrix)
+  const n_substrate_cells = det_2x2(substrate_matrix)
   return {
     film_matrix,
     substrate_matrix,
-    area: n_substrate_cells * det2(substrate),
-    n_film_cells: det2(film_matrix),
+    area: n_substrate_cells * det_2x2(substrate),
+    n_film_cells: det_2x2(film_matrix),
     n_substrate_cells,
     ...match_strain(mul2(film_matrix, film), mul2(substrate_matrix, substrate)),
   }
@@ -239,7 +239,7 @@ function area_ratio_bounds(length_tol: number, angle_tol: number): Vec2 {
 
 // Primitive cell area of a 2D basis, refusing anything the search could not handle
 function basis_area(basis: Matrix2x2, name: string, max_area: number): number {
-  const area = det2(basis)
+  const area = det_2x2(basis)
   const [len_u, len_v] = basis.map((row) => Math.hypot(...row))
   if (!(area > MIN_SIN_ANGLE * len_u * len_v)) {
     throw new Error(
@@ -267,7 +267,7 @@ function assert_in_range(value: number, name: string, upper = Infinity): void {
 // An operation belongs to the group iff it maps the basis rows to integer lattice coordinates.
 function lattice_symmetries(basis: Matrix2x2): Matrix2x2[] {
   const [[a0, a1], [b0, b1]] = basis
-  const det = det2(basis)
+  const det = det_2x2(basis)
   const in_group = ([[g00, g01], [g10, g11]]: Matrix2x2): boolean =>
     basis.every(([x, y]) => {
       const [gx, gy] = [g00 * x + g01 * y, g10 * x + g11 * y]

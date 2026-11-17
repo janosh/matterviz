@@ -24,7 +24,20 @@ export * from './spectroscopy-collect'
 export * from './sweep'
 export { default as SweepTrends } from './SweepTrends.svelte'
 export * from './thermal'
-export * from './trajectory-spectroscopy'
+export {
+  compute_trajectory_spectroscopy,
+  standard_masses_for_elements,
+  validate_trajectory_signal,
+  type InfraredSignal,
+  type RamanChannel,
+  type RamanSignal,
+  type SpectroscopyPreprocessing,
+  type TrajectoryFrequencyUnit,
+  type TrajectorySpectroscopyInput,
+  type TrajectorySpectroscopyOptions,
+  type TrajectorySpectroscopyResult,
+  type TrajectorySpectrumCurve,
+} from './trajectory-spectroscopy'
 export { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
 export type * from './types'
 

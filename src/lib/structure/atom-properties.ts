@@ -4,17 +4,17 @@ import { try_parse_vec3, vector_reader } from './vectors'
 
 import type { ColorScaleType } from '#lib/colors/index.js'
 import { COLOR_SCALE_TYPES, is_color_scale } from '#lib/colors/index.js'
-import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import { compute_coordination_nums } from '#lib/coordination/compute-coordination.js'
 import { array_extent, sorted_numbers } from '#lib/math.js'
 import { color_interpolator, resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { AtomColorMode } from '#lib/settings.js'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
-import type { BondingStrategy } from '#lib/structure/bonding.js'
+import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding.js'
 import { get_orig_site_idx } from '#lib/structure/site.js'
-import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/calc-cna.js'
-import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
+import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/compute-cna.js'
+import { CNA_TYPE_PROPERTY } from '#lib/structure-id/compute-structure-id.js'
 import type { WyckoffPos } from '#lib/symmetry/wyckoff.js'
 import { rgb } from 'd3-color'
 
@@ -93,10 +93,8 @@ export function apply_color_scale(
     return make_categorical(vals, color_scale, (val_a, val_b) => val_a - val_b)
 
   const midpoint = to_hex(color_interpolator(color_scale), 0.5)
-  // array_extent skips NaN: a vals[0] seed of NaN left min = max = NaN, defeating the
-  // max === min guard (NaN !== NaN) and painting every atom at t = NaN. Non-finite values and
-  // an all-NaN or empty extent fall back to the scale midpoint. Unset value_range ends fit
-  // the values.
+  // array_extent skips NaN (a NaN seed made min = max = NaN, slipping past max === min).
+  // Non-finite values and an all-NaN extent take the scale midpoint; unset range ends fit vals.
   const {
     color_fn,
     color_scale: {
@@ -133,13 +131,12 @@ export function get_coordination_colors(
   strategy: BondingStrategy = `electroneg_ratio`,
   color_scale: ColorScale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
-  bonding_options: Record<string, unknown> = {},
+  bonding_options: BondingOptions = {},
 ): AtomPropertyColors {
-  const { coordination_nums } = calc_coordination_nums(structure, {
+  const { coordination_nums } = compute_coordination_nums(structure, {
     strategy,
     bonding_options,
   })
-
   const { colors, unique_values } = apply_color_scale(coordination_nums, color_scale, type)
   return build_prop_colors(coordination_nums, colors, unique_values)
 }
@@ -179,18 +176,14 @@ export function get_wyckoff_colors(
   }
 }
 
-// POSCAR selective dynamics is a PER-AXIS flag triple (`T`/`F` per lattice direction), so an
-// atom can be frozen along some axes only. Collapsing to a binary free/fixed split would hide
-// that, hence the separate `partially fixed` category. `unknown` = site never declared the
-// property, which the POSCAR parser emits for coordinate lines too short to carry flags.
+// POSCAR selective dynamics is a PER-AXIS flag triple, so an atom can be frozen along some axes
+// only (`partially fixed`). `unknown` = no flags (the POSCAR parser's too-short coordinate lines).
 const SELECTIVE_DYNAMICS_CATEGORIES = [`free`, `partially fixed`, `fixed`, `unknown`] as const
 type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
 
-// `true` means the atom may relax along that axis (POSCAR `T`), `false` means frozen (`F`).
-// Every parser MatterViz ships writes three booleans, but hand-authored and third-party
-// structures spell the same triple as `T`/`F` (the POSCAR literal) or 0/1, so those are
-// coerced too. Anything else lands in `unknown`: this runs per site while rendering, where
-// throwing would blank the whole structure over one malformed property.
+// `true` = may relax along that axis (POSCAR `T`), `false` = frozen (`F`). Hand-authored and
+// third-party structures also spell flags `T`/`F` or 0/1. Anything else is `unknown` rather
+// than a throw, which would blank the whole render over one malformed site property.
 const to_relax_flag = (flag: unknown): boolean | undefined => {
   if (typeof flag === `boolean`) return flag
   if (typeof flag !== `string` && typeof flag !== `number`) return undefined
@@ -296,6 +289,11 @@ const default_scale_type = (mode: AtomColorMode, property_key?: unknown): ColorS
   (mode === `property` && property_key === CNA_TYPE_PROPERTY)
     ? `categorical`
     : `continuous`
+const element_config = (color_scale: ColorScale): AtomColorConfig => ({
+  mode: `element`,
+  color_scale,
+  scale_type: default_scale_type(`element`),
+})
 
 // Normalize untyped/serialized props before rendering.
 export function normalize_atom_color_config(config: unknown): AtomColorConfig {
@@ -319,12 +317,7 @@ export function normalize_atom_color_config(config: unknown): AtomColorConfig {
     return finalize({ mode, color_scale, scale_type, property_key })
   if (mode === `custom` && is_atom_color_fn(candidate.color_fn))
     return finalize({ mode, color_scale, scale_type, color_fn: candidate.color_fn })
-  if (mode === `property` || mode === `custom`)
-    return finalize({
-      mode: `element`,
-      color_scale,
-      scale_type: default_scale_type(`element`),
-    })
+  if (mode === `property` || mode === `custom`) return finalize(element_config(color_scale))
   return finalize({ mode, color_scale, scale_type })
 }
 
@@ -339,12 +332,7 @@ export const next_atom_color_config = (
   const finalize = (next: AtomColorConfig): AtomColorConfig =>
     configs_equal(next, config) ? config : next
   if (mode === `property`) {
-    if (property_keys.length === 0)
-      return finalize({
-        mode: `element`,
-        color_scale,
-        scale_type: default_scale_type(`element`),
-      })
+    if (property_keys.length === 0) return finalize(element_config(color_scale))
     const previous_key =
       preferred_key ?? (`property_key` in config ? config.property_key : undefined)
     const property_key =
@@ -425,13 +413,10 @@ export function get_custom_colors(
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const vals = structure.sites.map((site, idx) => callback(site, idx))
-  const is_num = vals.every((val) => typeof val === `number`)
-
-  if (is_num) {
+  if (vals.every((val) => typeof val === `number`)) {
     const { colors, unique_values } = apply_color_scale(vals, color_scale, type)
     return build_prop_colors(vals, colors, unique_values)
   }
-
   const strs = vals.map(String)
   const { colors, unique_values } = apply_categorical_color_scale(strs, color_scale)
   return { colors, values: strs, unique_values }
@@ -449,7 +434,7 @@ export type AtomColorSources = {
   to_base_idx?: (site: Site, site_idx: number) => number
   bonding_strategy?: BondingStrategy
   // The scene's bonding_options, so coordination colors count the bonds it draws
-  bonding_options?: Record<string, unknown>
+  bonding_options?: BondingOptions
   // Wyckoff rows whose site_indices already index the DISPLAYED structure
   wyckoff_rows?: readonly WyckoffPos[]
 }

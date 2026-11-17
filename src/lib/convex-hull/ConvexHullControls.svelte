@@ -17,7 +17,11 @@
     EntryCategoryConfig,
     HullFaceColorMode,
   } from './types'
-  import { HULL_FACE_COLOR_MODES, MAGNETIC_ORDERING_CATEGORY } from './types'
+  import {
+    DEFAULT_HULL_COLORS,
+    HULL_FACE_COLOR_MODES,
+    MAGNETIC_ORDERING_CATEGORY,
+  } from './types'
 
   interface CameraState {
     elevation?: number // Elevation angle in degrees (for ternary)
@@ -205,15 +209,14 @@
         ],
   )
 
-  // One mutually exclusive toggle button per option
+  // One mutually exclusive toggle button per [text, tip, value] option of a setting
   type ToggleOption = readonly [text: string, tip: string, active: boolean, select: () => void]
-  let face_color_options = $derived(
-    HULL_FACE_COLOR_MODES.map((mode): ToggleOption => [
-      ...FACE_COLOR_MODES[mode],
-      hull_face_color_mode === mode,
-      () => (hull_face_color_mode = mode),
-    ]),
-  )
+  const choice = <Value>(
+    current: Value,
+    set: (value: Value) => void,
+    options: readonly (readonly [string, string, NoInfer<Value>])[],
+  ): ToggleOption[] =>
+    options.map(([text, tip, value]) => [text, tip, current === value, () => set(value)])
 </script>
 
 <!-- Buttons sit directly in the row's grid tracks unless `wrap_class` groups them in one cell -->
@@ -262,7 +265,10 @@
           {@attach tooltip({ content: tip })}
         >
           {#if marker}
-            <div class={[`marker`, marker]}></div>
+            <div
+              class={[`marker`, marker]}
+              style:background="var(--hull-{marker}-color, {DEFAULT_HULL_COLORS[marker]})"
+            ></div>
           {:else}
             <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
               <path d={path} />
@@ -301,38 +307,25 @@
     {:else if energy_info?.has_precomputed_e_form && energy_info.can_compute}
       {@render toggle_row(
         `Energy source`,
-        [
-          [
-            `Precomputed`,
-            `Use precomputed formation energies (E_form)`,
-            energy_source_mode === `precomputed`,
-            () => (energy_source_mode = `precomputed`),
-          ],
+        choice(energy_source_mode, (mode) => (energy_source_mode = mode), [
+          [`Precomputed`, `Use precomputed formation energies (E_form)`, `precomputed`],
           [
             `On the fly`,
             `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E_form = 0 eV/atom if not provided explicitly.`,
-            energy_source_mode === `on-the-fly`,
-            () => (energy_source_mode = `on-the-fly`),
+            `on-the-fly`,
           ],
-        ],
+        ]),
         `energy-source-buttons`,
       )}
     {/if}
 
-    {@render toggle_row(`Color mode`, [
-      [
-        `Stability`,
-        `Color points by stable/unstable`,
-        color_mode === `stability`,
-        () => (color_mode = `stability`),
-      ],
-      [
-        `Hull distance`,
-        `Color points by energy above hull`,
-        color_mode === `energy`,
-        () => (color_mode = `energy`),
-      ],
-    ])}
+    {@render toggle_row(
+      `Color mode`,
+      choice(color_mode, (mode) => (color_mode = mode), [
+        [`Stability`, `Color points by stable/unstable`, `stability`],
+        [`Hull distance`, `Color points by energy above hull`, `energy`],
+      ]),
+    )}
 
     <!-- Energy threshold slider - shown in both color modes -->
     <div
@@ -453,7 +446,15 @@
         </div>
       </div>
 
-      {@render toggle_row(`Face color`, face_color_options, `face-color-mode-buttons`)}
+      {@render toggle_row(
+        `Face color`,
+        choice(
+          hull_face_color_mode,
+          (mode) => (hull_face_color_mode = mode),
+          HULL_FACE_COLOR_MODES.map((mode) => [...FACE_COLOR_MODES[mode], mode] as const),
+        ),
+        `face-color-mode-buttons`,
+      )}
     {/if}
 
     {#if camera}
@@ -519,10 +520,6 @@
   .legend-item.inactive {
     opacity: 0.5;
   }
-  .category-filters {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
   .legend-item svg {
     margin-right: 4px;
     flex-shrink: 0;
@@ -534,12 +531,6 @@
     border-radius: 50%;
     margin-right: 8px;
     aspect-ratio: 1;
-  }
-  .marker.stable {
-    background: var(--hull-stable-color, #0072b2);
-  }
-  .marker.unstable {
-    background: var(--hull-unstable-color, #e69f00);
   }
   /* Button groups and paired inputs do not fit the 4em value track, so they take the value
      and wide tracks together and wrap inside that span when the pane is narrow */
@@ -564,9 +555,7 @@
       gap: 4px;
     }
   }
-  .color-scale-row {
-    :global(.multiselect) {
-      --sms-min-height: 24px;
-    }
+  .color-scale-row :global(.multiselect) {
+    --sms-min-height: 24px;
   }
 </style>

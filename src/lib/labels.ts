@@ -92,7 +92,7 @@ export function format_value(value: number, formatter?: string): string {
 // (cpk-hex, spectral_img), heading/summary fields (name, symbol, category,
 // discoverer, year, summary) and electronegativity_pauling, which duplicates electronegativity
 // for most elements but not all: Kr, Xe, Rn and Lr have a Pauling value and a null
-// electronegativity, and Tb, Tl, Pb, Fr, Am and Cm differ in the last digit or two.
+// electronegativity, and Tb, Pb, Fr, Am and Cm differ in the last digit or two.
 export const ELEM_PROPERTY_LABELS: Partial<
   Record<keyof ChemicalElement, [string, string | null]>
 > = {

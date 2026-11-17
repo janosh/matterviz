@@ -1,4 +1,5 @@
-import type { AnyStructure, Crystal, ElementSymbol, Site, Vec2, Vec3 } from '#lib'
+import type { AnyStructure, Crystal, ElementSymbol, Site } from '#lib'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import * as struct_utils from '#lib/structure/index.js'
 import type { StructureFitOpts } from '#lib/structure/index.js'
 import {
@@ -55,7 +56,6 @@ describe.each(structures)(`structure-utils`, (structure) => {
 
   test(`element counts, density, and ref-data properties`, () => {
     const counts = struct_utils.get_element_counts(structure)
-
     for (const [element, count] of Object.entries(counts)) {
       expect(element, identifier).toMatch(/^[A-Z][a-z]{0,2}$/)
       expect(count, `${identifier}: ${element}`).toBeGreaterThan(0)
@@ -63,7 +63,6 @@ describe.each(structures)(`structure-utils`, (structure) => {
     }
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
     expect(total, identifier).toBe(structure.sites.length)
-
     const density = struct_utils.get_density(structure)
     if (structure.lattice) {
       // Physical sanity: 0.01 g/cm³ (aerogels) to 30 g/cm³ (beyond osmium)
@@ -75,12 +74,9 @@ describe.each(structures)(`structure-utils`, (structure) => {
         true,
       )
     }
-
     if (!expected) return
-
     expect(counts, identifier).toEqual(expected.amounts)
     expect(density, identifier).toBeCloseTo(expected.density, 3)
-
     const com = struct_utils.get_center_of_mass(structure)
     expect(
       com?.map((val) => Math.round(val * 1e3) / 1e3),
@@ -100,21 +96,14 @@ test.each([
 })
 
 describe(`numeric composition`, () => {
-  const frame = create_numeric_md_frame(
-    Float64Array.of(0, 0, 0, 1, 1, 1),
-    Uint8Array.of(14, 32),
-    cubic_matrix(20),
-    [false, false, false],
-    0,
-    {},
-    [],
-  )
+  const [positions, numbers] = [Float64Array.of(0, 0, 0, 1, 1, 1), Uint8Array.of(14, 32)]
+  const [cell, pbc] = [cubic_matrix(20), [false, false, false] as const]
+  const frame = create_numeric_md_frame(positions, numbers, cell, pbc, 0, {}, [])
 
   test(`element counts and density exclude periodic images without materializing sites`, () => {
     const structure = materialize_frame(frame).structure
     structure.sites.push({ ...structure.sites[0], provenance: { image_of: 0 } })
     expect(struct_utils.get_element_counts(structure)).toEqual({ Si: 1, Ge: 1 })
-
     const view = new FrameView()
     const identity = snapshot_topologies.get(view.update(frame).structure)
     // Imported provenance-named columns remain ordinary data, including partial columns.
@@ -168,15 +157,8 @@ describe(`get_center_of_mass`, () => {
       { length: count * 3 },
       (_unused, idx) => Math.sin(idx) * (idx % 2 ? 1e8 : 1e-8),
     )
-    const frame = create_numeric_md_frame(
-      positions,
-      Uint8Array.from({ length: count }, (_unused, idx) => [1, 8, 14][idx % 3]),
-      undefined,
-      undefined,
-      0,
-      {},
-      [],
-    )
+    const numbers = Uint8Array.from({ length: count }, (_unused, idx) => [1, 8, 14][idx % 3])
+    const frame = create_numeric_md_frame(positions, numbers, undefined, undefined, 0, {}, [])
     const expected = struct_utils.get_center_of_mass(materialize_frame(frame).structure)
     const structure = new FrameView().update(frame).structure
     Object.defineProperty(structure, `sites`, {
@@ -268,13 +250,8 @@ describe(`structure_fit_frame`, () => {
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
     expect(extent(diatomic, { atom_radius_scale: 0 })).toBeCloseTo(2 * DEFAULT_FIT_PADDING, 10)
     expect(fit).toBeCloseTo(2 * (1 + 0.5 * 0.7) * DEFAULT_FIT_PADDING, 10) // H display radius 0.5 Å
-    expect(
-      structure_fit_frame(
-        { sites: [site(`H`, [0, 0, 0]), site(`H`, [4, 0, 0])] },
-        { atom_radius_scale: 0 },
-      ).center,
-    ).toEqual([2, 0, 0])
-
+    const pair = { sites: [site(`H`, [0, 0, 0]), site(`H`, [4, 0, 0])] }
+    expect(structure_fit_frame(pair, { atom_radius_scale: 0 }).center).toEqual([2, 0, 0])
     const value_a = 4.21
     const empty = structure_fit_frame(cubic(value_a, []), { atom_radius_scale: 0 })
     empty.center.forEach((coord) => expect(coord).toBeCloseTo(value_a / 2, 10))
@@ -284,7 +261,6 @@ describe(`structure_fit_frame`, () => {
     })
     expect(with_atom).toBeGreaterThan(empty.extent)
     expect(with_atom).toBeLessThan((value_a * Math.sqrt(3) + 2.1) * DEFAULT_FIT_PADDING * 1.2)
-
     const { sites: _dropped, ...no_sites } = cubic(2, [])
     expect(extent(no_sites as AnyStructure, { atom_radius_scale: 0 })).toBeCloseTo(
       2 * Math.sqrt(3) * DEFAULT_FIT_PADDING,
@@ -295,11 +271,7 @@ describe(`structure_fit_frame`, () => {
   const h_origin = { sites: [site(`H`, [0, 0, 0])] }
   const h_mg_site = {
     ...site(`H`, [0, 0, 0]),
-    species: ([`H`, `Mg`] as const).map((element) => ({
-      element,
-      occu: 0.5,
-      oxidation_state: 0,
-    })),
+    species: ([`H`, `Mg`] as const).map((element) => ({ element, occu: 0.5 })),
   }
   // oxfmt-ignore
   test.each([
@@ -559,17 +531,14 @@ test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic view
   expect(projections.filter((proj) => proj === `orthographic`)).toHaveLength(3)
   const labels = DEFAULT_STRUCTURE_VIEWS.map((view) => view.label)
   expect(new Set(labels).size).toBe(labels.length)
-  for (const view of DEFAULT_STRUCTURE_VIEWS) {
+  for (const view of DEFAULT_STRUCTURE_VIEWS)
     expect(Math.hypot(...(view.direction ?? [0, 0, 0]))).toBeGreaterThan(0)
-  }
 })
 
 describe(`characteristic_atom_spacing`, () => {
   const { characteristic_atom_spacing } = struct_utils
   const nn_median = (structure: AnyStructure): number => {
-    const dists = [...neighbor_query(structure, { k: 1 }).distances].toSorted(
-      (one, two) => one - two,
-    )
+    const dists = neighbor_query(structure, { k: 1 }).distances.toSorted()
     return dists[Math.floor(dists.length / 2)]
   }
   // An fcc gold cluster of `radius` Å sitting at `centre` in a cubic vacuum box. Nearest
@@ -630,13 +599,9 @@ describe(`characteristic_atom_spacing`, () => {
   ] as const)(
     `removes slab vacuum: %s`,
     (_name, height, layers, depth, precision, periodic) => {
-      const sites: [string, Vec3][] = []
-      for (let row_idx = 0; row_idx < 5; row_idx++) {
-        for (let col_idx = 0; col_idx < 5; col_idx++) {
-          for (const layer of layers)
-            sites.push([`Al`, [row_idx / 5, col_idx / 5, layer / height]])
-        }
-      }
+      const sites = generate_lattice_points([5, 5, 1]).flatMap(([row, col]) =>
+        layers.map((layer): [string, Vec3] => [`Al`, [row / 5, col / 5, layer / height]]),
+      )
       // oxfmt-ignore
       const slab = make_crystal([[20, 0, 0], [0, 20, 0], [0, 0, height]], sites)
       slab.lattice.pbc = [true, true, periodic]
@@ -661,19 +626,12 @@ describe(`characteristic_atom_spacing`, () => {
       const good = make_crystal(cube, [[`Au`, [0.45, 0.45, 0.45]], [`Au`, [0.55, 0.45, 0.45]], [`Au`, [0.45, 0.55, 0.45]], [`Au`, [0.45, 0.45, 0.55]]])
       good.lattice.pbc = [periodic, periodic, periodic]
       const expected = characteristic_atom_spacing(good)
-      const damaged = {
-        ...good,
-        sites: good.sites.map((site, idx) => ({
-          ...site,
-          label: `Au${idx + 1}`,
-          abc: abc as unknown as Vec3,
-        })),
-      }
+      const sites = good.sites.map((site, idx) => ({ ...site, label: `Au${idx + 1}`, abc }))
+      const damaged = { ...good, sites } as unknown as Crystal
       expect(characteristic_atom_spacing(damaged)).toBeCloseTo(expected, 6)
       if (abc) {
-        const numeric = new FrameView().update(
-          encode_frame({ step: 0, structure: damaged }),
-        ).structure
+        const encoded = encode_frame({ step: 0, structure: damaged })
+        const numeric = new FrameView().update(encoded).structure
         const columns = numeric_sites.get(numeric)
         if (!columns) throw new Error(`Expected numeric sites`)
         const materialize = vi.spyOn(columns, `materialize`)

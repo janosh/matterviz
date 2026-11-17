@@ -1,6 +1,7 @@
 // Mounts LatticePlanes against the recording Threlte stub: one fill mesh and one outline per
 // family, disposed when the families change
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import LatticePlanes from '#lib/structure/LatticePlanes.svelte'
 import Lattice from '#lib/structure/Lattice.svelte'
 import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
@@ -30,7 +31,7 @@ afterEach(() => {
 })
 
 const mount_planes = (planes: LatticePlane[]) => {
-  const props = $state({ planes, lattice: cubic, tiling: [1, 1, 1] as Vec3 })
+  const props = $state({ planes, lattice: cubic, supercell: math.IDENTITY_3X3 })
   const component = mount(LatticePlanes, { target: document.body, props })
   teardown = () => void unmount(component)
   flushSync()
@@ -349,82 +350,76 @@ test(`draws each tiled plane once`, () => {
   expect(vertex_counts(`Mesh`)).toEqual([4 * 3])
 })
 
-test.each([
-  [2, 3, 1],
-  [2.9, 3.5, 0.5],
-  [2, 3, -1],
-] as Vec3[])(
-  `draws and disposes one fill and outline per family, normalizing %sx%sx%s`,
-  async (...tiling) => {
-    const { props, component } = mount_planes([
-      { hkl: [1, 0, 0] },
-      { hkl: [1, 1, 1], offsets: [1.5] },
-    ])
-    // (100): two square faces = 2 × 2 triangles; (111) through the center: a hexagon = 4 triangles
-    expect(vertex_counts(`Mesh`)).toEqual([12, 12])
-    // 2 × 4 edges and 6 edges, two vertices each
-    expect(vertex_counts(`LineSegments`)).toEqual([16, 12])
-    const first_geometry = threlte_stub.nodes[0].props.geometry as BufferGeometry
-    const dispose = vi.spyOn(first_geometry, `dispose`)
-    props.planes = structuredClone($state.snapshot(props.planes))
-    props.lattice = structuredClone(cubic)
-    props.tiling = [1.9, 0.5, -1]
-    flushSync()
-    expect(threlte_stub.nodes[0].props.geometry).toBe(first_geometry)
-    props.planes[0].color = `red`
-    props.planes[0].opacity = 0.7
-    flushSync()
-    expect(threlte_stub.nodes[0].props.geometry).toBe(first_geometry)
-    expect(dispose).not.toHaveBeenCalled()
-    expect(
-      threlte_stub.nodes.find((node) => node.tag === `MeshStandardMaterial`)?.props,
-    ).toMatchObject({ color: `red`, opacity: 0.7 })
-    props.planes[0].offsets = []
-    flushSync()
-    expect(vertex_counts(`Mesh`)).toEqual([0, 12])
-    expect(dispose).toHaveBeenCalledOnce()
-    const empty_geometry = threlte_stub.nodes[0].props.geometry as BufferGeometry
-    const empty_disposed = vi.spyOn(empty_geometry, `dispose`)
-    delete props.planes[0].offsets
-    flushSync()
-    expect(vertex_counts(`Mesh`)).toEqual([12, 12])
-    expect(empty_disposed).toHaveBeenCalledOnce()
-    props.planes = []
-    flushSync()
-    expect(vertex_counts(`Mesh`)).toEqual([])
-    props.planes = [{ hkl: [1, 0, 0] }]
-    flushSync()
-    expect(dispose).toHaveBeenCalledOnce()
-    expect(vertex_counts(`Mesh`)).toEqual([12])
+test(`draws and disposes one fill and outline per family across a 2x3x1 supercell`, async () => {
+  const { props, component } = mount_planes([
+    { hkl: [1, 0, 0] },
+    { hkl: [1, 1, 1], offsets: [1.5] },
+  ])
+  // (100): two square faces = 2 × 2 triangles; (111) through the center: a hexagon = 4 triangles
+  expect(vertex_counts(`Mesh`)).toEqual([12, 12])
+  // 2 × 4 edges and 6 edges, two vertices each
+  expect(vertex_counts(`LineSegments`)).toEqual([16, 12])
+  const first_geometry = threlte_stub.nodes[0].props.geometry as BufferGeometry
+  const dispose = vi.spyOn(first_geometry, `dispose`)
+  props.planes = structuredClone($state.snapshot(props.planes))
+  props.lattice = structuredClone(cubic)
+  props.supercell = structuredClone(math.IDENTITY_3X3) // a fresh but equal matrix
+  flushSync()
+  expect(threlte_stub.nodes[0].props.geometry).toBe(first_geometry)
+  props.planes[0].color = `red`
+  props.planes[0].opacity = 0.7
+  flushSync()
+  expect(threlte_stub.nodes[0].props.geometry).toBe(first_geometry)
+  expect(dispose).not.toHaveBeenCalled()
+  expect(
+    threlte_stub.nodes.find((node) => node.tag === `MeshStandardMaterial`)?.props,
+  ).toMatchObject({ color: `red`, opacity: 0.7 })
+  props.planes[0].offsets = []
+  flushSync()
+  expect(vertex_counts(`Mesh`)).toEqual([0, 12])
+  expect(dispose).toHaveBeenCalledOnce()
+  const empty_geometry = threlte_stub.nodes[0].props.geometry as BufferGeometry
+  const empty_disposed = vi.spyOn(empty_geometry, `dispose`)
+  delete props.planes[0].offsets
+  flushSync()
+  expect(vertex_counts(`Mesh`)).toEqual([12, 12])
+  expect(empty_disposed).toHaveBeenCalledOnce()
+  props.planes = []
+  flushSync()
+  expect(vertex_counts(`Mesh`)).toEqual([])
+  props.planes = [{ hkl: [1, 0, 0] }]
+  flushSync()
+  expect(dispose).toHaveBeenCalledOnce()
+  expect(vertex_counts(`Mesh`)).toEqual([12])
 
-    props.tiling = tiling
-    flushSync()
-    // Three full block faces at x = 0, 4, 8, each spanning y = 0..12.
-    expect(vertex_counts(`Mesh`)).toEqual([18])
-    expect(vertex_counts(`LineSegments`)).toEqual([24])
-    const geometry = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
-      .geometry as BufferGeometry
-    geometry.computeBoundingBox()
-    expect(geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
-    expect(geometry.boundingBox?.max.toArray()).toEqual([8, 12, 4])
-    const disposed_block = vi.spyOn(geometry, `dispose`)
-    props.planes[0].offsets = [0.5]
-    flushSync()
-    expect(disposed_block).toHaveBeenCalledOnce()
-    expect(vertex_counts(`Mesh`)).toEqual([6])
-    props.planes[0].hkl[0] = 2
-    props.lattice[1][1] = 5
-    flushSync()
-    const final_geometries = threlte_stub.nodes
-      .filter((node) => node.props.geometry)
-      .map((node) => node.props.geometry as BufferGeometry)
-    final_geometries[0].computeBoundingBox()
-    expect(final_geometries[0].boundingBox?.min.toArray()).toEqual([1, 0, 0])
-    expect(final_geometries[0].boundingBox?.max.toArray()).toEqual([1, 15, 4])
-    const final_disposed = final_geometries.map((item) => vi.spyOn(item, `dispose`))
-    await unmount(component)
-    teardown = undefined
-    expect(final_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
-    expect(disposed_block).toHaveBeenCalledOnce()
-  },
-)
+  // oxfmt-ignore
+  props.supercell = [[2, 0, 0], [0, 3, 0], [0, 0, 1]]
+  flushSync()
+  // Three full block faces at x = 0, 4, 8, each spanning y = 0..12.
+  expect(vertex_counts(`Mesh`)).toEqual([18])
+  expect(vertex_counts(`LineSegments`)).toEqual([24])
+  const geometry = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
+    .geometry as BufferGeometry
+  geometry.computeBoundingBox()
+  expect(geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
+  expect(geometry.boundingBox?.max.toArray()).toEqual([8, 12, 4])
+  const disposed_block = vi.spyOn(geometry, `dispose`)
+  props.planes[0].offsets = [0.5]
+  flushSync()
+  expect(disposed_block).toHaveBeenCalledOnce()
+  expect(vertex_counts(`Mesh`)).toEqual([6])
+  props.planes[0].hkl[0] = 2
+  props.lattice[1][1] = 5
+  flushSync()
+  const final_geometries = threlte_stub.nodes
+    .filter((node) => node.props.geometry)
+    .map((node) => node.props.geometry as BufferGeometry)
+  final_geometries[0].computeBoundingBox()
+  expect(final_geometries[0].boundingBox?.min.toArray()).toEqual([1, 0, 0])
+  expect(final_geometries[0].boundingBox?.max.toArray()).toEqual([1, 15, 4])
+  const final_disposed = final_geometries.map((item) => vi.spyOn(item, `dispose`))
+  await unmount(component)
+  teardown = undefined
+  expect(final_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
+  expect(disposed_block).toHaveBeenCalledOnce()
+})

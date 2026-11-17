@@ -1,7 +1,7 @@
 import type { Vec2 } from '#lib/math.js'
 import type { CompUnit, DiagramRegion, TempUnit } from '#lib/phase-diagram/index.js'
 import {
-  calculate_lever_rule,
+  compute_lever_rule,
   compute_label_properties,
   convert_temp,
   find_region_at,
@@ -139,7 +139,7 @@ function expect_non_null<T>(value: T | null): T {
 const x_left_at = (temp: number) => 0.2 + (temp - 400) / 2000
 const x_right_at = (temp: number) => 0.8 - (temp - 400) / 2000
 
-describe(`calculate_lever_rule`, () => {
+describe(`compute_lever_rule`, () => {
   test.each([
     { region: split_region_horizontal, comp: 0.5, temp: 500, desc: `gap between intervals` },
     { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
@@ -148,7 +148,7 @@ describe(`calculate_lever_rule`, () => {
     { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
     { region: no_phase_region, comp: 0.5, temp: 500, desc: `no phases` },
   ])(`returns null for $desc`, ({ region, comp, temp }) => {
-    expect(calculate_lever_rule(region, comp, temp)).toBeNull()
+    expect(compute_lever_rule(region, comp, temp)).toBeNull()
   })
 
   test.each([
@@ -159,7 +159,7 @@ describe(`calculate_lever_rule`, () => {
     [0.3, 420],
     [0.65, 580],
   ])(`tie line and fractions at x=%f, T=%d`, (comp, temp) => {
-    const result = expect_non_null(calculate_lever_rule(two_phase_region, comp, temp))
+    const result = expect_non_null(compute_lever_rule(two_phase_region, comp, temp))
     const [x_left, x_right] = [x_left_at(temp), x_right_at(temp)]
     const fraction_right = (comp - x_left) / (x_right - x_left)
     expect(result).toEqual({
@@ -187,7 +187,7 @@ describe(`calculate_lever_rule`, () => {
   ])(
     `uses the nearest two-phase bounds at composition=$position when multiple intersections exist`,
     ({ region, position, temp, expected_bounds }) => {
-      const result = expect_non_null(calculate_lever_rule(region, position, temp))
+      const result = expect_non_null(compute_lever_rule(region, position, temp))
       expect(result.left_composition).toBeCloseTo(expected_bounds[0], 9)
       expect(result.right_composition).toBeCloseTo(expected_bounds[1], 9)
     },
@@ -196,7 +196,7 @@ describe(`calculate_lever_rule`, () => {
   // the format lists a two-phase region's phases left to right: phases[0] is the low-x end
   test(`tie-line ends follow the region's phase order`, () => {
     const result = expect_non_null(
-      calculate_lever_rule({ ...two_phase_region, phases: [`B`, `A`] }, 0.5, 500),
+      compute_lever_rule({ ...two_phase_region, phases: [`B`, `A`] }, 0.5, 500),
     )
     expect([result.left_phase, result.right_phase]).toEqual([`B`, `A`])
     expect(result.fraction_right).toBeCloseTo(0.5, 9)

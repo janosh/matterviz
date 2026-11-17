@@ -1,11 +1,7 @@
-// Crystallographic viewing directions: turn Miller-style indices into the Cartesian
-// direction the camera should look ALONG (i.e. the camera sits on this ray from the
-// structure center and looks back at it).
-//
-// The two index families are NOT interchangeable:
-//   - a zone axis [uvw] is a DIRECT-lattice direction, u*a + v*b + w*c
-//   - a plane normal (hkl) needs the RECIPROCAL lattice, h*b1 + k*b2 + l*b3
-// They only coincide for cubic cells, which is exactly why cubic-only testing hides bugs here.
+// Crystallographic viewing directions: Miller-style indices to the Cartesian ray from the
+// structure center the camera sits on, looking back. A zone axis [uvw] is a DIRECT-lattice
+// direction (u*a + v*b + w*c), a plane normal (hkl) needs the RECIPROCAL lattice (h*b1 + k*b2
+// + l*b3): they only coincide for cubic cells, so cubic-only tests hide bugs here.
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { create_frac_to_cart, miller_plane_normal } from '#lib/math.js'
 
@@ -15,9 +11,8 @@ export const ZONE_AXIS_MODE_LABELS = {
 } as const
 export type ZoneAxisMode = keyof typeof ZONE_AXIS_MODE_LABELS
 
-// Unit Cartesian direction for `indices` interpreted per `mode`.
-// Throws on all-zero indices (no direction) and on a singular lattice (no reciprocal lattice);
-// callers driving this from user input should gate on `is_valid_zone_axis` first.
+// Unit Cartesian direction for `indices` interpreted per `mode`. Throws on all-zero indices
+// and a singular lattice; gate user input on `is_valid_zone_axis` first.
 export function zone_axis_direction(
   matrix: Matrix3x3,
   indices: Vec3,

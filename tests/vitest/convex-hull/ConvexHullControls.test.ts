@@ -53,10 +53,8 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
       hidden_categories: [`AFM`], // initially hidden -> inactive + 0/total count
     })
     const toggles = magnetic_toggles()
-    expect(toggles.map((toggle) => toggle.textContent?.trim())).toEqual([
-      `FM (2)`,
-      `AFM (0/1)`,
-    ])
+    const texts = () => toggles.map((toggle) => toggle.textContent?.trim())
+    expect(texts()).toEqual([`FM (2)`, `AFM (0/1)`])
     expect(toggles.map((toggle) => toggle.classList.contains(`active`))).toEqual([true, false])
     // Each toggle renders a non-empty SVG shape swatch (d3 paths start with M). NB: don't
     // assert via toBeTruthy() -- oxlint rewrites it to toBe(true), failing on string|null
@@ -72,10 +70,7 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     afm_toggle.click()
     fm_toggle.click()
     flushSync()
-    expect(toggles.map((toggle) => toggle.textContent?.trim())).toEqual([
-      `FM (0/2)`,
-      `AFM (1)`,
-    ])
+    expect(texts()).toEqual([`FM (0/2)`, `AFM (1)`])
     expect(toggles.map((toggle) => toggle.getAttribute(`aria-pressed`))).toEqual([
       `false`,
       `true`,

@@ -148,23 +148,56 @@ describe(`lattice_plane_polygons`, () => {
 })
 
 describe(`tile_lattice_planes`, () => {
+  const diagonal = ([n_a, n_b, n_c]: Vec3): Matrix3x3 => [
+    [n_a, 0, 0],
+    [0, n_b, 0],
+    [0, 0, n_c],
+  ]
+
+  // A supercell M · L (diagonal or not): the planes keep their normal and spacing, all drawn
+  // ones are valid planes of the family, and explicit offsets keep naming their planes
+  // oxfmt-ignore
+  test.each([
+    [[2, -1, 0], [[2, 0, 0], [0, 3, 0], [0, 0, 2]]],
+    [[1, 1, 0], [[1, 1, 0], [-1, 1, 0], [0, 0, 1]]],
+    [[1, 1, 1], [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]],
+    [[2, -1, 0], [[3, 1, -2], [0, 2, 1], [1, 0, 1]]],
+  ] as [Vec3, Matrix3x3][])(`%j stays the same family in supercell %j`, (hkl, supercell) => {
+    const block = math.dot(supercell, triclinic)
+    const [tiled] = tile_lattice_planes([{ hkl }], supercell)
+    const normal = math.normalize_vec(math.miller_plane_normal(triclinic, hkl))
+    const block_normal = math.normalize_vec(math.miller_plane_normal(block, tiled.hkl))
+    // the same plane normal up to sign (a det < 0 supercell flips the reciprocal basis)
+    expect(Math.abs(math.dot(normal, block_normal))).toBeCloseTo(1, 12)
+    const d_hkl = 1 / Math.hypot(...math.miller_plane_normal(triclinic, hkl))
+    const signed = (polygon: Vec3[]) => math.dot(normal, polygon[0])
+    for (const { offset, polygon } of lattice_plane_polygons(tiled, block)) {
+      expect_valid_polygon(polygon, tiled.hkl, offset, block)
+      // a plane of the cell's own family: a whole number of spacings from the origin
+      const spacings = signed(polygon) / d_hkl
+      expect(Math.abs(spacings - Math.round(spacings))).toBeLessThan(1e-9)
+    }
+    // an explicit offset names the same physical plane in the supercell basis
+    const offset = 1
+    const [cell_plane] = lattice_plane_polygons({ hkl, offsets: [offset] }, triclinic)
+    const [super_plane] = lattice_plane_polygons(
+      tile_lattice_planes([{ hkl, offsets: [offset] }], supercell)[0],
+      block,
+    )
+    expect(signed(super_plane.polygon)).toBeCloseTo(signed(cell_plane.polygon), 9)
+  })
+
   test.each([[[1, 0, 0]], [[1, 1, 1]], [[2, -1, 0]]] as [Vec3][])(
-    `%s keeps its spacing and covers the whole block`,
+    `%s covers the whole diagonally tiled block`,
     (hkl) => {
       const planes = [{ hkl }]
-      expect(tile_lattice_planes(planes, [1, 1, 1])).toBe(planes)
+      expect(tile_lattice_planes(planes, math.IDENTITY_3X3)).toBe(planes)
       const tiling: Vec3 = [2, 3, 2]
       const block = math.scale_lattice_matrix(cubic, tiling)
-      const [tiled] = tile_lattice_planes([{ hkl }], tiling)
+      const [tiled] = tile_lattice_planes([{ hkl }], diagonal(tiling))
       const cell_polys = lattice_plane_polygons({ hkl }, cubic)
       const block_polys = lattice_plane_polygons(tiled, block)
-
-      // same normal direction, so the same family of planes
-      const cell_normal = math.normalize_vec(math.miller_plane_normal(cubic, hkl))
       const block_normal = math.normalize_vec(math.miller_plane_normal(block, tiled.hkl))
-      for (const [axis, component] of block_normal.entries()) {
-        expect(component).toBeCloseTo(cell_normal[axis], 10)
-      }
       // every plane of the single cell still lies in the block's set, at the same distance
       // from the origin along that normal
       const distance = (polygon: Vec3[]) => math.dot(block_normal, polygon[0])
@@ -178,9 +211,6 @@ describe(`tile_lattice_planes`, () => {
       }
       // and the block holds more of them, since it is larger along every normal component
       expect(block_polys.length).toBeGreaterThan(cell_polys.length)
-      for (const { offset, polygon } of block_polys) {
-        expect_valid_polygon(polygon, tiled.hkl, offset, block)
-      }
     },
   )
 
@@ -189,7 +219,7 @@ describe(`tile_lattice_planes`, () => {
   test(`explicit offsets keep naming the same planes, extended over the block`, () => {
     const tiling: Vec3 = [3, 2, 1]
     const block = math.scale_lattice_matrix(cubic, tiling)
-    const [tiled] = tile_lattice_planes([{ hkl: [1, 0, 0], offsets: [1] }], tiling)
+    const [tiled] = tile_lattice_planes([{ hkl: [1, 0, 0], offsets: [1] }], diagonal(tiling))
     expect(tiled.hkl).toEqual([3, 0, 0])
     expect(tiled.offsets).toEqual([1])
 
@@ -200,9 +230,8 @@ describe(`tile_lattice_planes`, () => {
     const spans = [1, 2].map((axis) => Math.max(...polys[0].polygon.map((vert) => vert[axis])))
     expect(spans).toEqual([8, 4])
     // while auto offsets do fill the block
-    expect(
-      lattice_plane_polygons(tile_lattice_planes([{ hkl: [1, 0, 0] }], tiling)[0], block),
-    ).toHaveLength(4)
+    const [auto_tiled] = tile_lattice_planes([{ hkl: [1, 0, 0] }], diagonal(tiling))
+    expect(lattice_plane_polygons(auto_tiled, block)).toHaveLength(4)
   })
 })
 

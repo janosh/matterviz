@@ -128,13 +128,10 @@ describe(`parse_pt_data`, () => {
 describe(`units`, () => {
   // Pa per unit are exact decimal powers (and 101325 for atm), so these products are exact or
   // off by at most a couple of ulps: 12 significant digits leaves ample margin above f64 eps
+  // oxfmt-ignore
   test.each([
-    [1, `GPa`, `kbar`, 10],
-    [1, `GPa`, `bar`, 1e4],
-    [1, `atm`, `Pa`, 101_325],
-    [1, `bar`, `kPa`, 100],
-    [22.064e6, `Pa`, `MPa`, 22.064],
-    [3.7, `GPa`, `GPa`, 3.7],
+    [1, `GPa`, `kbar`, 10], [1, `GPa`, `bar`, 1e4], [1, `atm`, `Pa`, 101_325],
+    [1, `bar`, `kPa`, 100], [22.064e6, `Pa`, `MPa`, 22.064], [3.7, `GPa`, `GPa`, 3.7],
   ] as const)(`%d %s = %d %s`, (value, from, to, expected) => {
     expect(convert_pressure(value, from, to) / expected).toBeCloseTo(1, 12)
     expect(convert_pressure(expected, to, from) / value).toBeCloseTo(1, 12)

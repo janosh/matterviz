@@ -1,9 +1,8 @@
-// Rotation link between sibling 3D scenes: every SceneCamera below a host's link joins with its
-// OrbitControls, and any member's view direction change (orbit, auto-rotate, reset, gizmo
-// fly-to, landed camera flight) turns the others alike, as does joining late. Each member keeps
-// its own target, distance, zoom and pan, so scenes in different units (a crystal in Å, its
-// Fermi surface in Å⁻¹) stay framed. Assumes one shared Cartesian frame and camera up vector.
-// Several auto-rotating members each add their own steps: let one auto-rotate.
+// Rotation link between sibling 3D scenes: every SceneCamera below a host's link joins, and
+// any member's view direction change (orbit, auto-rotate, reset, fly-to, landed flight) or a
+// late join turns the others alike. Members keep their own target, distance, zoom and pan, so
+// scenes in different units stay framed. Assumes a shared Cartesian frame and up vector;
+// auto-rotating members each add their own steps, so let one auto-rotate.
 import { getContext, setContext } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Vector3 } from 'three/webgpu'

@@ -4,19 +4,24 @@ import type { BandGridData } from './types'
 
 // Gaussians are summed out to this many sigma (the tail beyond holds 6e-7 of the weight)
 const GAUSSIAN_CUTOFF = 5
+// Default smearing as a share of the grid's energy span, to suit any unit and bandwidth (a
+// fixed 0.1 smeared the 0.09-wide SrVO3 t2g FRMSF flat)
+export const DOS_SIGMA_SPAN_FRACTION = 0.01
 
 // Density of states of a band grid's bands (BXSF, FRMSF): every unique k-point weighs 1/N_k
 // (an endpoint-inclusive grid's duplicated k = 1 planes are skipped) and each band energy is
-// broadened by a unit-area Gaussian of width `sigma` (eV), in states per eV per cell. Without
-// spin polarization each band holds two electrons; with it, each channel one. Only the bands
-// the grid holds count (a BXSF often lists just those near E_F), so this is their partial DOS.
-// Energies are linearly binned onto the output grid, then convolved once with the sampled
+// broadened by a unit-area Gaussian of width `sigma`, in states per energy_unit per cell (null:
+// unknown, as is the DOS's). Without spin polarization each band holds two electrons; with it, each channel one. Only the
+// bands the grid holds count (a BXSF often lists just those near E_F), so this is their partial
+// DOS. Energies are linearly binned onto the output grid, then convolved once with the sampled
 // Gaussian: O(N_k) per band rather than one Gaussian per k-point.
 export function band_grid_dos(
   grid: BandGridData,
-  { sigma = 0.1, n_points = 600 }: { sigma?: number; n_points?: number } = {},
+  { sigma: sigma_option, n_points = 600 }: { sigma?: number; n_points?: number } = {},
 ): ElectronicDos {
-  if (!(sigma > 0)) throw new Error(`band_grid_dos needs sigma > 0, got ${sigma}`)
+  if (sigma_option !== undefined && !(sigma_option > 0)) {
+    throw new Error(`band_grid_dos needs sigma > 0, got ${sigma_option}`)
+  }
   if (!Number.isInteger(n_points) || n_points < 2) {
     throw new Error(`band_grid_dos needs an integer n_points >= 2, got ${n_points}`)
   }
@@ -49,6 +54,12 @@ export function band_grid_dos(
     }),
   )
   if (!(min_energy <= max_energy)) throw new Error(`band_grid_dos got a grid without energies`)
+  const sigma = sigma_option ?? DOS_SIGMA_SPAN_FRACTION * (max_energy - min_energy)
+  if (!(sigma > 0)) {
+    throw new Error(
+      `band_grid_dos: the grid's energies span nothing (all ${min_energy}), so sigma needs setting`,
+    )
+  }
   const start = min_energy - GAUSSIAN_CUTOFF * sigma
   const step = (max_energy - start + GAUSSIAN_CUTOFF * sigma) / (n_points - 1)
   const energies = Array.from({ length: n_points }, (_, idx) => start + idx * step)
@@ -83,6 +94,7 @@ export function band_grid_dos(
   })
   return {
     type: `electronic`,
+    energy_unit: grid.energy_unit,
     energies,
     densities: densities[0],
     ...(densities.length === 2 && { spin_down_densities: densities[1], spin_polarized: true }),

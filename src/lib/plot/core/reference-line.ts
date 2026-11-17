@@ -221,7 +221,7 @@ const SIDE_BASELINE: Record<ReferenceAnnotationSide, ReferenceAnnotationBaseline
   right: `middle`,
 }
 
-export function calculate_annotation_position(
+export function compute_annotation_position(
   coord_x_1: number,
   coord_y_1: number,
   coord_x_2: number,
@@ -398,7 +398,7 @@ const annotation_candidate = (
   position: ReferenceAnnotationPosition,
   side: ReferenceAnnotationSide,
 ): ReferenceAnnotationCandidate => {
-  const anchor = calculate_annotation_position(...endpoints, { ...annotation, position, side })
+  const anchor = compute_annotation_position(...endpoints, { ...annotation, position, side })
   const unrotated_rect = reference_annotation_text_rect(anchor, metrics)
   return {
     position,

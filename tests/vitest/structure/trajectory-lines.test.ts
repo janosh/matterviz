@@ -60,11 +60,10 @@ const segment_of = (atom_idx: number, from: Vertex, to: Vertex) => ({
 })
 type DrawnSegment = ReturnType<typeof segment_of>
 
-// What the GPU draws for one window, resolved exactly as TrajectoryLines' shader does from
-// `buffers` (the trail's arrays, or a mirror holding only what was uploaded): vertex v is
-// atom slot v % atom_count in vertex row floor(v / atom_count); its position is the stored
-// f32 point plus the slot's f32 offset (one f32 add), its color the slot's texel or, in time
-// mode, texel floor((frame - start) * 256 / (end - start)) in integers.
+// What the GPU draws for one window, resolved as TrajectoryLines' shader does from `buffers`
+// (the trail's arrays, or a mirror of what was uploaded): vertex v is slot v % atom_count in
+// row floor(v / atom_count), at its f32 point plus the slot's f32 offset, colored by the slot's
+// texel or, in time mode, texel floor((frame - start) * 256 / (end - start)).
 function drawn_segments(
   trail: TrajectoryTrail,
   frame: TrajectoryTrailFrame,
@@ -115,10 +114,9 @@ function draw(stream: TrajectoryPositionStream, options: LineOptions = {}) {
   return { ...frame.stats, segments: drawn_segments(trail, frame, color_texels, color_mode) }
 }
 
-// What a window must draw, straight from the definitions (the from-scratch builder this
-// module replaced): both window ends plus the stride grid strictly between them, each atom
-// joining consecutive samples unless `break` mode sees a wrap jump, lengths from float64
-// coordinates, points moved by f32(anchor - head) in one f32 add as the shader does
+// What a window must draw, from the definitions: both window ends plus the stride grid between
+// them, each atom joining consecutive samples unless `break` mode sees a wrap jump, lengths
+// from f64 coordinates, points moved by f32(anchor - head) in one f32 add as the shader does
 function reference_draw(
   stream: TrajectoryPositionStream,
   options: LineOptions,
@@ -328,9 +326,8 @@ describe(`element filter`, () => {
         expected_atoms.flatMap((atom_idx) => Array(5).fill(atom_idx)),
       )
       // Every drawn point is its own atom's position, not another slot's
-      for (const { atom_idx, frames, to } of drawn.segments) {
+      for (const { atom_idx, frames, to } of drawn.segments)
         expect(to).toEqual([0, 1, 2].map((axis) => (axis === atom_idx ? frames[1] : 0)))
-      }
       // Each window gets fresh stats, so mutating one result cannot leak into the next
       drawn.frame_idxs.push(99)
       expect(draw(mixed_stream, { elements }).frame_idxs).not.toContain(99)
@@ -377,7 +374,6 @@ describe(`anchoring trails to the displayed atoms`, () => {
   test(`derives anchors from the base sites of a structure carrying PBC image atoms`, () => {
     const imaged = get_pbc_image_sites(nacl, image_options())
     expect(imaged.sites.length).toBeGreaterThan(nacl.sites.length)
-
     const anchors = trajectory_trail_anchors(imaged, nacl.sites.length)
     expect(anchors).toEqual(new Float64Array([0, 0, 0, 2.5, 2.5, 2.5]))
     for (const site of imaged.sites)
@@ -395,17 +391,17 @@ describe(`anchoring trails to the displayed atoms`, () => {
 
   test(`a numeric frame anchors from its columns without building site records`, () => {
     const positions = new Float64Array([0, 0, 0, 1, 2, 3, 4, 5, 6])
-    const frame = new FrameView().update(
-      create_numeric_md_frame(
-        positions,
-        new Uint8Array([3, 8, 8]),
-        undefined,
-        undefined,
-        0,
-        {},
-        [],
-      ),
+    const numbers = Uint8Array.of(3, 8, 8)
+    const md_frame = create_numeric_md_frame(
+      positions,
+      numbers,
+      undefined,
+      undefined,
+      0,
+      {},
+      [],
     )
+    const frame = new FrameView().update(md_frame)
     const materialize = vi.spyOn(NumericSites.prototype, `materialize`)
     expect(trajectory_trail_anchors(frame.structure, 2)).toEqual(positions.slice(0, 6))
     expect(materialize).not.toHaveBeenCalled()
@@ -573,12 +569,7 @@ test.each([
   const trail = new TrajectoryTrail(stream, { frame_stride })
   const frame = trail.update(options as LineOptions)
   const color_texels = trail_color_texels(trail, color_mode)
-  const { positions, colors } = trail_segments(
-    trail,
-    frame,
-    color_texels,
-    color_mode === `time`,
-  )
+  const { positions, colors } = trail_segments(trail, frame, color_texels, color_mode === `time`)
   const pairs = Array.from({ length: positions.length / 6 }, (_, idx) => ({
     from: Array.from(positions.subarray(idx * 6, idx * 6 + 3)),
     to: Array.from(positions.subarray(idx * 6 + 3, idx * 6 + 6)),

@@ -54,11 +54,8 @@ describe(`movie plans`, () => {
     const plan = plan_movie({ video, camera: path() }, count, pose)
     expect(plan.video.frame_count).toBe(360)
     expect(movie_frame(plan, 0)).toEqual({ source_frame: 0, camera_time: 0, timestamp_us: 0 })
-    expect(movie_frame(plan, 359)).toEqual({
-      source_frame: count - 1,
-      camera_time: 12,
-      timestamp_us: 11_966_667,
-    })
+    const last_frame = { source_frame: count - 1, camera_time: 12, timestamp_us: 11_966_667 }
+    expect(movie_frame(plan, 359)).toEqual(last_frame)
     expect(plan.camera.keyframes.map(({ time }) => time)).toEqual([0, 4.8, 12])
     // A saved explicit path reproduces the resolved plan, including its frame schedule.
     const serialized = JSON.stringify(plan)
@@ -199,9 +196,8 @@ describe(`camera flight sampling`, () => {
     expect(create_camera_flight_sampler(flight)(1).quaternion).toEqual(pose.quaternion)
   })
 
-  // Level camera, and the tilted rolled one whose orbit is a small circle around the up axis
-  // (not a great circle, so slerping offsets alone would leave it) and which gets leveled. A
-  // z-up viewer (camera_up) orbits about z, as its OrbitControls do, not about world y.
+  // A level camera, a tilted rolled one (orbiting a small circle about up, and leveled) and a
+  // z-up viewer, which orbits about z as its OrbitControls do
   it.each([
     [pose, [0, 1, 0]],
     [tilted, [0, 1, 0]],

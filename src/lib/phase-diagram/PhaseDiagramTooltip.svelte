@@ -357,10 +357,12 @@
     min-width: 130px;
     max-width: 220px;
   }
-  header {
+  :is(header, .point-description, .observation) {
     margin-bottom: 5px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
+  }
+  header {
     font-size: 13px;
     display: flex;
     align-items: center;
@@ -385,23 +387,19 @@
     font-size: 11px;
     font-style: italic;
     opacity: 0.9;
-    margin-bottom: 5px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border);
   }
   .observation {
     font-size: 11px;
-    margin-bottom: 5px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border);
     display: grid;
     gap: 2px;
-    .status {
-      justify-self: start;
+    :is(.status, .verdict) {
       color: white;
       font-size: 10px;
       padding: 0 5px;
       border-radius: 3px;
+    }
+    .status {
+      justify-self: start;
     }
     cite {
       font-size: 10px;
@@ -410,12 +408,6 @@
     }
     a {
       color: inherit;
-    }
-    .verdict {
-      color: white;
-      font-size: 10px;
-      padding: 0 5px;
-      border-radius: 3px;
     }
   }
   dl {
@@ -431,10 +423,8 @@
       content: ':';
     }
   }
-  dd {
-    margin: 0;
-  }
   :is(dd, .temperature) {
+    margin: 0;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     small {
@@ -443,7 +433,7 @@
       margin-left: 4px;
     }
   }
-  .lever {
+  :is(.lever, .boundary-info) {
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid var(--border);
@@ -518,13 +508,8 @@
     height: 12px;
   }
   .boundary-info {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
     font-size: 10px;
     opacity: 0.85;
-  }
-  .boundary-info {
     font-style: italic;
   }
 </style>

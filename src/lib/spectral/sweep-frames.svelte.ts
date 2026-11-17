@@ -233,10 +233,8 @@ export function create_sweep_frames(inputs: {
         if (entry.data) entries.set(base, { state: `evicted`, data: entry.data })
         else entries.delete(base)
       } else if (entry.state === `loaded` && !current.recent.includes(base)) {
-        entries.set(base, {
-          state: `evicted`,
-          data: light_data(base, entry.data, descriptors),
-        })
+        const data = light_data(base, entry.data, descriptors)
+        entries.set(base, { state: `evicted`, data })
       }
     }
   }

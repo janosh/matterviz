@@ -18,7 +18,7 @@ import {
 } from '#lib/phase-diagram/diagram.js'
 import type { BinaryPhase, BinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
 import {
-  calculate_lever_rule,
+  compute_lever_rule,
   find_region_at,
   LIQUID_COLOR,
   SOLID_PHASE_PALETTE,
@@ -703,7 +703,7 @@ describe(`site demo diagrams`, () => {
       for (const [x_val, temp] of grid(temperature_range, 60)) {
         const region = find_region_at(regions, x_val, temp)
         if (region?.phases.length !== 2) continue
-        const lever = calculate_lever_rule(region, x_val, temp)
+        const lever = compute_lever_rule(region, x_val, temp)
         expect(lever, `${name} tie line at (${x_val}, ${temp})`).not.toBeNull()
         const ends = [
           [lever?.left_composition ?? 0, -step, region.phases[0]],

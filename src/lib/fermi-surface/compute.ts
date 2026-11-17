@@ -219,6 +219,33 @@ const grid_layout = (band_data: BandGridData): { periodic: boolean; index0_frac:
   return { periodic, index0_frac }
 }
 
+// The mu slider's range about E_F: 10% of the grid's energy span to either side, to suit any
+// unit and bandwidth (a fixed ±1 swept SrVO3's 0.09-wide t2g FRMSF 20 times over), in steps of
+// ~1% of that rounded to a power of ten. Null for a flat grid: there is nothing to slide over.
+const MU_SLIDER_SPAN_FRACTION = 0.1
+export function mu_slider_range(
+  band_data: Pick<BandGridData, `energies`>,
+): { min: number; max: number; step: number } | null {
+  let [lowest, highest] = [Infinity, -Infinity]
+  for (const { values } of band_data.energies.flat()) {
+    // oxlint-disable-next-line typescript/prefer-for-of -- typed-array loop, run per band grid
+    for (let idx = 0; idx < values.length; idx++) {
+      const energy = values[idx]
+      if (energy < lowest) lowest = energy
+      if (energy > highest) highest = energy
+    }
+  }
+  if (!(lowest <= highest)) {
+    throw new Error(`mu_slider_range: band grid has no finite energy`)
+  }
+  const half_width = MU_SLIDER_SPAN_FRACTION * (highest - lowest)
+  if (half_width === 0) return null
+  // divided by the inverse step, so 70 steps of 0.01 read 0.7, not 0.7000000000000001
+  const steps_per_unit = 10 ** -Math.round(Math.log10(half_width / 100))
+  const reach = Math.round(half_width * steps_per_unit) / steps_per_unit
+  return { min: -reach, max: reach, step: 1 / steps_per_unit }
+}
+
 // interpolation_factor 0 means auto
 export const resolved_factor = (band_data: BandGridData, factor: number): number =>
   factor > 0 ? factor : auto_interpolation_factor(band_data.k_grid)
@@ -326,6 +353,7 @@ export function extract_fermi_surface(
       : isosurfaces,
     k_lattice: band_data.k_lattice,
     fermi_energy: band_data.fermi_energy,
+    energy_unit: band_data.energy_unit,
     reciprocal_cell: wigner_seitz ? `wigner_seitz` : `parallelepiped`,
     metadata: { n_bands: band_data.n_bands, n_surfaces: isosurfaces.length },
   }

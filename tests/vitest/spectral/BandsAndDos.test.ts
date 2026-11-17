@@ -12,6 +12,7 @@ import {
   mount_sized,
   mouse,
   plot_svg,
+  query,
   translate_of,
 } from '../setup'
 import { make_crystal } from '../test-fixtures'
@@ -25,6 +26,7 @@ const phonon_dos: PhononDos = {
 const electron_bands: BaseBandStructure = { ...band_structs, type: `electronic`, efermi: 2 }
 const electron_dos: ElectronicDos = {
   type: `electronic`,
+  energy_unit: `eV`,
   energies: [0, 4],
   densities: [0, 1],
   efermi: 3,
@@ -137,11 +139,7 @@ describe(`bands/DOS wrappers`, () => {
             `${idx === 1 && width === 400 ? `.x-axis` : `.y-axis`} .tick text`,
           ),
         ].map((label) => Number(label.textContent))
-      const units_select = (identifier: string) => {
-        const select = root.querySelector<HTMLSelectElement>(`#${identifier}-units`)
-        if (!select) throw new Error(`Missing ${identifier} unit selector`)
-        return select
-      }
+      const units_select = (panel: string) => query(root, `#${panel}-units`, HTMLSelectElement)
       for (const idx of [0, 1]) expect(Math.max(...frequency_ticks(idx))).toBeGreaterThan(10)
       for (const [panel, unit, upper_min, upper_max] of [
         [`bands`, `THz`, 3, 5],

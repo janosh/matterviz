@@ -382,7 +382,7 @@ export function sample_plane_slice(
   const recip = math.reciprocal_lattice(volume.lattice)
   const to_grid = (cart: Vec3): Vec3 =>
     math
-      .mat3x3_vec3_multiply(recip, cart)
+      .mul_3x3_vec3(recip, cart)
       .map((frac, axis) => frac * (volume.dims[axis] - (volume.periodic ? 0 : 1))) as Vec3
   const [plane_grid, u_grid, v_grid] = [
     to_grid(math.subtract(plane.point, volume.origin)),

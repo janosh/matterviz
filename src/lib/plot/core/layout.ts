@@ -388,7 +388,7 @@ const project_measured_axis = (
 // No ticks is a value, not missing geometry.
 const EMPTY_AXIS: MeasuredAxis = { tick_values: [], tick_positions: [] }
 
-export const calc_auto_padding = ({
+export const compute_auto_padding = ({
   padding,
   default_padding,
   x_axis = EMPTY_AXIS,

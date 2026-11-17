@@ -81,14 +81,12 @@ export interface DescriptorSpec {
 // A frame's fields besides its value: what a loader returns
 export type SweepFrameData = Omit<SweepFrame, `value`>
 
-// Fetches a frame's heavy data (0-based index into its series) when it is shown or prefetched.
-// The result is parsed like a JSON frame (failing on a wrong field) and merged over the frame's
-// own fields, records (scalars, status, doses, band_structs, phonon's) key by key and phonon's
-// mode_values as one field. `signal` aborts once the frame leaves the viewer's window, the
-// sweep or loader is replaced or the viewer unmounts: pass it to fetch or check it between
-// steps. An aborted load's result or error is ignored, and the frame may be requested again
-// later. Evicted frames (see sweep-frames) are loaded again, so a loader may be called more
-// than once per frame.
+// Fetches a frame's heavy data (0-based index into its series) when shown or prefetched, parsed
+// like a JSON frame and merged over the frame's own fields: records (scalars, status, doses,
+// band_structs, phonon's) key by key, phonon's mode_values whole. `signal` aborts once the frame
+// leaves the viewer's window, the sweep or loader is replaced or the viewer unmounts (pass it
+// to fetch); an aborted result is ignored. Evicted or aborted frames load again, so a loader
+// may be called more than once per frame.
 export type SweepFrameLoader = (
   series_id: string,
   frame_idx: number,
@@ -104,9 +102,8 @@ export interface Sweep {
 
 // Throws on what the viewer cannot show unambiguously, naming the offending entry
 export function validate_sweep(sweep: Sweep): void {
-  if (!sweep.axis?.key || !sweep.axis.label) {
+  if (!sweep.axis?.key || !sweep.axis.label)
     throw new Error(`Sweep axis needs a key and a label, got ${JSON.stringify(sweep.axis)}`)
-  }
   if (!sweep.series?.length) throw new Error(`Sweep needs at least one series`)
   const series_ids = new Set<string>()
   // The frame cache keys loads by frame object, so one object in two places would show the
@@ -117,19 +114,12 @@ export function validate_sweep(sweep: Sweep): void {
     series_ids.add(id)
     if (!frames.length) throw new Error(`Sweep series "${id}" has no frames`)
     for (const [idx, frame] of frames.entries()) {
-      const owner = frame_owners.get(frame)
-      if (owner !== undefined) {
-        throw new Error(
-          `Sweep series "${id}" frame ${idx} reuses the frame object of ${owner}`,
-        )
-      }
+      const [where, owner] = [`Sweep series "${id}" frame ${idx}`, frame_owners.get(frame)]
+      if (owner !== undefined) throw new Error(`${where} reuses the frame object of ${owner}`)
       frame_owners.set(frame, `series "${id}" frame ${idx}`)
       const { value } = frame
-      if (!Number.isFinite(value)) {
-        throw new RangeError(
-          `Sweep series "${id}" frame ${idx} has a non-finite value ${value}`,
-        )
-      }
+      if (!Number.isFinite(value))
+        throw new RangeError(`${where} has a non-finite value ${value}`)
       if (idx > 0 && !(value > frames[idx - 1].value)) {
         throw new Error(
           `Sweep series "${id}" values must be strictly ascending: frame ${idx} has ${value} after ${frames[idx - 1].value}`,
@@ -141,28 +131,22 @@ export function validate_sweep(sweep: Sweep): void {
   // the map keeps a key's last spec, so an earlier one with the same key finds another
   const by_key = new Map(descriptors.map((spec) => [spec.key, spec]))
   for (const spec of descriptors) {
-    if (by_key.get(spec.key) !== spec) {
+    const desc = `Descriptor "${spec.key}"`
+    if (by_key.get(spec.key) !== spec)
       throw new Error(`Sweep descriptor key "${spec.key}" is not unique`)
-    }
-    if ((spec.compute === `fermi_dos_share`) !== Boolean(spec.element)) {
-      throw new Error(
-        `Descriptor "${spec.key}": element goes with (and only with) fermi_dos_share`,
-      )
-    }
-    if (spec.pair && spec.compute !== `min_pair_distance`) {
-      throw new Error(`Descriptor "${spec.key}": pair goes only with min_pair_distance`)
-    }
-    if (spec.overlay && new Set(spec.overlay).size !== spec.overlay.length) {
-      throw new Error(`Descriptor "${spec.key}" overlays a descriptor twice: ${spec.overlay}`)
-    }
+    if ((spec.compute === `fermi_dos_share`) !== Boolean(spec.element))
+      throw new Error(`${desc}: element goes with (and only with) fermi_dos_share`)
+    if (spec.pair && spec.compute !== `min_pair_distance`)
+      throw new Error(`${desc}: pair goes only with min_pair_distance`)
+    if (spec.overlay && new Set(spec.overlay).size !== spec.overlay.length)
+      throw new Error(`${desc} overlays a descriptor twice: ${spec.overlay}`)
     for (const key of spec.overlay ?? []) {
       const other = by_key.get(key)
-      if (!other || key === spec.key) {
-        throw new Error(`Descriptor "${spec.key}" overlays "${key}", no other descriptor`)
-      }
+      if (!other || key === spec.key)
+        throw new Error(`${desc} overlays "${key}", no other descriptor`)
       if (other.unit !== spec.unit) {
         throw new Error(
-          `Descriptor "${spec.key}" (${spec.unit ?? `no unit`}) overlays "${key}" in ${other.unit ?? `no unit`}: overlays share their unit`,
+          `${desc} (${spec.unit ?? `no unit`}) overlays "${key}" in ${other.unit ?? `no unit`}: overlays share their unit`,
         )
       }
     }
@@ -265,17 +249,20 @@ export function dos_at_energy(dos: DosData, energy: number): number | undefined 
   return total(upper - 1) + frac * (total(upper) - total(upper - 1))
 }
 
-// The frame's E_F: the band grid's, else its DOS's or band structure's
+// The frame's E_F in eV: the band grid's, else its DOS's or band structure's. Sources in
+// another or an unknown unit (BXSF and FRMSF name none) are skipped, not read as eV.
 export function frame_fermi_energy(frame: Partial<SweepFrame>): number | undefined {
   const { band_data, fermi_data, doses = {}, band_structs = {} } = frame
+  const in_ev = (source?: { energy_unit: string | null; fermi_energy: number }) =>
+    source?.energy_unit === `eV` ? source.fermi_energy : undefined
+  // band structures are always eV, a DOS says
   const levels = [...Object.values(doses), ...Object.values(band_structs)].map((spectrum) =>
-    spectrum.type === `electronic` ? spectrum.efermi : undefined,
+    spectrum.type === `electronic` &&
+    (!(`energy_unit` in spectrum) || spectrum.energy_unit === `eV`)
+      ? spectrum.efermi
+      : undefined,
   )
-  return (
-    band_data?.fermi_energy ??
-    fermi_data?.fermi_energy ??
-    levels.find((level) => level !== undefined)
-  )
+  return in_ev(band_data) ?? in_ev(fermi_data) ?? levels.find((level) => level !== undefined)
 }
 
 // `total`, else a lone DOS that is no element projection
@@ -314,15 +301,15 @@ export function compute_descriptor(
 ): number | undefined {
   const { structure, doses } = frame
   if (spec.compute === `volume_per_atom`) return structure && volume_per_atom(structure)
-  if (spec.compute === `min_pair_distance`) {
+  if (spec.compute === `min_pair_distance`)
     return structure && min_pair_distance(structure, spec.pair)
-  }
   if (spec.compute === `fermi_band_count`) return fermi_band_count(frame)
   const total = doses && total_dos(doses)
+  // states/eV: a DOS in another or an unknown unit (from a BXSF/FRMSF grid) has no such value
+  if (total?.type !== `electronic` || total.energy_unit !== `eV`) return undefined
   // the DOS's own E_F: a denser-k DOS is not evaluated at a coarse grid's
-  const fermi_energy =
-    total?.type === `electronic` ? (total.efermi ?? frame_fermi_energy(frame)) : undefined
-  if (!total || fermi_energy === undefined) return undefined
+  const fermi_energy = total.efermi ?? frame_fermi_energy(frame)
+  if (fermi_energy === undefined) return undefined
   const at_fermi = dos_at_energy(total, fermi_energy)
   if (spec.compute === `fermi_dos`) return at_fermi
   if (spec.compute === `fermi_dos_share`) {
@@ -423,6 +410,14 @@ const FRAME_FIELDS: FieldChecks<RawFrameData> = {
   label: STRING, structure: OBJECT, band_data: OBJECT, fermi_data: OBJECT, band_structs: OBJECT,
   doses: OBJECT, phonon: OBJECT, scalars: OBJECT, status: OBJECT,
 }
+const STATUS_FIELDS: FieldChecks<NonNullable<SweepFrame[`status`]>> = {
+  unstable: JSON_KINDS.boolean,
+  note: STRING,
+}
+// oxfmt-ignore
+const PHONON_FIELDS: FieldChecks<RawRecords<keyof PhononSpectra>> = {
+  band_structs: OBJECT, doses: OBJECT, a2f: OBJECT, mode_values: OBJECT,
+}
 
 // A record whose entries (under `path`) parse to data of `type`
 function typed_record<Value extends { type: string }, Typed extends Value = Value>(
@@ -487,14 +482,7 @@ export function normalize_frame_data(raw: unknown, path: string): SweepFrameData
   }
   if (phonon) {
     const phonon_path = `${path}.phonon`
-    const { a2f, mode_values, ...phonon_spectra } = parse_fields<
-      RawRecords<keyof PhononSpectra>
-    >(phonon, phonon_path, {
-      band_structs: OBJECT,
-      doses: OBJECT,
-      a2f: OBJECT,
-      mode_values: OBJECT,
-    })
+    const { a2f, mode_values, ...records } = parse_fields(phonon, phonon_path, PHONON_FIELDS)
     const a2f_doses = typed_record<DosData, PhononDos>(
       a2f,
       `${phonon_path}.a2f`,
@@ -502,7 +490,7 @@ export function normalize_frame_data(raw: unknown, path: string): SweepFrameData
       `phonon`,
     )
     frame.phonon = {
-      ...normalize_spectra(phonon_spectra, phonon_path, `phonon`),
+      ...normalize_spectra(records, phonon_path, `phonon`),
       ...(a2f_doses && { a2f: a2f_doses }),
       ...(mode_values && {
         mode_values: parse(`phonon.mode_values`, () => normalize_mode_values(mode_values)),
@@ -518,12 +506,7 @@ export function normalize_frame_data(raw: unknown, path: string): SweepFrameData
       ),
     )
   }
-  if (status) {
-    frame.status = parse_fields<NonNullable<SweepFrame[`status`]>>(status, `${path}.status`, {
-      unstable: JSON_KINDS.boolean,
-      note: STRING,
-    })
-  }
+  if (status) frame.status = parse_fields(status, `${path}.status`, STATUS_FIELDS)
   return frame
 }
 
@@ -549,6 +532,12 @@ const DESCRIPTOR_FIELDS: FieldChecks<DescriptorSpec> = {
   overlay: [(value) => Array.isArray(value) && value.every(is_string), `descriptor keys`],
 }
 
+type RawSweep = { axis: unknown; series: unknown[]; descriptors?: unknown[] }
+const ROOT_FIELDS: FieldChecks<RawSweep> = { axis: OBJECT, series: ARRAY, descriptors: ARRAY }
+const AXIS_FIELDS: FieldChecks<SweepAxis> = { key: STRING, label: STRING, unit: STRING }
+type RawSeries = Omit<SweepSeries, `frames`> & { frames: unknown[] }
+const SERIES_FIELDS: FieldChecks<RawSeries> = { id: STRING, label: STRING, frames: ARRAY }
+
 // Whether parsed JSON looks like a sweep (an axis and a series list), so a dropped JSON file
 // is treated as one
 export const is_sweep_like = (raw: unknown): boolean =>
@@ -557,26 +546,12 @@ export const is_sweep_like = (raw: unknown): boolean =>
 // A sweep from parsed JSON: structures, band grids, meshed surfaces, band structures and DOS
 // in their JSON forms are normalized like single files. Throws naming the offending path.
 export function normalize_sweep(raw: unknown): Sweep {
-  const root = parse_fields<{ axis: unknown; series: unknown[]; descriptors?: unknown[] }>(
-    raw,
-    `root`,
-    { axis: OBJECT, series: ARRAY, descriptors: ARRAY },
-    [`axis`, `series`],
-  )
+  const root = parse_fields(raw, `root`, ROOT_FIELDS, [`axis`, `series`])
   const sweep: Sweep = {
-    axis: parse_fields<SweepAxis>(
-      root.axis,
-      `axis`,
-      { key: STRING, label: STRING, unit: STRING },
-      [`key`, `label`],
-    ),
+    axis: parse_fields(root.axis, `axis`, AXIS_FIELDS, [`key`, `label`]),
     series: root.series.map((entry, series_idx) => {
       const path = `series[${series_idx}]`
-      const { frames, ...rest } = parse_fields<{
-        id: string
-        label?: string
-        frames: unknown[]
-      }>(entry, path, { id: STRING, label: STRING, frames: ARRAY }, [`id`, `frames`])
+      const { frames, ...rest } = parse_fields(entry, path, SERIES_FIELDS, [`id`, `frames`])
       const parsed = frames.map((frame, idx) =>
         normalize_frame(frame, `${path}.frames[${idx}]`),
       )

@@ -33,6 +33,7 @@ import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { fcc_primitive_matrix, IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const nacl_data = parse_phonon_modes(nacl_band_yaml)
+const optical = nacl_data.qpoints[0].modes[3].eigenvector ?? [] // NaCl's first optical mode at Γ
 
 const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {
   const run = create_phonon_mode_run(...args)
@@ -78,14 +79,11 @@ const displacement_at = (data: PhononModeData, frame_idx: number, site_idx: numb
 describe(`phonon_mode_trajectory`, () => {
   it(`defaults to a 3x3x2 supercell with a 0.3 A excursion`, () => {
     const trajectory = phonon_mode_trajectory(make_mode_data(), first_mode)
-    const displacement = trajectory.frames[0].structure.sites[0].properties
-      .phonon_displacement as Vec3
+    const { sites } = trajectory.frames[0].structure
+    const displacement = sites[0].properties.phonon_displacement as Vec3
     expect(trajectory.metadata).toMatchObject({ amplitude: 0.3, supercell: [3, 3, 2] })
-    expect(
-      trajectory.frames[0].structure.sites.filter(
-        ({ provenance }) => provenance?.image_of === undefined,
-      ),
-    ).toHaveLength(18)
+    const unit_sites = sites.filter(({ provenance }) => provenance?.image_of === undefined)
+    expect(unit_sites).toHaveLength(18)
     expect(Math.hypot(...displacement)).toBeCloseTo(0.3, 14)
   })
 
@@ -163,11 +161,10 @@ describe(`phonon_mode_trajectory`, () => {
       if (!(`lattice` in structure)) throw new Error(`Expected a crystal trajectory frame`)
       expect(structure.lattice.pbc).toEqual([false, false, false])
       const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
-      for (const site of structure.sites) {
+      for (const site of structure.sites)
         site.xyz.forEach((value, axis) =>
           expect(frac_to_cart(site.abc)[axis]).toBeCloseTo(value, 14),
         )
-      }
     }
     const cyclic_steps = trajectory.frames.map(({ structure }, frame_idx) => {
       const next_structure =
@@ -183,29 +180,18 @@ describe(`phonon_mode_trajectory`, () => {
     expect(cyclic_steps.at(-1)).toBeLessThanOrEqual(Math.max(...cyclic_steps.slice(0, -1)))
   })
 
+  // TECE mp-22913: the Br partners of the low-face Cu atoms lie outside the cell.
+  const cubr_data = (br: number): PhononModeData => ({
+    ...make_mode_data([...real_x, ...real_x], [0, 0, 0], [63.546, 79.904]),
+    lattice: fcc_primitive_matrix(5.7166),
+    atoms: [
+      { symbol: `Cu`, mass: 63.546, coordinates: [0, 0, 0] },
+      { symbol: `Br`, mass: 79.904, coordinates: [br, br, br] },
+    ],
+  })
   it.each([
     [`NaCl`, nacl_data, 3, 6],
-    // TECE mp-22913: the Br partners of the low-face Cu atoms lie outside the cell.
-    ...[-0.25, 0.75, 1.75].map(
-      (coordinate) =>
-        [
-          `CuBr (Br=${coordinate})`,
-          {
-            ...make_mode_data([...real_x, ...real_x], [0, 0, 0], [63.546, 79.904]),
-            lattice: fcc_primitive_matrix(5.7166),
-            atoms: [
-              { symbol: `Cu`, mass: 63.546, coordinates: [0, 0, 0] },
-              {
-                symbol: `Br`,
-                mass: 79.904,
-                coordinates: [coordinate, coordinate, coordinate],
-              },
-            ],
-          } satisfies PhononModeData,
-          0,
-          4,
-        ] as const,
-    ),
+    ...[-0.25, 0.75, 1.75].map((br) => [`CuBr (Br=${br})`, cubr_data(br), 0, 4] as const),
   ] as const)(
     `completes %s boundary bonds and keeps topology fixed`,
     (_name, data, mode_idx, coordination) => {
@@ -241,12 +227,10 @@ describe(`phonon_mode_trajectory`, () => {
       )
       expect(image_sites.length).toBeGreaterThan(0)
       for (const site of image_sites) {
-        const abc = equilibrium_abc(site)
         const source_idx = site.provenance?.image_of
         if (source_idx === undefined) throw new Error(`Expected an image source`)
-        const source = first_structure.sites[source_idx]
-        const source_abc = equilibrium_abc(source)
-        const shift = abc.map((coordinate, axis) => coordinate - source_abc[axis])
+        const source_abc = equilibrium_abc(first_structure.sites[source_idx])
+        const shift = equilibrium_abc(site).map((coord, axis) => coord - source_abc[axis])
         expect(shift.some((coordinate) => Math.abs(coordinate) > 0.5)).toBe(true)
         shift.forEach((coordinate) =>
           expect(coordinate).toBeCloseTo(Math.round(coordinate), 12),
@@ -347,8 +331,7 @@ describe(`staged phonon runs`, () => {
     const [pattern_a, pattern_b] = [3, 4].map((mode_idx) =>
       phonon_mode_pattern(cell, nacl_data, { qpoint_idx: 0, mode_idx }),
     )
-    expect(pattern_a.supercell).toBe(cell)
-    expect(pattern_b.supercell).toBe(cell)
+    for (const pattern of [pattern_a, pattern_b]) expect(pattern.supercell).toBe(cell)
     const other_data = { ...nacl_data, n_atoms: nacl_data.n_atoms + 1 }
     expect(() =>
       phonon_mode_pattern(cell, other_data, { qpoint_idx: 0, mode_idx: 3 }),
@@ -386,11 +369,10 @@ describe(`staged phonon runs`, () => {
     const quarter_b = materialize_frame_result(long_run.read_frame(1000))
     if (quarter_a instanceof Promise || quarter_b instanceof Promise)
       throw new TypeError(`sync`)
-    for (const [site_idx, { xyz }] of quarter_b.structure.sites.entries()) {
+    for (const [site_idx, { xyz }] of quarter_b.structure.sites.entries())
       xyz.forEach((coord, axis) =>
         expect(coord).toBeCloseTo(quarter_a.structure.sites[site_idx].xyz[axis], 12),
       )
-    }
     expect(quarter_a.structure.sites[0].species).toEqual(cell.structure.sites[0].species)
     expect(
       Math.hypot(
@@ -425,8 +407,6 @@ describe(`staged phonon runs`, () => {
   })
 
   it(`reports mass-weighted mode character per element`, () => {
-    const optical = nacl_data.qpoints[0].modes[3].eigenvector
-    if (!optical) throw new Error(`fixture mode has no eigenvector`)
     const { element_weights, participation_ratio } = phonon_mode_character(nacl_data, optical)
     expect(element_weights.map(([symbol]) => symbol).toSorted()).toEqual([`Cl`, `Na`])
     expect(element_weights.reduce((sum, [, weight]) => sum + weight, 0)).toBeCloseTo(1, 12)
@@ -459,8 +439,6 @@ describe(`phonon_mode_values`, () => {
     )
     expect(sums).toHaveLength(30)
     for (const sum of sums ?? []) expect(Math.abs(sum - 1)).toBeLessThan(1e-14)
-    const optical = nacl_data.qpoints[0].modes[3].eigenvector
-    if (!optical) throw new Error(`fixture mode has no eigenvector`)
     expect(participation?.values[0][3]).toBe(
       phonon_mode_character(nacl_data, optical).participation_ratio,
     )
@@ -468,19 +446,10 @@ describe(`phonon_mode_values`, () => {
 
   it(`skips q-points without eigenvectors and marks modes without one NaN`, () => {
     const data = make_mode_data(real_x)
-    const blank = { q_position: [0.5, 0, 0] as Vec3, distance: 0.5, modes: [] }
+    const bare = (frequency: number) => ({ frequency, eigenvector: null })
     data.qpoints = [
-      {
-        ...data.qpoints[0],
-        modes: [...data.qpoints[0].modes, { frequency: 2, eigenvector: null }],
-      },
-      {
-        ...blank,
-        modes: [
-          { frequency: 1, eigenvector: null },
-          { frequency: 3, eigenvector: null },
-        ],
-      },
+      { ...data.qpoints[0], modes: [...data.qpoints[0].modes, bare(2)] },
+      { q_position: [0.5, 0, 0], distance: 0.5, modes: [bare(1), bare(3)] },
     ]
     const values = phonon_mode_values(data, `participation`)
     expect(values?.qpoints).toEqual([[0, 0, 0]])
@@ -523,14 +492,8 @@ describe(`phonon_mode_values`, () => {
   })
 
   it.each([
-    [`participation`, true],
-    [`ir`, true],
-    [`raman`, true],
-    [`element:Na`, true],
-    [`element:`, false],
-    [`element:N a`, false],
-    [`fat`, false],
-    [``, false],
+    ...[`participation`, `ir`, `raman`, `element:Na`].map((value) => [value, true] as const),
+    ...[`element:`, `element:N a`, `fat`, ``].map((value) => [value, false] as const),
   ])(`is_phonon_band_coloring(%j) is %s`, (value, expected) => {
     expect(is_phonon_band_coloring(value)).toBe(expected)
   })
@@ -583,42 +546,43 @@ describe(`phonon band helpers`, () => {
     expect(Math.max(...relative_errors)).toBeLessThan(1e-12)
   })
 
-  it.each([
-    IDENTITY_MATRIX3,
-    null,
-    [
-      [2, 0, 0],
-      [1, 3, 0],
-      [0, 0, 4],
-    ] satisfies Matrix3x3,
-  ])(`preserves band metadata (%j)`, (lattice) => {
-    const data = make_mode_data()
-    data.lattice = lattice
-    data.qpoints = [
-      { q_position: [0, 0, 0], distance: 0, modes: [{ frequency: 1, eigenvector: real_x }] },
-      { q_position: [0.5, 0, 0], distance: 1, modes: [{ frequency: 2, eigenvector: real_x }] },
-    ]
-    data.path_segments = [
-      { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },
-    ]
-    const bands = phonon_band_structure_from_modes(data)
-    if (lattice) {
-      expect(bands.recip_lattice).toHaveLength(3)
-      // a_i · b_j = 2π δ_ij, including skew cells; 12 digits allow inversion roundoff.
-      lattice.forEach((real_vector, real_idx) =>
-        bands.recip_lattice?.forEach((recip_vector, recip_idx) =>
-          expect(dot(real_vector, recip_vector)).toBeCloseTo(
-            real_idx === recip_idx ? 2 * Math.PI : 0,
-            12,
+  // oxfmt-ignore
+  const skew_lattice: Matrix3x3 = [[2, 0, 0], [1, 3, 0], [0, 0, 4]]
+  it.each([IDENTITY_MATRIX3, null, skew_lattice])(
+    `preserves band metadata (%j)`,
+    (lattice) => {
+      const data = make_mode_data()
+      data.lattice = lattice
+      data.qpoints = [
+        { q_position: [0, 0, 0], distance: 0, modes: [{ frequency: 1, eigenvector: real_x }] },
+        {
+          q_position: [0.5, 0, 0],
+          distance: 1,
+          modes: [{ frequency: 2, eigenvector: real_x }],
+        },
+      ]
+      data.path_segments = [
+        { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },
+      ]
+      const bands = phonon_band_structure_from_modes(data)
+      if (lattice) {
+        expect(bands.recip_lattice).toHaveLength(3)
+        // a_i · b_j = 2π δ_ij, including skew cells; 12 digits allow inversion roundoff.
+        lattice.forEach((real_vector, real_idx) =>
+          bands.recip_lattice?.forEach((recip_vector, recip_idx) =>
+            expect(dot(real_vector, recip_vector)).toBeCloseTo(
+              real_idx === recip_idx ? 2 * Math.PI : 0,
+              12,
+            ),
           ),
-        ),
-      )
-    } else expect(bands.recip_lattice).toBeUndefined()
-    expect(bands.bands).toEqual([[1, 2]])
-    expect(bands.branches).toEqual([{ start_index: 0, end_index: 1, name: `GAMMA-X` }])
-    expect(bands.qpoints.map(({ label }) => label)).toEqual([`GAMMA`, `X`])
-    expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
-  })
+        )
+      } else expect(bands.recip_lattice).toBeUndefined()
+      expect(bands.bands).toEqual([[1, 2]])
+      expect(bands.branches).toEqual([{ start_index: 0, end_index: 1, name: `GAMMA-X` }])
+      expect(bands.qpoints.map(({ label }) => label)).toEqual([`GAMMA`, `X`])
+      expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
+    },
+  )
 
   it(`labels only the segment endpoints, last segment winning at shared indices`, () => {
     const data = make_mode_data()
@@ -646,11 +610,8 @@ describe(`phonon band helpers`, () => {
   })
 
   it.each([
-    [-0.6, true],
-    [-0.5, false],
-    [-1e-7, false],
-    [0, false],
-    [3, false],
+    [-0.6, true] as const,
+    ...[-0.5, -1e-7, 0, 3].map((freq) => [freq, false] as const),
   ])(`is_imaginary_frequency(%s) tolerates acoustic sum rule noise`, (freq, expected) => {
     expect(is_imaginary_frequency(freq)).toBe(expected)
   })
@@ -688,9 +649,8 @@ describe(`phonon band helpers`, () => {
     expect(data.qpoints[0].modes).toHaveLength(60)
     expect(data.qpoints.filter(qpoint_has_eigenvectors)).toHaveLength(15)
     // segment endpoints always carry eigenvectors so labelled points are animatable
-    for (const idx of Object.keys(phonon_qpoint_labels(data)).map(Number)) {
+    for (const idx of Object.keys(phonon_qpoint_labels(data)).map(Number))
       expect(data.qpoints[idx].modes[0].eigenvector).not.toBeNull()
-    }
     for (const [idx, qpoint] of data.qpoints.entries()) {
       const snapped = nearest_qpoint_with_eigenvector(data, idx, 0)
       expect(snapped).toBeGreaterThanOrEqual(0)

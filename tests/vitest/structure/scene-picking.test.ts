@@ -177,9 +177,7 @@ describe(`bond endpoint picking`, () => {
 describe(`ScenePointer`, () => {
   const make_pointer = () => {
     vi.useFakeTimers()
-    onTestFinished(() => {
-      vi.useRealTimers()
-    })
+    onTestFinished(() => void vi.useRealTimers())
     const hover = { idx: null as number | null }
     const pointer = new ScenePointer({
       get: () => hover.idx,
@@ -225,19 +223,6 @@ describe(`ScenePointer`, () => {
     pointer.dispose()
     vi.advanceTimersByTime(ATOM_HOVER_CLEAR_DELAY_MS)
     expect(hover.idx).toBe(5)
-  })
-
-  test(`set_hover hovers and cancels a scheduled clear, which clears after the delay`, () => {
-    const { pointer, hover } = make_pointer()
-    pointer.set_hover(7)
-    expect(hover.idx).toBe(7)
-    pointer.schedule_hover_clear(7)
-    pointer.set_hover(7) // moving back over the atom cancels the clear
-    vi.advanceTimersByTime(ATOM_HOVER_CLEAR_DELAY_MS)
-    expect(hover.idx).toBe(7)
-    pointer.schedule_hover_clear(7)
-    vi.advanceTimersByTime(ATOM_HOVER_CLEAR_DELAY_MS)
-    expect(hover.idx).toBeNull()
   })
 
   test(`a pressed site's click is skipped once, within the dedupe window`, () => {

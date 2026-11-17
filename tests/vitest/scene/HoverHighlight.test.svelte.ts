@@ -125,9 +125,8 @@ test.each([
   expect(threlte_stub.nodes).toEqual([])
 })
 
-// Large meshes, indexed and as soups, fill the welding and edge hash tables enough for probes
-// to collide: closed surfaces have no boundary, an open grid exactly its perimeter (segments
-// per side, as vertex pairs of 3 floats each)
+// Large meshes fill the hash tables enough for probes to collide: closed surfaces have no
+// boundary, an open grid exactly its perimeter (segments as vertex pairs of 3 floats each)
 // oxfmt-ignore
 test.each([
   [`sphere`, new SphereGeometry(1, 96, 64), 0],

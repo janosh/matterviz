@@ -102,6 +102,50 @@ Multiple series with different categories are aligned correctly for stacking and
 
 Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
 
+## Error Bars
+
+Pass `y_error` to draw an error bar at each bar's tip: a scalar, one value per bar, or `{ lower, upper }` for asymmetric errors (same shape as ScatterPlot's). Stacked bars put the error on the stack's cumulative value, and the auto range always includes the error bars. Below: mean test MAE over 5 seeds, with ± 1 std or the asymmetric spread to the best and worst seed.
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  let asymmetric = $state(false)
+  let horizontal = $state(false)
+  const models = [`MACE`, `CHGNet`, `M3GNet`, `SevenNet`, `ORB`]
+  const runs = [
+    [21.4, 22.9, 20.8, 23.1, 21.9],
+    [33.0, 35.8, 31.6, 34.2, 36.1],
+    [41.7, 39.9, 44.3, 42.6, 40.8],
+    [24.8, 26.1, 25.3, 23.9, 27.0],
+    [18.2, 19.6, 17.9, 20.4, 18.8],
+  ]
+  const mean = (vals: number[]) => vals.reduce((sum, val) => sum + val, 0) / vals.length
+  const means = runs.map(mean)
+  const std = runs.map((vals, idx) =>
+    Math.sqrt((mean(vals.map((val) => (val - means[idx]) ** 2)) * 5) / 4),
+  )
+  const spread = {
+    lower: runs.map((vals, idx) => means[idx] - Math.min(...vals)),
+    upper: runs.map((vals, idx) => Math.max(...vals) - means[idx]),
+  }
+  let series = $derived([
+    { x: models, y: means, y_error: asymmetric ? spread : std, label: `Energy MAE` },
+  ])
+  const label = `Test MAE (meV/atom)`
+</script>
+
+<label><input type="checkbox" bind:checked={asymmetric} /> best to worst seed</label>
+<label><input type="checkbox" bind:checked={horizontal} /> Horizontal</label>
+<BarPlot
+  {series}
+  orientation={horizontal ? `horizontal` : `vertical`}
+  x_axis={{ label: horizontal ? label : `Model` }}
+  y_axis={{ label: horizontal ? `Model` : label }}
+  style="height: 350px"
+/>
+```
+
 ## Pattern Fills
 
 Every bar series accepts a `pattern` that hatches the fill so series stay distinguishable in grayscale print or for color-blind readers. Below, one bar per shape in `PATTERN_SHAPES`, each tuned via the controls.

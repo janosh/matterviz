@@ -1,8 +1,8 @@
 import StructureInfoPane from '#lib/structure/StructureInfoPane.svelte'
 import type { AnyStructure } from '#lib'
-import * as rdf from '#lib/rdf/calc-rdf.js'
-import * as coordination from '#lib/coordination/calc-coordination.js'
-import * as angles from '#lib/bond-angles/calc-bond-angles.js'
+import * as rdf from '#lib/rdf/compute-rdf.js'
+import * as coordination from '#lib/coordination/compute-coordination.js'
+import * as angles from '#lib/bond-angles/compute-bond-angles.js'
 import type { Vec3 } from '#lib/math.js'
 import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
 import type { ComponentProps } from 'svelte'
@@ -12,9 +12,9 @@ import { bind_props, doc_query, set_input } from '../setup'
 import { get_dummy_structure, make_wyckoff_dataset } from '../test-fixtures'
 
 // The RDF worker client binds its compute on import, before a spy could replace it
-vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
+vi.mock(`#lib/rdf/compute-rdf.js`, async (import_original) => {
   const actual = await import_original<typeof rdf>()
-  return { ...actual, calculate_rdfs: vi.fn(actual.calculate_rdfs) }
+  return { ...actual, compute_rdfs: vi.fn(actual.compute_rdfs) }
 })
 
 describe(`StructureInfoPane`, () => {
@@ -143,13 +143,12 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane(bind_props({ structure }, state))
     const site_cards = () => Array.from(document.querySelectorAll<HTMLElement>(`.site-card`))
     expect(site_cards()).toHaveLength(3)
-    expect(site_cards()[0].textContent).toContain(`Frac.`)
-    expect(site_cards()[0].textContent).toContain(`Cart.`)
-    expect(site_cards()[0].textContent).toContain(`(true, false, true)`) // not (1, 0, 1)
-    expect(site_cards()[0].textContent).toContain(`2.5 μB`)
-    expect(site_cards()[1].textContent).toContain(`(0, 0, 1.5) μB`)
-    expect(site_cards()[1].textContent).toContain(`5 eV/Å`)
-    expect(site_cards()[1].textContent).not.toContain(`()`) // an empty magmom shows nothing
+    const [card_0, card_1] = site_cards().map((card) => card.textContent)
+    // selective dynamics show as (true, false, true), not (1, 0, 1)
+    for (const text of [`Frac.`, `Cart.`, `(true, false, true)`, `2.5 μB`])
+      expect(card_0).toContain(text)
+    for (const text of [`(0, 0, 1.5) μB`, `5 eV/Å`]) expect(card_1).toContain(text)
+    expect(card_1).not.toContain(`()`) // an empty magmom shows nothing
     expect(document.querySelector(`.site-color`)).toBeNull()
 
     const site_row = site_cards()[1]
@@ -272,9 +271,9 @@ describe(`StructureInfoPane`, () => {
     const crystal = get_dummy_structure(`H`, 2, true)
     const structure = periodic ? crystal : { sites: crystal.sites }
     const displayed_structure = get_dummy_structure(`O`, 10, periodic)
-    const rdf_spy = vi.mocked(rdf.calculate_rdfs)
-    const cn_spy = vi.spyOn(coordination, `calc_coordination_nums`)
-    const angle_spy = vi.spyOn(angles, `calc_bond_angles`)
+    const rdf_spy = vi.mocked(rdf.compute_rdfs)
+    const cn_spy = vi.spyOn(coordination, `compute_coordination_nums`)
+    const angle_spy = vi.spyOn(angles, `compute_bond_angles`)
     const props = $state<{ structure: AnyStructure; pane_open: boolean }>({
       structure,
       pane_open: true,

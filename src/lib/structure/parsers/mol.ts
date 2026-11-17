@@ -35,9 +35,8 @@ const read_int_fields = (line: string, count: number): number[] => {
   )
   // A missing field slices to '', and Number('') is 0, which Number.isInteger accepts — a
   // bond line truncated after its two atom ids would read as a valid bond of type 0
-  if (fixed.every((field) => field !== `` && Number.isInteger(Number(field)))) {
+  if (fixed.every((field) => field !== `` && Number.isInteger(Number(field))))
     return fixed.map(Number)
-  }
   const tokens = line.trim().split(/\s+/).slice(0, count).map(Number)
   return tokens.length === count && tokens.every(Number.isInteger) ? tokens : []
 }
@@ -63,9 +62,7 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
   const bond_start = atom_start + num_atoms
   if (lines.length < bond_start)
     throw new Error(
-      `MOL atom block truncated: counts line declares ${num_atoms} atoms but only ${
-        lines.length - atom_start
-      } lines follow`,
+      `MOL atom block truncated: counts line declares ${num_atoms} atoms but only ${lines.length - atom_start} lines follow`,
     )
 
   const sites: Site[] = []
@@ -92,9 +89,7 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
     const fields = line === undefined ? [] : read_int_fields(line, 3)
     if (fields.length !== 3)
       throw new Error(
-        `MOL bond block invalid or truncated at bond ${
-          bond_idx + 1
-        } of ${num_bonds}: '${line?.trim() ?? `<end of file>`}'`,
+        `MOL bond block invalid or truncated at bond ${bond_idx + 1} of ${num_bonds}: '${line?.trim() ?? `<end of file>`}'`,
       )
     const [atom_id_1, atom_id_2, code] = fields
     bonds.push({
@@ -147,11 +142,8 @@ const parse_v3000 = (lines: string[]): MolBlock => {
   for (const row of section_rows(`BOND`)) {
     const tokens = row_tokens(row, 4, `MOL V3000 bond row (need 'index type atom_1 atom_2')`)
     const [, code, atom_id_1, atom_id_2] = tokens.map(Number)
-    bonds.push({
-      atom_id_1,
-      atom_id_2,
-      order: mol_bond_order(code, `MOL V3000 bond '${row}'`),
-    })
+    const order = mol_bond_order(code, `MOL V3000 bond '${row}'`)
+    bonds.push({ atom_id_1, atom_id_2, order })
   }
 
   return { sites, bonds, site_idx_by_atom_id }
@@ -167,11 +159,10 @@ export const parse_mol = (content: string): Molecule => {
   if (terminators.length > 0) {
     const trailing = all_lines.slice(terminators[terminators.length - 1] + 1)
     const n_records = terminators.length + Number(trailing.some((line) => line.trim() !== ``))
-    if (n_records > 1) {
+    if (n_records > 1)
       parse_warn(
         `SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`,
       )
-    }
   }
 
   // The counts line is the 4th line of the header block; locate it by its version

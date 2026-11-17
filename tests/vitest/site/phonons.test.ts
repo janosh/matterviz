@@ -1,4 +1,4 @@
-import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '#lib/math.js'
+import { mul_3x3_vec3, subtract, transpose_3x3 } from '#lib/math.js'
 import { compute_frequency_range } from '#lib/spectral/helpers.js'
 import { load_phonon_fixtures, phonon_fixture_groups } from '#site/phonons/fixtures.js'
 import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
@@ -139,13 +139,13 @@ describe(`Phonon Module Tests`, () => {
           ),
         ),
       )
-      const recip_T = transpose_3x3_matrix(band_struct.recip_lattice)
+      const recip_T = transpose_3x3(band_struct.recip_lattice)
       for (const { start_index, end_index, name } of band_struct.branches) {
         const delta_q = subtract(
           band_struct.qpoints[end_index].frac_coords,
           band_struct.qpoints[start_index].frac_coords,
         )
-        const chord = Math.hypot(...mat3x3_vec3_multiply(recip_T, delta_q))
+        const chord = Math.hypot(...mul_3x3_vec3(recip_T, delta_q))
         expect(
           band_struct.distance[end_index] - band_struct.distance[start_index],
           `${identifier}: ${name}`,
@@ -231,14 +231,19 @@ describe(`Phonon Module Tests`, () => {
     },
   )
 
-  it(`lazy per-material loading groups every fixture and matches the eager maps`, async () => {
-    const keys = phonon_fixture_groups.flatMap((group) => group.keys)
-    expect(keys.toSorted()).toEqual(Object.keys(phonon_data).toSorted())
-    const fixtures = await load_phonon_fixtures(keys)
-    expect(fixtures.map(({ bands }) => bands)).toEqual(keys.map((key) => phonon_bands[key]))
-    expect(fixtures.map(({ dos }) => dos)).toEqual(keys.map((key) => phonon_dos[key]))
-    await expect(load_phonon_fixtures([`mp-0-Xx-pbe`])).rejects.toThrow(
-      /Unknown phonon fixture mp-0-Xx-pbe/,
-    )
-  })
+  // dynamically imports every fixture file: cold module transforms on a busy CI shard took >5 s
+  it(
+    `lazy per-material loading groups every fixture and matches the eager maps`,
+    { timeout: 30_000 },
+    async () => {
+      const keys = phonon_fixture_groups.flatMap((group) => group.keys)
+      expect(keys.toSorted()).toEqual(Object.keys(phonon_data).toSorted())
+      const fixtures = await load_phonon_fixtures(keys)
+      expect(fixtures.map(({ bands }) => bands)).toEqual(keys.map((key) => phonon_bands[key]))
+      expect(fixtures.map(({ dos }) => dos)).toEqual(keys.map((key) => phonon_dos[key]))
+      await expect(load_phonon_fixtures([`mp-0-Xx-pbe`])).rejects.toThrow(
+        /Unknown phonon fixture mp-0-Xx-pbe/,
+      )
+    },
+  )
 })

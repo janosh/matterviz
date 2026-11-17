@@ -10,7 +10,6 @@ import {
   BarPlot,
   BoxPlot,
   BrillouinZone,
-  check_blob_workers,
   ChemPotDiagram,
   Composition,
   ConvexHull,
@@ -41,6 +40,7 @@ import {
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
+import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'

@@ -70,7 +70,9 @@ export function build_spatial_index_at<T>(
 
   // Stable LSD radix sort of the ids by key, a byte per pass; a byte every key shares (most
   // of them on a plot-sized grid) skips its pass
-  let order = Int32Array.from({ length: count }, (_, idx) => idx)
+  // filled by a loop: Int32Array.from with a map callback took 3x the radix sort at 1M ids
+  let order = new Int32Array(count)
+  for (let idx = 0; idx < count; idx++) order[idx] = idx
   let sorted = new Int32Array(count)
   const offsets = new Int32Array(257)
   for (let shift = 0; shift < 32; shift += 8) {
@@ -85,21 +87,23 @@ export function build_spatial_index_at<T>(
     ;[order, sorted] = [sorted, order]
   }
 
-  const cell_keys: number[] = []
-  const cell_starts: number[] = []
+  // Sized for one cell per item, then cut to the occupied count
+  const cell_keys = new Uint32Array(count)
+  const cell_starts = new Int32Array(count + 1)
+  let n_cells = 0
   for (let idx = 0; idx < count; idx++) {
     const key = keys[order[idx]]
-    if (cell_keys.at(-1) === key) continue
-    cell_keys.push(key)
-    cell_starts.push(idx)
+    if (n_cells > 0 && cell_keys[n_cells - 1] === key) continue
+    cell_keys[n_cells] = key
+    cell_starts[n_cells++] = idx
   }
-  cell_starts.push(count)
+  cell_starts[n_cells] = count
   return {
     items: kept,
     cx: xs.subarray(0, count),
     cy: ys.subarray(0, count),
-    cell_keys: Uint32Array.from(cell_keys),
-    cell_starts: Int32Array.from(cell_starts),
+    cell_keys: cell_keys.slice(0, n_cells),
+    cell_starts: cell_starts.slice(0, n_cells + 1),
     order,
     cell_size,
     radius_px,

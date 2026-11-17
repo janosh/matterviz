@@ -157,7 +157,9 @@ export function get_point_color_for_entry(
 }
 
 // Compute a consistent max energy threshold for controls (shared)
-export function calc_max_hull_dist_in_data(processed_entries: readonly PhaseData[]): number {
+export function compute_max_hull_dist_in_data(
+  processed_entries: readonly PhaseData[],
+): number {
   if (processed_entries.length === 0) return 0.5
   const max_hull_dist = Math.max(0, array_max(finite_hull_dists(processed_entries)))
   return Math.max(0.1, max_hull_dist + 0.001)

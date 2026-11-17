@@ -9,7 +9,7 @@ import type { RowData } from 'svelte-widgets/table'
 import { generate_bz_vertices } from '#lib/brillouin/compute.js'
 import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
 import {
-  calculate_e_above_hull,
+  compute_e_above_hull,
   compute_lower_hull_nd,
 } from '#lib/convex-hull/thermodynamics.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
@@ -42,11 +42,11 @@ import type { TrajectoryController } from '#lib/trajectory/index.js'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { atom_range, frame_atom_batch, type ReadAtoms } from '#lib/trajectory/atom-batches.js'
-import { calculate_hotspots } from '#lib/trajectory/hotspots.js'
+import { compute_hotspots } from '#lib/trajectory/hotspots.js'
 import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/frame.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
-import { compute_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+import { compute_xrd_pattern } from '#lib/xrd/compute-xrd.js'
 import { match_lattices } from '#lib/interface/lattice-match.js'
 import { symmetry_elements_from_ops } from '#lib/symmetry/symmetry-elements.js'
 import type { MoyoOperation } from '@spglib/moyo-wasm'
@@ -521,7 +521,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   test(`e_above_hull 10k ternary entries`, async () => {
     const entries = make_entries(10_000)
     await measure(`e_above_hull 10k ternary entries`, () => {
-      const distances = calculate_e_above_hull(entries, entries)
+      const distances = compute_e_above_hull(entries, entries)
       expect(distances).toHaveLength(10_000)
       expect(distances.every((dist) => dist >= 0)).toBe(true)
     })
@@ -679,7 +679,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     // Each bin has 125 atoms, mean velocity +/-0.2, and variance 1 - 0.2^2 = 0.96.
     const expected_mean = (0.5 * 28 * 1.66053906892e-27 * 100 ** 2 * 0.96) / 1.602176634e-19
     await measure(`hotspots 1M atoms x 4 frames`, async () => {
-      const result = await calculate_hotspots(4, read_atoms, {
+      const result = await compute_hotspots(4, read_atoms, {
         bins: 20,
         velocity_unit: `A/ps`,
         mass_unit: `amu`,

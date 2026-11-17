@@ -19,17 +19,12 @@ const many_items = Array.from({ length: 40 }, (_, idx) => ({
   label: `Many ${idx}`,
 }))
 
-const pointer_event = (
-  type: string,
-  init: { clientX?: number; clientY?: number; pointerId?: number } = {},
-): PointerEvent => {
-  const event = new Event(type, { bubbles: true, cancelable: true }) as PointerEvent
-  Object.defineProperties(event, {
-    clientX: { value: init.clientX ?? 0 },
-    clientY: { value: init.clientY ?? 0 },
-    pointerId: { value: init.pointerId ?? 1 },
-  })
-  return event
+const pointer_event = (type: string, client_x: number, client_y: number): PointerEvent => {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  const props = { clientX: client_x, clientY: client_y, pointerId: 1 }
+  for (const [key, value] of Object.entries(props))
+    Object.defineProperty(event, key, { value })
+  return event as PointerEvent
 }
 
 // happy-dom's WheelEvent silently drops MouseEventInit modifier flags, so the
@@ -53,18 +48,17 @@ const press = (target: HTMLElement, key: string): KeyboardEvent => {
 }
 
 const mock_track_size = (track: HTMLElement, horizontal: boolean): void => {
-  Object.defineProperties(
-    track,
-    horizontal
-      ? {
-          clientWidth: { configurable: true, value: 500 },
-          scrollWidth: { configurable: true, value: 2000 },
-        }
-      : {
-          clientHeight: { configurable: true, value: 500 },
-          scrollHeight: { configurable: true, value: 2000 },
-        },
-  )
+  const dim = horizontal ? `Width` : `Height`
+  Object.defineProperties(track, {
+    [`client${dim}`]: { configurable: true, value: 500 },
+    [`scroll${dim}`]: { configurable: true, value: 2000 },
+  })
+}
+
+const mount_harness = (initial: ComponentProps<typeof StructureGallery>) => {
+  const harness = mount(StructureGalleryHarness, { target: document.body, props: { initial } })
+  flushSync()
+  return harness
 }
 
 const mount_gallery = (props: ComponentProps<typeof StructureGallery>, flush = true): void => {
@@ -102,7 +96,6 @@ const many_labels = (from: number, target: number): string[] =>
 describe(`StructureGallery`, () => {
   test(`renders structures in a horizontal strip`, () => {
     mount_gallery({ items, layout: `horizontal`, height: 210, min_card_width: 180 })
-
     const gallery = doc_query(`.structure-gallery`)
     expect(gallery.classList.contains(`horizontal`)).toBe(true)
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(5)
@@ -119,9 +112,7 @@ describe(`StructureGallery`, () => {
     mount_gallery({ items, on_item_activate })
     const chip = doc_query(`.structure-card .card-info`)
     chip.click()
-    for (const key of [`Enter`, ` `]) {
-      chip.dispatchEvent(keydown(key))
-    }
+    for (const key of [`Enter`, ` `]) chip.dispatchEvent(keydown(key))
     expect(chip.getAttribute(`role`)).toBe(`button`)
     expect(chip.getAttribute(`tabindex`)).toBe(`0`)
     expect(on_item_activate.mock.calls.map(([item]) => item)).toEqual(Array(3).fill(items[0]))
@@ -131,18 +122,15 @@ describe(`StructureGallery`, () => {
     // 800px viewport / 202px stride = 4 whole cards, plus a partial card at
     // each edge, plus 3 overscan cards per side = 12.
     mount_gallery({ items: many_items, layout: `horizontal`, min_card_width: 180 })
-
     expect(card_labels()).toEqual(many_labels(0, 12))
     expect(live_cards()).toBe(12)
     // the gallery now spans all 40 cards (capped to the host by min(100%, ...))
     expect(style_of(`.structure-gallery`)).toContain(`inline-size: min(100%, 8072px)`)
-
     // scrolling one card on stays entirely within the overscan: same cards, all
     // still live, so nothing mounts mid-scroll
     scroll_track(202, `scrollLeft`, false)
     expect(card_labels()).toEqual(many_labels(0, 12))
     expect(live_cards()).toBe(12)
-
     // past the overscan the window slides; the card entering it renders as a
     // label shell until the scroll settles, keeping GPU setup out of the fling
     scroll_track(1800, `scrollLeft`, false) // first visible card is 8
@@ -185,7 +173,6 @@ describe(`StructureGallery`, () => {
     `overscan=%i mounts %i cards around the three-card viewport`,
     (overscan: number, expected_cards: number) => {
       mount_gallery({ items: many_items, layout: `horizontal`, overscan })
-
       expect(live_cards()).toBe(expected_cards)
       expect(card_labels()[0]).toBe(`Many 0`)
     },
@@ -195,7 +182,6 @@ describe(`StructureGallery`, () => {
   // fall so far behind that the whole viewport is label shells.
   test(`keeps live cards on screen through a sustained scroll`, () => {
     mount_gallery({ items: many_items, layout: `horizontal`, height: 200 })
-
     const live_counts = [live_cards()]
     for (const offset of [404, 1010, 2020, 4040]) {
       scroll_track(offset, `scrollLeft`)
@@ -214,7 +200,6 @@ describe(`StructureGallery`, () => {
   ])(`%s jumps mount their new page without waiting to settle`, (_label, jump) => {
     mount_gallery({ items: many_items, layout: `horizontal`, height: 200 })
     mock_track_size(doc_query(`.structure-gallery-track`), true)
-
     for (let repeat = 0; repeat < 5; repeat++) {
       jump()
       flushSync()
@@ -224,11 +209,9 @@ describe(`StructureGallery`, () => {
 
   test(`assumes a one-card viewport until the gallery is measured`, () => {
     mount_gallery({ items: many_items, layout: `horizontal` }, false)
-
     // 1 visible card + 2 edges + 2*3 overscan, all still label shells
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(9)
     expect(live_cards()).toBe(0)
-
     flushSync()
     expect(live_cards()).toBe(11)
   })
@@ -262,7 +245,6 @@ describe(`StructureGallery`, () => {
     [`wheel on at the end`, `vertical`, { deltaY: 80 }, 1500, 1500, false, 0],
   ])(`%s over a %s track`, (_name, layout, init, start, scrolled, prevented, reaches) => {
     mount_gallery({ items: many_items, layout })
-
     const horizontal = layout === `horizontal`
     const axis = horizontal ? `scrollLeft` : `scrollTop`
     const track = doc_query(`.structure-gallery-track`)
@@ -271,9 +253,7 @@ describe(`StructureGallery`, () => {
     const viewer_wheel = vi.fn()
     const structure = doc_query(`.structure-card .structure`)
     structure.addEventListener(`wheel`, viewer_wheel)
-
     const event = wheel(structure, init)
-
     // Left un-prevented means the viewer's orbit controls still get to zoom.
     expect(event.defaultPrevented).toBe(prevented)
     expect(track[axis]).toBe(scrolled)
@@ -282,7 +262,6 @@ describe(`StructureGallery`, () => {
 
   test(`leaves the wheel event alone when the browser clamps the scroll away`, () => {
     mount_gallery({ items: many_items, layout: `horizontal` })
-
     const track = doc_query(`.structure-gallery-track`)
     // scrollWidth is unmeasured, so on_wheel hands the browser an out-of-range
     // offset; pin scrollLeft at 0 to emulate the clamp a real browser applies
@@ -291,7 +270,6 @@ describe(`StructureGallery`, () => {
       get: () => 0,
       set: () => {},
     })
-
     expect(wheel(track, { deltaX: 80 }).defaultPrevented).toBe(false)
   })
 
@@ -320,7 +298,6 @@ describe(`StructureGallery`, () => {
       const track = doc_query(`.structure-gallery-track`)
       mock_track_size(track, horizontal)
       track[axis] = start
-
       const event = press(track, key)
       expect(event.defaultPrevented).toBe(prevented)
       expect(track[axis]).toBe(expected)
@@ -333,14 +310,12 @@ describe(`StructureGallery`, () => {
     expect(track.getAttribute(`tabindex`)).toBe(`0`)
     expect(track.getAttribute(`aria-roledescription`)).toBe(`gallery`)
     mock_track_size(track, true)
-
     expect(press(track, `PageDown`).defaultPrevented).toBe(true)
     const paged_to = track.scrollLeft
     expect(paged_to).toBeGreaterThanOrEqual(horizontal_stride)
     expect(paged_to % horizontal_stride).toBeCloseTo(0) // whole number of cards
     expect(press(track, `PageUp`).defaultPrevented).toBe(true)
     expect(track.scrollLeft).toBe(0)
-
     // keys bubbling up from card content (e.g. info pane arrows) must not scroll
     const bubbled = press(doc_query(`.structure-card`), `ArrowRight`)
     expect(bubbled.defaultPrevented).toBe(false)
@@ -358,10 +333,8 @@ describe(`StructureGallery`, () => {
       visible_rows: 3,
       on_prefetch_more,
     })
-
     scroll_track(0)
     expect(on_prefetch_more).not.toHaveBeenCalled()
-
     // first_visible_idx = floor(7488 / 208) = 36 → window covers items 31-39
     scroll_track(7488)
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
@@ -369,11 +342,9 @@ describe(`StructureGallery`, () => {
 
   test(`offers page controls that move by the visible card count`, () => {
     mount_gallery({ items: many_items, layout: `horizontal` })
-
     expect(pager_text()).toBe(`‹1–3/40›`)
     doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`).click()
     flushSync()
-
     expect(doc_query(`.structure-gallery-track`).scrollLeft).toBe(808)
     expect(pager_text()).toBe(`‹4–6/40›`)
   })
@@ -390,7 +361,6 @@ describe(`StructureGallery`, () => {
       ...(mode === `header` ? { header } : { pager_target: target }),
     })
     await tick() // attachments run in the effect phase
-
     const paneled = mode === `header`
     const host = paneled ? doc_query(`.structure-gallery-header`) : target
     expect(doc_query(`.structure-gallery`).classList.contains(`paneled`)).toBe(paneled)
@@ -405,10 +375,8 @@ describe(`StructureGallery`, () => {
   test(`opens the cell selector menu inside gallery cards`, () => {
     mount_gallery({ items, layout: `horizontal`, height: 210 })
     expect(document.querySelector(`.structure-card .cell-select .dropdown`)).toBeNull()
-
     doc_query(`.structure-card .cell-select .toggle-btn`).dispatchEvent(mouse(`click`))
     flushSync()
-
     expect(document.querySelector(`.structure-card .cell-select .dropdown`)).not.toBeNull()
   })
 
@@ -416,25 +384,18 @@ describe(`StructureGallery`, () => {
   // so a host at its cap was asked again every second forever.
   test(`wires up a track that appears after mount and asks once per item count`, () => {
     const on_prefetch_more = vi.fn()
-    const harness = mount(StructureGalleryHarness, {
-      target: document.body,
-      props: { initial: { items: [], layout: `horizontal`, on_prefetch_more } },
-    })
-    flushSync()
+    const harness = mount_harness({ items: [], layout: `horizontal`, on_prefetch_more })
     expect(document.querySelector(`.structure-gallery-track`)).toBeNull()
     // an empty gallery stays quiet: the host owns the initial load
     expect(on_prefetch_more).not.toHaveBeenCalled()
-
     // the render window covers all 5 items, so the host is asked as they arrive
     harness.update({ items })
     flushSync()
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
-
     const track = doc_query(`.structure-gallery-track`)
     for (let scrolls = 0; scrolls < 5; scrolls++) wheel(track, { deltaX: 80 })
     expect(track.scrollLeft).toBe(400) // the wheel handler found the late track
     expect(on_prefetch_more).toHaveBeenCalledTimes(1) // nothing arrived, so no re-ask
-
     // a host that appends is asked again straight away, without waiting out a timer
     harness.update({ items: [...items, ...many_items.slice(-2)] })
     flushSync()
@@ -449,7 +410,6 @@ describe(`StructureGallery`, () => {
     [`grid`, { height: 160 }, `Loading`, `min-block-size: 160px`],
   ] as const)(`shows %s empty state`, (layout, extra_props, message, style) => {
     mount_gallery({ items: [], layout, empty_message: message, ...extra_props })
-
     const gallery = doc_query(`.structure-gallery`)
     expect(gallery.classList.contains(layout)).toBe(true)
     if (style) expect(gallery.getAttribute(`style`)).toContain(style)
@@ -458,15 +418,13 @@ describe(`StructureGallery`, () => {
 
   test(`stacks vertical cards along the y axis`, () => {
     mount_gallery({ items, layout: `vertical`, min_card_width: 200, visible_rows: 3 })
-
     const card_styles = [...document.querySelectorAll(`.structure-card`)].map(
       (card) => card.getAttribute(`style`) ?? ``,
     )
     expect(card_styles).toHaveLength(items.length)
     // vertical stride follows card block-size: height (360) + gap (8); x offset stays 0
-    card_styles.forEach((style, idx) => {
+    for (const [idx, style] of card_styles.entries())
       expect(style).toContain(`translate3d(0px, ${idx * 368}px, 0)`)
-    })
     expect(style_of(`.structure-gallery-spacer`)).toContain(
       `block-size: ${items.length * 368 - 8}px`,
     )
@@ -488,7 +446,6 @@ describe(`StructureGallery`, () => {
     `height=%s with %i items remains finite and independent`,
     (height, item_count, gallery_width, card_width) => {
       mount_gallery({ items: many_items.slice(0, item_count), layout: `horizontal`, height })
-
       expect(style_of(`.structure-gallery`)).toContain(
         `inline-size: min(100%, ${gallery_width}px)`,
       )
@@ -520,15 +477,13 @@ describe(`StructureGallery`, () => {
     `$layout corner grip resizes cards on both axes at once`,
     ({ layout, props, drag, card_width, card_height }) => {
       mount_gallery({ items: many_items, resizable: true, layout, ...props })
-
       const handle = doc_query(`.structure-gallery-resize-handle`)
       expect(handle.getAttribute(`title`)).toBe(`Drag to resize cards`)
-      handle.dispatchEvent(pointer_event(`pointerdown`, { clientX: 400, clientY: 100 }))
+      handle.dispatchEvent(pointer_event(`pointerdown`, 400, 100))
       window.dispatchEvent(
-        pointer_event(`pointermove`, { clientX: 400 + drag[0], clientY: 100 + drag[1] }),
+        pointer_event(`pointermove`, 400 + drag[0], 100 + drag[1]),
       )
       flushSync()
-
       expect(style_of(`.structure-card`)).toContain(`inline-size: ${card_width}px`)
       expect(style_of(`.structure-gallery`)).toContain(
         `--structure-gallery-height: ${card_height}px`,
@@ -540,13 +495,11 @@ describe(`StructureGallery`, () => {
   // stepping the rendered width compounded a three-column grid down to one.
   test(`grid arrow keys step both axes without compounding`, () => {
     mount_gallery({ items: many_items, ...grid_props, resizable: true })
-
     const handle = doc_query(`.structure-gallery-resize-handle`)
     for (const key of [`ArrowUp`, `ArrowRight`, `ArrowRight`]) {
       handle.dispatchEvent(keydown(key, { cancelable: true }))
     }
     flushSync()
-
     // 240 -> 272 crosses one column boundary, not two: 2 columns, not 1
     expect(style_of(`.structure-card`)).toContain(`inline-size: ${(800 - 8) / 2}px`)
     expect(style_of(`.structure-gallery`)).toContain(`--structure-gallery-height: 184px`)
@@ -560,7 +513,6 @@ describe(`StructureGallery`, () => {
       min_card_width: 240,
       resizable: true,
     })
-
     // half the leftover width on each side, so the grip lands on the last card
     expect(style_of(`.structure-gallery`)).toContain(
       `--structure-gallery-grip-inset: max(0px, (100% - 300px) / 2)`,
@@ -576,7 +528,6 @@ describe(`StructureGallery`, () => {
     `vertical column with height=%i min_card_width=%i is %ipx wide and centred`,
     (height: number, min_card_width: number, expected_width: number) => {
       mount_gallery({ items, layout: `vertical`, height, min_card_width })
-
       expect(style_of(`.structure-gallery-spacer`)).toContain(
         `inline-size: min(100%, ${expected_width}px)`,
       )
@@ -598,6 +549,10 @@ describe(`StructureGallery`, () => {
       // the tint dresses the whole pair, so it lives on the wrapper, not the value
       style: (delta_time.parentElement?.getAttribute(`style`) ?? ``).replace(/;$/, ``),
     }))
+  const energy_styles = (): string[] =>
+    prop_cells()
+      .filter((cell) => cell.key === `energy`)
+      .map((cell) => cell.style)
 
   test(`lists each item's properties, in first-seen key order, units after the value`, () => {
     mount_gallery({
@@ -605,7 +560,6 @@ describe(`StructureGallery`, () => {
       layout: `horizontal`,
       property_units: { energy: `eV` },
     })
-
     // the unit trails the value in its own lighter face, so the key stays a bare
     // name, and with no scheme asked for no pair is tinted
     expect(prop_cells().slice(0, 3)).toEqual([
@@ -626,7 +580,6 @@ describe(`StructureGallery`, () => {
       idx === 0 ? item : { ...item, properties: { unrelated: idx } },
     )
     mount_gallery({ items: mixed, layout: `horizontal`, property_keys: [`energy`] })
-
     expect(document.querySelectorAll(`.card-properties`)).toHaveLength(1)
     expect(prop_cells()).toEqual([{ key: `energy`, value: `0.5`, style: `` }])
   })
@@ -634,7 +587,6 @@ describe(`StructureGallery`, () => {
   test(`renders the part after an underscore as a subscript`, () => {
     const subscripted = prop_items.map((item) => ({ ...item, properties: { E_hull: 0.25 } }))
     mount_gallery({ items: subscripted, layout: `horizontal` })
-
     const key = doc_query(`.card-properties dt`)
     expect(key.querySelector(`sub`)?.textContent).toBe(`hull`)
     expect(key.textContent).toBe(`Ehull`) // E with hull beneath it
@@ -649,7 +601,6 @@ describe(`StructureGallery`, () => {
   ]
   test.each(two_up_cases)(`two-up captions with %o -> %s`, (props, two_up) => {
     mount_gallery({ items: prop_items, layout: `horizontal`, ...props })
-
     expect(doc_query(`.structure-gallery`).classList.contains(`properties-two-up`)).toBe(
       two_up,
     )
@@ -661,12 +612,10 @@ describe(`StructureGallery`, () => {
       layout: `horizontal`,
       property_color_scheme: `interpolateRdBu`,
     })
-
     const interpolate = get_d3_interpolator(`interpolateRdBu`)
     // -1.5 is the smallest and 2.5 the largest, so they take the scale's ends, and
     // each tint carries a foreground picked against it to keep the pair legible
-    const energies = prop_cells().filter((cell) => cell.key === `energy`)
-    expect(energies.map((cell) => cell.style)).toEqual([
+    expect(energy_styles()).toEqual([
       `--prop-rank-color: ${interpolate(0.5)}; --prop-ink: black`, // 0.5 sits halfway
       `--prop-rank-color: ${interpolate(0)}; --prop-ink: white`,
       `--prop-rank-color: ${interpolate(1)}; --prop-ink: white`,
@@ -695,12 +644,8 @@ describe(`StructureGallery`, () => {
       layout: `horizontal`,
       property_color_scheme: `interpolateViridis`,
     })
-    const energies = prop_cells().filter((cell) => cell.key === `energy`)
-    expect(
-      energies.map(({ style }) =>
-        style.replace(/^--prop-rank-color: [^;]+; --prop-ink: \w+$/, `tinted`),
-      ),
-    ).toEqual(expected)
+    const tint = /^--prop-rank-color: [^;]+; --prop-ink: \w+$/
+    expect(energy_styles().map((style) => style.replace(tint, `tinted`))).toEqual(expected)
   })
 
   // The scale spans the collection, not the render window. Every rendered card
@@ -716,7 +661,6 @@ describe(`StructureGallery`, () => {
       layout: `horizontal`,
       property_color_scheme: `interpolateViridis`,
     })
-
     const rendered = prop_cells()
     expect(rendered.length).toBeLessThan(20) // virtualized well short of the extremes
     // 50 sits halfway between the collection's 0 and 100
@@ -729,28 +673,16 @@ describe(`StructureGallery`, () => {
   // Flipped on a live gallery, not remounted: the direction has to be read while
   // the ranking derived is built, or flipping it repaints nothing.
   test(`property_color_reverse swaps the ends of the scheme in place`, () => {
-    const harness = mount(StructureGalleryHarness, {
-      target: document.body,
-      props: {
-        initial: {
-          items: prop_items,
-          layout: `horizontal`,
-          property_color_scheme: `interpolateRdYlBu`,
-        },
-      },
+    const harness = mount_harness({
+      items: prop_items,
+      layout: `horizontal`,
+      property_color_scheme: `interpolateRdYlBu`,
     })
-    flushSync()
-    const energies = (): string[] =>
-      prop_cells()
-        .filter((cell) => cell.key === `energy`)
-        .map((cell) => cell.style)
-    const forward = energies()
-
+    const forward = energy_styles()
     harness.update({ property_color_reverse: true })
     flushSync()
-
     // the lowest energy takes what the highest took, and the other way round
-    const reversed = energies()
+    const reversed = energy_styles()
     expect(reversed.filter(Boolean)).not.toHaveLength(0)
     expect([reversed[1], reversed[2]]).toEqual([forward[2], forward[1]])
   })
@@ -770,7 +702,6 @@ describe(`StructureGallery`, () => {
 
   test(`grid tiles cards into rows of responsive columns`, () => {
     mount_gallery({ items: many_items, ...grid_props })
-
     const cards = [...document.querySelectorAll(`.structure-card`)]
     expect(cards).toHaveLength(6 * grid_columns)
     expect(live_cards()).toBe(cards.length) // nothing renders that can't mount
@@ -809,7 +740,6 @@ describe(`StructureGallery`, () => {
     `grid with max_live_cards=%s renders %i rows, every one of them live`,
     (max_live_cards: number, expected_rows: number) => {
       mount_gallery({ items: many_items, ...grid_props, max_live_cards })
-
       const expected_cards = expected_rows * grid_columns
       expect(document.querySelectorAll(`.structure-card`)).toHaveLength(expected_cards)
       expect(live_cards()).toBe(expected_cards)
@@ -823,7 +753,6 @@ describe(`StructureGallery`, () => {
     `%s overscan past max_live_cards renders no further cards`,
     (layout) => {
       mount_gallery({ items: many_items, layout, height: 200, overscan: 10 })
-
       expect(document.querySelectorAll(`.structure-card`)).toHaveLength(24)
       expect(live_cards()).toBe(24)
     },
@@ -839,7 +768,6 @@ describe(`StructureGallery`, () => {
     async ({ scroll_top, range, live, pager }) => {
       mount_gallery({ items: many_items, ...grid_props })
       scroll_track(scroll_top)
-
       expect(card_labels()).toEqual(many_labels(...(range as [number, number])))
       await vi.waitFor(() => expect(live_cards()).toBe(live))
       expect(pager_text()).toBe(pager)
@@ -851,7 +779,6 @@ describe(`StructureGallery`, () => {
   test(`grid window covers the visible page when the budget squeezes it`, async () => {
     mount_gallery({ items: many_items, ...grid_props, max_live_cards: 3, overscan: 6 })
     scroll_track(5 * grid_row_stride)
-
     // 4 rows anchored on the first visible one, not 2 rows above it
     expect(card_labels()).toEqual(many_labels(15, 27))
     await vi.waitFor(() => expect(live_cards()).toBe(12))
@@ -859,7 +786,6 @@ describe(`StructureGallery`, () => {
 
   test.each([1, 4])(`grid with %i items needs no pager and sizes its spacer`, (count) => {
     mount_gallery({ items: many_items.slice(0, count), ...grid_props })
-
     expect(pager_text()).toBeNull()
     expect(style_of(`.structure-gallery-spacer`)).toContain(
       `block-size: ${Math.ceil(count / grid_columns) * grid_row_stride - 8}px`,
@@ -881,11 +807,10 @@ test.each([
     height: 210,
     min_card_width: 180,
   })
-  const handle = doc_query(`.structure-gallery-resize-handle`)
   const before = style_of(`.structure-gallery`)
   const event = keydown(`ArrowDown`, { cancelable: true, ...modifiers })
-  handle.dispatchEvent(event)
+  doc_query(`.structure-gallery-resize-handle`).dispatchEvent(event)
   flushSync()
-  const after = style_of(`.structure-gallery`)
-  expect([event.defaultPrevented, after !== before]).toEqual([expect_handled, expect_handled])
+  const resized = style_of(`.structure-gallery`) !== before
+  expect([event.defaultPrevented, resized]).toEqual([expect_handled, expect_handled])
 })

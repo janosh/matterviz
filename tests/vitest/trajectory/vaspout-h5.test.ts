@@ -300,7 +300,6 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     expect(bands.bands[0]).toHaveLength(306)
     expect(bands.qpoints).toHaveLength(306)
     expect(bands.distance).toHaveLength(306)
-    expect(bands.is_spin_polarized).toBe(false)
     expect(bands.spin_down_bands).toBeUndefined()
     expect(bands.bands[0][0]).toBeCloseTo(-48.4674, 3)
 

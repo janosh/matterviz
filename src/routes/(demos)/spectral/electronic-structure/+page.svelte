@@ -1,14 +1,18 @@
 <script lang="ts">
   import { open_material } from '#lib'
   import type { BandGridData } from '#lib/fermi-surface/index.js'
-  import { band_grid_dos, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
+  import {
+    band_grid_dos,
+    is_fermi_surface_data,
+    with_energy_unit,
+  } from '#lib/fermi-surface/index.js'
   import { ElectronicStructure, normalize_band_structure } from '#lib/spectral/index.js'
   import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
   import { is_crystal } from '#lib/structure/validation.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { is_plain_object, to_error } from 'svelte-widgets/utils'
   import raw_bands from '#site/electronic/cu-fcc-bands.json.gz'
   import { cu_pressure_sweep } from '#site/electronic/cu-pressure-sweep.js'
-  import { fermi_surface_files } from '#site/fermi-surfaces.js'
+  import { FERMI_FILE_ENERGY_UNITS, fermi_surface_files } from '#site/fermi-surfaces.js'
   import { onMount } from 'svelte'
 
   // fcc Cu from one simulated calculation: its band grid, its band structure and the structure
@@ -18,10 +22,7 @@
   const grid_name = `cu_fcc_bands.bxsf.gz`
   const band_struct = normalize_band_structure(raw_bands)
   if (!band_struct) throw new Error(`Invalid band structure in cu-fcc-bands.json.gz`)
-  const raw_structure =
-    raw_bands && typeof raw_bands === `object` && `structure` in raw_bands
-      ? raw_bands.structure
-      : undefined
+  const raw_structure = is_plain_object(raw_bands) ? raw_bands.structure : undefined
   const structure = is_structure_like(raw_structure)
     ? structure_from_json(raw_structure)
     : undefined
@@ -38,7 +39,9 @@
         if (opened.type !== `fermi_surface` || is_fermi_surface_data(opened.data)) {
           throw new Error(`${grid_name} is not a band grid`)
         }
-        band_data = opened.data
+        // BXSF names no energy unit; this simulated grid was written in eV like its band
+        // structure, which its E_F crossings and hover previews read it against
+        band_data = with_energy_unit(opened.data, FERMI_FILE_ENERGY_UNITS[grid_name])
       } finally {
         opened.dispose()
       }

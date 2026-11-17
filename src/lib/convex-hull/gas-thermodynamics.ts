@@ -5,6 +5,8 @@ import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
   entry_has_temp_data,
   find_lowest_energy_unary_refs,
+  get_energy_per_atom,
+  has_absolute_energy,
   unary_ref_score,
 } from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
@@ -16,18 +18,9 @@ import type {
   GasThermodynamicsProvider,
   PhaseData,
 } from './types'
-import { DEFAULT_GAS_PRESSURES } from './types'
+import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from './types'
 
 export const P_REF = 1.0 // Reference pressure in bar
-
-// Default element-to-gas mapping (which element comes from which gas)
-export const DEFAULT_ELEMENT_TO_GAS: Readonly<Partial<Record<ElementSymbol, GasSpecies>>> = {
-  O: `O2`,
-  N: `N2`,
-  H: `H2`,
-  F: `F2`,
-  C: `CO2`, // Carbon typically from CO2 in oxidizing atmospheres
-}
 
 // Stoichiometric coefficients: atoms of element per molecule of gas
 // e.g., O2 has 2 O atoms, H2O has 2 H and 1 O
@@ -133,19 +126,6 @@ export const gas_pressure_term = (
 ): number =>
   (BOLTZMANN_EV_PER_K * temperature * Math.log(pressure / P_REF)) / gas_num_atoms(gas)
 
-// Shift of an element whose reference already carries its own G(T) (a tabulated entry, SISSO's
-// experimental 1 bar gas): only k_B T ln(p/p0) is missing, since H(T) - H(0 K) - T*S is in G(T)
-// already. Only elemental gases (O2, N2, ...) map one element to one pressure term; compound
-// gases (CO2, CO, H2O) have no such reference.
-export const tabulated_reference_shift = (
-  gas: GasSpecies,
-  temperature: number,
-  pressure: number,
-): number =>
-  Object.keys(GAS_STOICHIOMETRY[gas]).length === 1
-    ? gas_pressure_term(gas, temperature, pressure)
-    : 0
-
 // Gas chemical potential per atom at temperature (K) and pressure (bar):
 // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms, in eV/atom. An invalid or
 // non-finite pressure counts as the reference pressure.
@@ -162,29 +142,66 @@ export function compute_gas_chemical_potential(
 
 // Gas Analysis and Corrections
 
-// Elements present (positive amount) that come from an enabled gas, and those gases, in
-// order of first appearance
-export function analyze_gas_data(
-  entries: PhaseData[],
-  config: GasThermodynamicsConfig,
-): GasAnalysis {
-  const enabled_gases = config.enabled_gases ?? []
-  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
-  const present = new Set(
+// Whether a gas is made of one element (O2, N2, H2, F2): such a gas sets its element's chemical
+// potential. Compound gases (CO, CO2, H2O) instead join the hull as phases of their own.
+export const is_elemental_gas = (gas: GasSpecies): boolean =>
+  Object.keys(GAS_STOICHIOMETRY[gas]).length === 1
+
+// The elemental gas of each element that has one: O → O2, N → N2, H → H2, F → F2
+export const ELEMENTAL_GASES: Readonly<Partial<Record<ElementSymbol, GasSpecies>>> =
+  Object.fromEntries(
+    GAS_SPECIES.filter(is_elemental_gas).map((gas) => [
+      Object.keys(GAS_STOICHIOMETRY[gas])[0],
+      gas,
+    ]),
+  )
+
+// Gases made only of `elements` (all of GAS_SPECIES, else `enabled` in its order): the only
+// ones that can form, or set a chemical potential, in that chemical system
+export const relevant_gases = (
+  elements: Iterable<string>,
+  enabled: readonly GasSpecies[] = GAS_SPECIES,
+): GasSpecies[] => {
+  const present = new Set(elements)
+  return enabled.filter((gas) =>
+    Object.keys(GAS_STOICHIOMETRY[gas]).every((element) => present.has(element)),
+  )
+}
+
+// Elements with a positive amount in any entry
+const present_elements = (entries: readonly PhaseData[]): Set<string> =>
+  new Set(
     entries.flatMap(({ composition }) =>
-      (Object.keys(composition) as ElementSymbol[]).filter(
-        (element) => (composition[element] ?? 0) > 0,
+      Object.entries(composition).flatMap(([element, amount]) =>
+        amount > 0 ? [element] : [],
       ),
     ),
   )
-  const gas_elements = [...present].filter((element) => {
-    const gas = element_to_gas[element]
-    return gas !== undefined && enabled_gases.includes(gas)
-  })
-  const relevant_gases = [
-    ...new Set(gas_elements.flatMap((element) => element_to_gas[element] ?? [])),
-  ]
-  return { has_gas_dependent_elements: gas_elements.length > 0, gas_elements, relevant_gases }
+
+// Enabled gases that act on these entries: all their elements are present
+export const analyze_gas_data = (
+  entries: readonly PhaseData[],
+  config: GasThermodynamicsConfig,
+): GasAnalysis => ({
+  relevant_gases: relevant_gases(present_elements(entries), config.enabled_gases ?? []),
+})
+
+// Whether a composition is that of `gas`, in any multiple (C2O4 is CO2)
+export function is_gas_composition(
+  composition: Partial<Record<string, number>>,
+  gas: GasSpecies,
+): boolean {
+  const stoichiometry: Partial<Record<string, number>> = GAS_STOICHIOMETRY[gas]
+  const atoms = count_atoms_in_composition(composition)
+  const gas_atoms = gas_num_atoms(gas)
+  if (!(atoms > 0)) return false
+  const elements = new Set([...Object.keys(stoichiometry), ...Object.keys(composition)])
+  return [...elements].every(
+    (element) =>
+      Math.abs(
+        (composition[element] ?? 0) / atoms - (stoichiometry[element] ?? 0) / gas_atoms,
+      ) < 1e-9,
+  )
 }
 
 // Pressures for every gas: the config's finite positive values over the defaults
@@ -198,45 +215,23 @@ export function get_effective_pressures(
   return pressures
 }
 
-// Shift of an element's chemical potential (eV/atom) set by its gas reservoir at (T, P)
-// relative to (0 K, 1 bar). A gas fixes only the sum of its elements' potentials, e.g.
-// Δμ(CO2) = Δμ_C + 2 Δμ_O, so partners with their own enabled reservoir (O from O2) are pinned
-// by it and the element gets the remainder. Partners without a reservoir contribute 0.
+// Shift of an element's chemical potential (eV/atom) set by its enabled elemental gas at (T, P)
+// relative to (0 K, 1 bar), where H(T) - H(0 K) and T*S vanish: μ_O2(T, P) per atom - μ°_O2(0 K)
+// per atom for O. 0 for every other element: compound gases are hull phases, not reservoirs of
+// any one element, so solid elements (C in CO2, the H of H2O without H2) never move.
 export function compute_element_mu_shift(
   element: ElementSymbol,
   config: GasThermodynamicsConfig,
   temperature: number,
   pressures: Record<GasSpecies, number>,
 ): number {
-  const element_to_gas: Partial<Record<string, GasSpecies>> = {
-    ...DEFAULT_ELEMENT_TO_GAS,
-    ...config.element_to_gas,
-  }
+  const gas = ELEMENTAL_GASES[element]
+  if (!gas || !config.enabled_gases?.includes(gas)) return 0
   const provider = config.provider ?? get_default_gas_provider()
-  const shift = (elem: string, resolving: string[]): number => {
-    const gas = element_to_gas[elem]
-    if (!gas || !config.enabled_gases?.includes(gas)) return 0
-    const stoichiometry: Record<string, number> = GAS_STOICHIOMETRY[gas]
-    const stoich = stoichiometry[elem]
-    if (!stoich) throw new Error(`element_to_gas maps ${elem} to ${gas}, which has no ${elem}`)
-    if (resolving.includes(elem)) {
-      throw new Error(
-        `Gas reservoirs for ${[...resolving, elem].join(` → `)} depend on each other; map each element to a gas whose other elements have their own reservoir`,
-      )
-    }
-    // Per molecule at (T, P) versus the reference (0 K, 1 bar), where H(T) - H(0 K) and T*S
-    // vanish
-    const molecule_shift =
-      (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
-        provider.get_standard_chemical_potential(gas, 0)) *
-      gas_num_atoms(gas)
-    let partner_shift = 0
-    for (const [partner, count] of Object.entries(stoichiometry)) {
-      if (partner !== elem) partner_shift += count * shift(partner, [...resolving, elem])
-    }
-    return (molecule_shift - partner_shift) / stoich
-  }
-  return shift(element, [])
+  return (
+    compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
+    provider.get_standard_chemical_potential(gas, 0)
+  )
 }
 
 // Chemical potential correction (eV/atom of compound) for an entry's energy: the composition-
@@ -259,28 +254,31 @@ export function compute_gas_correction(
   return correction
 }
 
-// Apply gas chemical potential corrections to unary (elemental reference) entries only:
-// E_form = E(compound) - Σ n_i μ_i with μ_i = μ(gas, T, P) for gas-forming elements, so
-// shifting the references replaces μ_i (correcting every entry would cancel out). A unary
-// with a G(T) table (via filter_entries_at_temperature) only gets the pressure term.
+// Gas atmospheres at (T, P) on a hull, as synthesis planning treats open gases:
+// - an elemental gas (O2, N2, H2, F2) is its element's reference state: the element's unary entries
+//   move by Δμ_e (compute_element_mu_shift; a unary with its own G(T) table, via
+//   filter_entries_at_temperature, by k_B T ln(p/p0) only) and every E_form is re-referenced to
+//   the moved level, so that corner stays at E_form = 0 (correcting every entry would cancel out)
+// - a compound gas (CO, CO2, H2O) joins the hull as a phase at μ(T, P) per atom, formed from the
+//   elements' 0 K references (`gas` set, entry_id `gas:<species>`). It replaces the entries of
+//   its formula, which stay shown but leave the hull (exclude_from_hull), and moves no element:
+//   graphite stays graphite under CO2.
+// Gases whose elements are not all present do nothing.
 export function apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig,
   temperature: number,
 ): PhaseData[] {
-  // No enabled gas or no gas-dependent element: entries unchanged
-  if (!analyze_gas_data(entries, config).has_gas_dependent_elements) return entries
-
+  const gases = relevant_gases(present_elements(entries), config.enabled_gases ?? [])
+  if (gases.length === 0) return entries
+  const compound_gases = gases.filter((gas) => !is_elemental_gas(gas))
+  const gas_elements = new Set(
+    gases.filter(is_elemental_gas).map((gas) => Object.keys(GAS_STOICHIOMETRY[gas])[0]),
+  )
   const pressures = get_effective_pressures(config)
-  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
-  const tabulated_shift = (element: ElementSymbol): number => {
-    const gas = element_to_gas[element]
-    return gas && config.enabled_gases?.includes(gas)
-      ? tabulated_reference_shift(gas, temperature, pressures[gas])
-      : 0
-  }
+  const provider = config.provider ?? get_default_gas_provider()
 
-  // Per-atom energy shift of each entry: only unaries move, each by its element's Δμ
+  // Per-atom energy shift of each entry: only unaries of elemental-gas elements move
   const unary_elements = entries.map((entry) => {
     const present = Object.keys(entry.composition).filter(
       (element) => (entry.composition[element as ElementSymbol] ?? 0) > 0,
@@ -289,22 +287,39 @@ export function apply_gas_corrections(
   })
   const shifts = entries.map((entry, idx) => {
     const element = unary_elements[idx]
-    if (!element) return 0
+    const gas = element && gas_elements.has(element) ? ELEMENTAL_GASES[element] : undefined
+    if (!element || !gas) return 0
     const correction = entry_has_temp_data(entry)
-      ? tabulated_shift(element)
-      : compute_gas_correction(entry, config, temperature, pressures)
+      ? gas_pressure_term(gas, temperature, pressures[gas])
+      : compute_element_mu_shift(element, config, temperature, pressures)
     return Math.abs(correction) < 1e-12 ? 0 : correction
   })
-  if (shifts.every((shift) => shift === 0)) return entries
-
-  // Elements with a moved unary: hull distances against them are stale. Δμ_e is how far the
-  // element's formation-energy reference level moves (0 when only a polymorph above it moved).
-  // The shifts can reorder polymorphs (a tabulated one only gets the pressure term), so the
-  // reference is picked again after shifting.
-  const shifted_elements = new Set(unary_elements.filter((_, idx) => shifts[idx] !== 0))
-  const entry_idx = new Map(entries.map((entry, idx) => [entry, idx]))
+  // A gas element without a reference entry (E_form-only data, where the hull closes that
+  // corner at E_form = 0) still has a reference level, and it moves by the element's full Δμ
   const old_refs = find_lowest_energy_unary_refs(entries)
   const ref_shift = new Map<string, number>()
+  for (const element of gas_elements) {
+    if (old_refs[element]) continue
+    const shift = compute_element_mu_shift(
+      element as ElementSymbol,
+      config,
+      temperature,
+      pressures,
+    )
+    if (Math.abs(shift) >= 1e-12) ref_shift.set(element, shift)
+  }
+  if (shifts.every((shift) => shift === 0) && ref_shift.size === 0 && !compound_gases.length)
+    return entries
+
+  // Elements with a moved unary or implicit reference: hull distances against them are stale.
+  // Δμ_e is how far the element's formation-energy reference level moves (0 when only a
+  // polymorph above it moved). The shifts can reorder polymorphs (a tabulated one only gets the
+  // pressure term), so the reference is picked again after shifting.
+  const shifted_elements = new Set<string | null>([
+    ...unary_elements.filter((_, idx) => shifts[idx] !== 0),
+    ...ref_shift.keys(),
+  ])
+  const entry_idx = new Map(entries.map((entry, idx) => [entry, idx]))
   for (const [element, ref] of Object.entries(
     find_lowest_energy_unary_refs(entries, shifts),
   )) {
@@ -316,36 +331,76 @@ export function apply_gas_corrections(
       ref === old_ref ? shift : unary_ref_score(ref) + shift - unary_ref_score(old_ref),
     )
   }
+  // Σ x_e Δμ_e: how far a composition's reference level moved
+  const ref_sum_of = (composition: Partial<Record<string, number>>): number => {
+    const atoms = count_atoms_in_composition(composition)
+    let ref_sum = 0
+    for (const [element, amt = 0] of Object.entries(composition)) {
+      if (amt > 0) ref_sum += (amt / atoms) * (ref_shift.get(element) ?? 0)
+    }
+    return ref_sum
+  }
 
-  return entries.map((entry, idx) => {
+  const corrected = entries.map((entry, idx) => {
     const own_shift = shifts[idx]
     const atoms = count_atoms_in_composition(entry.composition)
-    // A cached E_form moves by the entry's own shift minus Σ x_e Δμ_e, so E_form-only
-    // entries (no energy to recompute it from) follow the atmosphere too
-    let ref_sum = 0
-    let stale = own_shift !== 0
-    for (const [element, amt] of Object.entries(entry.composition)) {
-      if (!(amt > 0)) continue // a zero-amount key is absent and must not invalidate a cache
-      ref_sum += (amt / atoms) * (ref_shift.get(element) ?? 0)
-      stale ||= shifted_elements.has(element as ElementSymbol)
-    }
+    const replaced = compound_gases.some((gas) => is_gas_composition(entry.composition, gas))
+    // a new gas phase reshapes the hull, so every cached hull distance goes; otherwise a
+    // zero-amount key is absent and must not invalidate a cache
+    const stale =
+      compound_gases.length > 0 ||
+      own_shift !== 0 ||
+      Object.entries(entry.composition).some(
+        ([element, amt]) => amt > 0 && shifted_elements.has(element),
+      )
     if (!stale) return entry
+    // A cached E_form moves by the entry's own shift minus Σ x_e Δμ_e, so E_form-only entries
+    // (no energy to recompute it from) follow the atmosphere too
     const { e_form_per_atom: e_form } = entry
-    // hull distances were measured against the old references
+    // hull distances were measured against the old references and phases
     const moved: PhaseData = {
       ...entry,
       e_form_per_atom:
         typeof e_form === `number` && Number.isFinite(e_form)
-          ? e_form + own_shift - ref_sum
+          ? e_form + own_shift - ref_sum_of(entry.composition)
           : undefined,
       e_above_hull: undefined,
       is_stable: undefined,
+      ...(replaced && { exclude_from_hull: true }),
     }
     if (own_shift === 0) return moved
     // the MP correction stays: the shifted base is the RAW per-atom energy
     const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + own_shift
     return { ...moved, energy: energy_per_atom * atoms, energy_per_atom }
   })
+
+  // Compound gas phases: E_form = μ(T, P) per atom on the 0 K references, re-referenced like
+  // every entry; an absolute energy on the references' scale when they all have one
+  const gas_entries = compound_gases.map((gas): PhaseData => {
+    const composition = { ...GAS_STOICHIOMETRY[gas] }
+    const atoms = gas_num_atoms(gas)
+    const mu_form = compute_gas_chemical_potential(provider, gas, temperature, pressures[gas])
+    let ref_energy = 0 // Σ x_e E_e of the 0 K references, NaN without absolute ones
+    for (const [element, amt = 0] of Object.entries(composition)) {
+      const ref = old_refs[element]
+      ref_energy +=
+        ref && has_absolute_energy(ref) ? (amt / atoms) * get_energy_per_atom(ref) : NaN
+    }
+    const energy_per_atom = mu_form + ref_energy
+    return {
+      composition,
+      gas,
+      entry_id: `gas:${gas}`,
+      reduced_formula: gas,
+      name: `${gas} gas`,
+      e_form_per_atom: mu_form - ref_sum_of(composition),
+      // E_form-only (0 eV placeholder) when a reference has no absolute energy
+      ...(Number.isFinite(energy_per_atom)
+        ? { energy: energy_per_atom * atoms, energy_per_atom }
+        : { energy: 0 }),
+    }
+  })
+  return [...corrected, ...gas_entries]
 }
 
 // Format chemical potential for display (e.g., "-1.23 eV")

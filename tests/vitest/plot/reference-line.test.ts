@@ -3,7 +3,7 @@ import { place_reference_annotation } from '#lib/plot/core/decorations/reference
 import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
 import type { ReferenceLineAxes } from '#lib/plot/core/reference-line.js'
 import {
-  calculate_annotation_position,
+  compute_annotation_position,
   create_reference_annotation_candidates,
   estimate_reference_annotation_metrics,
   index_ref_lines,
@@ -299,19 +299,19 @@ describe(`resolve_line_endpoints`, () => {
   })
 })
 
-describe(`calculate_annotation_position`, () => {
+describe(`compute_annotation_position`, () => {
   // Horizontal line: (0, 100) -> (200, 100)
   test.each([
     [`start`, 4, `start`],
     [`center`, 100, `middle`],
     [`end`, 196, `end`],
   ] as const)(`position %s on horizontal line`, (position, expected_x, expected_anchor) => {
-    const pos = calculate_annotation_position(0, 100, 200, 100, { position, side: `above` })
+    const pos = compute_annotation_position(0, 100, 200, 100, { position, side: `above` })
     expect([pos.x, pos.text_anchor]).toEqual([expected_x, expected_anchor])
   })
 
   test(`offset is applied`, () => {
-    const pos = calculate_annotation_position(0, 100, 200, 100, {
+    const pos = compute_annotation_position(0, 100, 200, 100, {
       position: `center`,
       offset: { x: 10, y: -5 },
     })
@@ -320,7 +320,7 @@ describe(`calculate_annotation_position`, () => {
   })
 
   test(`rotation calculated for diagonal line`, () => {
-    const pos = calculate_annotation_position(0, 0, 100, 100, {
+    const pos = compute_annotation_position(0, 0, 100, 100, {
       position: `center`,
       rotate: true,
     })
@@ -343,7 +343,7 @@ describe(`calculate_annotation_position`, () => {
     (_name, side, line_endpoints, expected_x, expected_y, expected_anchor) => {
       const [start_x, start_y, end_x, end_y] = line_endpoints
       const options = { position: `center`, side, gap: 10 } as const
-      const pos = calculate_annotation_position(start_x, start_y, end_x, end_y, options)
+      const pos = compute_annotation_position(start_x, start_y, end_x, end_y, options)
       expect(pos.x).toBeCloseTo(expected_x, 5)
       expect(pos.y).toBeCloseTo(expected_y, 5)
       expect(pos.text_anchor).toBe(expected_anchor)

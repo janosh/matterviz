@@ -10,22 +10,22 @@ import { describe, expect, test, vi } from 'vite-plus/test'
 import { create_drop_event, mount_sized, query, resize_element, set_input } from '../setup'
 import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
-import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
+import type * as calc_rdf from '#lib/rdf/compute-rdf.js'
 import {
-  calculate_all_pair_rdfs,
-  calculate_rdfs,
+  compute_all_pair_rdfs,
+  compute_rdfs,
   rdf_bin_site_index,
   rdf_bin_sites,
-} from '#lib/rdf/calc-rdf.js'
+} from '#lib/rdf/compute-rdf.js'
 import * as plot_module from '#lib/plot/index.js'
 
 // Spy on the neighbour search so the radiation buttons can be shown not to re-run it
-vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
+vi.mock(`#lib/rdf/compute-rdf.js`, async (import_original) => {
   const actual = await import_original<typeof calc_rdf>()
   return {
     ...actual,
-    calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs),
-    calculate_rdfs: vi.fn(actual.calculate_rdfs),
+    compute_all_pair_rdfs: vi.fn(actual.compute_all_pair_rdfs),
+    compute_rdfs: vi.fn(actual.compute_rdfs),
     rdf_bin_site_index: vi.fn(actual.rdf_bin_site_index),
   }
 })
@@ -266,7 +266,7 @@ describe(`RdfPlot`, () => {
     })
 
     // new patterns join the computed curves without re-running the neighbour search
-    vi.mocked(calculate_rdfs).mockClear()
+    vi.mocked(compute_rdfs).mockClear()
     supplied.set(`patterns`, { label: `Swapped`, pattern: create_synthetic_pattern() })
     await tick()
     const swapped = scatter.mock.lastCall?.[1].series ?? []
@@ -274,18 +274,18 @@ describe(`RdfPlot`, () => {
       `Swapped`,
       ...series.slice(1).map(({ label }) => label),
     ])
-    expect(calculate_rdfs).not.toHaveBeenCalled()
+    expect(compute_rdfs).not.toHaveBeenCalled()
 
     // one more structure is searched alone: the first one's curves are memoized by identity
     const shown_labels = () => scatter.mock.lastCall?.[1].series?.map(({ label }) => label)
-    const searches = () => vi.mocked(calculate_rdfs).mock.calls
+    const searches = () => vi.mocked(compute_rdfs).mock.calls
     shown.set(`structures`, [nacl_structure, pd_structure])
     const with_pd = [...swapped.map(({ label }) => label), `Pd-Pd`]
     await vi.waitFor(() => expect(shown_labels()).toEqual(with_pd))
     expect(searches().map(([structure]) => structure)).toEqual([pd_structure])
 
     // a cutoff superseded before its searches started aborts them: only the latest one runs
-    vi.mocked(calculate_rdfs).mockClear()
+    vi.mocked(compute_rdfs).mockClear()
     for (const cutoff of [5, 6]) flushSync(() => cutoffs.set(`cutoff`, cutoff))
     // the curves of the previous cutoff leave at once rather than pose as the new one's
     expect(shown_labels()).toEqual([`Swapped`])
@@ -402,9 +402,9 @@ describe(`RdfPlot`, () => {
     // the alert live region stays mounted for the next error; only its message goes
     expect(target.querySelector(`[role="alert"] .status-message`)).toBeNull()
     // recomputing the same failure keeps it dismissed
-    vi.mocked(calculate_rdfs).mockClear()
+    vi.mocked(compute_rdfs).mockClear()
     target.querySelector<HTMLButtonElement>(`.change-cutoff`)?.click()
-    await vi.waitFor(() => expect(calculate_rdfs).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(compute_rdfs).toHaveBeenCalledTimes(2))
     for (let round = 0; round < 9; round++) await tick() // the recomputed failure lands
     expect(mirror()).toBe(`none`)
   })
@@ -467,7 +467,7 @@ describe(`PdfPlot`, () => {
 
   // Regression: computing the PDFs inside a $derived used to assign the error message to a
   // bindable prop, which Svelte 5 rejects with state_unsafe_mutation and which tore down the
-  // whole page — a passing calc-pdf suite said nothing about it.
+  // whole page — a passing compute-pdf suite said nothing about it.
   test.each([`xray`, `neutron`, `electron`] as const)(
     `mounts and draws for radiation=%s`,
     async (radiation: RadiationType) => {
@@ -564,13 +564,13 @@ describe(`PdfPlot`, () => {
     // b_coh(H) < 0, so switching to neutrons is what flips w(H-Ni) negative. format_num emits
     // U+2212 MINUS SIGN, not ASCII hyphen.
     expect(caption()).not.toContain(`w(H-Ni) = −`)
-    vi.mocked(calculate_all_pair_rdfs).mockClear()
+    vi.mocked(compute_all_pair_rdfs).mockClear()
     const neutron_btn = click(`Neutron`)
     await tick()
     expect(neutron_btn.classList.contains(`active`)).toBe(true)
     expect(caption()).toContain(`w(H-Ni) = −`)
     // radiation only re-weights the partials; the neighbour search must not re-run
-    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
+    expect(compute_all_pair_rdfs).not.toHaveBeenCalled()
     // dragging the cutoff slider updates its readout; the search runs once, on release
     const cutoff_slider = query<HTMLInputElement>(target, `input[type="range"]`)
     for (const value of [`9`, `10`, `11`]) {
@@ -578,10 +578,10 @@ describe(`PdfPlot`, () => {
       await tick()
     }
     expect(cutoff_slider.parentElement?.textContent).toContain(`11 Å`)
-    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
+    expect(compute_all_pair_rdfs).not.toHaveBeenCalled()
     cutoff_slider.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
-    expect(calculate_all_pair_rdfs).toHaveBeenCalledOnce()
+    expect(compute_all_pair_rdfs).toHaveBeenCalledOnce()
 
     expect(y_label()).toContain(`G(r)`)
     click(`g(r)`)

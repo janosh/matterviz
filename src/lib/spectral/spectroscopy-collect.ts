@@ -1,5 +1,5 @@
 import { display_idx } from '#lib/labels.js'
-import { is_finite_vec3_like } from '#lib/math.js'
+import { is_finite_vec3_like, partition_point } from '#lib/math.js'
 import type { AnalysisStreamOptions } from '#lib/trajectory/analysis.js'
 import { collect_trajectory_positions } from '#lib/trajectory/analysis.js'
 import { values_per_sample } from '#lib/trajectory/helpers.js'
@@ -42,12 +42,10 @@ export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
 }
 
 // How a collect streams the run's velocity: a loaded run signal needs no channel; site
-// properties and a lazy per-atom [n_atoms, 3] descriptor the parser marked `frame_aligned`
-// (one sample per frame on the geometry's steps) stream strided beside positions
-// (`vector_keys`); a descriptor on its own cadence is a native-cadence `signal_keys` read.
-// Equal sample counts alone don't make the step axes match (velocities on steps [1, 2, 3, 4]
-// beside frames on [0, 1, 2, 3]), and a `vector_keys` read of such a signal throws in the
-// HDF5 parser
+// properties and a lazy [n_atoms, 3] descriptor marked `frame_aligned` (one sample per frame
+// on the geometry's steps) stream strided beside positions (`vector_keys`); any other
+// descriptor is a native-cadence `signal_keys` read. Equal sample counts alone don't align
+// the step axes, and the HDF5 parser throws on a `vector_keys` read of a misaligned signal
 const velocity_channel = (run: TrajectoryRun, key: string): `vector` | `signal` | null => {
   const signal = run.signals?.[key]
   if (!signal)
@@ -148,10 +146,9 @@ const recorded_masses = (run: TrajectoryRun): number[] | null => {
   const { sites } = run.preview.structure
   const masses = run.atom_masses ?? sites.map(({ properties }) => properties?.mass)
   if (masses.every((mass) => mass === undefined)) return null
-  const n_atoms = run.atom_count
-  if (masses.length !== n_atoms) {
+  if (masses.length !== run.atom_count) {
     throw new Error(
-      `Recorded masses have ${masses.length} entries for ${n_atoms} trajectory atoms`,
+      `Recorded masses have ${masses.length} entries for ${run.atom_count} trajectory atoms`,
     )
   }
   return masses.map((mass, atom_idx) => {
@@ -204,11 +201,9 @@ export async function collect_trajectory_spectroscopy_input(
     signal,
     analysis_name: `Spectroscopy`,
   })
-  // A named signal, eager on the run or streamed by the collect. Only a stride can leave
-  // samples at skipped steps, and only analyses that look a signal step up in the positions
-  // care: rigid-motion removal for velocities, body-frame rotation for IR/Raman. Every other
-  // signal keeps its native cadence, so a dipole sampled every step beside positions kept
-  // every 20th is not decimated or emptied by the stride
+  // A named signal, eager on the run or streamed by the collect. Only a stride leaves samples
+  // at skipped steps, and only step lookups in the positions care (rigid-motion removal for
+  // velocities, body-frame rotation for IR/Raman); other signals keep their native cadence
   const start_step = start_frame === undefined ? -Infinity : stream.steps[0]
   // Streamed signals were already restricted by their collector. Only eager native signals
   // need a boundary lookup; use recorded steps so excluded geometry need never be loaded.
@@ -227,10 +222,8 @@ export async function collect_trajectory_spectroscopy_input(
     const eager = declared && is_loaded_signal(declared) ? declared : undefined
     let series = eager ?? stream.signals?.[key]
     if (eager && (start_frame !== undefined || end_frame !== undefined)) {
-      const first = eager.steps.findIndex((step) => step >= start_step)
-      const last = eager.steps.findIndex((step) => step >= end_step)
-      const begin = first === -1 ? eager.steps.length : first
-      const end = last === -1 ? eager.steps.length : last
+      const begin = partition_point(eager.steps, (step) => step < start_step)
+      const end = partition_point(eager.steps, (step) => step < end_step)
       const size = values_per_sample(eager.sample_shape)
       series = {
         ...eager,
@@ -263,7 +256,7 @@ export async function collect_trajectory_spectroscopy_input(
           ...(declared_velocity?.unit && { unit: declared_velocity.unit }),
         }
       : null)
-  // Provenance label for the metadata, distinct from calc_trajectory_spectroscopy's
+  // Provenance label for the metadata, distinct from compute_trajectory_spectroscopy's
   // `velocity_source` (stored vs central_difference)
   const velocity_provenance =
     !velocity_key || !velocities

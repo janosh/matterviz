@@ -1,10 +1,6 @@
-// Lets the whole dependency graph resolve to three's WebGPU build: our build configs alias
-// bare `three` to this module so the bundle carries one copy of three (matterviz imports
-// `three/webgpu`, three's addons and @threlte import `three`). Without it both builds ship
-// (~125 KB brotli of duplication) and cross-copy `instanceof` checks fail.
-//
-// `three/webgpu` re-exports all of `three` bar the WebGL-only names stubbed below. Stubbed
-// rather than re-exported, since importing `three` here would pull in the build we're eliding.
+// Our builds alias bare `three` (used by three's addons and @threlte) here so the bundle has
+// one three, the WebGPU build; else both ship (~125 KB brotli) and cross-copy `instanceof`
+// fails. `three/webgpu` re-exports all of `three` bar the WebGL-only names stubbed below.
 export * from 'three/webgpu'
 
 // Several @threlte/extras components (Stars, MeshLine, FakeGlowMaterial, SoftShadows...) read

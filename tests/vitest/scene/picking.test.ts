@@ -36,9 +36,8 @@ test.each([
   expect(front_hit(hits, clip_plane).map(({ z_coord }) => z_coord)).toEqual(expected)
 })
 
-// nearest_only reports exactly the hit native instancing sorts first (same distance, point,
-// face and instanceId), in dense clouds with duplicate markers (ties go to the lower instance)
-// and under a non-uniformly scaled, rotated mesh transform
+// nearest_only reports exactly native instancing's first hit, in dense clouds with duplicates
+// (ties to the lower instance) under a non-uniformly scaled, rotated mesh transform
 test.each([
   [1, 3000, 0.4],
   [2, 500, 0.1],

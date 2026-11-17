@@ -15,6 +15,8 @@
   import { untrack, type Snippet } from 'svelte'
   import type { Vec2 } from '#lib/math.js'
   import { property_label, resolve_color_property } from './constants'
+  import { energy_unit_text } from '#lib/spectral/frequency-units.js'
+  import { mu_slider_range } from './compute'
   import { available_property_names } from './geometry'
   import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
 
@@ -162,6 +164,9 @@
   }
 
   const mu_settings = track_settings(() => ({ mu: chemical_potential }), defaults)
+  // energies are in the data's own unit, unknown for formats naming none (BXSF, FRMSF)
+  const unit_text = $derived(energy_unit_text((band_data ?? fermi_data)?.energy_unit ?? null))
+  const mu_range = $derived(band_data && mu_slider_range(band_data))
   const bands_settings = $derived(
     track_settings(() => ({ selected_bands: shown_bands }), {
       selected_bands: available_bands,
@@ -200,9 +205,9 @@
 >
   <SettingsGroup title="Surface" open>
     {#if fermi_data}
-      <small>E<sub>F</sub> = {format_num(fermi_data.fermi_energy, `.3f`)} eV</small>
+      <small>E<sub>F</sub> = {format_num(fermi_data.fermi_energy, `.4~g`)} {unit_text}</small>
     {/if}
-    {#if band_data}
+    {#if mu_range}
       <SettingsSection
         title="Chemical potential"
         changed_keys={mu_settings.changed_keys}
@@ -210,19 +215,19 @@
         layout="grid"
       >
         <label>
-          <span>μ offset (eV)</span>
+          <span>μ offset ({unit_text})</span>
           <input
             type="number"
-            step="0.01"
+            step={mu_range.step}
             value={chemical_potential}
             oninput={handle_mu_change}
             style="width: 4em"
           />
           <input
             type="range"
-            min="-1"
-            max="1"
-            step="0.01"
+            min={mu_range.min}
+            max={mu_range.max}
+            step={mu_range.step}
             value={chemical_potential}
             oninput={handle_mu_change}
           />

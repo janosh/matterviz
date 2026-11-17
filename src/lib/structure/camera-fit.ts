@@ -166,12 +166,10 @@ export function structure_fit_frame(
       radius = site_base_radius(sites[idx], idx, opts) * scale
       radii[idx] = radius
     }
-    min[0] = Math.min(min[0], point[0] - radius)
-    min[1] = Math.min(min[1], point[1] - radius)
-    min[2] = Math.min(min[2], point[2] - radius)
-    max[0] = Math.max(max[0], point[0] + radius)
-    max[1] = Math.max(max[1], point[1] + radius)
-    max[2] = Math.max(max[2], point[2] + radius)
+    for (let axis = 0; axis < 3; axis++) {
+      min[axis] = Math.min(min[axis], point[axis] - radius)
+      max[axis] = Math.max(max[axis], point[axis] + radius)
+    }
   }
   if (!Number.isFinite(min[0])) return empty_frame()
 
@@ -194,16 +192,12 @@ export function structure_fit_frame(
     half_right = Math.max(half_right, Math.abs(along_right) + radius)
     half_up = Math.max(half_up, Math.abs(along_up) + radius)
   }
-  if (!(radius_sq > 0)) return { center, extent: 10, spans: [10, 10] }
+  if (!(radius_sq > 0)) return { ...empty_frame(), center }
   const extent = 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING
   // Each span floors at 1 Å so content seen end-on (a hidden-atom chain along the view) still
   // has a finite zoom, like the framing distance
   const span = (half: number) => Math.max(1, 2 * half) * DEFAULT_FIT_PADDING
-  return {
-    center,
-    extent,
-    spans: [span(half_right), span(half_up)],
-  }
+  return { center, extent, spans: [span(half_right), span(half_up)] }
 }
 
 // `fit_extent` is a scene diameter in the scene's own units, so it has no lower bound of its

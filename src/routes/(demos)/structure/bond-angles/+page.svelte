@@ -1,6 +1,7 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { type Crystal, SETTINGS_CONFIG } from '#lib'
+  import type { Crystal } from '#lib'
+  import { SETTINGS_CONFIG } from '#lib/settings.js'
   import type { BondAngleNormalizeMode, BondAngleSplitMode } from '#lib/bond-angles/index.js'
   import {
     BondAnglePlot,

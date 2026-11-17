@@ -40,9 +40,8 @@ interface PhononModeTrajectoryOptions {
   filename_stem?: string
 }
 
-// The real-space cell one or more modes animate in: the tiled unit cell with boundary
-// coordination completed and equilibrium bonds attached. Independent of the selected mode, so a viewer
-// keeps one per supercell (and its camera framing) while modes and amplitudes change.
+// The real-space cell modes animate in: the tiled unit cell with boundary coordination completed
+// and equilibrium bonds attached. Mode-independent, so a viewer keeps one per supercell.
 export interface PhononSupercell {
   n_atoms: number // of the unit cell, which the mode data must match
   scaling: Vec3
@@ -53,10 +52,9 @@ export interface PhononSupercell {
   cell_position: Float64Array // [n_sites * 3]
 }
 
-// One mode's complex Cartesian displacement pattern on a supercell, mass-unweighted with the
-// global phase anchored and Bloch phases applied. Packed [re_x, im_x, re_y, im_y, re_z, im_z]
-// per site and normalised so the largest excursion over one cycle is exactly 1 Å; the
-// animation amplitude scales it at read time.
+// One mode's complex Cartesian displacement pattern on a supercell: mass-unweighted, global
+// phase anchored, Bloch phases applied, packed [re_x, im_x, re_y, im_y, re_z, im_z] per site
+// and normalised to a 1 Å largest cyclic excursion (the amplitude scales it at read time).
 export interface PhononModePattern {
   supercell: PhononSupercell
   selection: PhononModeSelection
@@ -97,34 +95,28 @@ export function default_phonon_mode_selection(
 
 // Convert parsed band.yaml modes to the structure consumed by Bands.
 export function phonon_band_structure_from_modes(data: PhononModeData): PhononBandStructure {
-  if (data.path_segments.length === 0) {
+  if (data.path_segments.length === 0)
     throw new Error(
       `Phonon mode data has no band path metadata. Use q-point and mode selectors for mesh.yaml data.`,
     )
-  }
-  const distances = data.qpoints.map(({ distance: qpoint_distance }) => {
-    if (qpoint_distance === null) {
-      throw new Error(`Phonon band path contains a q-point without a distance`)
-    }
-    return qpoint_distance
+  const distances = data.qpoints.map(({ distance }) => {
+    if (distance === null) throw new Error(`Phonon band path has a q-point without a distance`)
+    return distance
   })
-
   const branches = data.path_segments.map((segment, segment_idx) => {
     const { start_index, end_index, start_label, end_label } = segment
-    if (start_index < 0 || end_index < start_index || end_index >= data.qpoints.length) {
+    if (start_index < 0 || end_index < start_index || end_index >= data.qpoints.length)
       throw new Error(
         `Phonon path segment ${display_idx(segment_idx)} has invalid bounds ${display_idx(start_index)}–${display_idx(end_index)} for ${data.qpoints.length} q-points`,
       )
-    }
     const name =
       start_label && end_label ? `${start_label}-${end_label}` : `segment-${segment_idx + 1}`
     return { start_index, end_index, name }
   })
   const labels_by_index = phonon_qpoint_labels(data)
   const labels_dict: Record<string, Vec3> = {}
-  for (const [qpoint_idx, label] of Object.entries(labels_by_index)) {
+  for (const [qpoint_idx, label] of Object.entries(labels_by_index))
     labels_dict[label] = data.qpoints[Number(qpoint_idx)].q_position
-  }
   const qpoints: QPoint[] = data.qpoints.map(({ q_position }, qpoint_idx) => ({
     label: labels_by_index[qpoint_idx] ?? null,
     frac_coords: q_position,
@@ -199,39 +191,6 @@ export function nearest_qpoint_with_eigenvector(
   return best_idx
 }
 
-function validate_selection(
-  data: PhononModeData,
-  selection: PhononModeSelection,
-): { eigenvector: Complex[][]; frequency: number; q_position: Vec3 } {
-  const qpoint = data.qpoints[selection.qpoint_idx]
-  if (!qpoint) {
-    throw new Error(
-      `Phonon q-point index ${selection.qpoint_idx} is outside 0–${data.qpoints.length - 1}`,
-    )
-  }
-  const mode = qpoint.modes[selection.mode_idx]
-  if (!mode) {
-    throw new Error(
-      `Phonon mode index ${selection.mode_idx} is outside 0–${qpoint.modes.length - 1} at q-point ${selection.qpoint_idx}`,
-    )
-  }
-  if (!mode.eigenvector) {
-    throw new Error(
-      `Phonon mode ${display_idx(selection.mode_idx)} at q-point ${display_idx(selection.qpoint_idx)} has no eigenvector`,
-    )
-  }
-  if (mode.eigenvector.length !== data.n_atoms) {
-    throw new Error(
-      `Phonon eigenvector has ${mode.eigenvector.length} atom blocks but mode data declares ${data.n_atoms}`,
-    )
-  }
-  return {
-    eigenvector: mode.eigenvector,
-    frequency: mode.frequency,
-    q_position: qpoint.q_position,
-  }
-}
-
 // Whether the selected Bloch phase repeats across every diagonal supercell boundary.
 export function is_commensurate_phonon_supercell(q_position: Vec3, supercell: Vec3): boolean {
   const scaling = parse_supercell_scaling(supercell)
@@ -285,15 +244,12 @@ export function phonon_mode_values(
   if (coloring === `ir` || coloring === `raman`) {
     if (!spectrum || (coloring === `raman` && !spectrum.has_raman)) return null
     const modes = spectrum.modes.toSorted((left, right) => left.mode_idx - right.mode_idx)
+    const key = coloring === `ir` ? `ir_intensity` : `raman_activity`
     return {
       label: coloring === `ir` ? `IR intensity` : `Raman activity`,
       qpoints: [spectrum.q_position],
       frequencies: [modes.map(({ frequency }) => frequency)],
-      values: [
-        modes.map(
-          (mode) => (coloring === `ir` ? mode.ir_intensity : mode.raman_activity) ?? NaN,
-        ),
-      ],
+      values: [modes.map((mode) => mode[key] ?? NaN)],
     }
   }
   const symbol = coloring.startsWith(`element:`) ? coloring.slice(`element:`.length) : null
@@ -314,39 +270,35 @@ export function phonon_mode_values(
   }
 }
 
-// Build the displayed supercell once per (data, scaling, polyhedra settings): tiling, image
-// atoms and bonding are the expensive steps and none of them depends on which mode is animated.
-// Only the unit cell, so viewers snapshot it without the q-points' thousands of eigenvectors.
-// `polyhedra` are the viewer's live settings: the frames are never imaged again, so the corner
-// copies completion adds here are the only ones its polyhedra can reach.
+// Build the displayed supercell once per (unit cell, scaling, polyhedra settings): tiling,
+// image atoms and bonding are expensive and mode-independent. Takes only the unit cell so
+// viewers snapshot it without the eigenvectors. `polyhedra` are the viewer's live settings:
+// frames are never imaged again, so these corner copies are the only ones it can reach.
 export function phonon_supercell(
   data: Pick<PhononModeData, `n_atoms` | `atoms` | `lattice`>,
   supercell: Vec3 = DEFAULT_PHONON_SUPERCELL,
   polyhedra: ResolvedPolyhedraOptions = polyhedra_options_from({}),
 ): PhononSupercell {
   if (!data.lattice) throw new Error(`Phonon mode animation needs a real-space lattice`)
-  if (data.atoms.length !== data.n_atoms) {
+  if (data.atoms.length !== data.n_atoms)
     throw new Error(
       `Phonon mode data declares ${data.n_atoms} atoms but contains ${data.atoms.length}`,
     )
-  }
   const scaling = parse_supercell_scaling(supercell)
   const check_size = (n_sites: number): void => {
-    if (n_sites > MAX_PHONON_SUPERCELL_SITES) {
+    if (n_sites > MAX_PHONON_SUPERCELL_SITES)
       throw new Error(
         `Phonon supercell ${scaling.join(`x`)} would display ${n_sites} sites, ` +
           `exceeding the ${MAX_PHONON_SUPERCELL_SITES} limit. Reduce the supercell.`,
       )
-    }
   }
   check_size(scaling.reduce((count, scale) => count * scale, data.n_atoms))
   const frac_to_cart = math.create_frac_to_cart(data.lattice)
   const sites = data.atoms.map((atom, atom_idx) => {
-    if (!is_elem_symbol(atom.symbol)) {
+    if (!is_elem_symbol(atom.symbol))
       throw new Error(
         `Phonon atom ${display_idx(atom_idx)} has unknown element symbol '${atom.symbol}'`,
       )
-    }
     // Phonopy permits translated basis positions; image generation needs a canonical cell.
     const coordinates = wrap_to_unit_cell(atom.coordinates)
     return make_site(
@@ -361,7 +313,7 @@ export function phonon_supercell(
     lattice: {
       matrix: data.lattice,
       pbc: [true, true, true],
-      ...math.calc_lattice_params(data.lattice),
+      ...math.compute_lattice_params(data.lattice),
     },
     properties: {},
   }
@@ -398,9 +350,8 @@ export function phonon_supercell(
   const cell_position = new Float64Array(n_sites * 3)
   for (const [site_idx, site] of structure.sites.entries()) {
     atom_idx[site_idx] = get_orig_site_idx(site, site_idx) % data.n_atoms
-    for (let axis = 0; axis < 3; axis++) {
+    for (let axis = 0; axis < 3; axis++)
       cell_position[site_idx * 3 + axis] = site.abc[axis] * scaling[axis]
-    }
   }
   return { n_atoms: data.n_atoms, scaling, structure, atom_idx, cell_position }
 }
@@ -414,14 +365,32 @@ export function phonon_mode_pattern(
   selection: PhononModeSelection,
 ): PhononModePattern {
   const { n_atoms, scaling, atom_idx, cell_position } = supercell
-  if (data.n_atoms !== n_atoms) {
+  if (data.n_atoms !== n_atoms)
     throw new Error(
       `Phonon mode data has ${data.n_atoms} atoms but the supercell was built for ${n_atoms}`,
     )
-  }
-  const { eigenvector, frequency, q_position: q_source } = validate_selection(data, selection)
+  const { qpoint_idx, mode_idx } = selection
+  const qpoint = data.qpoints[qpoint_idx]
+  if (!qpoint)
+    throw new Error(
+      `Phonon q-point index ${qpoint_idx} is outside 0–${data.qpoints.length - 1}`,
+    )
+  const mode = qpoint.modes[mode_idx]
+  if (!mode)
+    throw new Error(
+      `Phonon mode index ${mode_idx} is outside 0–${qpoint.modes.length - 1} at q-point ${qpoint_idx}`,
+    )
+  const { eigenvector, frequency } = mode
+  if (!eigenvector)
+    throw new Error(
+      `Phonon mode ${display_idx(mode_idx)} at q-point ${display_idx(qpoint_idx)} has no eigenvector`,
+    )
+  if (eigenvector.length !== n_atoms)
+    throw new Error(
+      `Phonon eigenvector has ${eigenvector.length} atom blocks but mode data declares ${n_atoms}`,
+    )
   // Plain copies: a viewer may pass reactive proxies, and the pattern ends up in run metadata
-  const q_position: Vec3 = [...q_source]
+  const q_position: Vec3 = [...qpoint.q_position]
 
   let anchor_re = 1
   let anchor_im = 0
@@ -438,9 +407,8 @@ export function phonon_mode_pattern(
   const [rot_re, rot_im] = [Math.cos(rotation), Math.sin(rotation)]
   const anchored = eigenvector.map((atom_vector, idx) => {
     const { mass } = data.atoms[idx]
-    if (!Number.isFinite(mass) || mass <= 0) {
+    if (!Number.isFinite(mass) || mass <= 0)
       throw new Error(`Phonon atom ${display_idx(idx)} has invalid mass ${mass}`)
-    }
     const mass_scale = 1 / Math.sqrt(mass)
     return atom_vector.map(([re_part, im_part]): Complex => [
       mass_scale * (re_part * rot_re - im_part * rot_im),
@@ -489,9 +457,8 @@ export function phonon_mode_pattern(
   }
 }
 
-// One phase cycle of a mode as a trajectory whose frames are synthesised on read: memory and
-// setup stay O(n_sites) however many frames are requested, and an amplitude change is a new
-// run over the same pattern rather than a rebuild.
+// One phase cycle of a mode as a trajectory with frames synthesised on read (O(n_sites) memory
+// for any frame count); an amplitude change is a new run over the same pattern, no rebuild.
 export function phonon_mode_run(
   pattern: PhononModePattern,
   options: Omit<PhononModeTrajectoryOptions, `supercell`> = {},
@@ -501,18 +468,16 @@ export function phonon_mode_run(
     n_frames = DEFAULT_PHONON_FRAMES,
     filename_stem = `phonon`,
   } = options
-  if (!Number.isFinite(amplitude) || amplitude <= 0) {
+  if (!Number.isFinite(amplitude) || amplitude <= 0)
     throw new Error(`Phonon amplitude must be a positive finite number, got ${amplitude}`)
-  }
-  if (!Number.isInteger(n_frames) || n_frames < 2) {
+  if (!Number.isInteger(n_frames) || n_frames < 2)
     throw new Error(`Phonon trajectory needs at least 2 integer frames, got ${n_frames}`)
-  }
   const { supercell, selection, frequency, q_position, displacements } = pattern
   const equilibrium = supercell.structure
   // Fractional coordinates move by the displacement in the lattice basis, so the inverse
   // matrix is applied to the (small) displacement and added to the fixed equilibrium abc
   const [[inv_xa, inv_xb, inv_xc], [inv_ya, inv_yb, inv_yc], [inv_za, inv_zb, inv_zc]] =
-    math.matrix_inverse_3x3(equilibrium.lattice.matrix)
+    math.inverse_3x3(equilibrium.lattice.matrix)
   const phase_of = (frame_idx: number) => (2 * Math.PI * frame_idx) / n_frames
 
   // Every frame shares the equilibrium cell and site records (frames are immutable snapshots);

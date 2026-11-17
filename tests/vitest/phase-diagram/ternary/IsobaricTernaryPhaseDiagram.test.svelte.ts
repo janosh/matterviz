@@ -602,12 +602,8 @@ describe(`PhaseStabilityMap`, () => {
     ],
     { elements: toy_elements },
   )
-  test.each([
-    [`stable_ever`, false, 4],
-    [`near_hull`, false, 5],
-    [`all`, false, 6],
-    [`stable_ever`, true, 7],
-  ] as const)(`filter=%s elements=%s → %i rows`, (map_filter, show_map_elements, n_rows) => {
+  // oxfmt-ignore
+  test.each([[`stable_ever`, false, 4], [`near_hull`, false, 5], [`all`, false, 6], [`stable_ever`, true, 7]] as const)(`filter=%s elements=%s → %i rows`, (map_filter, show_map_elements, n_rows) => {
     const settings = { ...TERNARY_DISPLAY_DEFAULTS, map_filter, show_map_elements }
     const props = { diagram: map_diagram, settings, temperature: 500, row_height: 10 }
     mount_it(PhaseStabilityMap, props)

@@ -56,18 +56,18 @@ const atom = (color: string, x_pos: number): InstancedAtom => ({
   radius: 0.5,
   color,
 })
-
+const atoms_of = (colors: string[], offset: number): InstancedAtom[] =>
+  colors.map((color, idx) => atom(color, idx + offset))
 // frame 0 of a varying-atom-count run: 5 atoms, slot 0 black
-const ch4 = (offset = 0): InstancedAtom[] => [
-  atom(`#000000`, offset),
-  ...Array.from({ length: 4 }, (_unused, idx) => atom(`#ffffff`, idx + 1 + offset)),
-]
+const ch4 = (offset = 0) => atoms_of([`#000000`, ...Array(4).fill(`#ffffff`)], offset)
 // frame 5: 3 atoms, slot 0 now red. The mesh is grow-only, so slots 0-2 are reused.
-const h2o = (offset = 0): InstancedAtom[] => [
-  atom(`#ff0000`, offset),
-  atom(`#ffffff`, 1 + offset),
-  atom(`#ffffff`, 2 + offset),
-]
+const h2o = (offset = 0) => atoms_of([`#ff0000`, `#ffffff`, `#ffffff`], offset)
+const make_field = (colors: number[], dims: Vec3, pbc: AtomColorField[`pbc`]) => ({
+  colors: new Float32Array(colors),
+  dims,
+  cartesian_to_fractional: new Matrix4(),
+  pbc,
+})
 
 let teardown: (() => Promise<void>) | undefined
 afterEach(async () => {
@@ -103,13 +103,7 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   const update_texture = vi.spyOn(ColorFieldTexture.prototype, `update`)
   const encode = vi.spyOn(DataUtils, `toHalfFloat`)
   const dispose_texture = vi.spyOn(Data3DTexture.prototype, `dispose`)
-  const colors = new Float32Array([1, 0, 0, 0.5, 0, 0, 0, 0])
-  const field: AtomColorField = {
-    colors,
-    dims: [2, 1, 1],
-    cartesian_to_fractional: new Matrix4(),
-    pbc: [true, false, false],
-  }
+  const field = make_field([1, 0, 0, 0.5, 0, 0, 0, 0], [2, 1, 1], [true, false, false])
   const props = $state({ field, opacity: 0.35, tiling: [2, 3, 4] as Vec3 })
   const component = mount(ColorFieldVolume, { target: document.body, props })
   teardown = () => unmount(component)
@@ -167,7 +161,7 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   expect(texture.version).toBe(texture_version + 1)
   expect(texture.image.data).toBe(texels)
   encode.mockClear()
-  flush_set(props, { field: { ...field, colors: new Float32Array(colors) } })
+  flush_set(props, { field: { ...field, colors: new Float32Array(field.colors) } })
   expect(encode).toHaveBeenCalledTimes(8)
   expect(dispose_texture).not.toHaveBeenCalled()
   expect(texture.image.data).toBe(texels)
@@ -205,12 +199,7 @@ test(`heatmap updates and toggles preserve atom meshes, buffers, and geometry`, 
   const geometry = mesh.geometry
   const versions = [mesh.positions.version, mesh.colors.version]
   expect(update).not.toHaveBeenCalled()
-  const field: AtomColorField = {
-    colors: new Float32Array([1, 0, 0, 1]),
-    dims: [1, 1, 1],
-    cartesian_to_fractional: new Matrix4(),
-    pbc: [true, true, true],
-  }
+  const field = make_field([1, 0, 0, 1], [1, 1, 1], [true, true, true])
   flush_set(props, { color_field: field })
   const controller = update.mock.contexts[0]
   if (
@@ -266,10 +255,8 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   expect(mesh.count).toBe(3)
   expect(slot_color(0)).toEqual([1, 0, 0])
   // A partial repaint before the first render must keep the earlier full-buffer upload.
-  expect(mesh.colors.updateRanges).toEqual([
-    { start: 0, count: 15 },
-    { start: 0, count: 3 },
-  ])
+  // oxfmt-ignore
+  expect(mesh.colors.updateRanges).toEqual([{ start: 0, count: 15 }, { start: 0, count: 3 }])
 
   const color_version = mesh.colors.version
   flush_set(props, { atoms: h2o(0.5) })
@@ -289,10 +276,8 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   expect(slot_color(2)).toEqual([0, 0, 1])
   props.atoms[1].color = `green`
   flushSync()
-  expect(instance_colors.updateRanges).toEqual([
-    { start: 6, count: 3 },
-    { start: 3, count: 3 },
-  ])
+  // oxfmt-ignore
+  expect(instance_colors.updateRanges).toEqual([{ start: 6, count: 3 }, { start: 3, count: 3 }])
   expect(mesh.positions.version).toBe(matrix_version)
 
   // measure mode desaturates the same way mid-scrub
@@ -348,16 +333,14 @@ test.each([
   `Detail follows zoom, viewport and requests without uploading unchanged atoms at $fov degrees`,
   async ({ fov, height, x_pos, radius, distant_segments }) => {
     const dispose_geometry = vi.spyOn(SphereGeometry.prototype, `dispose`)
-    const {
-      camera: { current: camera },
-      size,
-    } = useThrelte()
+    const threlte = useThrelte()
+    const camera = threlte.camera.current
     if (!(camera instanceof PerspectiveCamera)) throw new TypeError(`Expected perspective camera`)
     camera.fov = fov
     camera.position.z = 100
     camera.updateProjectionMatrix()
     camera.updateMatrixWorld(true)
-    size.current.height = height
+    threlte.size.current.height = height
     const props = mount_atoms(
       Array.from({ length: 2000 }, () => ({ ...atom(`red`, x_pos), radius })),
     )

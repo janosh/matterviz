@@ -4,9 +4,9 @@ import { display_idx } from '#lib/labels.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { json_species } from '#lib/structure/parse.js'
-import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import {
-  calc_force_stats,
+  compute_force_stats,
   checked_site_forces,
   create_trajectory_frame,
 } from '#lib/trajectory/helpers.js'
@@ -87,8 +87,8 @@ export function parse_pymatgen_trajectory(
     lattice === null
       ? Array(n_frames).fill(undefined)
       : per_frame_lattice
-        ? lattice.map((matrix) => matrix3x3_from_rows(matrix, `lattice matrix`))
-        : Array(n_frames).fill(matrix3x3_from_rows(lattice, `lattice matrix`))
+        ? lattice.map((matrix) => mat3x3_from_rows(matrix, `lattice matrix`))
+        : Array(n_frames).fill(mat3x3_from_rows(lattice, `lattice matrix`))
   const frame_properties = Array.isArray(obj.frame_properties)
     ? (obj.frame_properties as Record<string, unknown>[])
     : []
@@ -148,7 +148,7 @@ export function parse_pymatgen_trajectory(
           `pymatgen forces of frame ${display_idx(idx)}`,
           warn,
         )
-        if (forces) Object.assign(processed_properties, calc_force_stats(forces))
+        if (forces) Object.assign(processed_properties, compute_force_stats(forces))
         continue
       }
       // Kept raw: pymatgen records no stress unit (VASP kB with compression positive, CHGNet

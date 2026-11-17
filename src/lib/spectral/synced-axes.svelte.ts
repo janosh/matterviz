@@ -11,7 +11,12 @@ import {
   max_side_padding,
 } from '#lib/plot/core/shared-axes.js'
 import type { AxisConfig, AxisRanges } from '#lib/plot/core/types.js'
-import { compute_frequency_range, extract_efermi, spectral_type } from './helpers'
+import {
+  compute_frequency_range,
+  electronic_energy_unit,
+  extract_efermi,
+  spectral_type,
+} from './helpers'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
 import type { BaseBandStructure, DosData, FrequencyUnit } from './types'
 
@@ -38,17 +43,10 @@ export function shared_resolved_padding_floor(size: () => Vec2) {
     },
     raise(resolved: Required<Sides> | undefined): void {
       if (!resolved) return
-      const value = current()
-      const next = {
-        t: Math.max(value.t ?? 0, resolved.t),
-        b: Math.max(value.b ?? 0, resolved.b),
-      }
-      if (
-        !vec2_equal(floor.size, size()) ||
-        next.t > (value.t ?? 0) + 0.5 ||
-        next.b > (value.b ?? 0) + 0.5
-      )
-        floor = { size: size(), value: next }
+      const { t = 0, b = 0 } = current()
+      const next = { t: Math.max(t, resolved.t), b: Math.max(b, resolved.b) }
+      const rises = next.t > t + 0.5 || next.b > b + 0.5
+      if (rises || !vec2_equal(floor.size, size())) floor = { size: size(), value: next }
     },
   }
 }
@@ -84,7 +82,12 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const bands_props = () => inputs.bands_props?.() ?? {}
   const dos_props = () => inputs.dos_props?.() ?? {}
   const unit_factor = $derived.by(() => {
-    if (spectral_type(inputs.band_structs(), doses()) !== `phonon`) return 1
+    if (spectral_type(inputs.band_structs(), doses()) !== `phonon`) {
+      // bands are eV: a DOS on their axis must be too
+      const beside_bands = Object.keys(inputs.band_structs()).length > 0
+      electronic_energy_unit(Object.values(doses()), beside_bands)
+      return 1
+    }
     const unit = inputs.units()
     return frequency_unit_per_thz(parse_frequency_unit(unit) ?? unit)
   })

@@ -41,18 +41,8 @@ function setup(blocked_idx?: number) {
     settle: async () => {},
     on_change,
   })
-  return {
-    controller,
-    original,
-    moved,
-    timeline,
-    active,
-    on_change,
-    session,
-    camera_source,
-    pending,
-    playing: () => playing,
-  }
+  const camera_state = { controller, original, moved, active, camera_source }
+  return { ...camera_state, timeline, on_change, session, pending, playing: () => playing }
 }
 
 it(`keeps inspected views editable and restores the original camera, MD frame and playback`, async () => {

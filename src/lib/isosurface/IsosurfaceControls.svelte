@@ -476,8 +476,10 @@
             <label>
               <span
                 {@attach tooltip({
-                  content: `Density threshold — surface is drawn where grid values equal this`,
-                })}>Isovalue</span
+                  content: `Threshold: the surface is drawn where grid values equal this`,
+                })}
+                >Isovalue{#if vol.units}
+                  &nbsp;<small style="opacity: 0.7">({vol.units})</small>{/if}</span
               >
               {@render isovalue_track(layer, layer_idx, vol, layer_step, layer_abs_max)}
               <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
@@ -696,6 +698,9 @@
     align-items: center;
     gap: 0.4em;
     min-width: 0;
+    .icon-btn:first-of-type {
+      margin-left: auto;
+    }
   }
   .volume-label {
     font-weight: 600;
@@ -747,9 +752,6 @@
       border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
     }
   }
-  .volume-header .icon-btn:first-of-type {
-    margin-left: auto;
-  }
   .icon-btn {
     display: inline-grid;
     place-items: center;
@@ -764,10 +766,10 @@
     line-height: 1;
     opacity: 0.7;
     cursor: pointer;
-  }
-  .icon-btn:hover {
-    opacity: 1;
-    background: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.15));
+    &:hover {
+      opacity: 1;
+      background: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.15));
+    }
   }
   .layer-row,
   .color-row {

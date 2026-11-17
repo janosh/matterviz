@@ -342,6 +342,16 @@ export const SETTINGS_CONFIG = define_settings({
       value: false,
       description: `Render all atoms with the same size regardless of element`,
     },
+    show_thermal_ellipsoids: {
+      value: false,
+      description: `Draw atoms with anisotropic displacement parameters (CIF _atom_site_aniso_*) as thermal ellipsoids at true size instead of spheres`,
+    },
+    ellipsoid_probability: {
+      value: 0.5,
+      description: `Probability that the atom lies inside its thermal ellipsoid (ORTEP convention, 0.5 = 50%)`,
+      minimum: 0.05,
+      maximum: 0.99,
+    },
     show_atoms: { value: true, description: `Display atoms in the structure` },
     show_image_atoms: {
       value: true,
@@ -388,6 +398,7 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Method for determining bonds between atoms`,
       enum: {
         electroneg_ratio: `Electronegativity Ratio`,
+        pair_cutoffs: `Pair Cutoffs`,
         explicit_only: `Explicit Bonds Only`,
       },
     },
@@ -703,7 +714,10 @@ export const SETTINGS_CONFIG = define_settings({
 
   // Fermi surface viewer settings
   fermi: {
-    mu: { value: 0, description: `Chemical potential offset from the Fermi level (eV)` },
+    mu: {
+      value: 0,
+      description: `Chemical potential offset from the Fermi level, in the band grid's energy unit`,
+    },
     color_property: {
       value: FERMI_COLOR_PROPERTY,
       description: `Quantity mapped onto the Fermi surface color scale when the data has no per-state properties (with them, the first property colors the surface unless one is chosen)`,

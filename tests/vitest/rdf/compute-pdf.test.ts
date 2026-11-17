@@ -1,15 +1,15 @@
 import { mean, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index.js'
-import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from '#lib/rdf/calc-rdf.js'
+import { compute_all_pair_rdfs, compute_rdf, shell_volume } from '#lib/rdf/compute-rdf.js'
 import {
-  calculate_pdf,
-  calculate_total_pdf,
+  compute_pdf,
+  compute_total_pdf,
   coordination_number,
   number_density,
   PDF_DEFAULT_N_BINS,
   site_composition,
   weight_pdf_partials,
-} from '#lib/rdf/calc-pdf.js'
+} from '#lib/rdf/compute-pdf.js'
 import { neutron_scattering_length } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vite-plus/test'
@@ -85,20 +85,20 @@ function disordered_cell(n_atoms: number, box: number, min_dist: number): Crysta
 // 300 Ar in a 24 Å box, no two closer than 2.8 Å. Built once: the packing costs ~10^5 trials
 // and both tests below bin it on the same 12 Å / 600-bin grid.
 const DISORDERED = disordered_cell(300, 24, 2.8)
-const DISORDERED_PDF = calculate_pdf(DISORDERED, { cutoff: 12, n_bins: 600 })
+const DISORDERED_PDF = compute_pdf(DISORDERED, { cutoff: 12, n_bins: 600 })
 
 // Most patterns below are binned at the same 0.01 Å resolution, so shells land in known bins
 const peak_pdf = (
   structure: Crystal,
-  options: Parameters<typeof calculate_pdf>[1] = {},
+  options: Parameters<typeof compute_pdf>[1] = {},
 ): PdfPattern =>
-  calculate_pdf(structure, { cutoff: PEAK_CUTOFF, n_bins: PEAK_N_BINS, ...options })
+  compute_pdf(structure, { cutoff: PEAK_CUTOFF, n_bins: PEAK_N_BINS, ...options })
 
 const peak_total_pdf = (
   structure: Crystal,
-  options: Parameters<typeof calculate_total_pdf>[1] = {},
+  options: Parameters<typeof compute_total_pdf>[1] = {},
 ): TotalPdfPattern =>
-  calculate_total_pdf(structure, { cutoff: PEAK_CUTOFF, n_bins: PEAK_N_BINS, ...options })
+  compute_total_pdf(structure, { cutoff: PEAK_CUTOFF, n_bins: PEAK_N_BINS, ...options })
 
 // Index of the largest G(r) inside [0, r_window). G(r) carries a factor r, so for a crystal the
 // global maximum sits in a far shell — the FIRST peak has to be found in a bounded window.
@@ -152,7 +152,7 @@ describe(`reduced PDF G(r)`, () => {
   )
 
   test.each([400, 3000])(`fcc first-peak position is stable at n_bins=%s`, (n_bins) => {
-    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), {
+    const pattern = compute_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), {
       cutoff: PEAK_CUTOFF,
       n_bins,
     })
@@ -198,7 +198,7 @@ describe(`reduced PDF G(r)`, () => {
 
   test(`fcc crystal: shell-averaged g(r) converges to 1 in the tail`, () => {
     const [cutoff, n_bins] = [15, 750]
-    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), { cutoff, n_bins })
+    const pattern = compute_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), { cutoff, n_bins })
     // A crystal's g(r) is a comb of delta functions that never converges pointwise; what
     // converges is its average over a window many shells wide. measured: mean g = 0.9779.
     const tail_g = window_values(pattern, pattern.g_r, 12, 15)
@@ -279,24 +279,24 @@ describe(`reduced PDF G(r)`, () => {
     [`no sites`, make_crystal(4, []), /has 0 atoms/],
   ])(`number_density rejects a crystal with %s`, (_name, structure, pattern) => {
     expect(() => number_density(structure)).toThrow(pattern)
-    // and calculate_total_pdf inherits the guard rather than weighting an empty composition
+    // and compute_total_pdf inherits the guard rather than weighting an empty composition
     if (structure.sites.length === 0) {
-      expect(() => calculate_total_pdf(structure)).toThrow(pattern)
+      expect(() => compute_total_pdf(structure)).toThrow(pattern)
     }
   })
 
   test(`PDF defaults are finer than the RDF defaults and leave them untouched`, () => {
     const structure = cubic_cell(`Cu`, FCC_FACE_CENTRES)
-    const pdf = calculate_pdf(structure)
+    const pdf = compute_pdf(structure)
     expect(pdf.r).toHaveLength(PDF_DEFAULT_N_BINS)
     expect(pdf.r[1] - pdf.r[0]).toBeCloseTo(0.02, 12)
     // the RDF path must still hand its existing callers 15 Å over 75 bins
-    const rdf = calculate_rdf(structure)
+    const rdf = compute_rdf(structure)
     expect(rdf.r).toHaveLength(75)
     expect(rdf.r[1] - rdf.r[0]).toBeCloseTo(0.2, 12)
   })
 
-  const fcc_pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), {
+  const fcc_pattern = compute_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), {
     cutoff: 8,
     n_bins: 100,
   })
@@ -322,15 +322,15 @@ describe(`total scattering-weighted PDF`, () => {
     `weighting precomputed partials equals the one-shot %s total`,
     (radiation) => {
       const structure = nacl()
-      const partial_rdfs = calculate_all_pair_rdfs(structure, { cutoff: 6, n_bins: 60 })
+      const partial_rdfs = compute_all_pair_rdfs(structure, { cutoff: 6, n_bins: 60 })
       const rho_0 = number_density(structure)
       expect(weight_pdf_partials(structure, partial_rdfs, { rho_0, radiation })).toEqual(
-        calculate_total_pdf(structure, { radiation, cutoff: 6, n_bins: 60 }),
+        compute_total_pdf(structure, { radiation, cutoff: 6, n_bins: 60 }),
       )
     },
   )
 
-  // calculate_all_pair_rdfs sorts the element list, so the unordered pair keys are Cl-* first
+  // compute_all_pair_rdfs sorts the element list, so the unordered pair keys are Cl-* first
   const NACL_B: Record<string, Record<string, number>> = {
     // x-ray form factors at s = 0 reduce to Z
     xray: { Na: 11, Cl: 17 },
@@ -404,8 +404,8 @@ describe(`total scattering-weighted PDF`, () => {
     `%s total g(r) tail tracks the unweighted g(r) because the weights sum to 1`,
     (radiation) => {
       const [cutoff, n_bins] = [15, 750]
-      const total = calculate_total_pdf(nacl(), { radiation, cutoff, n_bins })
-      const plain = calculate_pdf(nacl(), { cutoff, n_bins })
+      const total = compute_total_pdf(nacl(), { radiation, cutoff, n_bins })
+      const plain = compute_pdf(nacl(), { cutoff, n_bins })
       const tail_start = Math.floor(0.8 * n_bins)
       const total_tail = mean(total.g_r.slice(tail_start))
       const plain_tail = mean(plain.g_r.slice(tail_start))
@@ -463,7 +463,7 @@ describe(`total scattering-weighted PDF`, () => {
   test(`missing neutron scattering length surfaces with the composition attached`, () => {
     // Po is one of the elements absent from the NIST b_coh table
     expect(() =>
-      calculate_total_pdf(cubic_cell(`Po`, SC_FRAC, 3.35), {
+      compute_total_pdf(cubic_cell(`Po`, SC_FRAC, 3.35), {
         radiation: `neutron`,
         cutoff: 6,
         n_bins: 300,
@@ -474,8 +474,8 @@ describe(`total scattering-weighted PDF`, () => {
   test.each([
     { cutoff: -1, n_bins: 100 },
     { cutoff: 8, n_bins: 0 },
-  ])(`calculate_total_pdf rejects cutoff=$cutoff n_bins=$n_bins`, ({ cutoff, n_bins }) => {
-    expect(() => calculate_total_pdf(nacl(), { cutoff, n_bins })).toThrow(
+  ])(`compute_total_pdf rejects cutoff=$cutoff n_bins=$n_bins`, ({ cutoff, n_bins }) => {
+    expect(() => compute_total_pdf(nacl(), { cutoff, n_bins })).toThrow(
       /cutoff must be a positive finite|n_bins must be a positive integer/,
     )
   })

@@ -107,7 +107,7 @@ export function assemble_crystal(
 ): Crystal {
   const { bonds: _bonds, ...properties } = source.properties ?? {}
   return {
-    lattice: { matrix, pbc, ...math.calc_lattice_params(matrix) },
+    lattice: { matrix, pbc, ...math.compute_lattice_params(matrix) },
     sites,
     ...(source.id === undefined ? {} : { id: source.id }),
     ...(charge === undefined ? {} : { charge }),
@@ -220,10 +220,10 @@ export function make_oriented_bulk(
   // Row-vector convention: new lattice rows are integer combinations of the old rows
   const matrix = math.dot(transform, parent_matrix)
   // and abc_new · P = abc_old, i.e. abc_new = transpose(P⁻¹) · abc_old
-  const to_new_frac = math.transpose_3x3_matrix(math.matrix_inverse_3x3(transform))
+  const to_new_frac = math.transpose_3x3(math.inverse_3x3(transform))
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const sites: Site[] = crystal.sites.map((site) => {
-    const abc = wrap_to_unit_cell(math.mat3x3_vec3_multiply(to_new_frac, site.abc))
+    const abc = wrap_to_unit_cell(math.mul_3x3_vec3(to_new_frac, site.abc))
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })
 

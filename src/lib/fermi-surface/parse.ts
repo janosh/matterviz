@@ -6,6 +6,8 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { read_text_line } from '#lib/structure/parsers/vasp-header.js'
 import { normalize_scientific_notation } from '#lib/utils.js'
+import type { ElectronEnergyUnit } from '#lib/spectral/frequency-units.js'
+import { parse_electron_energy_unit } from '#lib/spectral/frequency-units.js'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import { DEFAULT_PROPERTY_NAME } from './constants'
 import type {
@@ -65,9 +67,19 @@ function line_reader(content: string, start = 0) {
   }
 }
 
+// Units a header line may name its Fermi energy in (`Fermi Energy: 7.6 eV`, `(Ry)`), keyed
+// by their first two letters
+const HEADER_ENERGY_UNITS: Record<string, ElectronEnergyUnit> = {
+  ev: `eV`,
+  ry: `Ry`,
+  ha: `Ha`,
+}
+const HEADER_UNIT_REGEX = /\b(?<unit>ev|ryd?|rydberg|ha|hartree)\b/i
+
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
-// Format specification: http://www.xcrysden.org/doc/XSF.html
-function parse_bxsf(content: string): BandGridData {
+// Format specification: http://www.xcrysden.org/doc/XSF.html. It names no energy unit, so the
+// unit is the one the Fermi energy's header line names, else the caller's, else null (unknown).
+function parse_bxsf(content: string, energy_unit: ElectronEnergyUnit | null): BandGridData {
   const block_start = content.indexOf(`BEGIN_BLOCK_BANDGRID_3D`)
   if (block_start === -1) throw new Error(`BXSF file missing BEGIN_BLOCK_BANDGRID_3D`)
 
@@ -75,7 +87,7 @@ function parse_bxsf(content: string): BandGridData {
   // grid, e.g. "Fermi Energy: 19.0343" — only that slice is scanned, not the data body. The
   // format requires it: without it the surface's energy reference is unknown
   const fermi_match =
-    /fermi[\s_]*energy[^\n=:]*(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?)/i.exec(
+    /fermi[\s_]*energy[^\n=:]*(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?)[^\n]*/i.exec(
       content.slice(0, block_start),
     )
   const fermi_value = fermi_match?.groups?.value
@@ -86,6 +98,8 @@ function parse_bxsf(content: string): BandGridData {
   }
   // Fortran codes write `0.7D+01` here too, which Number() reads as NaN (and the regex as 0.7)
   const fermi_energy = Number(normalize_scientific_notation(fermi_value))
+  const fermi_line = fermi_match?.[0].trim()
+  const named_unit = HEADER_UNIT_REGEX.exec(fermi_line ?? ``)?.groups?.unit.slice(0, 2)
 
   const reader = line_reader(content, block_start)
   reader.next() // BEGIN_BLOCK_BANDGRID_3D
@@ -151,11 +165,13 @@ function parse_bxsf(content: string): BandGridData {
     energies[0].push(make_band_grid(reader.floats(total_points, `Band ${band_idx}`), k_grid))
   }
 
-  return {
+  const grid: BandGridData = {
     energies,
     k_grid,
     k_lattice: spanning_vectors as Matrix3x3,
     fermi_energy,
+    energy_unit:
+      named_unit === undefined ? null : HEADER_ENERGY_UNITS[named_unit.toLowerCase()],
     n_bands,
     n_spins: 1,
     // numbers repeated (each spin channel counted from 1) cannot identify bands: keep positions
@@ -163,11 +179,12 @@ function parse_bxsf(content: string): BandGridData {
       band_indices: band_numbers.map((band_number) => band_number - 1),
     }),
   }
+  return with_energy_unit(grid, energy_unit, `BXSF header '${fermi_line}'`)
 }
 
 // Parse FRMSF format used by FermiSurfer
 // Format: https://mitsuaki1987.github.io/fermisurfer/en/_build/html/ops.html
-function parse_frmsf(content: string): BandGridData {
+function parse_frmsf(content: string, energy_unit: ElectronEnergyUnit | null): BandGridData {
   const reader = line_reader(content)
 
   // Line 1: grid dimensions (ng[0] ng[1] ng[2])
@@ -205,7 +222,8 @@ function parse_frmsf(content: string): BandGridData {
   // Band energies in z-fastest order, read as whitespace-separated tokens like FermiSurfer's
   // fscanf (any number per line; the optional colour block follows), kept as written: the
   // format's energy unit is arbitrary with the Fermi level at 0 (producers write Ry, Ha or
-  // eV), so any fixed factor would rescale most files wrongly. FRMSF has a single spin channel.
+  // eV), so any fixed factor would rescale most files wrongly and the unit is the caller's
+  // `energy_unit` (null: unknown). FRMSF has a single spin channel.
   const total_points = checked_grid_points(
     k_grid,
     content.length - reader.position(),
@@ -223,6 +241,7 @@ function parse_frmsf(content: string): BandGridData {
     k_grid,
     k_lattice,
     fermi_energy: 0, // FRMSF typically expects Fermi level at 0
+    energy_unit,
     n_bands,
     n_spins: 1,
     periodic: true, // FRMSF stores k=i/n with no duplicated endpoint (unlike BXSF)
@@ -382,8 +401,10 @@ function is_valid_json_isosurface(obj: unknown): obj is JsonIsosurface {
 
 // FermiSurfaceData as it appears in JSON: same fields with plain-array meshes
 export type JsonIsosurface = JsonMesh & { band_index: number; spin: SpinChannel }
-export type FermiSurfaceJson = Omit<FermiSurfaceData, `isosurfaces`> & {
+// `energy_unit` left out (older exports, other producers) reads as null: unknown, not eV
+export type FermiSurfaceJson = Omit<FermiSurfaceData, `isosurfaces` | `energy_unit`> & {
   isosurfaces: JsonIsosurface[]
+  energy_unit?: ElectronEnergyUnit | null
 }
 
 function is_valid_fermi_surface_json(obj: unknown): obj is FermiSurfaceJson {
@@ -400,16 +421,19 @@ function is_valid_fermi_surface_json(obj: unknown): obj is FermiSurfaceJson {
 
 const fermi_surface_from_json = (json: FermiSurfaceJson): FermiSurfaceData => ({
   ...json,
+  energy_unit: parse_electron_energy_unit(json.energy_unit ?? null),
   isosurfaces: json.isosurfaces.map((iso) =>
     isosurface_from_json(iso, iso.band_index, iso.spin),
   ),
 })
 
 // BandGridData as it appears in JSON: energies are nested [spin][band][kx][ky][kz] arrays,
-// properties the same per name with null for a missing value (JSON has no NaN)
-export type BandGridJson = Omit<BandGridData, `energies` | `properties`> & {
+// properties the same per name with null for a missing value (JSON has no NaN). An
+// `energy_unit` left out reads as null: unknown, not eV.
+export type BandGridJson = Omit<BandGridData, `energies` | `properties` | `energy_unit`> & {
   energies: number[][][][][]
   properties?: Record<string, (number | null)[][][][][]>
+  energy_unit?: ElectronEnergyUnit | null
 }
 
 // Validate the JSON BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
@@ -504,19 +528,39 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
   // counts left out follow the energies: n_spins decides spin labels and electrons per state
   const n_spins = typeof json.n_spins === `number` ? json.n_spins : energies.length
   const n_bands = typeof json.n_bands === `number` ? json.n_bands : energies[0].length
-  return { ...json, energies, properties, n_spins, n_bands }
+  const energy_unit = parse_electron_energy_unit(json.energy_unit ?? null)
+  return { ...json, energies, properties, n_spins, n_bands, energy_unit }
 }
 
 // First non-zero number in a fallback chain (an explicit 0 falls through like undefined)
 const first_nonzero = (...values: unknown[]): number | undefined =>
   values.find((val): val is number => typeof val === `number` && val !== 0)
 
-// Parse Matterviz/IFermi JSON format for Fermi surface data
-// Throws on invalid input; returns parsed data on success
-function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
+// Parse Matterviz/IFermi JSON format for Fermi surface data. A declared `energy_unit` fills in
+// for JSON naming none and must match one that names one. Throws on invalid input.
+function parse_fermi_json(
+  content: string,
+  energy_unit: ElectronEnergyUnit | null,
+): FermiSurfaceData | BandGridData {
   const data: unknown = JSON.parse(content)
   if (!is_plain_object(data)) throw new Error(`Unrecognized JSON format: expected an object`)
-  return fermi_data_from_json(data)
+  return with_energy_unit(fermi_data_from_json(data), energy_unit, `JSON`)
+}
+
+// Data with a caller's declared energy unit (null: none) filling in for one its format left
+// unnamed, e.g. the unit a BXSF/FRMSF producer is known to write. Declaring a different unit
+// for data that names one throws: that would be a conversion, not a label.
+export function with_energy_unit<T extends BandGridData | FermiSurfaceData>(
+  data: T,
+  energy_unit: ElectronEnergyUnit | null,
+  source = `Band grid`,
+): T {
+  if (data.energy_unit && energy_unit && data.energy_unit !== energy_unit) {
+    throw new Error(
+      `${source} names energy unit ${data.energy_unit} but ${energy_unit} was declared for it`,
+    )
+  }
+  return data.energy_unit || !energy_unit ? data : { ...data, energy_unit }
 }
 
 // Typed-array FermiSurfaceData (every sheet already a packed mesh; an empty surface counts)
@@ -538,6 +582,15 @@ const is_typed_band_grid = (data: unknown): data is BandGridData =>
       bands.every((band) => is_plain_object(band) && band.values instanceof Float64Array),
   )
 
+// Typed data states its unit, null included: a missing one would leave labels to guess
+function with_stated_unit<T extends { energy_unit: unknown }>(data: T, prop: string): T {
+  if (!(`energy_unit` in data)) {
+    throw new Error(`${prop} needs an energy_unit (one of eV, Ry, Ha, or null when unknown)`)
+  }
+  parse_electron_energy_unit(data.energy_unit)
+  return data
+}
+
 // Bring a `fermi_data` prop into the typed-array form the renderer consumes. Typed data passes
 // through untouched (identity preserved); the JSON mesh form (`vertices`/`faces`/`normals`
 // rows as IFermi's `as_dict()` and pymatviz's `FermiSurfaceWidget(fermi_data=...)` emit,
@@ -545,7 +598,7 @@ const is_typed_band_grid = (data: unknown): data is BandGridData =>
 export function normalize_fermi_surface(
   data: FermiSurfaceData | FermiSurfaceJson | Record<string, unknown>,
 ): FermiSurfaceData {
-  if (is_typed_fermi_surface(data)) return data
+  if (is_typed_fermi_surface(data)) return with_stated_unit(data, `fermi_data`)
   const parsed = fermi_data_from_json(data)
   if (!(`isosurfaces` in parsed)) {
     throw new Error(`fermi_data holds a band grid, pass it as band_data instead`)
@@ -555,14 +608,18 @@ export function normalize_fermi_surface(
 
 // Same for a `band_data` prop: flat Float64Array grids pass through, nested JSON
 // [spin][band][kx][ky][kz] energies are flattened and shape-checked against k_grid
-export const normalize_band_grid = (
+export function normalize_band_grid(
   data: BandGridData | BandGridJson | Record<string, unknown>,
-): BandGridData => (is_typed_band_grid(data) ? data : band_grid_from_json(data, `band_data`))
+): BandGridData {
+  return is_typed_band_grid(data)
+    ? with_stated_unit(data, `band_data`)
+    : band_grid_from_json(data, `band_data`)
+}
 
 // Route an already-parsed JSON object to the matching Fermi surface / band grid shape
 function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData | BandGridData {
   // Check if it's already in our FermiSurfaceData format with full validation
-  if (data.isosurfaces && Array.isArray(data.isosurfaces)) {
+  if (Array.isArray(data.isosurfaces)) {
     if (is_valid_fermi_surface_json(data)) return fermi_surface_from_json(data)
     throw new Error(
       `Invalid FermiSurfaceData JSON: isosurfaces array present but missing required fields`,
@@ -570,11 +627,7 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
   }
 
   // Check if it's IFermi format (isosurfaces is an object keyed by spin)
-  if (
-    data[`@class`] === `FermiSurface` &&
-    data.isosurfaces &&
-    typeof data.isosurfaces === `object`
-  ) {
+  if (data[`@class`] === `FermiSurface` && is_plain_object(data.isosurfaces)) {
     return parse_ifermi_surface(data)
   }
 
@@ -606,6 +659,7 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
         k_grid: band_structure.k_grid ?? band_structure.kgrid,
         k_lattice: band_structure.k_lattice ?? band_structure.reciprocal_lattice,
         fermi_energy: band_structure.fermi_energy ?? band_structure.efermi ?? 0,
+        energy_unit: band_structure.energy_unit,
         n_bands:
           first_nonzero(
             band_structure.n_bands,
@@ -721,6 +775,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
     isosurfaces,
     k_lattice,
     fermi_energy: 0, // IFermi surfaces are typically relative to Fermi level
+    energy_unit: `eV`, // IFermi works on pymatgen band structures, in eV
     // IFermi's ReciprocalCell is the Γ-centred parallelepiped, its WignerSeitzCell the zone
     reciprocal_cell:
       reciprocal_space?.[`@class`] === `ReciprocalCell` ? `parallelepiped` : `wigner_seitz`,
@@ -755,10 +810,12 @@ const FERMI_PARSERS = [
   },
 ]
 
-// Auto-detect file format and parse; throws an Error aggregating per-format failure reasons when nothing parses
+// Auto-detect file format and parse; throws an Error aggregating per-format failure reasons
+// when nothing parses. `energy_unit` declares the unit of data naming none (else null).
 export function parse_fermi_file(
   content: string,
   filename?: string,
+  { energy_unit = null }: { energy_unit?: ElectronEnergyUnit | null } = {},
 ): BandGridData | FermiSurfaceData {
   const lower_name = filename?.toLowerCase().replace(/\.gz$/, ``) ?? ``
   const named_parser = FERMI_PARSERS.find(({ format }) =>
@@ -770,7 +827,7 @@ export function parse_fermi_file(
     if (named_parser ? parser !== named_parser : !parser.matches(trimmed)) continue
     const { format, parse } = parser
     try {
-      return parse(content)
+      return parse(content, energy_unit)
     } catch (error) {
       errors.push(`${format}: ${to_error(error).message}`)
       console.error(`${format} parse error:`, error)

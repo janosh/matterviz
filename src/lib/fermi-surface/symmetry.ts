@@ -1,6 +1,6 @@
 // Point group symmetry operations for Fermi surface tiling
 import * as math from '#lib/math.js'
-import type { Matrix3x3, Matrix4Tuple } from '#lib/math.js'
+import type { Matrix3x3, Matrix4Tuple, Vec3 } from '#lib/math.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { is_identity } from '#lib/symmetry/symmetry-elements.js'
 
@@ -19,30 +19,66 @@ const to_matrix4 = (rot: Matrix3x3): Matrix4Tuple => {
   return mat as Matrix4Tuple
 }
 
-// Enumerate every integer matrix M with entries in {-1, 0, 1} (3^9 = 19683 candidates).
-// Point-group operations of a lattice in a reduced basis always have entries in this
-// range, so these candidates cover every Bravais lattice holohedry (callers reduce first).
-function* unimodular_candidates(): Generator<Matrix3x3> {
-  const entries = new Int8Array(9)
-  for (let code = 0; code < 19683; code++) {
-    let rest = code
-    for (let idx = 0; idx < 9; idx++) {
-      entries[idx] = (rest % 3) - 1
-      rest = Math.trunc(rest / 3)
+// The 27 integer vectors with entries in {-1, 0, 1}, a candidate matrix's possible columns.
+// Column code c holds its row-0 entry in the lowest base-3 digit.
+const COLUMN_VECTORS: Vec3[] = Array.from({ length: 27 }, (_, code) => [
+  (code % 3) - 1,
+  (Math.trunc(code / 3) % 3) - 1,
+  Math.trunc(code / 9) - 1,
+])
+
+// Every unimodular integer matrix M with entries in {-1, 0, 1} that can pass the orthogonality
+// test below for `basis` (rows) within `symprec`, in full-scan order (entry (row, col) is base-3
+// digit 3·row + col of the scan index). Such M cover every holohedry of a reduced basis.
+// R = Bᵀ·M·B^{-T} gives Mᵀ·G·M − G = B·(RᵀR − I)·Bᵀ with metric G = B·Bᵀ, so max |RᵀR − I| ≤
+// symprec bounds |(MᵀGM − G)ᵢⱼ| by symprec·sᵢ·sⱼ (sᵢ the L1 norm of basis row i). This
+// necessary condition prunes columns, then column pairs, leaving a few hundred of the 6960
+// unimodular candidates (25 -> 0.2 ms for fcc); the caller applies the exact test to each.
+function unimodular_candidates(basis: Matrix3x3, symprec: number): Matrix3x3[] {
+  const metric = math.dot(basis, math.transpose_3x3(basis))
+  const row_sums = basis.map((row) => Math.abs(row[0]) + Math.abs(row[1]) + Math.abs(row[2]))
+  // slack far above the rounding of the few products below, far below any symprec in use
+  const slack = 1e-9 * math.array_max(metric.flat().map(Math.abs))
+  // negated, so a NaN bound keeps every candidate for the exact test, as a full scan would
+  const within = (value: number, row: number, col: number): boolean =>
+    !(Math.abs(value - metric[row][col]) > symprec * row_sums[row] * row_sums[col] + slack)
+  // G·c for each possible column c, so (MᵀGM)ᵢⱼ = cᵢ · (G·cⱼ)
+  const metric_columns = COLUMN_VECTORS.map((column) => math.mul_3x3_vec3(metric, column))
+  const column_dot = (code_i: number, code_j: number): number =>
+    math.dot(COLUMN_VECTORS[code_i], metric_columns[code_j])
+  const [codes_0, codes_1, codes_2] = [0, 1, 2].map((axis) =>
+    COLUMN_VECTORS.flatMap((_, code) =>
+      within(column_dot(code, code), axis, axis) ? [code] : [],
+    ),
+  )
+  const found: { scan_idx: number; matrix: Matrix3x3 }[] = []
+  for (const code_0 of codes_0) {
+    for (const code_1 of codes_1) {
+      if (!within(column_dot(code_0, code_1), 0, 1)) continue
+      for (const code_2 of codes_2) {
+        if (!within(column_dot(code_0, code_2), 0, 2)) continue
+        if (!within(column_dot(code_1, code_2), 1, 2)) continue
+        const columns = [
+          COLUMN_VECTORS[code_0],
+          COLUMN_VECTORS[code_1],
+          COLUMN_VECTORS[code_2],
+        ]
+        const matrix = math.transpose_3x3(columns as Matrix3x3)
+        if (Math.abs(math.det_3x3(matrix)) !== 1) continue
+        const scan_idx = matrix
+          .flat()
+          .reduce((sum, entry, digit) => sum + (entry + 1) * 3 ** digit, 0)
+        found.push({ scan_idx, matrix })
+      }
     }
-    const mat: Matrix3x3 = [
-      [entries[0], entries[1], entries[2]],
-      [entries[3], entries[4], entries[5]],
-      [entries[6], entries[7], entries[8]],
-    ]
-    if (Math.abs(math.det_3x3(mat)) === 1) yield mat
   }
+  return found.toSorted((lhs, rhs) => lhs.scan_idx - rhs.scan_idx).map(({ matrix }) => matrix)
 }
 
 // Largest |(RᵀR)ᵢⱼ − δᵢⱼ|. R = Bᵀ·M·B^{-T} is dimensionless, so this is the RELATIVE
 // distortion of the lattice away from the one that would carry M exactly.
 const orthogonality_deviation = (rot: Matrix3x3): number => {
-  const gram = math.dot(math.transpose_3x3_matrix(rot), rot)
+  const gram = math.dot(math.transpose_3x3(rot), rot)
   return math.array_max(
     gram.flatMap((row, idx) => row.map((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)))),
   )
@@ -70,10 +106,10 @@ export function lattice_point_group_matrices(
   // The Cartesian R does not depend on the basis, but the {-1,0,1} search for M does: a
   // non-reduced basis (sheared supercell) expresses most operations with larger entries
   const basis = math.reduce_basis(k_lattice)
-  const basis_t = math.transpose_3x3_matrix(basis)
+  const basis_t = math.transpose_3x3(basis)
   const basis_t_inv = math.reciprocal_lattice(basis)
   const matrices: Matrix4Tuple[] = []
-  for (const int_mat of unimodular_candidates()) {
+  for (const int_mat of unimodular_candidates(basis, symprec)) {
     const rot = math.dot(math.dot(basis_t, int_mat), basis_t_inv)
     if (orthogonality_deviation(rot) > symprec) continue
     // M = I (the one candidate whose R is the identity) goes first so symmetry_index 0 is

@@ -1,11 +1,11 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// One structure's RDFs (calculate_rdfs) via a small pool of persistent Web Workers (main-thread fallback
-// without Worker); the trajectory sweep in calc-trajectory-rdf.ts keeps one frame per worker
+// One structure's RDFs (compute_rdfs) via a small pool of persistent Web Workers (main-thread fallback
+// without Worker); the trajectory sweep in compute-trajectory-rdf.ts keeps one frame per worker
 // and RdfPlot one request per structure.
 import type { AnyStructure } from '#lib/structure/index.js'
 import { to_structure_id_payload } from '#lib/structure-id/worker-payload.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
-import { calculate_rdfs, type RdfsOptions } from './calc-rdf'
+import { compute_rdfs, type RdfsOptions } from './compute-rdf'
 import type { RdfPattern } from './index'
 
 const create_rdf_client = () =>
@@ -13,7 +13,7 @@ const create_rdf_client = () =>
     label: `RDF`,
     create_worker: () =>
       new Worker(new URL(`./rdf-worker.js`, import.meta.url), { type: `module` }),
-    compute_sync: calculate_rdfs,
+    compute_sync: compute_rdfs,
     // Positions, lattice and species per site (see worker-payload.ts); site properties can
     // hold non-cloneable values and nothing in the histogram reads them
     build_payload: (structure) => to_structure_id_payload(structure, true),
@@ -34,7 +34,7 @@ export const mount_rdf_workers = (): (() => void) => {
   return () => unmounts.forEach((unmount) => unmount())
 }
 
-export const calc_rdfs_async = async (
+export const compute_rdfs_async = async (
   ...args: Parameters<(typeof pool)[number]>
 ): Promise<RdfPattern[]> => {
   const client_idx = in_flight.indexOf(Math.min(...in_flight))

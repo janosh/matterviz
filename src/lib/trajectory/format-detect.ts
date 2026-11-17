@@ -99,7 +99,9 @@ export const FORMAT_PATTERNS = {
   // of a multi-hundred-MB MD run just to read five lines.
   vasp: (data: string, filename?: string) => {
     if (name_hint(filename, XDATCAR_NAME_REGEX)) return true
-    if (!data.includes(`Direct configuration=`)) return false
+    // frame markers of VASP 5.3+ and of older builds; a blank-line separated XDATCAR reads
+    // exactly like a POSCAR, so only its name tells it apart
+    if (!data.includes(`Direct configuration=`) && !data.includes(`Konfig=`)) return false
     // 9 lines from the title: a 1-ion, 1-frame XDATCAR (see index_xdatcar_frames). The header
     // starts at the first non-blank line, or the line before it when the title is blank
     const lines = data.split(/\r?\n/, 64)
@@ -149,7 +151,8 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   // (md.dump, Si_run): the structure parsers would keep the first frame and drop the rest
   if (
     occurs_twice(content, `ITEM: TIMESTEP`) ||
-    occurs_twice(content, `Direct configuration=`)
+    occurs_twice(content, `Direct configuration=`) ||
+    occurs_twice(content, `Konfig=`)
   )
     return true
 

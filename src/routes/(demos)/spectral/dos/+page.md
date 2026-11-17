@@ -4,7 +4,7 @@ The `Dos` component visualizes electronic and phonon density of states from cano
 
 ## Basic Usage
 
-Pass a record to `doses`. Each entry declares `type: "phonon"` with `frequencies` in THz, or `type: "electronic"` with `energies` in eV, plus `densities`.
+Pass a record to `doses`. Each entry declares `type: "phonon"` with `frequencies` in THz, or `type: "electronic"` with `energies` and their `energy_unit` (`"eV"`, `"Ry"`, `"Ha"`, or `null` when the source names none, e.g. a DOS from a BXSF/FRMSF band grid; axis labels then say the unit is unknown), plus `densities`. `normalize_dos` converts pymatgen-style input to eV.
 
 ```svelte example
 <script lang="ts">

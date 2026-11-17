@@ -3,9 +3,9 @@
   import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   // Energy–volume scan with one or more fitted equations of state drawn through it. Hovering a
-  // fit curve shows its E0, V0, B0, B0' and RMSE, which keeps the legend to one line per series.
-  // Fitting happens here, so callers pass raw (volumes, energies) and read the results back
-  // through the bindable `fits`.
+  // fit curve shows its E0, V0, B0, B0' (± standard errors) and RMSE, keeping the legend to one
+  // line per series. Fitting happens here: callers pass raw (volumes, energies) and read the
+  // results back through the bindable `fits`.
   import { plot_color } from '#lib/colors/index.js'
   import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
@@ -14,7 +14,7 @@
   import { ScatterPlot } from '#lib/plot/index.js'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { to_error } from 'svelte-widgets/utils'
-  import type { EosFit, EosKind } from './fit'
+  import type { EosFit, EosKind, EosParams } from './fit'
   import { EOS_KIND_LABELS, eos_energy, fit_eos } from './fit'
 
   let {
@@ -65,14 +65,22 @@
     return Array.from({ length: 200 }, (_, idx) => start + (span * idx) / 199)
   })
 
-  // Tooltip rows for one fit: label (sub/superscript HTML), formatted value, unit
-  const fit_param_rows = (fit: EosFit): [string, string, string?][] => [
-    [`E<sub>0</sub>`, format_num(fit.e0, `.4f`), `eV`],
-    [`V<sub>0</sub>`, format_num(fit.v0, `.3f`), `Å³`],
-    [`B<sub>0</sub>`, format_num(fit.b0 * EV_PER_A3_TO_GPA, `.1f`), `GPa`],
-    [`B<sub>0</sub>'`, format_num(fit.b0_prime, `.2f`)],
-    [`RMSE`, format_num(fit.rmse * 1e3, `.2f`), `meV`],
-  ]
+  // Tooltip rows for one fit: label (sub/superscript HTML), value ± its standard error (none
+  // for a 4-point scan, which leaves no residual to estimate one from), unit
+  const fit_param_rows = (fit: EosFit): [string, string, string?][] => {
+    const with_error = (key: keyof EosParams, fmt: string, factor = 1) => {
+      const value = format_num(fit[key] * factor, fmt)
+      const error = fit.std_errors?.[key]
+      return error === undefined ? value : `${value} ± ${format_num(error * factor, fmt)}`
+    }
+    return [
+      [`E<sub>0</sub>`, with_error(`e0`, `.4f`), `eV`],
+      [`V<sub>0</sub>`, with_error(`v0`, `.3f`), `Å³`],
+      [`B<sub>0</sub>`, with_error(`b0`, `.1f`, EV_PER_A3_TO_GPA), `GPa`],
+      [`B<sub>0</sub>'`, with_error(`b0_prime`, `.2f`)],
+      [`RMSE`, format_num(fit.rmse * 1e3, `.2f`), `meV`],
+    ]
+  }
 
   // ScatterPlot throws on x/y length mismatch, so leave the points out and let the fit error
   // (which names both lengths) explain the empty plot

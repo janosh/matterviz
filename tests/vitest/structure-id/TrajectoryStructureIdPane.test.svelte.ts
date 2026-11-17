@@ -2,7 +2,7 @@
 // tests/vitest/trajectory/TrajectoryAnalysisPane.test.svelte.ts; this pins what structure-id
 // layers on top: the max-frames cap and CSP skip it hands the sweep, its progress relay, and
 // the sweep landing in the bound `result`.
-import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
 import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
 import * as collect from '#lib/structure-id/collect.js'
 import type { StructureIdSweep } from '#lib/structure-id/collect.js'
@@ -46,7 +46,7 @@ const mount_pane = (props: ComponentProps<typeof TrajectoryStructureIdPane>) =>
   (mounted_component = mount(TrajectoryStructureIdPane, { target: document.body, props }))
 // two analysed frames (0 and 10) of the all-fcc conventional cell
 const fcc_sweep = (): StructureIdSweep => {
-  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
+  const fcc_result = compute_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
   return { frame_numbers: [0, 10], results: [fcc_result, fcc_result], frame_stride: 10 }
 }
 afterEach(async () => {

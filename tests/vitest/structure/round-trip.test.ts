@@ -33,7 +33,9 @@ type Capability = {
   coords_tol: number
   occu_tol: number
   oxidation_states: boolean
-  labels: boolean
+  // verbatim: every label survives as is; unique: CIF's _atom_site_label must identify one
+  // row, so a label's first occurrence survives and repeats come back as `${label}_k`
+  labels: `verbatim` | `unique` | false
   charge_and_pbc: boolean // CIF and POSCAR cells are always fully periodic, with no charge
   regroups_by_element: boolean // POSCAR writes one block per element
   // The site properties a re-read is expected to return, exactly
@@ -72,7 +74,7 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
     coords_tol: 2e-15,
     occu_tol: 0,
     oxidation_states: true,
-    labels: true,
+    labels: `verbatim`,
     charge_and_pbc: true,
     regroups_by_element: false,
     site_properties: (site) => as_text(site.properties),
@@ -98,7 +100,7 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
     coords_tol: printed(8),
     occu_tol: printed(8),
     oxidation_states: true,
-    labels: true,
+    labels: `unique`,
     charge_and_pbc: false,
     regroups_by_element: false,
     site_properties: () => ({}),
@@ -128,10 +130,12 @@ const KNOWN_LOSSES: Record<string, Partial<Record<StructTextFormat, string>>> = 
   'scientific-notation.poscar': { cif: `merges two atoms 0.007 Å apart` },
 }
 
-// Fe2+ 0.5 / Fe3+ 0.5 share one site (one Fe to POSCAR/XYZ), Mn2.5+ prints a fractional charge
+// Fe2+ 0.5 / Fe3+ 0.5 share one site (one Fe to POSCAR/XYZ), Mn2.5+ prints a fractional charge,
+// Ni0+ is a decorated zero charge that JSON and CIF must keep (not drop as undecorated)
 const mixed_valence = make_crystal(4, [
   { element: `Fe`, abc: [0, 0, 0], label: `Fe1` },
   { element: `Mn`, abc: [0.5, 0.5, 0.5], label: `Mn1`, oxidation_state: 2.5 },
+  { element: `Ni`, abc: [0.5, 0, 0], label: `Ni1`, oxidation_state: 0 },
 ])
 mixed_valence.sites[0].species = [2, 3].map((oxidation_state) => ({
   element: `Fe`,
@@ -205,6 +209,10 @@ describe(`structure I/O round-trip contract`, () => {
     const has_force = ({ structure }: (typeof fixtures)[number]) =>
       structure.sites.some((site) => `force` in site.properties)
     expect(fixtures.filter(has_force)).toEqual([])
+    // the CIF `unique` label contract renames repeats, which these fixtures exercise
+    const repeats_labels = ({ structure: { sites } }: (typeof fixtures)[number]) =>
+      new Set(sites.map((site) => site.label)).size < sites.length
+    expect(fixtures.filter(repeats_labels).length).toBeGreaterThanOrEqual(20)
   })
 
   test.each(cases)(`$name -> $fmt`, ({ structure, fmt }) => {
@@ -255,6 +263,14 @@ describe(`structure I/O round-trip contract`, () => {
     // Sites, in the order the format writes them
     const order = export_order(structure.sites, cap)
     expect(reparsed.sites).toHaveLength(order.length)
+    if (cap.labels === `unique`) {
+      const new_labels = reparsed.sites.map((site) => site.label)
+      expect(new Set(new_labels).size).toBe(new_labels.length)
+    }
+    // index of each label's first occurrence: that site keeps it verbatim in every format
+    const first_with_label = new Map<string, number>()
+    for (const [idx, { label }] of structure.sites.entries())
+      if (!first_with_label.has(label)) first_with_label.set(label, idx)
     for (const [new_idx, orig_idx] of order.entries()) {
       const site = structure.sites[orig_idx]
       const new_site = reparsed.sites[new_idx]
@@ -265,24 +281,33 @@ describe(`structure I/O round-trip contract`, () => {
 
       // ordered-only formats write the element of a fully occupied site
       const species = cap.ordered_only
-        ? [{ element: site.species[0].element, occu: 1, oxidation_state: 0 }]
+        ? [{ element: site.species[0].element, occu: 1 }]
         : site.species
+      // formats without charges read every species back undecorated (no oxidation_state key)
       expect(
-        new_site.species.map(({ element }) => element),
+        new_site.species.map((spec) => [
+          spec.element,
+          `oxidation_state` in spec ? spec.oxidation_state : `absent`,
+        ]),
         where,
-      ).toEqual(species.map(({ element }) => element))
+      ).toEqual(
+        species.map(({ element, oxidation_state }) => [
+          element,
+          cap.oxidation_states && oxidation_state !== undefined ? oxidation_state : `absent`,
+        ]),
+      )
       const occu_diffs = species.map(({ occu }, idx) =>
         Math.abs(occu - new_site.species[idx].occu),
       )
       expect(Math.max(...occu_diffs), where).toBeLessThanOrEqual(cap.occu_tol)
-      expect(
-        new_site.species.map(({ oxidation_state }) => oxidation_state),
-        where,
-      ).toEqual(
-        species.map(({ oxidation_state }) => (cap.oxidation_states ? oxidation_state : 0)),
-      )
 
-      if (cap.labels) expect(new_site.label, where).toBe(site.label)
+      if (cap.labels) {
+        const renamed =
+          cap.labels === `unique` && first_with_label.get(site.label) !== orig_idx
+        if (renamed) expect(new_site.label, where).toMatch(/_\d+$/)
+        const base_label = renamed ? new_site.label.replace(/_\d+$/, ``) : new_site.label
+        expect(base_label, where).toBe(site.label)
+      }
       expect(new_site.properties, where).toEqual(cap.site_properties(site, structure))
     }
   })

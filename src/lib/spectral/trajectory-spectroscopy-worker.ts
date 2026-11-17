@@ -1,4 +1,4 @@
 import { serve_worker } from '#lib/worker-serve.js'
-import { calc_trajectory_spectroscopy } from './trajectory-spectroscopy'
+import { compute_trajectory_spectroscopy } from './trajectory-spectroscopy'
 
-serve_worker(calc_trajectory_spectroscopy)
+serve_worker(compute_trajectory_spectroscopy)

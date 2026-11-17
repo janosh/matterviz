@@ -85,7 +85,7 @@ describe(`get_electro_neg_formula`, () => {
 
 describe(`formula functions handle structure objects`, () => {
   const site = (element: string, xyz: [number, number, number], label: string) => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
+    species: [{ element, occu: 1 }],
     abc: xyz,
     xyz,
     label,

@@ -378,11 +378,7 @@ const parse_with_worker = async (
       hdf5_group_path: primary.provenance.hdf5_group,
     }),
   }
-  type Slot = {
-    run?: WorkerRun
-    opening?: AbortController
-    busy: boolean
-  }
+  type Slot = { run?: WorkerRun; opening?: AbortController; busy: boolean }
   type Job = {
     idx: number
     preparation: FramePreparation
