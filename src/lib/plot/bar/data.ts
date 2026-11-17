@@ -3,6 +3,7 @@
 // offsets and grouped-bar layout info.
 
 import type { Vec2 } from '#lib/math.js'
+import { accumulate_error_extent, type ErrorValues } from '#lib/plot/core/error-bars.js'
 import {
   accumulate_extent,
   empty_extent,
@@ -12,6 +13,7 @@ import type {
   AxisConfig,
   BarMode,
   BarSeries,
+  NumericColumn,
   Orientation,
   ScaleType,
 } from '#lib/plot/core/types.js'
@@ -25,7 +27,7 @@ import {
 export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<
   BarSeries<Metadata>,
   `x`
-> & { x: readonly number[] }
+> & { x: NumericColumn }
 
 const DEFAULT_CATEGORY_WIDTH = 0.75
 
@@ -42,12 +44,16 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
   explicit_categories?: readonly string[],
 ): { category_list: string[]; internal_series: NumericBarSeries<Metadata>[] } {
   series.forEach(assert_series_lengths)
-  const is_categorical = series.some((srs) => srs.x.some((val) => typeof val === `string`))
+  const is_categorical = series.some(({ x: x_values }) => {
+    // indexed: typed-array x (numeric positions only) has no Array methods to call
+    for (const val of x_values) if (typeof val === `string`) return true
+    return false
+  })
   const category_list = !is_categorical
     ? []
     : explicit_categories?.length
       ? [...explicit_categories]
-      : [...new Set(series.flatMap((srs) => srs.x.map(String)))]
+      : [...new Set(series.flatMap((srs) => Array.from(srs.x, String)))]
 
   // safe: when no categories were found, all x values are numeric
   if (category_list.length === 0)
@@ -55,7 +61,7 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
 
   const category_indices = category_list.map((_, idx) => idx)
   const internal_series = series.map((srs) => {
-    const orig_map = new Map(srs.x.map((val, idx) => [String(val), idx]))
+    const orig_map = new Map(Array.from(srs.x, (val, idx) => [String(val), idx] as const))
     if (orig_map.size < srs.x.length) {
       console.warn(
         `BarPlot: series "${srs.label ?? `?`}" has duplicate x values — last occurrence wins`,
@@ -63,7 +69,7 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
     }
     // Resolve original index for each category (undefined if series lacks it)
     const orig_indices = category_list.map((cat) => orig_map.get(cat))
-    const remap = <T>(arr: readonly T[] | null | undefined, fallback: T): T[] =>
+    const remap = <T>(arr: ArrayLike<T> | null | undefined, fallback: T): T[] =>
       orig_indices.map((original_idx) =>
         original_idx != null ? (arr?.[original_idx] ?? fallback) : fallback,
       )
@@ -72,6 +78,13 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
     const remap_per_point = <T>(prop: T[] | T | undefined): T[] | T | undefined =>
       Array.isArray(prop) ? (remap<T | undefined>(prop, undefined) as T[]) : prop
     const meta_arr = Array.isArray(srs.metadata) ? srs.metadata : null
+    // Errors follow their bars; a category the series lacks draws a 0-height bar with no error
+    const remap_side = (side: number | readonly number[]) =>
+      typeof side === `number` ? side : remap(side, 0)
+    const remap_error = (error: ErrorValues): ErrorValues =>
+      typeof error === `object` && `upper` in error
+        ? { upper: remap_side(error.upper), lower: remap_side(error.lower) }
+        : remap_side(error)
     return {
       ...srs,
       x: category_indices,
@@ -87,6 +100,7 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
       bar_width: Array.isArray(srs.bar_width)
         ? remap(srs.bar_width, DEFAULT_CATEGORY_WIDTH)
         : (srs.bar_width ?? DEFAULT_CATEGORY_WIDTH),
+      ...(srs.y_error != null && { y_error: remap_error(srs.y_error) }),
       ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
       ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),
     }
@@ -131,23 +145,22 @@ const empty_axis_range = (
   return [0, 1]
 }
 
-// Compute data-driven ranges for all four axes. Vertical bars put categories on x/x2 and
-// values on y/y2, horizontal bars put categories on y and values on x/x2 (y2 is unused). In
-// stacked mode the value range covers per-category stacked totals (positive and negative
-// stacks separately); linear/arcsinh value axes are clamped to include 0 when all values
-// share one sign and no explicit range is set.
+// Data-driven ranges for all four axes (horizontal bars: categories on y, values on x/x2).
+// Stacked value ranges cover per-category positive and negative totals, and error bar ends;
+// linear/arcsinh value axes reach 0 when all values share one sign and no range is pinned.
 export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
   opts: BarAutoRangeOpts<Metadata>,
 ): { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 } {
   const { visible_series, mode, orientation, range_padding, category_count, axes } = opts
   const vertical = orientation === `vertical`
   // One axis's values of the points finite on both axes
-  const finite_values = (series: NumericBarSeries<Metadata>, axis: `x` | `y`): number[] =>
-    series.x.flatMap((x_value, point_idx) => {
-      const y_value = series.y[point_idx]
-      if (!Number.isFinite(x_value) || !Number.isFinite(y_value)) return []
-      return [axis === `x` ? x_value : y_value]
-    })
+  const finite_values = ({ x: xs, y: ys }: NumericBarSeries<Metadata>, axis: `x` | `y`) => {
+    const values: number[] = []
+    for (let idx = 0; idx < xs.length; idx++)
+      if (Number.isFinite(xs[idx]) && Number.isFinite(ys[idx]))
+        values.push(axis === `x` ? xs[idx] : ys[idx])
+    return values
+  }
   const nice_range = (
     values: number[],
     limit: [number | null, number | null],
@@ -172,13 +185,14 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     const usable = (edge: number) => Number.isFinite(edge) && (!is_log || edge > 0)
     for (const series of series_list) {
       if (series.render_mode === `line`) continue
-      series.x.forEach((x_val, bar_idx) => {
-        if (!Number.isFinite(x_val) || !Number.isFinite(series.y[bar_idx])) return
+      for (let bar_idx = 0; bar_idx < series.x.length; bar_idx++) {
+        const x_val = series.x[bar_idx]
+        if (!Number.isFinite(x_val) || !Number.isFinite(series.y[bar_idx])) continue
         const half_width = Math.abs(bar_width_at(series, bar_idx)) / 2
         const [left_edge, right_edge] = [x_val - half_width, x_val + half_width]
         if (usable(left_edge)) min_bar_edge = Math.min(min_bar_edge, left_edge)
         if (usable(right_edge)) max_bar_edge = Math.max(max_bar_edge, right_edge)
-      })
+      }
     }
     return Number.isFinite(min_bar_edge) && Number.isFinite(max_bar_edge)
       ? [min_bar_edge, max_bar_edge]
@@ -200,17 +214,17 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
       const segment_tips: number[] = []
       series_list
         .filter((srs) => srs.render_mode !== `line`)
-        .forEach((srs) =>
-          srs.x.forEach((x_val, idx) => {
-            const y_val = srs.y[idx]
-            if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) return
+        .forEach((srs) => {
+          for (let idx = 0; idx < srs.x.length; idx++) {
+            const [x_val, y_val] = [srs.x[idx], srs.y[idx]]
+            if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) continue
             const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
             if (y_val >= 0) totals.pos += y_val
             else totals.neg += y_val
             stacked_totals.set(x_val, totals)
             if (type_name === `log`) segment_tips.push(totals.pos)
-          }),
-        )
+          }
+        })
 
       // Replace values with stacked totals + line series (which don't stack)
       values = [
@@ -227,15 +241,31 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 
     // Zero and negative bars have no log image; they'd otherwise drag the range to LOG_EPS
     if (type_name === `log`) values = values.filter((val) => val > 0)
-    if (values.length === 0) return empty_axis_range(limit, scale_type)
+    const extent = accumulate_extent(empty_extent(), values)
+    // Error bars reach past their tips, which sit on the stack's cumulative value when stacked
+    const offsets = compute_stacked_offsets(series_list, mode, orientation)
+    series_list.forEach((srs, series_pos) => {
+      if (srs.y_error == null) return
+      const stacks = mode === `stacked` && srs.render_mode !== `line`
+      const tips = Float64Array.from(srs.y, (y_val, idx) => {
+        const tip = (stacks ? offsets[series_pos][idx] : 0) + y_val
+        // a log axis draws no bar at or below 0, so it has no error bar to reach either
+        const drawn = Number.isFinite(srs.x[idx]) && (type_name !== `log` || tip > 0)
+        return drawn ? tip : NaN
+      })
+      accumulate_error_extent(extent, tips, srs.y_error)
+    })
+    // On a log axis error ends <= 0 only count through min_positive (nice_range_from_extent)
+    if (extent.n_finite === 0 || (type_name === `log` && extent.min_positive === undefined))
+      return empty_axis_range(limit, scale_type)
 
-    let computed_range = nice_range(values, limit, scale_type)
+    let computed_range = nice_range_from_extent(extent, limit, scale_type, range_padding)
 
     // Bars encode value as length from 0, so when all values share one sign an automatic
     // bound reaches the zero baseline and a pinned one is honored exactly (log has no 0)
     if (type_name === `linear` || type_name === `arcsinh`) {
-      const has_negative = values.some((val) => val < 0)
-      const has_positive = values.some((val) => val > 0)
+      const has_negative = (extent.min ?? 0) < 0
+      const has_positive = (extent.max ?? 0) > 0
       // a pinned opposite bound on the far side of 0 leaves no room for the baseline
       if (has_positive && !has_negative && limit[0] == null && computed_range[1] > 0)
         computed_range = [0, computed_range[1]]
@@ -301,19 +331,21 @@ export function compute_stacked_offsets<Metadata = Record<string, unknown>>(
 ): number[][] {
   if (mode !== `stacked`) return []
   const offsets = internal_series.map((srs) => Array.from(srs.x, () => 0))
-  // Cumulative totals keyed by value axis/sign/category so series with misaligned x grids
-  // stack on the correct baseline (matching stacked totals in compute_bar_auto_ranges)
-  const acc = new Map<string, number>()
+  // Cumulative totals by value axis, sign and category so misaligned x grids stack on the right
+  // baseline. One number-keyed map per axis and sign: string keys cost 5x at 200k bars.
+  const totals = Array.from({ length: 4 }, () => new Map<number, number>())
   internal_series.forEach((srs, series_idx) => {
     if (!(srs.visible ?? true) || srs.render_mode === `line`) return
-    const axis = on_secondary_value_axis(srs, orientation) ? `2` : `1`
-    srs.x.forEach((x_val, bar_idx) => {
+    const axis_slot = on_secondary_value_axis(srs, orientation) ? 2 : 0
+    for (let bar_idx = 0; bar_idx < srs.x.length; bar_idx++) {
+      const x_val = srs.x[bar_idx]
       const y_val = srs.y[bar_idx]
-      if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) return
-      const key = `${axis}:${y_val >= 0 ? `+` : `-`}:${x_val}`
-      offsets[series_idx][bar_idx] = acc.get(key) ?? 0
-      acc.set(key, (acc.get(key) ?? 0) + y_val)
-    })
+      if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) continue
+      const acc = totals[axis_slot + (y_val >= 0 ? 0 : 1)]
+      const base = acc.get(x_val) ?? 0
+      offsets[series_idx][bar_idx] = base
+      acc.set(x_val, base + y_val)
+    }
   })
   return offsets
 }

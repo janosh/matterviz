@@ -142,27 +142,23 @@ describe(`scales`, () => {
       expect(upper).toBeGreaterThanOrEqual(Math.max(...values))
     })
 
-    test.each([-0.1, NaN])(`rejects range_padding %s`, (padding) => {
-      expect(() => nice_range([0, 1], [null, null], `linear`, padding)).toThrow(
-        `range_padding`,
-      )
-    })
+    test.each<[number[], Limits, ScaleType, number, string | RegExp]>([
+      [[0, 1], [null, null], `linear`, -0.1, `range_padding`],
+      [[0, 1], [null, null], `linear`, NaN, `range_padding`],
+      [[1e-300, 1e300], [null, null], `log`, 0.05, /log.*range/i],
+      [[1e-300, 1e300], [null, 1e-301], `log`, 0.05, /log.*range/i],
+      [[1e308], [null, null], `log`, 0.05, /log.*range/i],
+    ])(
+      `rejects %j with limits %j on %s, padding %s`,
+      (values, limits, scale_type, padding, error) => {
+        expect(() => nice_range(values, limits, scale_type, padding)).toThrow(error)
+      },
+    )
 
     test.each([0.09, 0.9, 9, 90])(`pads log singleton %s only once before nicing`, (value) => {
       const upper = 10 ** Math.round(Math.log10(value))
       expect(nice_range([value], [null, null], `log`, 0.05)).toEqual([upper / 10, upper])
     })
-
-    test.each([
-      { values: [1e-300, 1e300], max: null },
-      { values: [1e-300, 1e300], max: 1e-301 },
-      { values: [1e308], max: null },
-    ])(
-      `rejects unrepresentable log ranges for $values with upper bound $max`,
-      ({ values, max }) => {
-        expect(() => nice_range(values, [null, max], `log`, 0.05)).toThrow(/log.*range/i)
-      },
-    )
 
     test.each<Limits>([
       [0, 10],
@@ -471,27 +467,21 @@ describe(`scales`, () => {
     expect(descending.invert(150)).toBeCloseTo(Math.sqrt(1000), 10)
   })
 
-  // A descending value_range asks for the largest value to draw the smallest marker
-  test(`inverts the radius encoding on a descending log value_range`, () => {
-    const radii = (value_range: Vec2) =>
-      [1, 10, 100].map(
-        create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }, [0, 1]),
-      )
-    expect(radii([1, 100])).toEqual([2, 6, 10])
-    expect(radii([100, 1])).toEqual([10, 6, 2])
-  })
-
-  // The arcsinh branch clamps by hand, not through d3's .clamp(true), so descending bounds
-  // collapsed it to a constant
-  test.each([`linear`, `arcsinh`, `log`] as const)(
-    `%s honors a descending radius_range`,
-    (type) => {
-      const radius = create_size_scale(
-        { type, value_range: [1, 100], radius_range: [10, 2] },
-        [0, 1],
-      )
-      // the last one is out of domain: it clamps to the end, not past it
-      expect([radius(1), radius(100), radius(1000)]).toEqual([10, 2, 2])
+  // A descending value_range asks for the largest value to draw the smallest marker. The
+  // arcsinh branch clamps by hand, not through d3's .clamp(true), so descending radius bounds
+  // collapsed it to a constant. 1000 is out of domain: it clamps to the end, not past it.
+  const ends = [1, 100, 1000]
+  test.each<[ScaleType, Vec2, Vec2, number[], number[]]>([
+    [`log`, [1, 100], [2, 10], [1, 10, 100], [2, 6, 10]],
+    [`log`, [100, 1], [2, 10], [1, 10, 100], [10, 6, 2]],
+    [`linear`, [1, 100], [10, 2], ends, [10, 2, 2]],
+    [`arcsinh`, [1, 100], [10, 2], ends, [10, 2, 2]],
+    [`log`, [1, 100], [10, 2], ends, [10, 2, 2]],
+  ])(
+    `%s size scale over value_range %j, radius_range %j`,
+    (type, value_range, radius_range, values, expected) => {
+      const radius = create_size_scale({ type, value_range, radius_range }, [0, 1])
+      expect(values.map(radius)).toEqual(expected)
     },
   )
 
@@ -503,20 +493,17 @@ describe(`scales`, () => {
       }
     })
 
-    test.each([
-      [`in range`, 10, 10],
-      [`at floor`, 1, 1],
-      [`below floor`, 0.5, 1],
-      [`zero`, 0, 1],
-      [`negative`, -3, 1],
-    ])(`log: %s value %d maps like %d`, (_desc, value, clamped) => {
-      const scale = scaleLog().domain([1, 1000]).range([300, 0])
-      expect(log_floor_scale(scale, `log`, scale.domain())(value)).toBe(scale(clamped))
-    })
-
-    test(`takes the floor from an unordered domain`, () => {
-      const scale = scaleLog().domain([1000, 1]).range([0, 300])
-      expect(log_floor_scale(scale, `log`, [1000, 1])(0)).toBe(scale(1))
+    // the floor comes from the domain's smaller end, whatever its order
+    test.each<[string, Vec2, number, number]>([
+      [`in range`, [1, 1000], 10, 10],
+      [`at floor`, [1, 1000], 1, 1],
+      [`below floor`, [1, 1000], 0.5, 1],
+      [`zero`, [1, 1000], 0, 1],
+      [`negative`, [1, 1000], -3, 1],
+      [`zero on an unordered domain`, [1000, 1], 0, 1],
+    ])(`log: %s, domain %j, value %d maps like %d`, (_desc, domain, value, clamped) => {
+      const scale = scaleLog().domain(domain).range([300, 0])
+      expect(log_floor_scale(scale, `log`, domain)(value)).toBe(scale(clamped))
     })
   })
 
@@ -645,39 +632,6 @@ describe(`scales`, () => {
   })
 
   describe(`generate_ticks`, () => {
-    test(`array input is used as-is, even under an integer format`, () => {
-      const scale = scaleLinear().domain([0, 100]).range([0, 500])
-      expect(generate_ticks([0, 100], `linear`, [10, 30, 50], scale)).toEqual([10, 30, 50])
-      const opts = { format: `d` }
-      expect(generate_ticks([0, 2], `linear`, [0.5, 1.5], scale, opts)).toEqual([0.5, 1.5])
-    })
-
-    test.each([
-      {
-        name: `filters out-of-domain, sorts`,
-        domain: [0, 100] as Vec2,
-        ticks: { 50: `A`, 10: `B`, 150: `C`, 90: `D`, [-10]: `E`, 30: `F` },
-        expected: [10, 30, 50, 90],
-      },
-      {
-        name: `filters non-finite values`,
-        domain: [0, 100] as Vec2,
-        ticks: { 25: `A`, 50: `B`, NaN: `C`, 75: `D`, [Infinity]: `E` },
-        expected: [25, 50, 75],
-      },
-      {
-        name: `handles reversed domain`,
-        domain: [100, 0] as Vec2,
-        ticks: { 80: `A`, 20: `B`, 150: `C`, 50: `D` },
-        expected: [20, 50, 80],
-      },
-    ])(`object input - $name`, ({ domain, ticks, expected }) => {
-      const scale = scaleLinear().domain(domain).range([0, 500])
-      expect(generate_ticks(domain, `linear`, ticks as Record<number, string>, scale)).toEqual(
-        expected,
-      )
-    })
-
     type Ymd = [number, number, number]
     type TimeTickCase = { ticks: TicksOption; start: Ymd; end: Ymd; expected: Ymd[] }
     const weekly: Ymd[] = [1, 8, 15, 22, 29].map((day) => [2023, 0, day])
@@ -738,7 +692,7 @@ describe(`scales`, () => {
     const fine_steps = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
     // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
     type TickOptions = Parameters<typeof generate_ticks>[4]
-    type TickCase = [string, Vec2, ScaleType, number | undefined, TickOptions, number[]]
+    type TickCase = [string, Vec2, ScaleType, TicksOption | undefined, TickOptions, number[]]
     // only all-fractional ticks drop an integer format, so explicit mixed arrays keep it
     test.each([
       [[0.2, 0.4], `d`, undefined],
@@ -754,6 +708,13 @@ describe(`scales`, () => {
     // oxfmt-ignore
     test.each<TickCase>([
       [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
+      // array input is used as-is, even under an integer format
+      [`array input`, [0, 100], `linear`, [10, 30, 50], undefined, [10, 30, 50]],
+      [`array input under an integer format`, [0, 2], `linear`, [0.5, 1.5], { format: `d` }, [0.5, 1.5]],
+      // object input: out-of-domain and non-finite keys drop, the rest sort ascending
+      [`object input filters out-of-domain, sorts`, [0, 100], `linear`, { 50: `A`, 10: `B`, 150: `C`, 90: `D`, [-10]: `E`, 30: `F` }, undefined, [10, 30, 50, 90]],
+      [`object input filters non-finite values`, [0, 100], `linear`, { 25: `A`, 50: `B`, NaN: `C`, 75: `D`, [Infinity]: `E` }, undefined, [25, 50, 75]],
+      [`object input on a reversed domain`, [100, 0], `linear`, { 80: `A`, 20: `B`, 150: `C`, 50: `D` }, undefined, [20, 50, 80]],
       [`negative count is a fixed interval`, [0, 100], `linear`, -10, undefined, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
       // reversed (descending) domains are first-class: an interval must still emit ticks
@@ -874,6 +835,10 @@ describe(`scales`, () => {
       [`mixed range near zero shares one nice step across zero`, -1.3, 1.7, 1, 5, [-1, -0.5, 0, 0.5, 1, 1.5]],
       // a low count over a wide mixed range keeps the outermost decades, not every one
       [`small count keeps spread-out outer ticks`, -100, 100, 1, 4, [-100, -10, 0, 10, 100]],
+      // a view inside one decade holds at most one 1-2-5 multiple, which left the axis bare
+      [`sub-decade view without a 1-2-5 multiple gets linear ticks`, 518, 663, 1, 5, [520, 540, 560, 580, 600, 620, 640, 660]],
+      [`sub-decade view with one 1-2-5 multiple gets linear ticks`, 1272, 2100, 100, 5, [1400, 1600, 1800, 2000]],
+      [`negative sub-decade view mirrors the linear ticks`, -47500, -33000, 1, 3, [-45000, -40000, -35000]],
     ])(`%s`, (_name, min, max, threshold, count, expected) => {
       const ticks = generate_arcsinh_ticks(min, max, threshold, count)
       expect(ticks.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
@@ -916,17 +881,23 @@ describe(`scales`, () => {
 
   describe(`type helpers`, () => {
     test.each([
-      [`linear`, `linear`, false],
-      [`log`, `log`, false],
-      [`arcsinh`, `arcsinh`, false],
-      [`time`, `time`, true],
-      [undefined, `linear`, false],
-      [{ type: `arcsinh`, threshold: 10 }, `arcsinh`, false],
-    ])(`get_scale_type_name(%s) = %s`, (input, expected, expected_is_time) => {
-      const scale_type = input as ScaleType | undefined
-      expect(get_scale_type_name(scale_type)).toBe(expected)
-      expect(is_time_scale(scale_type)).toBe(expected_is_time)
-    })
+      [`linear`, `linear`, false, 1],
+      [`log`, `log`, false, 1],
+      [`arcsinh`, `arcsinh`, false, 1],
+      [`time`, `time`, true, 1],
+      [undefined, `linear`, false, 1],
+      [{ type: `arcsinh` }, `arcsinh`, false, 1],
+      [{ type: `arcsinh`, threshold: 10 }, `arcsinh`, false, 10],
+      [{ type: `arcsinh`, threshold: 42 }, `arcsinh`, false, 42],
+    ])(
+      `get_scale_type_name(%j) = %s, is_time_scale = %s, get_arcsinh_threshold = %d`,
+      (input, expected, expected_is_time, expected_threshold) => {
+        const scale_type = input as ScaleType | undefined
+        expect(get_scale_type_name(scale_type)).toBe(expected)
+        expect(is_time_scale(scale_type)).toBe(expected_is_time)
+        expect(get_arcsinh_threshold(scale_type)).toBe(expected_threshold)
+      },
+    )
 
     test.each([
       [`linear`, true],
@@ -938,16 +909,6 @@ describe(`scales`, () => {
       [`Linear`, false],
     ])(`is_scale_type_name(%s) = %s`, (input, expected) => {
       expect(is_scale_type_name(input)).toBe(expected)
-    })
-
-    test.each([
-      [{ type: `arcsinh`, threshold: 42 }, 42],
-      [{ type: `arcsinh` }, 1],
-      [`arcsinh`, 1],
-      [`linear`, 1],
-      [undefined, 1],
-    ])(`get_arcsinh_threshold(%s) = %s`, (input, expected) => {
-      expect(get_arcsinh_threshold(input as ScaleType | undefined)).toBe(expected)
     })
   })
 

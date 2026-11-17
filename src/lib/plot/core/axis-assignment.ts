@@ -1,4 +1,4 @@
-import type { ScaleType } from '#lib/plot/core/types.js'
+import type { NumericColumn, ScaleType } from '#lib/plot/core/types.js'
 
 type AxisSlot = `y` | `y2`
 type VisibilityFilter<Series> = (series: Series, series_idx: number) => boolean
@@ -14,7 +14,7 @@ interface AxisAssignableSeries {
 }
 
 export interface AxisValueSeries extends AxisAssignableSeries {
-  y: readonly number[]
+  y: NumericColumn
 }
 
 interface AxisGroup<Series extends AxisAssignableSeries> {

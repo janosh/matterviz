@@ -12,6 +12,7 @@ import type { SankeyLink as D3Link, SankeyNode as D3Node } from 'd3-sankey'
 import type { Vec2 } from '#lib/math.js'
 import { is_valid_index } from '#lib/math.js'
 import type { Orientation } from '#lib/plot/core/types.js'
+import { find_cycle } from '#lib/plot/core/utils/hierarchy-layout.js'
 import type { SankeyData, SankeyLink, SankeyNode, SankeyNodeAlign } from './sankey-types'
 import { DEFAULTS } from '#lib/settings.js'
 
@@ -162,47 +163,6 @@ export function sankey_from_links(
     value: value[idx],
   }))
   return { nodes, links }
-}
-
-// Iterative DFS over the resolved links. Returns the first cycle found as a closed
-// node-index walk (first === last), or null for a DAG. d3-sankey only reports
-// "circular link" without saying where, so this runs first to name the offenders.
-function find_cycle(
-  links: readonly { source: number; target: number }[],
-  n_nodes: number,
-): number[] | null {
-  const out_edges: number[][] = Array.from({ length: n_nodes }, () => [])
-  for (const { source, target } of links) out_edges[source].push(target)
-  const state = new Uint8Array(n_nodes) // 0 = unvisited, 1 = on stack, 2 = done
-  const parent = new Int32Array(n_nodes).fill(-1)
-  for (let root = 0; root < n_nodes; root++) {
-    if (state[root] !== 0) continue
-    const stack: [number, number][] = [[root, 0]] // [node, next out-edge position]
-    state[root] = 1
-    while (stack.length > 0) {
-      const frame = stack[stack.length - 1]
-      const [node, edge_pos] = frame
-      if (edge_pos === out_edges[node].length) {
-        state[node] = 2
-        stack.pop()
-        continue
-      }
-      frame[1] += 1
-      const next = out_edges[node][edge_pos]
-      if (state[next] === 1) {
-        const cycle = [next]
-        for (let cur = node; cur !== next; cur = parent[cur]) cycle.push(cur)
-        cycle.push(next)
-        return cycle.toReversed()
-      }
-      if (state[next] === 0) {
-        state[next] = 1
-        parent[next] = node
-        stack.push([next, 0])
-      }
-    }
-  }
-  return null
 }
 
 // Ribbon path (d3's sankeyLinkHorizontal) and midpoint of a link, from the raw d3 layout

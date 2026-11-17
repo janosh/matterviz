@@ -424,23 +424,6 @@ describe(`PlotLegend`, () => {
       legend_item(`Ungrouped`, 5, { line_color: `gray` }),
     ]
 
-    test(`renders group controls without starting legend drag`, () => {
-      const on_drag_start = vi.fn()
-      mount_legend({ series_data: make_grouped_data(), on_drag_start })
-
-      expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(true)
-      expect(document.querySelectorAll(`.legend-group-header`)).toHaveLength(2)
-      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
-      expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(5)
-
-      const group_labels = Array.from(document.querySelectorAll(`.legend-group-header`)).map(
-        (header) => header.querySelector(`.group-label`)?.textContent,
-      )
-      expect(group_labels).toEqual([`Li₂O`, `NaCl`])
-      doc_query(`.group-chevron`).dispatchEvent(mouse(`mousedown`))
-      expect(on_drag_start).not.toHaveBeenCalled()
-    })
-
     test.each([
       [`click`, 0, `Li₂O`, [0, 1, 2], undefined],
       [`click`, 0, `Li₂O`, [0, 1, 2], `Li-O`],
@@ -476,8 +459,16 @@ describe(`PlotLegend`, () => {
       },
     )
 
-    test(`chevron toggles group collapse and aria labels on click and keyboard`, async () => {
-      mount_legend({ series_data: make_grouped_data() })
+    test(`group controls toggle collapse and aria labels on click and keyboard, never drag`, async () => {
+      const on_drag_start = vi.fn()
+      mount_legend({ series_data: make_grouped_data(), on_drag_start })
+      expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(true)
+      expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(5)
+      const headers = [...document.querySelectorAll(`.legend-group-header`)]
+      const group_labels = headers.map(
+        (node) => node.querySelector(`.group-label`)?.textContent,
+      )
+      expect(group_labels).toEqual([`Li₂O`, `NaCl`])
       // Chevron (expansion) and label (visibility) are sibling controls, never nested
       expect(document.querySelectorAll(`[role="button"] [role="button"]`)).toHaveLength(0)
       const label = doc_query(`.group-label`)
@@ -490,6 +481,8 @@ describe(`PlotLegend`, () => {
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
       expect(chevron.getAttribute(`aria-label`)).toBe(`Collapse group Li₂O`)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
+      chevron.dispatchEvent(mouse(`mousedown`))
+      expect(on_drag_start).not.toHaveBeenCalled()
       chevron.dispatchEvent(mouse(`click`))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(true)
@@ -582,9 +575,11 @@ describe(`PlotLegend`, () => {
       ),
     ]
 
-    test(`renders fill swatch with correct styling and hidden state`, () => {
-      mount_legend({ series_data: fill_series_data })
-      const items = [...document.querySelectorAll(`.legend-item`)]
+    test(`fill swatches style and hide; fill items route click/Enter/dblclick to fill handlers`, () => {
+      const [on_toggle, on_fill_toggle, on_fill_double_click] = [vi.fn(), vi.fn(), vi.fn()]
+      const handlers = { on_toggle, on_fill_toggle, on_fill_double_click }
+      mount_legend({ series_data: fill_series_data, ...handlers })
+      const items = [...document.querySelectorAll<HTMLElement>(`.legend-item`)]
       const has_class = (name: string) => items.map((item) => item.classList.contains(name))
       expect(has_class(`fill-item`)).toEqual([false, true, true])
       expect(has_class(`hidden`)).toEqual([false, false, true])
@@ -592,19 +587,6 @@ describe(`PlotLegend`, () => {
       const rect = items[1].querySelector(`.fill-swatch rect`)
       expect(rect?.getAttribute(`fill`)).toBe(`rgb(70, 130, 180)`)
       expect(rect?.getAttribute(`stroke`)).toBe(`darkblue`)
-    })
-
-    test(`fill items route click/keyboard/dblclick to the fill handlers`, () => {
-      const on_toggle = vi.fn()
-      const on_fill_toggle = vi.fn()
-      const on_fill_double_click = vi.fn()
-      mount_legend({
-        series_data: fill_series_data,
-        on_toggle,
-        on_fill_toggle,
-        on_fill_double_click,
-      })
-      const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
       items[0].click()
       expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
       expect(on_fill_toggle).not.toHaveBeenCalled()

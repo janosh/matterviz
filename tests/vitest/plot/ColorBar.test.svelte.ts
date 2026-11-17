@@ -3,7 +3,7 @@ import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.sve
 import * as text_metrics from '#lib/plot/core/text-metrics.js'
 import { create_colorbar_decoration } from '#lib/plot/core/placed-decoration.svelte.js'
 import type { PlacedDecoration } from '#lib/plot/core/placed-decoration.svelte.js'
-import type { Vec2 } from '#lib'
+import type { Vec2 } from '#lib/math.js'
 import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { AxisOption, ColorScaleOption, ScaleType } from '#lib/plot/core/types.js'
 import * as d3_sc from 'd3-scale-chromatic'

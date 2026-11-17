@@ -340,12 +340,10 @@ describe(`cartesian frame`, () => {
       // filter_threshold below the series count so PlotLegend renders its filter input
       const bound = $state({ legend: { filter_threshold: 2 } })
       await mount_chart(chart, bind_props({ ...chart.props(), show_legend: true }, bound))
-
       const input = doc_query<HTMLInputElement>(`input.legend-filter`)
       set_input(input, `alp`)
       await tick()
       expect(input.value).toBe(`alp`)
-
       bound.legend = { filter_threshold: 2 } // fresh object, as a parent re-render would pass
       await tick()
       // re-query: a remounted input would leave the old detached node holding the typed text
@@ -395,7 +393,6 @@ describe(`cartesian frame`, () => {
         clip.y + clip.height * frac_y,
       ]
       await drag(doc_query(`svg[role="application"]`), {}, at(0.25, 0.25), at(0.75, 0.5))
-
       for (const axis of shown_axes) {
         const [min, max] = tick_span(axis)
         // The drag selects x=[100, 300] and y=[200, 300]; ticks may land on the endpoints.
@@ -412,14 +409,12 @@ describe(`cartesian frame`, () => {
         }
       }
       props_unchanged()
-
       doc_query(`svg[role="application"]`).dispatchEvent(
         new MouseEvent(`dblclick`, { bubbles: true }),
       )
       await tick()
       for (const axis of shown_axes) expect(tick_span(axis), axis).toEqual(initial[axis])
       props_unchanged()
-
       // a host writing `view` moves the plot, not the axis props, and keeps its own values
       bound.view = { y: [200, 300] }
       await tick()
@@ -722,7 +717,6 @@ describe(`cartesian frame`, () => {
         plot.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns
       expect(columns(await mount_chart(chart, four))).toBe(`repeat(4, auto)`)
       expect(columns(await mount_chart(chart, four, { width: 280 }))).toBe(`repeat(2, auto)`)
-
       // An explicitly positioned legend is left alone by the solver and reserves no padding
       const pinned = await mount_chart(chart, {
         ...chart.props(),
@@ -739,15 +733,20 @@ describe(`cartesian frame`, () => {
     },
   )
 
+  // Explicit top/right padding is kept, not overridden by the secondary axes' auto-padding
   test.each(frame_charts)(
-    `$name renders labelled secondary axes with the y2 title centred on the y title`,
+    `$name renders labelled secondary axes inside explicit padding, y2 title centred on y's`,
     async (chart) => {
       const plot = await mount_chart(chart, {
         ...chart.secondary_props([100, 200, 300]),
+        padding: { r: 10, t: 10 },
         y_axis: { label: `Primary` },
         y2_axis: { label: `Secondary` },
         x2_axis: { label: `Top` },
       })
+      const clip = clip_rect(plot)
+      expect(400 - clip.x - clip.width).toBe(10)
+      expect(clip.y).toBe(10)
       for (const axis of chart.secondary_axes) {
         expect(plot.querySelector(`g.${axis}-axis`)).toBeInstanceOf(SVGGElement)
       }
@@ -788,21 +787,6 @@ describe(`cartesian frame`, () => {
     expect(Math.max(...tick_values(`y`))).toBeGreaterThanOrEqual(200)
     expect(tick_values(`y2`)).toEqual(tick_values(`y`))
   })
-
-  test.each(frame_charts)(
-    `$name explicit top/right padding is not overridden by secondary-axis auto-padding`,
-    async (chart) => {
-      const plot = await mount_chart(chart, {
-        ...chart.secondary_props([100, 200, 300]),
-        padding: { r: 10, t: 10 },
-        x2_axis: { label: `Top` },
-        y2_axis: { label: `Secondary` },
-      })
-      const clip = clip_rect(plot)
-      expect(400 - clip.x - clip.width).toBe(10)
-      expect(clip.y).toBe(10)
-    },
-  )
 
   test(`title-only y2 axis expands right padding`, async () => {
     const plot = await mount_sized(

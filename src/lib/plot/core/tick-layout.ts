@@ -1,5 +1,5 @@
 // Tick-label layout: picks upright/wrapped/rotated/thinned/staggered/ellipsized labels from
-// measured geometry, for calc_auto_padding (label band) and PlotAxis (rendering).
+// measured geometry, for compute_auto_padding (label band) and PlotAxis (rendering).
 
 import { clamp } from 'svelte-widgets/utils'
 import { format_tick_values } from '#lib/labels.js'
@@ -14,9 +14,8 @@ import {
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import type { AxisConfig, TickAutoLayoutConfig } from '#lib/plot/core/types.js'
 
-// Tick label font size: 3% of the frame's smaller side (`min_side`), between 9px and 0.8em, so
-// small panes keep room for data. PlotAxis passes its frame's `100cqmin`; linked panels pass
-// their joint size in px so they share one size (synced-axes)
+// Tick label font size: 3% of the frame's smaller side (`min_side`, e.g. `100cqmin` or a
+// linked panels' joint size in px), between 9px and 0.8em
 export const tick_font_size = (min_side: string): string =>
   `clamp(9px, calc(0.03 * ${min_side}), 0.8em)`
 
@@ -83,8 +82,7 @@ const tick_texts = (
 
 // === Label geometry ===
 
-// `axis` is x for x/x2 and y for y/y2. `cross_axis` is the actual label origin after
-// tick offset, configured shifts, and staggering have been applied.
+// `axis` is x for x/x2 and y for y/y2; `cross_axis` is the label origin after offsets/stagger
 interface TickLabelPosition {
   axis: number
   cross_axis: number
@@ -130,8 +128,8 @@ const normalized_rotation = (rotation: number): number => {
   return wrapped > 180 ? wrapped - 360 : wrapped
 }
 
-// Match SVG text-anchor conventions used by PlotAxis: horizontal unrotated labels center on
-// their ticks; rotated labels trail inward; y/y2 labels point toward their axis spine.
+// PlotAxis' SVG text-anchor: unrotated x labels center on their ticks, rotated ones trail
+// inward, y/y2 labels point toward their axis spine
 export const default_tick_label_anchor = (
   side: TickLayoutSide,
   rotation: number,
@@ -209,8 +207,7 @@ export const tick_label_aabb = ({
   return { min_x, min_y, max_x, max_y, width: max_x - min_x, height: max_y - min_y }
 }
 
-// Overflow past each end of the axis extent (in the extent's own direction, so reversed axes
-// report start/end consistently), plus the total.
+// Overflow past each end of the axis extent (in its own direction), plus the total
 export const axis_edge_overflow = (
   aabb: TickAabb,
   side: TickLayoutSide,
@@ -242,8 +239,8 @@ const best_anchor = (
 ): { anchor: TickLabelAnchor; aabb: TickAabb } => {
   let anchor = default_tick_label_anchor(side, rotation)
   let aabb = tick_label_aabb({ position, side, anchor, rotation, dimensions })
-  // An anchor can only trade overflow along the axis when the text runs along it (upright
-  // on x/x2, rotated on y/y2); a flipped rotated x anchor would send text up through the bars
+  // An anchor only trades overflow along the axis when the text runs along it (upright on
+  // x/x2, rotated on y/y2)
   const rotated = normalized_rotation(rotation) !== 0
   if (is_horizontal_side(side) === rotated) return { anchor, aabb }
   let least_overflow = axis_edge_overflow(aabb, side, axis_extent, edge_gap).total
@@ -379,8 +376,7 @@ export const analyze_tick_label_geometry = ({
 
 // === Tick density ===
 
-// Conservative first-pass tick count from the widest measured label: room for gap_pixels
-// between labels, both endpoints reserved whenever they exist.
+// Conservative first-pass tick count from the widest measured label plus gap_pixels each
 export const suggest_tick_count = (
   axis_pixels: number,
   label_widths: readonly number[],
@@ -414,8 +410,7 @@ const adaptive_thin_indices = (item_count: number, requested_count: number): num
 
 // === Candidates ===
 
-// Every candidate retains the original text independently from its visual lines, so renderers
-// can use full_text for aria-label/title even when the visible label is shortened or hidden.
+// full_text survives shortened or hidden lines, for renderers' aria-label/title
 interface CandidateLabel {
   tick_index: number
   full_text: string
@@ -557,8 +552,7 @@ interface MeasuredCandidate {
   band_fraction: number
 }
 
-// How far labels reach away from their baseline: x/x2 measure vertically, y/y2 horizontally,
-// and x2/y grow toward negative coordinates so their band is the negated minimum.
+// How far labels reach from their baseline (x2/y grow negative: band is the negated minimum)
 const BAND_AABB_KEY = { x: `max_y`, x2: `min_y`, y: `min_x`, y2: `max_x` } as const
 
 const outward_band = (labels: readonly TickLabelGeometry[], side: TickLayoutSide): number => {
@@ -684,9 +678,8 @@ const select_candidate = (
 
 // === Label wrapping ===
 
-// Split on whitespace, separators and camel-case transitions without changing the text.
-// Camel case splits after two lowercase letters, or after one when the capital starts a word
-// (`xAxis`), so unit strings like `10 eV` stay intact.
+// Split on whitespace, separators and camel case (after two lowercase letters, or one when the
+// capital starts a word: `xAxis`) without changing the text, keeping units like `10 eV` intact
 const TICK_WRAP_BOUNDARY =
   /(?<=[\p{L}\p{N}][_‐–—-])(?=[\p{L}\p{N}])|(?<=[^_‐–—-] )|(?<=[a-z]{2})(?=[A-Z])|(?<=[a-z])(?=[A-Z][a-z])/u
 
@@ -695,8 +688,8 @@ const explicit_tick_lines = (text: string): string[] =>
 
 type WrapChoice = { lines: string[]; max_width: number; balance: number }
 
-// Wrap at semantic boundaries into the fewest lines that fit max_width. If no partition fits,
-// return the narrowest partition within max_lines so the caller can compare it to rotation.
+// Wrap at semantic boundaries into the fewest lines that fit max_width, else the narrowest
+// partition within max_lines
 const wrap_tick_label = (
   text: string,
   max_width: number,
@@ -756,19 +749,16 @@ const wrap_tick_label = (
 
 // === Layout ===
 
-// An axis plus the labels it will actually draw, so layout can measure them. Categorical
-// axes pass their category names here, not the numeric indices behind them.
+// An axis plus the labels it will actually draw (category names, not their indices)
 export type MeasuredAxis = AxisConfig & {
   tick_values?: (string | number)[]
-  // Rendered pixel coordinates in tick_values order. Required: layout is decided from real
-  // geometry, so a caller without a scale must project one rather than get an equal-slot guess.
+  // Rendered pixel coordinates in tick_values order (layout is decided from real geometry)
   tick_positions: number[]
   axis_extent?: TickAxisExtent
   tick_font?: Readonly<FontSpec>
 }
 
-// Build the measured form of an axis for `calc_auto_padding`. Generic over the tick type so
-// band axes (string categories) and continuous axes (numbers) both infer their own scale.
+// The measured form of an axis for `compute_auto_padding` (string or number ticks)
 export const measured_axis = <Tick extends string | number>(
   axis: AxisConfig,
   tick_values: Tick[],
@@ -947,8 +937,7 @@ const compute_tick_layout = (
   const auto_layout = label_config?.auto_layout ?? {}
   const strategies = configured === `auto` ? resolved_strategies(auto_layout) : []
   if (full_texts.length === 0) return upright_layout(axis, side, full_texts)
-  // No axis and no tick spread leaves nothing to improve (the scorer would rotate a pile-up
-  // nobody sees). Real positions still get scored without a plot size.
+  // No axis and no tick spread leaves nothing to improve; real positions still get scored
   if (configured === `auto` && !(axis_size > 0)) {
     const span = Math.max(...axis.tick_positions) - Math.min(...axis.tick_positions)
     if (!(span > 0)) return upright_layout(axis, side, full_texts)
@@ -1009,8 +998,7 @@ const compute_tick_layout = (
     preserve_endpoints: (auto_layout.endpoint_policy ?? `preserve`) === `preserve`,
   }
   const candidates: Candidate[] = []
-  // Density estimation and the final scoring pass both want the upright geometry; measuring
-  // it is the single most expensive step here, so whichever needs it first pays for both.
+  // The costly upright geometry, measured once for density estimation and final scoring
   let upright_geometry: MeasuredCandidate | undefined
   const upright = create_candidate(`upright`, `upright`, explicit_labels)
   if (strategies.includes(`upright`)) candidates.push(upright)
@@ -1020,8 +1008,8 @@ const compute_tick_layout = (
     Math.max(1, Math.floor(label_config?.max_lines ?? DEFAULT_TICK_LABEL_MAX_LINES)),
     `tick_label.max_lines`,
   )
-  // The band cap is the shared wrap target for every label running across the band (y/y2, or
-  // x stood upright), not the narrowest measured label, which would over-wrap its neighbours
+  // The band cap is the shared wrap target for labels running across the band (y/y2, or x
+  // stood upright)
   const band_target = max_band ?? DEFAULT_AUTO_LABEL_BAND
   const wrap_candidate = (
     name: string,
@@ -1043,8 +1031,8 @@ const compute_tick_layout = (
     ])
     candidates.push(wrapped)
   }
-  // Vertical sides stagger only under an explicit band cap: a second y column grows into room
-  // the padding pass never reserved and spills past the frame edge
+  // Vertical sides stagger only under an explicit band cap, as the padding pass doesn't
+  // reserve a second y column
   if (
     strategies.includes(`stagger`) &&
     renderable_indices.length > 1 &&
@@ -1055,11 +1043,9 @@ const compute_tick_layout = (
       candidates.push(stagger_candidate(upright, `stagger`))
     }
   }
-  // Horizontal only: rotated y labels scored as fewer collisions and turned short numeric
-  // ticks sideways; vertical crowding is for thin/wrap. Wrapped blocks can tilt as a unit.
-  // At exactly ±90° a block's lines sit side by side across its slot and its band is its
-  // longest line, so it wraps to the band target in as many lines as fit the slot: long
-  // category names become short upright columns, not a tall tilted strip.
+  // Horizontal only (vertical crowding is for thin/wrap). Wrapped blocks tilt as a unit; at
+  // ±90° a block's lines sit side by side, so it wraps to the band target in as many lines as
+  // fit the slot: long category names become short upright columns.
   const rotation_sign = (side === `x2` || side === `y2`) !== inside ? 1 : -1
   const vertical_max_lines =
     label_config?.max_lines == null ? DEFAULT_VERTICAL_TICK_LABEL_MAX_LINES : max_lines
@@ -1095,8 +1081,7 @@ const compute_tick_layout = (
     )
   }
 
-  // One bounded density pass: estimate a target once from measured labels, then score that
-  // stable subset with the other candidates. No reactive feedback from selected labels occurs.
+  // One bounded density pass: estimate a target from measured labels, then score that subset
   if (strategies.includes(`thin`) && renderable_indices.length > min_visible_ticks) {
     upright_geometry ??= measure_candidate(upright, config)
     const label_sizes = renderable_indices.map((tick_idx) => {
@@ -1107,8 +1092,7 @@ const compute_tick_layout = (
     })
     const extent_size = Math.abs(axis_extent.end - axis_extent.start)
     const density_count = suggest_tick_count(extent_size, label_sizes, TICK_LABEL_GAP)
-    // Labels outside every collision can remain. When every label collides, that count is zero,
-    // so fall back to the independent density estimate instead of collapsing to the minimum.
+    // Labels outside every collision can remain; when all collide, use the density estimate
     const non_colliding_count =
       renderable_indices.length - upright_geometry.colliding_label_count
     const requested_count = Math.max(
@@ -1125,9 +1109,8 @@ const compute_tick_layout = (
       new Set(
         thin_indices(renderable_indices.length, count).map((idx) => renderable_indices[idx]),
       )
-    // The estimate assumes evenly spaced picks, but rounding the stride spaces them unevenly
-    // (41 ticks thinned to 17 sit 2 and 3 ticks apart), so the closest pair can still overlap.
-    // Thin further until the upright subset clears; ~5% steps bound the passes on huge axes.
+    // A rounded stride spaces picks unevenly (41 ticks thinned to 17 sit 2 and 3 apart), so
+    // thin further in ~5% steps until the upright subset clears
     let selected_indices = select(requested_count)
     for (let count = requested_count; count > min_visible_ticks;) {
       const thinned = thinned_candidate(upright, selected_indices, `thin`)
@@ -1158,8 +1141,7 @@ const compute_tick_layout = (
 
 // === Memoisation ===
 
-// Every plot on a page shares it: a compared sweep viewer has ~10 plots, each resolving its axes
-// for up to three paddings, so a few entries per side thrash and re-lay every tick each update
+// Shared by every plot on a page (a sweep viewer's ~10 plots resolve each axis up to 3 times)
 const MAX_CACHED_LAYOUTS_PER_SIDE = 64
 type CacheEntry = {
   key: string
@@ -1167,8 +1149,7 @@ type CacheEntry = {
   tick_positions: readonly number[]
   value: ResolvedTickLayout
 }
-// Small per-side LRU so interleaved plots do not evict one another's padding/render lookup,
-// while still bounding geometry retained across resizes and zooms.
+// Per-side LRU so interleaved plots don't evict one another's lookups
 const cached_layouts: Partial<Record<TickLayoutSide, CacheEntry[]>> = {}
 
 export const arrays_equal = (
@@ -1177,8 +1158,8 @@ export const arrays_equal = (
 ): boolean =>
   left.length === right.length && left.every((value, idx) => Object.is(value, right[idx]))
 
-// Shared by calc_auto_padding and PlotAxis. Memo keys include every input plus the
-// text-metrics revision, so resizes or font loads never reuse a stale decision.
+// Shared by compute_auto_padding and PlotAxis, memoized on every input plus the text-metrics
+// revision
 export const resolve_tick_layout = (
   axis: MeasuredAxis,
   axis_size: number,
@@ -1218,13 +1199,8 @@ export const resolve_tick_layout = (
     side_cache.unshift(cached)
     return cached.value
   }
-  const resolved = compute_tick_layout(axis, axis_size, side, full_texts)
-  side_cache.unshift({
-    key,
-    full_texts,
-    tick_positions: [...axis.tick_positions],
-    value: resolved,
-  })
+  const value = compute_tick_layout(axis, axis_size, side, full_texts)
+  side_cache.unshift({ key, full_texts, tick_positions: [...axis.tick_positions], value })
   cached_layouts[side] = side_cache.slice(0, MAX_CACHED_LAYOUTS_PER_SIDE)
-  return resolved
+  return value
 }

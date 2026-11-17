@@ -12,7 +12,7 @@ import {
 } from '#lib/math.js'
 import { dodge, type DodgeSide } from '#lib/plot/core/dodge.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
-import type { HandlerProps } from '#lib/plot/core/types.js'
+import type { HandlerProps, NumericColumn } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { clamp01 } from '#lib/utils.js'
 
@@ -33,7 +33,7 @@ export type BoxPointMode = `none` | `strip` | `swarm`
 // One box/violin in a BoxPlot, summarizing a single raw distribution (y)
 export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier (used for keying)
-  y: readonly number[] // raw distribution for THIS box (quantiles/KDE computed internally)
+  y: NumericColumn // raw distribution (plain or typed array) for THIS box (quantiles/KDE computed internally)
   label?: string // category label (axis tick + legend + tooltip title)
   color?: string
   pattern?: FillPattern // hatch/texture over the box and violin fill
@@ -129,15 +129,16 @@ function collect_outliers_by_scan(
 // Quartiles use type-7 linear interpolation, matching d3/numpy/pandas defaults.
 // Non-finite values are filtered out; the input array is never mutated.
 export function compute_box_stats(
-  values: readonly number[],
+  values: Iterable<number>,
   opts: BoxStatsOptions = {},
 ): BoxStats {
   return compute_box_whiskers(summarize_box_samples(values), opts)
 }
 
 // Data-dependent work is shared across whisker/outlier control changes.
-export function summarize_box_samples(values: readonly number[]): BoxSummary {
-  const vals = values.filter(Number.isFinite)
+export function summarize_box_samples(values: Iterable<number>): BoxSummary {
+  const vals: number[] = []
+  for (const val of values) if (Number.isFinite(val)) vals.push(val)
   if (vals.length === 0) return { ...EMPTY_STATS, values: vals }
   const [min, max] = array_extent(vals)
   return {

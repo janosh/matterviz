@@ -1,5 +1,5 @@
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
-import type { Vec2 } from '#lib'
+import type { Vec2 } from '#lib/math.js'
 import { plot_color } from '#lib/colors/index.js'
 import * as marginal_utils from '#lib/plot/core/marginals.js'
 import type { HistogramSeries } from '#lib/plot/histogram/histogram.js'
@@ -70,6 +70,10 @@ const bar_boxes = () =>
       height: round(height),
     }
   })
+
+// an attribute of every bar, or of every element `selector` matches
+const attrs_of = (attr: string, selector = `g.histogram-series path[role="button"]`) =>
+  [...document.querySelectorAll(selector)].map((element) => element.getAttribute(attr))
 
 const get_tick_numbers = (axis: `x` | `y`): number[] =>
   [...document.querySelectorAll(`g.${axis}-axis .tick text`)]
@@ -195,18 +199,6 @@ describe(`Histogram`, () => {
     expect(Math.min(...heights)).toBeGreaterThan(2)
   })
 
-  // with 0 off the count range, an empty bin drew a bar down from the floor that took focus
-  // ("count 0") but, like a gone one, showed no tooltip
-  test(`empty bins draw no bar when the count range excludes 0`, async () => {
-    const series = [series_of([1, 1, 1, 3, 3, 3])]
-    await mount_histogram({ series, bins: 3, y_axis: { range: [2, 8] } })
-    const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
-    expect(bars.map((bar) => bar.getAttribute(`aria-label`))).toEqual([
-      `Series 1 bin 1: 1 to 1.67, count 3`,
-      `Series 1 bin 3: 2.33 to 3, count 3`,
-    ])
-  })
-
   test(`shift-wheel pans a log count axis by decades`, async () => {
     await mount_histogram({
       series: [{ values: [1, 2, 3, 4, 5], label: `A` }],
@@ -231,9 +223,7 @@ describe(`Histogram`, () => {
       show_legend: true,
       bar: { color: `rebeccapurple` },
     })
-    const swatches = [...document.querySelectorAll(`.legend-item .legend-marker path`)].map(
-      (path) => path.getAttribute(`fill`),
-    )
+    const swatches = attrs_of(`fill`, `.legend-item .legend-marker path`)
     expect(swatches).toHaveLength(3)
     expect(new Set(swatches).size).toBe(3)
     expect(swatches).not.toContain(`rebeccapurple`)
@@ -249,9 +239,7 @@ describe(`Histogram`, () => {
   ])(`bar fill: %s`, async (_desc, series, expected_fill, picker_shown) => {
     const open = { show_controls: true, controls_open: true }
     await mount_histogram({ series, bins: 2, bar: { color: `#123456` }, ...open })
-    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-    const fills = new Set([...bars].map((bar) => bar.getAttribute(`fill`)))
-    expect(fills).toEqual(new Set([expected_fill]))
+    expect(new Set(attrs_of(`fill`))).toEqual(new Set([expected_fill]))
     const picker = document.querySelector(`input[aria-label="Fill color hex"]`)
     expect(Boolean(picker)).toBe(picker_shown)
   })
@@ -335,10 +323,9 @@ describe(`Histogram`, () => {
     )
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     expect(legend_items).toHaveLength(2)
-    const fills = [...document.querySelectorAll(`g.histogram-series path`)].map((bar) =>
-      bar.getAttribute(`fill`),
+    expect(new Set(attrs_of(`fill`, `g.histogram-series path`))).toEqual(
+      new Set([`red`, `blue`]),
     )
-    expect(new Set(fills)).toEqual(new Set([`red`, `blue`]))
     legend_items[1].click()
     await tick()
     expect(state.series[0]).toBe(first_series)
@@ -425,8 +412,7 @@ describe(`Histogram`, () => {
     for (const series_idx of [1, 2, 3, 4]) {
       await set_value(`Series`, String(series_idx))
       expect(state.selected_series_idx).toBe(series_idx)
-      const groups = [...document.querySelectorAll(`g.histogram-series`)]
-      const shown = groups.map((group) => group.getAttribute(`data-series-idx`))
+      const shown = attrs_of(`data-series-idx`, `g.histogram-series`)
       expect(shown).toEqual([String(series_idx)])
     }
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
@@ -608,20 +594,16 @@ describe(`Histogram`, () => {
   })
 
   // aria-labels are read aloud, so bin edges carry the tooltip's formatting, not float noise,
-  // and an HTML series label its text
-  test(`bar aria-labels format bin edges and normalized values`, async () => {
-    await mount_histogram({
-      series: [series_of([0.15, 0.35, 0.35], { label: `A<sub>1</sub>` })],
-      bins: 3,
-      normalize: `probability`,
-      // the third bin's lower edge is 0.1 + 0.2 = 0.30000000000000004
-      x_axis: { range: [0.1, 0.4] },
-    })
-    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-    expect([...bars].map((bar) => bar.getAttribute(`aria-label`))).toEqual([
-      `A1 bin 1: 0.1 to 0.2, count 1, value 0.333`,
-      `A1 bin 3: 0.3 to 0.4, count 2, value 0.667`,
-    ])
+  // and an HTML series label its text. With 0 off the count range, an empty bin drew a bar
+  // down from the floor that took focus ("count 0") but, like a gone one, showed no tooltip.
+  // oxfmt-ignore
+  test.each([
+    // the third bin's lower edge is 0.1 + 0.2 = 0.30000000000000004
+    [`format bin edges and normalized values`, { series: [series_of([0.15, 0.35, 0.35], { label: `A<sub>1</sub>` })], bins: 3, normalize: `probability`, x_axis: { range: [0.1, 0.4] } }, [`A1 bin 1: 0.1 to 0.2, count 1, value 0.333`, `A1 bin 3: 0.3 to 0.4, count 2, value 0.667`]],
+    [`skip empty bins when the count range excludes 0`, { series: [series_of([1, 1, 1, 3, 3, 3])], bins: 3, y_axis: { range: [2, 8] } }, [`Series 1 bin 1: 1 to 1.67, count 3`, `Series 1 bin 3: 2.33 to 3, count 3`]],
+  ])(`bar aria-labels %s`, async (_desc, props, expected) => {
+    await mount_histogram(props)
+    expect(attrs_of(`aria-label`)).toEqual(expected)
   })
 
   // weighted bars must get a weighted marginal, else its CDF contradicts the bars beside it

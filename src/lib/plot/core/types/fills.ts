@@ -3,6 +3,7 @@
 
 import type { ErrorValues } from '#lib/plot/core/error-bars.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
+import type { NumericColumn } from '#lib/plot/core/types.js'
 
 // FillBoundary - references to data sources for fill regions
 // Can reference series by index, by id, or specify constant/axis/function/data values
@@ -13,7 +14,7 @@ export type FillBoundary =
   | { type: `axis`; axis: `x` | `x2` | `y` | `y2`; value?: number }
   | { type: `function`; fn: (coord: number) => number }
   // x is optional; when omitted, values align to the companion boundary's x positions
-  | { type: `data`; values: readonly number[]; x?: readonly number[] }
+  | { type: `data`; values: NumericColumn; x?: NumericColumn }
   | number // Shorthand for constant value
 
 // Styling types for fill regions

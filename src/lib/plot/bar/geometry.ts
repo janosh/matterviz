@@ -1,7 +1,8 @@
 // Pure screen-space geometry for BarPlot rendering: line-series point
 // construction and per-bar rect computation.
 
-import type { Point2D } from '#lib/math.js'
+import type { Point2D, Vec2 } from '#lib/math.js'
+import { error_bar_path, error_getter } from '#lib/plot/core/error-bars.js'
 import type { Rect } from '#lib/plot/core/layout.js'
 import { process_prop } from '#lib/plot/core/data-transform.js'
 import type { BarMode, InternalPoint, Orientation } from '#lib/plot/core/types.js'
@@ -28,30 +29,28 @@ export function compute_line_points<Metadata = Record<string, unknown>>(opts: {
   cat_y_scale: (val: number) => number // primary y scale (carries categories in horizontal mode)
 }): LineSeriesPoint<Metadata>[] {
   const { series: srs, series_idx, orientation, x_scale, y_scale, cat_y_scale } = opts
-  return srs.x
-    .map((x_val, idx) => {
-      const y_val = srs.y[idx]
-      const plot_x = orientation === `vertical` ? x_scale(x_val) : x_scale(y_val)
-      const plot_y = orientation === `vertical` ? y_scale(y_val) : cat_y_scale(x_val)
-      const metadata = Array.isArray(srs.metadata) ? srs.metadata[idx] : srs.metadata
-      return {
-        x: plot_x,
-        y: plot_y,
-        data_x: x_val,
-        data_y: y_val,
-        idx,
-        color_value: finite_or_null(srs.color_values?.[idx]),
-        size_value: finite_or_null(srs.size_values?.[idx]),
-        point_style: process_prop(srs.point_style, idx),
-        point_hover: process_prop(srs.point_hover, idx),
-        point_label: process_prop(srs.point_label, idx),
-        point_offset: process_prop(srs.point_offset, idx),
-        metadata,
-        series_idx,
-        point_idx: idx,
-      }
-    })
-    .filter((point) => isFinite(point.x) && isFinite(point.y))
+  return Array.from(srs.x, (x_val, idx) => {
+    const y_val = srs.y[idx]
+    const plot_x = orientation === `vertical` ? x_scale(x_val) : x_scale(y_val)
+    const plot_y = orientation === `vertical` ? y_scale(y_val) : cat_y_scale(x_val)
+    const metadata = Array.isArray(srs.metadata) ? srs.metadata[idx] : srs.metadata
+    return {
+      x: plot_x,
+      y: plot_y,
+      data_x: x_val,
+      data_y: y_val,
+      idx,
+      color_value: finite_or_null(srs.color_values?.[idx]),
+      size_value: finite_or_null(srs.size_values?.[idx]),
+      point_style: process_prop(srs.point_style, idx),
+      point_hover: process_prop(srs.point_hover, idx),
+      point_label: process_prop(srs.point_label, idx),
+      point_offset: process_prop(srs.point_offset, idx),
+      metadata,
+      series_idx,
+      point_idx: idx,
+    }
+  }).filter((point) => isFinite(point.x) && isFinite(point.y))
 }
 
 // Nearest polyline vertex to the cursor. Deliberately unbounded (unlike the scatter
@@ -165,4 +164,30 @@ export function visible_bar_indices<Metadata>(opts: {
     output.push(bar_idx)
   }
   return output
+}
+
+// Capped value-axis error bars for a series' `y_error` as one path, at each listed bar's `tip`
+// (data units; base + value when stacked), centred at `cat_px`. Non-finite bars are skipped.
+export function bar_error_path<Metadata>(opts: {
+  series: NumericBarSeries<Metadata>
+  indices: Iterable<number>
+  tip: (bar_idx: number) => number
+  cat_px: (bar_idx: number) => number
+  val_scale: (val: number) => number
+  vertical: boolean
+  cap: number
+}): string {
+  const { series, indices, tip, cat_px, val_scale, vertical, cap } = opts
+  const get_error = error_getter(series.y_error)
+  if (!get_error) return ``
+  let path = ``
+  for (const bar_idx of indices) {
+    const [tip_val, across] = [tip(bar_idx), cat_px(bar_idx)]
+    if (!Number.isFinite(tip_val) || !Number.isFinite(across)) continue
+    const [lower, upper] = get_error(bar_idx)
+    if (lower === 0 && upper === 0) continue
+    const span: Vec2 = [val_scale(tip_val - lower), val_scale(tip_val + upper)]
+    if (span.every(Number.isFinite)) path += error_bar_path(span, across, vertical, cap)
+  }
+  return path
 }

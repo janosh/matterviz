@@ -93,7 +93,7 @@ export function error_lengths(
 // whose bar ends at 15 must not have that end clipped off the plot.
 export function accumulate_error_extent(
   extent: RunningExtent,
-  values: readonly number[],
+  values: ArrayLike<number>,
   error: ErrorValues | undefined | null,
 ): void {
   if (error == null) return

@@ -246,9 +246,8 @@
       series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
       children?: Snippet<[UserContentProps]>
-      // Bindable settings-pane overrides: show_points/show_lines for every series; point and line
-      // styles for the selected series only, where a color or size scale still wins for points with
-      // values. Exception: point.symbol_type is every series' fallback symbol (a point's own wins).
+      // Bindable settings-pane overrides: show_points/show_lines and point.symbol_type (fallback
+      // symbol) for every series, other point and line styles for the selected series only
       styles?: StyleOverrides
       // Draws a dashed vertical guide at this x value (e.g. the current frame), null hides it
       current_x_value?: number | null
@@ -256,20 +255,16 @@
       tooltip_point?: InternalPoint<Metadata> | null
       // Point drawn with the selection treatment, e.g. the current trajectory frame
       selected_point?: { series_idx: number; point_idx: number } | null
-      // Points inside the last Alt+drag rect. Bindable so a host can drive linked views
-      // (or clear it); the chart renders them with the same treatment as selected_point.
+      // Points inside the last Alt+drag rect, drawn like selected_point. Bindable for linked views
       selected_points?: { series_idx: number; point_idx: number }[]
-      // Fires on every Alt+drag, including one that selected nothing - a host filtering
-      // another view needs to hear "empty" as much as it needs to hear a list
+      // Fires on every Alt+drag, including one that selected nothing
       on_select?: (selection: { points: InternalPoint<Metadata>[]; rect: PixelRect }) => void
       // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
       // collection. null turns it off; points without a point_id never dim.
       highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
-      // false still calls hover handlers but skips all tooltip state and DOM work, e.g. for a
-      // time-series scrubber that updates another pane live
+      // false still calls hover handlers but skips all tooltip state and DOM work
       tooltip?: TooltipProp<ScatterHandlerProps<Metadata>>
-      // Serializers added to (or replacing) the built-in PNG/SVG/CSV export, e.g. a JSON of
-      // the data a wrapping component plots
+      // Serializers added to (or replacing) the built-in PNG/SVG/CSV export
       export_sources?: ExportSources
       // Snippet rendered at the end of the settings pane, given the style overrides, selected series and axis configs
       controls_extra?: Snippet<
@@ -281,8 +276,7 @@
       color_scale?: ColorScale
       // How series `size_values` map to marker radius in px (type, radius range, value range)
       size_scale?: SizeScaleConfig
-      // Reference circles for size_values, shown when the size scale maps 2+ legend values to
-      // distinct marker radii (null hides)
+      // Reference circles for size_values when 2+ legend values get distinct radii (null hides)
       size_legend?: SizeLegendConfig | null
       // Color bar props for the color_values scale; null hides it
       color_bar?: ColorBarDecorationProps | null
@@ -316,10 +310,8 @@
       selected_series_idx?: number
       // The outer container element
       wrapper?: HTMLDivElement
-      // Read-only: the padding the plot needs, so hosts laying out several plots (BandsAndDos)
-      // can feed the maximum back as a shared `padding` to align their chart areas. It is the
-      // padding in effect, except that an explicit top/bottom smaller than the axes need
-      // (an explicit padding stops a plot measuring its titles) reports that need instead.
+      // Read-only: the padding the plot needs (an explicit top/bottom below the axes' need
+      // reports that need), so hosts aligning several plots can share the maximum as `padding`
       resolved_padding?: Required<Sides>
       // Iso-proportion KDE contours under each series' markers (true for the defaults)
       density_contours?: boolean | DensityContourConfig
@@ -347,8 +339,7 @@
     fallback: `#000`,
   })
 
-  // Assign visible series by unit/axis_group, preserving explicit y_axis. Re-running after a
-  // legend toggle lets the remaining group move back to y. Null entries pass through.
+  // Assign visible series by unit/axis_group, preserving explicit y_axis. Null entries pass.
   const assigned_series = $derived.by(() => {
     const assignment = assign_axes(series, {
       is_visible: (srs) => Boolean(srs && typeof srs === `object` && srs.visible !== false),
@@ -373,8 +364,7 @@
     )
     const labels = axis_labels(valid_series)
     const scale_types = axis_scale_types(valid_series, {
-      // axis_group is the explicit signal that otherwise unit-compatible data needs an
-      // independent scale (for example, positive SCF residuals spanning many decades).
+      // axis_group signals unit-compatible data needing its own scale (e.g. SCF residuals)
       can_use_log_scale: (srs) => srs.axis_group != null,
     })
     const inferred = (axis: `y` | `y2`) => {
@@ -402,8 +392,7 @@
   const show_lines = $derived(styles.show_lines ?? DEFAULTS.scatter.show_lines)
 
   let hovered_fill_key = $state<string | null>(null)
-  // Solver-placed label positions, keyed by `series_idx-point_idx`. Raw and reset to one empty
-  // record, so a data change without auto-placed labels re-resolves no point's label.
+  // Solver-placed label positions by `series_idx-point_idx`, reset to one shared empty record
   const no_label_positions: Record<string, Point2D> = {}
   let label_positions = $state.raw(no_label_positions)
 
@@ -418,8 +407,7 @@
       series_idx ?? -1,
     )
 
-  // Finite extents of the visible series per axis, without materializing point objects.
-  // Hidden series widen no axis, so toggling one off lets the view tighten on every axis.
+  // Finite extents of the visible series per axis, without materializing point objects
   let extents_by_axis = $derived.by(() => {
     const extents = {
       x: empty_extent(),
@@ -454,9 +442,8 @@
 
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
 
-  // How far markers and error-bar caps reach past their data point in px, sized as they render
-  // (style_builder). Auto ranges leave that much room so marks on the outermost points
-  // aren't cut in half by the plot-area clip.
+  // How far markers and error-bar caps reach past their data point in px (as style_builder
+  // sizes them), which auto ranges leave room for so edge marks aren't clipped
   let edge_px = $derived.by(() => {
     let max_px = 0
     const size_radius = Math.max(...(size_scale.radius_range ?? SCALE_DEFAULTS.radius))
@@ -468,8 +455,7 @@
       }
       if (!show_points || !has_marker(srs, `points`)) continue
       const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
-      // A finite size_value sizes its marker by the scale, any other point keeps its style's
-      // size: a series mixing the two reaches as far as the larger
+      // Scale-sized and style-sized points: a series mixing them reaches as far as the larger
       const by_size = [srs.size_values?.some(is_finite_num) ?? false]
       if (by_size[0] && !srs.size_values?.every(is_finite_num)) by_size.push(false)
       for (const style of [srs.point_style ?? {}].flat())
@@ -526,8 +512,7 @@
     controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
     auto_ranges: () => intrinsic_ranges,
-    // Keep the current view on an axis whose series are all hidden instead of snapping to
-    // the default range, so toggling series off doesn't jump the plot
+    // Keep the view on an axis whose series are all hidden instead of jumping
     range_sync: `expand`,
     has_data: () => ({
       x: extents_by_axis.x.n_finite > 0,
@@ -552,8 +537,7 @@
     on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
-    // Alt+drag selects instead of zooming. Hit-tested in screen space so it works for any
-    // scale type and a point's own offset counts (the user selects what they see).
+    // Alt+drag selects instead of zooming, hit-tested in screen space (offsets included)
     on_rect_select: (rect) => {
       const [[x_lo, x_hi], [y_lo, y_hi]] = [rect.x, rect.y]
       const picked: InternalPoint<Metadata>[] = []
@@ -570,8 +554,7 @@
       on_select?.({ points: picked, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    // Live tooltip while rect-dragging: update for the closest point inside the plot
-    // bounds, clear when the cursor leaves the svg
+    // Live tooltip while rect-dragging, cleared when the cursor leaves the svg
     on_drag_move: (coords, inside_svg) => {
       if (inside_svg) update_tooltip_point(coords.x, coords.y)
       else tooltip_point = null
@@ -612,18 +595,15 @@
     decoration_solution: () => frame.decoration_solution,
   })
 
-  // Each series' obstacle mark by its x and y arrays, handed back while the inputs it was built
-  // from hold, so the obstacle builder reuses its cells: a legend toggle walks only what
-  // changed (20 lines x 20k points: 97 -> 3 ms, 400 x 2k: 231 -> 15 ms). Dropped on in-place
-  // value edits (see line_values_read); series with point offsets, whose objects could be
-  // edited in place unseen, are built afresh.
+  // Each series' obstacle mark by its x and y arrays, reused while its inputs hold so a legend
+  // toggle walks only what changed (20 lines x 20k points: 97 -> 3 ms). Dropped on in-place
+  // value edits (see line_values_read); series with point offsets are built afresh.
   type ObstacleEntry = { params: unknown[]; mark: ObstacleSeries }
   const obstacle_marks = $derived.by(() => {
     void line_values_read
     return new WeakMap<object, WeakMap<object, ObstacleEntry>>()
   })
-  // Plot-specific immutable obstacle field: visible series points and sampled line segments in
-  // normalized [0,1] coordinates (y=0 at top). Each series uses its assigned x/y scale.
+  // Obstacle field: visible points and line flags in normalized coords (y=0 at top)
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, filtered_series.length > 0, ({ base_w, base_h }) =>
       filtered_series.map((srs) => {
@@ -655,8 +635,7 @@
     ),
   )
 
-  // Same rows, dedupe and series numbering as legend_data below, so the solver reserves
-  // room for exactly the rows PlotLegend draws, without depending on frame geometry.
+  // The rows PlotLegend draws (as legend_data), without depending on frame geometry
   const legend_track_items = $derived.by(() => {
     const first_seen = legend_row_dedupe()
     return [
@@ -675,12 +654,10 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }, tooltip === false),
   )
-  // A series' color as a whole (palette fallback) for the marks that summarize it:
-  // marginals and density contours
+  // A series' color (palette fallback) for marginals and density contours
   const series_color = (srs: DataSeries<Metadata> | undefined, idx: number): string =>
     extract_series_color(srs, plot_color(idx))
-  // Map series to the generic marginal input, reusing the line/legend color fallback. Skipped
-  // (the default) while no strip is enabled so data changes don't pay for it.
+  // Generic marginal input, skipped while no strip is enabled
   const marginal_series = $derived<MarginalSeriesInput[]>(
     Object.values(resolved_marginals).some(Boolean)
       ? assigned_series.map((srs, idx) => ({
@@ -695,8 +672,8 @@
       : [],
   )
   const color_scale_config = $derived(to_color_scale_config(color_scale))
-  // Finite color and size bounds across all series (NaN/null use series defaults). Reads only
-  // the scale types, so scheme/radius changes don't re-scan the values.
+  // Finite color and size bounds across all series, reading only the scale types so
+  // scheme/radius changes don't re-scan the values
   const color_scale_type = $derived(color_scale_config.type)
   const size_scale_type = $derived(size_scale.type)
   const scale_ranges = $derived(
@@ -749,8 +726,7 @@
     sibling_revision: () => colorbar.size_revision,
   })
 
-  // Visible series with their in-range points: InternalPoints are built once per data change
-  // and only picked by range on each pan/zoom frame
+  // InternalPoints built once per data change, picked by range on each pan/zoom frame
   const materialized_series = $derived(materialize_series_points(assigned_series))
   let filtered_series = $derived(
     filter_series_to_ranges(materialized_series, {
@@ -769,21 +745,14 @@
       ),
     ),
   )
-  // The series each draw loop walks, so a plot of many lines (a band structure's, most far
-  // off the shown energies) reconciles only those it draws on every data change
-  // (log y axes hold lines below them at their floor, see line_reaches_view)
-  const log_y_axes = $derived(
-    new Set(
-      (
-        [
-          [`y`, final_y_axis],
-          [`y2`, final_y2_axis],
-        ] as const
-      ).flatMap(([key, axis]) =>
-        get_scale_type_name(axis.scale_type) === `log` ? [key] : [],
-      ),
-    ),
-  )
+  // The series each draw loop walks, so a plot of many lines (a band structure's) reconciles
+  // only those in view (log y axes hold lines below them at their floor)
+  const log_y_axes = $derived.by(() => {
+    const axes = { y: final_y_axis, y2: final_y2_axis }
+    const is_log = (key: keyof typeof axes) =>
+      get_scale_type_name(axes[key].scale_type) === `log`
+    return new Set(([`y`, `y2`] as const).filter(is_log))
+  })
   const line_series = $derived(
     filtered_series.filter(
       (srs) =>
@@ -797,11 +766,9 @@
   )
 
   // === Density contours ===
-  // One KDE per series in its own px frame: drawn on a grid over the plot area (plus the blur
-  // pad), with levels from a grid over the whole series so they survive panning
+  // One KDE per series in its own px frame, levels from a grid over the whole series
   const density_config = $derived(density_contours === true ? {} : density_contours || null)
-  // A pan only translates px, which leaves those levels as they were: they're computed per
-  // series in a frame scaled like the plot's but not offset, so pans reuse them
+  // Computed in a frame scaled like the plot's but not offset, so pans reuse them
   const density_levels = $derived.by(() => {
     if (!density_config) return []
     const fractions = density_level_fractions(density_config.levels)
@@ -831,8 +798,8 @@
       if (!srs || srs.visible === false) return []
       const x_scale = srs.x_axis === `x2` ? x2_scale_fn : x_scale_fn
       const y_scale = srs.y_axis === `y2` ? y2_scale_fn : y_scale_fn
-      // x drives the point count, as for extents. Non-finite values (the arcsinh scale reads
-      // a JSON null as 0) and log-invalid ones become NaN pixels, which the density grid skips.
+      // x drives the point count. Non-finite values (arcsinh reads a JSON null as 0) become
+      // NaN pixels, which the density grid skips.
       const [xs, ys] = [new Float64Array(srs.x.length), new Float64Array(srs.x.length)]
       for (let idx = 0; idx < xs.length; idx++) {
         const [x_val, y_val] = [srs.x[idx], srs.y[idx]]
@@ -853,8 +820,7 @@
     })
   })
 
-  // Tally line series/points to budget path-morph tweens (see resolve_line_tween) so
-  // high-cardinality plots (e.g. phonon bands) stay snappy
+  // Tally line series/points to budget path-morph tweens (see resolve_line_tween)
   let line_tween_load = $derived.by(() => {
     if (!show_lines) return { series: 0, points: 0 }
     let [n_series, n_points] = [0, 0]
@@ -883,8 +849,7 @@
       : assigned_series.findIndex(Boolean),
   )
 
-  // Marker styles shared by the canvas and SVG paths so they can't drift. Per-series constants
-  // are read once (per-point reactive reads cost more than all geometry at 100k points).
+  // Marker styles shared by the canvas and SVG paths; per-series constants are read once
   const dense_markers = $derived(visible_marker_count >= DENSE_MARKER_COUNT)
   const style_builder = (series_data: MaterializedSeries<Metadata>) => {
     const series_idx = series_data.orig_series_idx
@@ -905,8 +870,7 @@
         radius: is_finite_num(point.size_value)
           ? size_fn(point.size_value)
           : (point_ctrl?.size ?? pt?.radius ?? default_radius),
-        // A size_value sizes the marker through the scale, overriding any static symbol
-        // area, so the size legend always reads true
+        // A size_value overrides any static symbol area, so the size legend reads true
         symbol_size: is_finite_num(point.size_value)
           ? undefined
           : (pt?.symbol_size ?? undefined),
@@ -924,10 +888,8 @@
       }
     }
   }
-  // Each series' styles by point_idx, built per data or style change rather than per pan/zoom
-  // frame. Points drawn alike (no size or colour value, one point_style) share one object,
-  // which the canvas batches by identity. `unsafe` holds those whose authored paint a canvas
-  // can't parse (colour-scale output is always a d3 colour, so only authored paint is checked).
+  // Each series' styles by point_idx, per data or style change. Points drawn alike share one
+  // object (batched by identity on canvas). `unsafe` holds authored paint a canvas can't parse.
   const marker_styles = $derived.by(() => {
     const by_series = new Map<number, { by_idx: MarkerStyle[]; unsafe: Set<MarkerStyle> }>()
     for (const series_data of materialized_series) {
@@ -964,8 +926,7 @@
   }
 
   // Per-series data->pixel projection: `point` places a marker (with point_offset), `line`
-  // maps raw x/y, holding non-positive log-y values at the domain floor instead of vanishing.
-  // `scales` and `reach` (px lines keep past each side when cropped) serve anchored lines.
+  // holds non-positive log-y values at the domain floor. `scales`/`reach` serve anchored lines.
   const series_projector = (
     series_data: Pick<DataSeries, `x_axis` | `y_axis`>,
     scales: typeof frame.scales = frame.scales,
@@ -976,8 +937,7 @@
     const y_scale = use_y2 ? scales.y2 : scales.y
     const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
     const y_line_scale = log_floor_scale(y_scale, y_axis_config.scale_type, y_scale.domain())
-    // x needs the same floor as y for error bars: a lower end at or below zero on a log
-    // x axis has no finite pixel, and one non-finite end drops the whole bar
+    // x needs the same floor for error bars, whose ends at or below zero have no log pixel
     const x_axis_config = series_data.x_axis === `x2` ? final_x2_axis : final_x_axis
     const x_line_scale = log_floor_scale(x_scale, x_axis_config.scale_type, x_scale.domain())
     const x_px = (point: InternalPoint<Metadata>): number =>
@@ -1008,8 +968,7 @@
       ): ReturnType<typeof project_line_points> => {
         const margin =
           2 * Math.max(line.line_style?.stroke_width ?? 2, styles.line?.width ?? 2)
-        // Dashes and morph tweens need stable vertices (incl. on pan release), so use the
-        // configured policy: dragging only temporarily disables animation
+        // Dashes and morph tweens need stable vertices, so they never crop
         const dashed = [line.line_style?.line_dash, styles.line?.dash].some(
           (dash) => dash && dash !== `none` && dash !== `solid`,
         )
@@ -1030,11 +989,8 @@
   }
 
   // === Lines during a pan ===
-  // Mid-pan, lines keep the view the pan started from and their paths are shifted (see
-  // create_pan_anchor): rebuilding many long lines' path strings was most of a pan frame.
-  // Only while lines snap (a morph would glide from the shifted path on release) and on
-  // linear axes, as a log axis holds lines below its view at the live floor.
-  // A boolean, as resolved_line_tween is a fresh object whenever the drawn lines change
+  // Mid-pan, lines keep the start view's paths, shifted (see create_pan_anchor). Only while
+  // lines snap (a morph would glide on release) and on linear axes (log floors move).
   const lines_snap = $derived.by(() => {
     const duration = resolved_line_tween?.duration
     return typeof duration === `number` && duration <= 0
@@ -1052,11 +1008,9 @@
       series_data.x_axis === `x2` ? `x2` : `x`,
       series_data.y_axis === `y2` ? `y2` : `y`,
     )
-  // Projected vertices by layer's x and y arrays (series objects are rebuilt every frame),
-  // kept while the projection holds, so a Line whose vertices didn't move (an anchored pan
-  // frame, another series toggled) keeps its path string. Dropped when any line value changes:
-  // reading every x and y tracks in-place edits of $state arrays. A line its last crop left
-  // whole stays whole under a wider pan reach, so a pan starting keeps uncropped paths.
+  // Projected vertices by layer's x and y arrays, kept while the projection holds so an
+  // unmoved Line keeps its path string. Reading every value tracks in-place $state edits.
+  // A line its last crop left whole stays whole under a wider pan reach.
   type LineEntry = { params: unknown[]; reach: number; cropped: boolean; points: Vec2[] }
   const line_values_read = $derived.by(() => {
     for (const srs of series_in) {
@@ -1108,8 +1062,7 @@
   const is_link_dimmed = ({ point_id }: InternalPoint<Metadata>): boolean =>
     point_id !== undefined && highlight_set?.has(point_id) === false
 
-  // Points needing labels or effects remain in an SVG overlay. `selected` is passed in so
-  // per-point loops read the prop once, not per point.
+  // Points needing labels or effects remain in an SVG overlay
   const same_logical_point = (
     point: InternalPoint<Metadata>,
     other: { series_idx: number; point_idx: number } | null,
@@ -1125,8 +1078,7 @@
     (keys.size > 0 && keys.has(roving_key(point.series_idx, point.point_idx))) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
-  // Canvas markers for every plain point, or null when markers must be SVG (canvas off, no
-  // points, per-point handlers besides clicks, or unparsable paint). One pass does both.
+  // Canvas markers for every plain point, or null when markers must be SVG
   const canvas_markers = $derived.by((): MarkerBatch | null => {
     const canvas_requested =
       marker_renderer === `canvas` ||
@@ -1160,8 +1112,8 @@
     return markers
   })
   const use_canvas_markers = $derived(canvas_markers !== null)
-  // In canvas mode only labelled/selected/highlighted points get SVG nodes. Derived apart
-  // from the hover below so a pointer move doesn't rescan every point.
+  // In canvas mode only labelled/selected/highlighted points get SVG nodes (apart from the
+  // hover, so a pointer move doesn't rescan every point)
   const static_overlay_points_by_series = $derived.by(() => {
     if (!use_canvas_markers) return []
     const selected = selected_point
@@ -1172,8 +1124,7 @@
       ),
     )
   })
-  // Plus the hovered and pinned points, for their hover effects. They may come from a previous
-  // filtered derivation, so they are matched by logical key rather than identity.
+  // Plus the hovered and pinned points, matched by logical key rather than identity
   const svg_overlay_points_by_series = $derived.by(() => {
     const lit_points = [tooltip_point, pin.is(tooltip_point) ? null : pin.value]
     return static_overlay_points_by_series.map((points, series_pos) => {
@@ -1207,8 +1158,7 @@
   type TaggedRegion = Pick<ComputedFill, `source_type` | `source_idx` | `hover_key`> & {
     region: FillRegion | null
   }
-  // Hover and {#each} key: a fill's id while no other fill of its source shares it, compared
-  // as the text the key holds (ids 1 and `1` clash), else its index
+  // Hover and {#each} key: a fill's id while unique (as text) within its source, else its index
   const tag_regions = <Item extends { id?: string | number }>(
     items: readonly Item[],
     source_type: FillSource,
@@ -1223,8 +1173,7 @@
           ? `${source_type}:id:${item.id}`
           : `${source_type}:idx:${source_idx}`,
     }))
-  // Series refs matching no series, whose fills would vanish silently. A string, so data
-  // updates that keep the same broken refs don't warn again.
+  // Series refs matching no series, as a string so the same broken refs warn once
   const missing_fill_refs = $derived(
     assigned_series.length === 0
       ? ``
@@ -1277,8 +1226,7 @@
           y_domain: y_ax.domain,
           y2_domain: axis_scales.y2.domain,
         }
-        // Hidden fills keep their entry (with empty path_segments -> nothing renders) so the
-        // legend item persists greyed-out and can be toggled back on.
+        // Hidden fills keep an entry without paths so their legend item persists greyed-out
         const hidden = region.visible === false || series_hidden
         const path_segments = hidden
           ? []
@@ -1335,8 +1283,7 @@
       )?.series_idx ?? idx
     )
   })
-  // legend_track_items mirrors the rendered entries without depending on frame geometry,
-  // avoiding a frame -> visibility -> computed fills -> frame dependency cycle.
+  // legend_track_items avoids a frame -> visibility -> computed fills -> frame cycle
   const should_show_legend = $derived(
     resolve_legend_visibility(show_legend, legend, legend_track_items.length),
   )
@@ -1353,9 +1300,8 @@
     return groups
   })
 
-  // Marks tween in px, so a resize (of the window, of panes restacking) would glide them in
-  // from where the old size put them: the markers, unclipped so edge points draw whole, across
-  // whatever sits beside the plot. They snap until the frame after a resize, as while panning.
+  // Marks tween in px, so a resize would glide them in from where the old size put them: they
+  // snap until the frame after a resize, as while panning
   const size_key = $derived(`${width} ${height}`)
   let tweened_size = $state(``)
   $effect(() => {
@@ -1374,8 +1320,7 @@
 
   const hover_radius = $derived(hover_config.threshold_px ?? 20)
 
-  // Screen-space grid over every visible marker so a pointer move probes nearby cells only.
-  // Lazy: built on the first hover after a data/scale change, not per frame.
+  // Lazy screen-space grid over every visible marker so a pointer move probes nearby cells only
   const hover_index = $derived.by(() => {
     if (hover_config.mode === `x` || hover_config.mode === `y`) return null
     let n_points = 0
@@ -1434,8 +1379,7 @@
           candidate_end++
         }
       }
-      // Runs per point on every pointer move in `y` mode: no pair allocated per point, and
-      // the cross coordinate projected only for points that tie or beat the best so far
+      // Hot in `y` mode: no pair per point, cross coordinate only for points tying the best
       const [axis_px, cross_px] =
         axis === `x` ? [project.x_px, project.y_px] : [project.y_px, project.x_px]
       for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
@@ -1474,11 +1418,9 @@
   // within the (usually tighter) click radius
   const plot_click_target = (hit: ReturnType<typeof closest_hit_at>) =>
     hit && hit.distance <= (hover_config.click_threshold_px ?? hover_radius) ? hit.point : null
-  // Whether a click on the plot surface right now would reach on_plot_click, from the same
-  // lookup handle_plot_click runs, so the pointer cursor promises exactly the clicks that land
+  // Whether a plot-surface click now would land (same lookup as handle_plot_click), for the cursor
   let plot_click_armed = $state(false)
-  // the pointer event of the point on_point_hover last reported, re-sent with that point once a
-  // data change re-resolves it
+  // The pointer event on_point_hover last reported, re-sent when a data change re-resolves it
   let hover_event: MouseEvent | null = null
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
@@ -1498,8 +1440,7 @@
     }
     // Construct handler props synchronously to avoid stale derived reads
     const props = construct_handler_props(closest_point)
-    // a written bindable prop is proxied anew, so rewriting the same point would re-run every
-    // marker's hover look each pointer frame
+    // a written bindable prop is proxied anew, so skip rewriting the same point
     const next = tooltip === false ? null : closest_point
     if (!next || !same_logical_point(next, tooltip_point)) tooltip_point = next
     hover_event = evt && props ? evt : null
@@ -1555,12 +1496,10 @@
     ...LABEL_PLACEMENT_DEFAULTS,
     ...label_placement_config,
   })
-  // The merged object (and an inline `label_placement_config={{...}}` prop) is a fresh
-  // identity per update, so the warm start below compares by value, not reference.
+  // Fresh identity per update, so the warm start below compares by value
   const label_config_key = $derived(value_key(actual_label_config))
 
-  // Skip the per-frame label solver on plots with no auto-placed labels. Scans
-  // `assigned_series`, not range-refiltered `filtered_series`, to stay off the frame loop.
+  // Skip the label solver without auto-placed labels (scans assigned_series, off the frame loop)
   const is_auto_placed = (label: LabelStyle | null | undefined) =>
     Boolean(label?.auto_placement && label.text)
   let has_auto_placed_labels = $derived(
@@ -1580,8 +1519,7 @@
     return placed ? { ...style, offset: { x: placed.x - cx, y: placed.y - cy } } : style
   }
 
-  // Last solve's label offsets, warm-starting each pan/zoom frame. Plain Map: the effect
-  // below reads and writes it, so tracking would re-trigger it forever.
+  // Last solve's label offsets, warm-starting each pan/zoom frame (plain: tracking would loop)
   const label_offsets = new Map<string, Point2D>()
   let previous_label_series: typeof assigned_series | undefined
   let previous_label_config: string | undefined
@@ -1681,14 +1619,12 @@
   let handler_props = $derived(tip_point ? construct_handler_props(tip_point) : null)
   const canvas_points_clickable = $derived(use_canvas_markers && points_interactive)
 
-  // Set, not a scan per point: a rect drag can select thousands, and the membership test
-  // runs once per rendered marker on every frame
+  // Set, as the membership test runs per rendered marker and a rect drag selects thousands
   let selected_keys = $derived(
     new Set(selected_points.map((sel) => roving_key(sel.series_idx, sel.point_idx))),
   )
 
-  // One path per series, not per point, so dense error bars don't undo the canvas threshold;
-  // bars therefore take the series' color rather than per-point colors
+  // One path per series (in the series' color), so dense error bars don't undo canvas markers
   let error_bar_paths = $derived.by(() =>
     filtered_series.flatMap((series_data, series_pos) => {
       if (series_data.x_error == null && series_data.y_error == null) return []
@@ -1709,9 +1645,8 @@
   )
 
   // === Canvas-mode keyboard cursor ===
-  // Canvas points have no tabindex/role/aria-label, so arrow keys drive a cursor through the
-  // data; its point becomes hovered and the SVG overlay redraws it (focusable, tooltip).
-  // Named by identity, so a pan/zoom or data change never retargets it to another point
+  // Canvas points have no tabindex, so arrow keys drive a cursor whose point becomes hovered
+  // and is redrawn in the SVG overlay. Named by identity, so it never retargets.
   let kbd_cursor = $state<{ series_idx: number; point_idx: number } | null>(null)
 
   // Index of `point_idx` in a list ascending in point_idx, or -1 when absent
@@ -1726,8 +1661,7 @@
     return points[index_of_point(points, point_idx)] ?? null
   }
 
-  // Per-series point lists plus offsets flattening them into one index space (only the
-  // offsets are materialised: flattening 100k points per keystroke would be too slow)
+  // Per-series point lists plus offsets flattening them into one index space
   let kbd_nav = $derived.by(() => {
     const lists = filtered_series.map((series_data) => series_data.filtered_data)
     const offsets: number[] = []
@@ -1749,8 +1683,7 @@
     return null
   }
 
-  // The cursor's point and its flat index among the in-range points, or null (inactive) while
-  // that point is out of view or no longer plotted
+  // The cursor's point and flat index, or null while it is out of view or no longer plotted
   let kbd_cursor_at = $derived.by(() => {
     if (!kbd_cursor) return null
     const { series_idx, point_idx } = kbd_cursor
@@ -1762,8 +1695,7 @@
   })
 
   // Data swaps fire no pointer event, so re-resolve the hovered and pinned points on every data
-  // change: the host hears the hovered point's new values (e.g. a sweep frame's energy at that
-  // k-point), or on_point_hover(null) once it is gone
+  // change: the host hears the hovered point's new values, or null once it is gone
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
@@ -1816,12 +1748,10 @@
     return move_kbd_cursor(event)
   }
 
-  // The cursor's own point, not `tooltip_point`, which would announce every point the mouse
-  // sweeps over
+  // The cursor's own point, not every point the mouse sweeps over
   let live_message = $derived(kbd_cursor_at ? point_accessible_label(kbd_cursor_at.point) : ``)
 
-  // One tab stop for the whole point cloud; arrow keys walk the marks. Only interactive
-  // points carry roving keys. The overlay list decides which marks exist in canvas mode.
+  // One tab stop for the whole point cloud (interactive points only); arrow keys walk the marks
   const roving = create_roving_focus({
     container: () => (points_interactive ? frame.svg_element : null),
     items: () => [
@@ -1981,8 +1911,7 @@
       {@const { filled = false, fill_opacity = 0.15 } = density_config}
       {@const stroke_width = density_config.stroke_width ?? (filled ? 0 : 1)}
       {#each density_layers as { series_idx, color, contours } (series_idx)}
-        <!-- Clip outside the translate: a clip path resolves in the referencing element's
-             user space, which would include the transform -->
+        <!-- Clip outside the translate, or the clip path would include the transform -->
         <g
           class="density-contours"
           data-series-idx={series_idx}

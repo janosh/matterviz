@@ -2,6 +2,7 @@
 
 import type { ExportSource } from '#lib/io/export.js'
 import { series_text } from '#lib/plot/core/data-transform.js'
+import type { ArrayColumn, NumericColumn } from '#lib/plot/core/types.js'
 import { html_to_text } from 'svelte-widgets/utils'
 import { type CsvCell, csv_line } from 'svelte-widgets/format'
 
@@ -12,10 +13,10 @@ import { type CsvCell, csv_line } from 'svelte-widgets/format'
 // of which a shared-x column layout can represent without inventing blanks.
 export interface CsvSeries {
   label?: string
-  x: readonly (number | string)[] // category names for categorical bar charts
-  y: readonly number[]
+  x: ArrayColumn<number | string> // category names for categorical bar charts
+  y: NumericColumn
   // Extra per-point channels, emitted as their own columns when any series has them
-  extras?: Record<string, readonly (number | null | undefined)[] | undefined>
+  extras?: Record<string, ArrayLike<number | null | undefined> | undefined>
 }
 
 export function series_to_csv_rows(series: readonly CsvSeries[]): {

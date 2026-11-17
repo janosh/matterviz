@@ -8,6 +8,7 @@ import {
 } from '#lib/plot/bar/data.js'
 import type { AxisConfig } from '#lib/plot/core/types.js'
 import {
+  bar_error_path,
   compute_bar_rect,
   compute_line_points,
   nearest_line_point,
@@ -64,6 +65,21 @@ describe(`normalize_categorical`, () => {
     expect(internal_series[1].y).toEqual([0, 3, 4])
     // line series get NaN for missing categories (gap, not a zero point)
     expect(internal_series[2].y).toEqual([NaN, NaN, 9])
+  })
+
+  // errors follow their bars into category order; absent categories get 0, scalars stay
+  test(`remaps y_error onto the category order`, () => {
+    const categories = [`a`, `b`, `c`]
+    const remapped = (y_error: BarSeries[`y_error`]) =>
+      normalize_categorical([{ x: [`c`, `a`], y: [1, 2], y_error }], categories)
+        .internal_series[0].y_error
+    expect(remapped([0.1, 0.2])).toEqual([0.2, 0, 0.1])
+    expect(remapped({ lower: [0.1, 0.2], upper: 0.5 })).toEqual({
+      lower: [0.2, 0, 0.1],
+      upper: 0.5,
+    })
+    expect(remapped(0.3)).toBe(0.3)
+    expect(remapped(undefined)).toBeUndefined()
   })
 
   // oxfmt-ignore
@@ -263,6 +279,26 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges([bar(), y2_srs])).toMatchObject({ y: [0, 2], y2: [-4, 0] })
   })
 
+  // Error bars reach past their tips, so the auto value range takes their ends in: per bar in
+  // overlay/grouped mode, from the stack's cumulative value when stacked, on x for horizontal
+  // bars, and across 0 when an error crosses the baseline
+  // oxfmt-ignore
+  test.each([
+    [`overlay`, [bar({ y: [3, 4], y_error: 1 })], {}, `y`, [0, 5]],
+    [`grouped, per-bar array`, [bar({ y: [3, 4], y_error: [2.5, 0.5] }), bar({ y: [1, 1] })], { mode: `grouped` }, `y`, [0, 5.5]],
+    [`stacked: on the cumulative value`, [bar({ y: [3, 4], y_error: 0.5 }), bar({ y: [2, 1], y_error: [1, 2] })], { mode: `stacked` }, `y`, [0, 7]],
+    [`stacked line series do not stack`, [bar({ y: [3, 4] }), bar({ y: [5, 5], render_mode: `line`, y_error: 1 })], { mode: `stacked` }, `y`, [0, 6]],
+    [`negative, asymmetric`, [bar({ y: [-3, -4], y_error: { lower: 2, upper: 1 } })], {}, `y`, [-6, 0]],
+    [`stacked negatives`, [bar({ y: [-3, -4] }), bar({ y: [-2, -1], y_error: { lower: 1, upper: 0 } })], { mode: `stacked` }, `y`, [-6, 0]],
+    [`error crossing the baseline`, [bar({ y: [1, 2], y_error: 3 })], {}, `y`, [-2, 5]],
+    [`horizontal bars range x`, [bar({ y: [3, 4], y_error: 2 })], { orientation: `horizontal` }, `x`, [0, 6]],
+    [`non-finite errors count as 0`, [bar({ y: [3, 4], y_error: [NaN, Infinity] })], {}, `y`, [0, 4]],
+    // 10 - 50 has no log image, so the data's own minimum stays; 100 + 900 reaches 1000
+    [`log axis ignores error ends <= 0`, [bar({ y: [10, 100], y_error: [50, 900] })], { axes: { y: { scale_type: `log` } } }, `y`, [10, 1000]],
+  ] as const)(`y_error widens the value range: %s`, (_desc, series, overrides, axis, expected) => {
+    expect(auto_ranges(series, overrides)[axis]).toEqual(expected)
+  })
+
   test(`non-finite pairs do not affect category or stacked value ranges`, () => {
     const series = [bar({ x: [0, 100], y: [2, NaN] }), bar({ x: [0, 100], y: [3, Infinity] })]
     const result = auto_ranges(series, { mode: `stacked` })
@@ -350,6 +386,36 @@ describe(`compute_group_info`, () => {
     for (const mode of [`overlay`, `stacked`] as const) {
       expect(compute_group_info(series, mode)).toEqual({ bar_series_indices: [] })
     }
+  })
+})
+
+describe(`bar_error_path`, () => {
+  const error_path = (overrides: Partial<Parameters<typeof bar_error_path>[0]> = {}) =>
+    bar_error_path({
+      series: { x: [0, 1, 2], y: [2, -1, 3], y_error: { lower: 1, upper: [0.5, 0, 0] } },
+      indices: [0, 1, 2],
+      tip: (idx) => [2, -1, 3][idx],
+      cat_px: (idx) => 10 * idx,
+      val_scale: scale_by(100),
+      vertical: true,
+      cap: 4,
+      ...overrides,
+    })
+
+  test(`draws one capped bar per tip along the value axis`, () => {
+    expect(error_path()).toBe(
+      `M-4,100H4M0,100V250M-4,250H4` + // tip 2: [2 - 1, 2 + 0.5]
+        `M6,-200H14M10,-200V-100M6,-100H14` + // tip -1: [-2, -1]
+        `M16,200H24M20,200V300M16,300H24`, // tip 3: [2, 3]
+    )
+    // horizontal bars run the span along x
+    expect(error_path({ vertical: false, indices: [0] })).toBe(`M100,-4V4M100,0H250M250,-4V4`)
+  })
+
+  test(`skips zero errors, non-finite tips and series without y_error`, () => {
+    const series: NumericBarSeries = { x: [0, 1], y: [2, NaN], y_error: [0, 1] }
+    expect(error_path({ series, indices: [0, 1], tip: (idx) => series.y[idx] })).toBe(``)
+    expect(error_path({ series: { x: [0], y: [2] } })).toBe(``)
   })
 })
 

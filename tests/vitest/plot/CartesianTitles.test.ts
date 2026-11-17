@@ -3,7 +3,7 @@ import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import { place_outside_decorations } from '#lib/plot/core/decorations/outside.js'
-import { calc_auto_padding, DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
+import { compute_auto_padding, DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
 import { resolve_plot_title } from '#lib/plot/core/plot-title.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -81,7 +81,7 @@ describe(`Cartesian plot titles`, () => {
     mock_text_measurement()
     const width = 400
     const height = 300
-    const axis_pad = calc_auto_padding({
+    const axis_pad = compute_auto_padding({
       width,
       padding: {},
       default_padding: { t: 0, r: 0, b: 0, l: 0 },

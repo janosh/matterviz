@@ -24,7 +24,7 @@ import type {
   PointStyle,
   StyleOverrides,
 } from '#lib/plot/core/types.js'
-import { assert_series_lengths, has_marker } from '#lib/plot/core/types.js'
+import { assert_series_lengths, has_marker, is_numeric_column } from '#lib/plot/core/types.js'
 
 // A colour/size value a scale can map: NaN, ±Infinity and null fall back to the series style
 // like a missing value (d3 scales map NaN to undefined: a black marker at the default size)
@@ -69,7 +69,13 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     // Missing series yield no points, and empty series are dropped when filtering
     if (!data_series) continue
     const { x: x_values, y: y_values, color_values, size_values, point_ids } = data_series
-    if (!Array.isArray(x_values) || !Array.isArray(y_values)) continue
+    // Untyped (Python/JSON) hosts can send anything; skipping such a series hid the mistake
+    if (!is_numeric_column(x_values) || !is_numeric_column(y_values)) {
+      const name = data_series.id ?? data_series.label ?? series_idx
+      throw new TypeError(
+        `Series ${JSON.stringify(name)}: x and y must be arrays or typed arrays, got ${Object.prototype.toString.call(x_values)} and ${Object.prototype.toString.call(y_values)}`,
+      )
+    }
     assert_series_lengths(data_series, series_idx)
     if (!(data_series.visible ?? true)) continue
 
@@ -135,9 +141,9 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
 // drawn (materialize_series_points drops it), so neither coordinate nor its error bar may widen
 // an axis. The masked copies are made at the first gap, so gap-free layers come back as given.
 export function drawn_xy(
-  xs: readonly number[],
-  ys: readonly number[],
-): { x: readonly number[]; y: readonly number[]; n_drawn: number } {
+  xs: ArrayLike<number>,
+  ys: ArrayLike<number>,
+): { x: ArrayLike<number>; y: ArrayLike<number>; n_drawn: number } {
   let masked: { x: number[]; y: number[] } | null = null
   let n_drawn = 0
   for (let idx = 0; idx < xs.length; idx++) {
@@ -145,7 +151,7 @@ export function drawn_xy(
       n_drawn++
       continue
     }
-    masked ??= { x: xs.slice(), y: ys.slice() }
+    masked ??= { x: Array.from(xs), y: Array.from(ys) }
     masked.x[idx] = NaN
     masked.y[idx] = NaN
   }
@@ -458,7 +464,7 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
 
 // Strict ordering enables bounded spline context. Duplicate/non-finite x values keep
 // their original full path because d3 can coalesce those vertices internally.
-export const strict_x_direction = (values: readonly number[]): -1 | 0 | 1 => {
+export const strict_x_direction = (values: ArrayLike<number>): -1 | 0 | 1 => {
   let previous = values[0]
   if (values.length < 2 || !Number.isFinite(previous)) return 0
   const direction = values[1] > previous ? 1 : -1

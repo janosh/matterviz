@@ -228,11 +228,7 @@
     for (const { series_data: srs } of selected_series_entries) {
       const extent = srs.x_axis === `x2` ? x2_extent : x1_extent
       const previous_count = extent.n_finite
-      const { values, weights } = srs
-      const counted = weights
-        ? values.filter((_, idx) => Number.isFinite(weights[idx]))
-        : values
-      accumulate_extent(extent, counted)
+      accumulate_extent(extent, srs.values, srs.weights)
       has_y2_points ||= srs.y_axis === `y2` && extent.n_finite > previous_count
     }
     return { x1_extent, x2_extent, has_y2_points }

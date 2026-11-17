@@ -171,14 +171,16 @@
   // Long-tail folding runs before layout, so d3-sankey only sees the graph the user looks at.
   // Invalid graphs (cycles, unknown or clashing node refs) from either step render an error
   // message in place of the diagram instead of crashing the host page.
-  const as_error = (err: unknown) => ({ nodes: [], links: [], error: to_error(err).message })
-  let folded = $derived.by(() => {
+  const attempt = <Result extends object>(compute: () => Result) => {
     try {
-      return { error: null, ...bucket_sankey_data(colored_data, { min_fraction, max_links }) }
+      return { error: null, ...compute() }
     } catch (err) {
-      return as_error(err)
+      return { nodes: [], links: [], error: to_error(err).message }
     }
-  })
+  }
+  let folded = $derived(
+    attempt(() => bucket_sankey_data(colored_data, { min_fraction, max_links })),
+  )
   let bucketed_data: SankeyData<Metadata> = $derived(folded)
   // Indexed by the folded graph's node_idx, which is what the layout reports; reading
   // the pre-fold arrays here attached colors and metadata to the wrong records
@@ -186,25 +188,21 @@
     bucketed_data.nodes.map((node, idx) => node.color ?? plot_color(idx)),
   )
 
-  let layout = $derived.by(() => {
-    if (folded.error) return { nodes: [], links: [], error: folded.error }
-    try {
-      return {
-        error: null,
-        ...compute_sankey_layout(bucketed_data, {
-          width: inner_width,
-          height: inner_height,
-          node_width,
-          node_padding,
-          node_align,
-          orientation,
-          iterations,
-        }),
-      }
-    } catch (err) {
-      return as_error(err)
-    }
-  })
+  let layout = $derived(
+    folded.error
+      ? folded
+      : attempt(() =>
+          compute_sankey_layout(bucketed_data, {
+            width: inner_width,
+            height: inner_height,
+            node_width,
+            node_padding,
+            node_align,
+            orientation,
+            iterations,
+          }),
+        ),
+  )
 
   // node_idx -> positioned node: the layout drops orphans, so positions are sparse in node_idx
   let node_by_idx = $derived(new Map(layout.nodes.map((node) => [node.node_idx, node])))

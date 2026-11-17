@@ -118,7 +118,7 @@
     void invalidate_text_metrics_after_fonts_ready().then(resolve_rendered_font, () => {})
     return () => (mounted = false)
   })
-  // Resolved through the same helper calc_auto_padding uses (which also formats the labels), so
+  // Resolved through the same helper compute_auto_padding uses (which also formats the labels), so
   // the band reserved for these labels always matches the angle they actually render at.
   const tick_layout = $derived(
     resolve_tick_layout(
@@ -150,7 +150,7 @@
   // Same wrap width AxisLabel gets below, so both resolve the same line count
   const title_wrap_width = $derived(axis_title_wrap_width(is_x, is_x ? plot_w : plot_h))
   // Outside x-axis titles move past the rendered tick-label band. AxisLabel centers its block
-  // on the title point, which calc_auto_padding reserves for the first line only, so a wrapped
+  // on the title point, which compute_auto_padding reserves for the first line only, so a wrapped
   // title is pushed outward by the extra lines instead of climbing into the tick labels.
   const title_shift = $derived.by(() => {
     if (!is_x) return 0

@@ -97,11 +97,11 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   // Shared legend/visibility identity for several drawing series. hidden_series uses this
   // key when supplied; each drawing still needs its own unique id. Labels alone never group series.
   legend_id?: string | number
-  x: readonly number[]
-  y: readonly number[]
+  x: NumericColumn // plain or typed array, as every numeric column below
+  y: NumericColumn
   // Original values for transformed series, exposed to hover handlers alongside y.
   // When present, raw_y must have the same one-to-one alignment as x and y.
-  raw_y?: readonly number[]
+  raw_y?: NumericColumn
   // Extra paths rendered behind the main line without becoming independent semantic series.
   line_underlays?: Pick<DataSeries<Metadata>, `x` | `y` | `line_style`>[]
   // Optional marker display type override for this specific series
@@ -146,6 +146,14 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   // stretches in one series draw as one path (a band across a path's branches)
   line_breaks?: readonly number[]
 }
+
+// A per-point column as series accept it: a plain array or a typed array (Float64Array, ...)
+export type ArrayColumn<Value> = ArrayLike<Value> & Iterable<Value>
+export type NumericColumn = ArrayColumn<number>
+
+// Runtime check for a NumericColumn (DataView excluded: it is a view but holds no elements)
+export const is_numeric_column = (value: unknown): value is ArrayLike<number> =>
+  Array.isArray(value) || (ArrayBuffer.isView(value) && !(value instanceof DataView))
 
 // Throw when arrays that are indexed in lockstep have different lengths. Absent arrays are skipped.
 export function assert_aligned_lengths(
@@ -507,8 +515,8 @@ export type BarMode = `overlay` | `stacked` | `grouped`
 
 export interface BarSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Omitted IDs use array positions; supply stable IDs for reordering or persisted visibility
-  x: readonly (number | string)[]
-  y: readonly number[]
+  x: ArrayColumn<number | string> // string categories, or numeric positions (a typed array too)
+  y: NumericColumn
   label?: string
   // Group name for organizing legend items. Series with the same legend_group
   // are displayed together under a collapsible header. Click the header to toggle
@@ -526,6 +534,10 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   metadata?: Metadata[] | Metadata
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
+  // Per-bar uncertainty along the value axis (e.g. std across seeds), drawn as a capped bar at
+  // each bar's tip (a stack's: the error of the cumulative value) or line point. Same shape as
+  // DataSeries.y_error: scalar, per-bar array, or asymmetric { lower, upper } magnitudes.
+  y_error?: ErrorValues
   // Specify which x-axis to use: 'x' (bottom, default) or 'x2' (top)
   x_axis?: `x` | `x2`
   // Specify which y-axis to use: 'y' (left, default) or 'y2' (right)

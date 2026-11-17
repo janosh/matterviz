@@ -123,20 +123,23 @@ describe(`filter_series_to_ranges`, () => {
     expect(result.filtered_data.map((point) => point.x)).toEqual([1])
   })
 
-  test(`rejects NaN range bounds; tolerates missing series arrays`, () => {
+  test(`rejects NaN range bounds; skips missing series, throws on missing arrays`, () => {
     expect(
       filter_to_ranges([{ x: [-1, 1], y: [2, 2], markers: `points` }], {
         ...ranges,
         x: [0, NaN],
       }),
     ).toEqual([])
-    const result = filter_to_ranges(
-      [undefined, { y: [1] }, { x: [1] }, { x: [1], y: [4] }] as unknown as DataSeries[],
-      ranges,
-    )
+    const result = filter_to_ranges([undefined, { x: [1], y: [4] }], ranges)
     expect(result).toHaveLength(1)
     expect(result[0].filtered_data.map((point) => [point.x, point.y])).toEqual([[1, 4]])
-    expect(result[0].orig_series_idx).toBe(3)
+    expect(result[0].orig_series_idx).toBe(1)
+    // a series missing x or y is a caller bug: skipping it silently hid the mistake
+    for (const broken of [{ y: [1] }, { x: [1] }]) {
+      expect(() => filter_to_ranges([broken] as unknown as DataSeries[], ranges)).toThrow(
+        `Series 0: x and y must be arrays or typed arrays, got`,
+      )
+    }
   })
 
   test.each<[string, DataSeries, string, string?]>([
