@@ -60,7 +60,7 @@ export const parse_pdb = (content: string): AnyStructure => {
   const all_lines = content.split(/\r?\n/)
   // `END` terminates a PDB entry, and files get concatenated (VMD multi-frame output, docking
   // ensembles, `cat a.pdb b.pdb`). Only the first entry is parsed, as parse_mol does for
-  // `$$$$`, so entries' atoms and CONECTs never fuse. MODEL/ENDMDL is counted separately below.
+  // `$$$$`, so entries' atoms and CONECT records never fuse. MODEL/ENDMDL is counted separately below.
   const end_idx = all_lines.findIndex(
     (line) => line.slice(0, 6).trim().toUpperCase() === `END`,
   )
