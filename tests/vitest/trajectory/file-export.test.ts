@@ -124,7 +124,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
   test(`round-trips per-atom vectors and frame scalars through parse and export`, () => {
     const source = [
       `2`,
-      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T bader="0.1 -0.2 0.3 -0.2" gaps="1 2" lone="_JSON [7]"`,
+      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T bader="0.1 -0.2 0.3 -0.2" gaps="1 2" lone="_JSON [7]" virial="_JSON [1,2,3,4,5,6,7,8,9]"`,
       `Si 0 0 0 0.1 0.2 0.3 1e-7 2 3 0.25`,
       `O 1 1 1 -0.1 -0.2 -0.3 4 5 6 -0.5`,
     ].join(`\n`)
@@ -147,6 +147,8 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
       bader: [0.1, -0.2, 0.3, -0.2],
       gaps: [1, 2],
       lone: [7],
+      // a flat 9-vector under a 3x3 key stays flat (plain text would read back as a matrix)
+      virial: [1, 2, 3, 4, 5, 6, 7, 8, 9],
     })
     expect(text).toContain(`lone="_JSON [7]"`)
   })

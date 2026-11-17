@@ -55,8 +55,10 @@ const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 // scalar, as ASE writes one), or a 3x3 matrix as ASE writes one: column-major for its 3x3 keys
 // (stress, virial), JSON for any other; undefined for anything else
 function extxyz_array_value(key: string, value: unknown): string | undefined {
+  // plain text would read back as a scalar (1 value) or as a 3x3 matrix (9 values of a 3x3 key)
+  const ambiguous = (length: number) => length === 1 || (length === 9 && ASE_3X3_KEYS.has(key))
   if (Array.isArray(value) && value.length > 0 && value.every(Number.isFinite))
-    return value.length === 1 ? `_JSON ${JSON.stringify(value)}` : value.join(` `)
+    return ambiguous(value.length) ? `_JSON ${JSON.stringify(value)}` : value.join(` `)
   if (!is_finite_matrix3x3(value)) return undefined
   if (!ASE_3X3_KEYS.has(key)) return `_JSON ${JSON.stringify(value)}`
   return [0, 1, 2].flatMap((col) => value.map((row) => row[col])).join(` `)
