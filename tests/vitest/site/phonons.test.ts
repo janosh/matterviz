@@ -231,14 +231,19 @@ describe(`Phonon Module Tests`, () => {
     },
   )
 
-  it(`lazy per-material loading groups every fixture and matches the eager maps`, async () => {
-    const keys = phonon_fixture_groups.flatMap((group) => group.keys)
-    expect(keys.toSorted()).toEqual(Object.keys(phonon_data).toSorted())
-    const fixtures = await load_phonon_fixtures(keys)
-    expect(fixtures.map(({ bands }) => bands)).toEqual(keys.map((key) => phonon_bands[key]))
-    expect(fixtures.map(({ dos }) => dos)).toEqual(keys.map((key) => phonon_dos[key]))
-    await expect(load_phonon_fixtures([`mp-0-Xx-pbe`])).rejects.toThrow(
-      /Unknown phonon fixture mp-0-Xx-pbe/,
-    )
-  })
+  // dynamically imports every fixture file: cold module transforms on a busy CI shard took >5 s
+  it(
+    `lazy per-material loading groups every fixture and matches the eager maps`,
+    { timeout: 30_000 },
+    async () => {
+      const keys = phonon_fixture_groups.flatMap((group) => group.keys)
+      expect(keys.toSorted()).toEqual(Object.keys(phonon_data).toSorted())
+      const fixtures = await load_phonon_fixtures(keys)
+      expect(fixtures.map(({ bands }) => bands)).toEqual(keys.map((key) => phonon_bands[key]))
+      expect(fixtures.map(({ dos }) => dos)).toEqual(keys.map((key) => phonon_dos[key]))
+      await expect(load_phonon_fixtures([`mp-0-Xx-pbe`])).rejects.toThrow(
+        /Unknown phonon fixture mp-0-Xx-pbe/,
+      )
+    },
+  )
 })
