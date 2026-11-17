@@ -9,7 +9,7 @@ export const BOHR_TO_ANGSTROM = 0.529177210544
 export const HARTREE_TO_EV = 27.211386245981
 
 // Exact by SI definition; shared by the phonon unit table (spectral/frequency-units.ts) and
-// the X-ray wavelength math (xrd/calc-xrd.ts)
+// the X-ray wavelength math (xrd/compute-xrd.ts)
 export const PLANCK_J_S = 6.62607015e-34 // J*s
 export const ELEMENTARY_CHARGE_C = 1.602176634e-19 // C (numerically also 1 eV in J)
 export const SPEED_OF_LIGHT_M_S = 299792458 // m/s
