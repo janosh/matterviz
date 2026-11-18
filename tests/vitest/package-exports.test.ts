@@ -356,6 +356,7 @@ describe(`package.json exports`, () => {
           `structure_to_json_str`,
           `structure_to_poscar_str`,
           `structure_to_xyz_str`,
+          `symmetrized_cif_unavailable_reason`,
           `xyz_export_unavailable_reason`,
         ].toSorted(),
       )
