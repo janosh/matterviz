@@ -929,7 +929,7 @@ You can position labels in different directions relative to each point:
 
 ## Interactive Log-Scaled Axes
 
-Log scales for data spanning many orders of magnitude. Use the checkboxes to switch X and Y between linear and log; power laws become straight lines on a log-log plot.
+Log scales for data spanning many orders of magnitude. Use the checkboxes to switch X and Y between linear and log; power laws become straight lines on a log-log plot. Log axes draw unlabeled minor ticks at 2-9 × each decade (thinned over many decades); set `minor_ticks: false` on an axis to hide them.
 
 ```svelte example
 <script lang="ts">
@@ -1105,6 +1105,84 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
     Y: {y_formatted || coord_y.toPrecision(3)}
   {/snippet}
 </ScatterPlot>
+```
+
+## Derived Secondary Axis
+
+`x2_axis.derive = { forward, inverse }` labels the top axis with a function of the bottom one, no extra series needed. Ticks are nice values of the derived quantity, placed where `inverse` maps them, so decreasing maps like photon energy to wavelength work too. Pick a pair below.
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  const hc = 1239.84198 // eV nm
+  const cu_ka = 1.5406 // Å
+  const examples = {
+    'Energy → wavelength': {
+      x: { label: `Photon energy (eV)`, range: [1.5, 6] },
+      x2: {
+        label: `Wavelength (nm)`,
+        forward: (energy) => hc / energy,
+        inverse: (nm) => hc / nm,
+      },
+      // two Gaussian absorption bands
+      curve: (energy) =>
+        Math.exp(-(((energy - 2.4) / 0.25) ** 2)) +
+        0.6 * Math.exp(-(((energy - 4.6) / 0.4) ** 2)),
+      y_label: `Absorbance`,
+    },
+    '2θ → d-spacing (Cu Kα)': {
+      x: { label: `2θ (°)`, range: [15, 90] },
+      x2: {
+        label: `d (Å)`,
+        forward: (two_theta) => cu_ka / (2 * Math.sin((two_theta * Math.PI) / 360)),
+        inverse: (d_spacing) => (360 / Math.PI) * Math.asin(cu_ka / (2 * d_spacing)),
+      },
+      curve: (two_theta) =>
+        [28.4, 47.3, 56.1, 69.1, 76.4, 88.0].reduce(
+          (sum, peak, idx) =>
+            sum + Math.exp(-(((two_theta - peak) / 0.3) ** 2)) / (1 + idx / 2),
+          0,
+        ),
+      y_label: `Intensity`,
+    },
+    'T → 1000/T (Arrhenius)': {
+      x: { label: `Temperature (K)`, range: [300, 1200] },
+      x2: {
+        label: `1000 / T (1/K)`,
+        forward: (temp) => 1000 / temp,
+        inverse: (inv) => 1000 / inv,
+      },
+      curve: (temp) => 1e3 * Math.exp(-0.5 / (8.617e-5 * temp)),
+      y_label: `Rate (1/s)`,
+    },
+  }
+  let selected = $state(`Energy → wavelength`)
+  const example = $derived(examples[selected])
+  const series = $derived.by(() => {
+    const [lo, hi] = example.x.range
+    const x = Array.from({ length: 300 }, (_, idx) => lo + ((hi - lo) * idx) / 299)
+    return [{ x, y: x.map(example.curve), markers: `line`, label: example.y_label }]
+  })
+</script>
+
+<select bind:value={selected}>
+  {#each Object.keys(examples) as name (name)}
+    <option value={name}>{name}</option>
+  {/each}
+</select>
+
+<ScatterPlot
+  {series}
+  x_axis={example.x}
+  x2_axis={{
+    label: example.x2.label,
+    derive: { forward: example.x2.forward, inverse: example.x2.inverse },
+  }}
+  y_axis={{ label: example.y_label, scale_type: selected.startsWith(`T`) ? `log` : `linear` }}
+  legend={null}
+  style="height: 400px"
+/>
 ```
 
 ## Arcsinh Scale: Handling Negative Values and Wide Ranges

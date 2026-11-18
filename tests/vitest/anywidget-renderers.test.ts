@@ -34,6 +34,9 @@ vi.mock(`matterviz`, async () => {
   return {
     ...Object.fromEntries(stubs),
     volume_from_json: (raw: unknown) => raw,
+    // binary envelopes dispatch to their own decoders (real ones: anywidget-binary.test.ts)
+    volume_from_binary: (raw: unknown) => ({ binary_volume: raw }),
+    trajectory_from_binary: (value: unknown) => ({ binary_run_of: value }),
     is_plain_object,
     set_moyo_wasm_source,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
@@ -214,6 +217,11 @@ describe(`structure wiring`, () => {
     [`single object`, `density`, [`density`]],
     [`array`, [`density`, `spin`], [`density`, `spin`]],
     [`unset`, null, undefined],
+    [
+      `binary envelope beside JSON`,
+      [{ format: `matterviz-binary-v1`, kind: `volume` }, `density`],
+      [{ binary_volume: { format: `matterviz-binary-v1`, kind: `volume` } }, `density`],
+    ],
   ] as const)(`normalizes %s volumetric_data`, (_shape, raw, expected) => {
     const model = new MockModel({ widget_type: `structure`, volumetric_data: raw })
     expect(run_widget(`structure`, model).read().volumetric_data).toEqual(expected)
@@ -291,6 +299,10 @@ describe(`widget config wiring`, () => {
     })
     const stub = run_widget(`trajectory`, model)
     expect(stub.read().trajectory).toEqual({ run_of: payload })
+    const envelope = { format: `matterviz-binary-v1`, kind: `trajectory`, arrays: {} }
+    model.push_from_python(`trajectory`, envelope)
+    flushSync()
+    expect(stub.read().trajectory).toEqual({ binary_run_of: envelope })
     expect(stub.read().source).toBe(`/a.xyz`)
     expect(`data_url` in stub.read()).toBe(false)
     model.push_from_python(`trajectory`, null)

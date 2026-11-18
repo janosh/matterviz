@@ -19,6 +19,86 @@ The widgets are the components listed in `src/elements/components.ts`, the regis
 
 The bundle injects MatterViz's base styles (`app.css`) into the notebook page, or into the shadow root a host renders the widget in. They are scoped (`@scope`) to the widget elements by the same build step as the custom elements' (`src/elements/scoped-css.ts`), so the page's own inputs, buttons and tables keep their styles. Outside that scope the sheet only defines the theme tokens (`--text-color`, `--surface-bg`, ...) on `:root` at zero specificity, where any page rule setting them wins.
 
+## Binary array transfer
+
+The `trajectory` trait and each entry of `volumetric_data` accept, besides nested JSON, a `matterviz-binary-v1` envelope: a small JSON object whose heavy arrays travel as raw buffers (ipywidgets/anywidget extract any `bytes`/`memoryview` nested in a synced trait into binary comm buffers and hand them to JS as `DataView`s). For a 1000-frame x 1000-atom trajectory that is 11 MB of float32 instead of 97 MB of JSON text, decoded in ~8 ms instead of ~1 s. The `format` tag alone selects the decoder (`trajectory_from_binary`, `volume_from_binary`), so a malformed envelope throws a clear error and never falls back to the JSON path.
+
+```ts
+{
+  format: 'matterviz-binary-v1',
+  kind: 'trajectory' | 'volume',
+  arrays: { [name]: { dtype, shape: number[], data: DataView | ArrayBuffer } },
+  ...kind-specific JSON fields
+}
+```
+
+- **Arrays**: C-contiguous, little-endian. `dtype` is one of `float32 float64 int8 int16 int32 uint8 uint16 uint32` (cast `int64` steps to `int32` or `float64`). `data` must hold exactly `prod(shape) * itemsize` bytes. Buffers aligned to the item size are viewed in place (zero-copy); a misaligned one (whether the host's `DataView` offsets are aligned depends on how it splits the comm message) is copied once. float64 positions/grids feed matterviz unchanged; float32 ones are widened to float64 in one pass (half the wire size, one copy).
+- **`kind: 'trajectory'`** arrays: `positions` `[n_frames, n_atoms, 3]` float Cartesian Å (required); `numbers` `[n_atoms]` integer atomic numbers (required, fixed atom order); `lattice` `[3, 3]` (fixed cell) or `[n_frames, 3, 3]` float, rows a, b, c (optional); `steps` `[n_frames]` (optional, default 0..n_frames-1). Any other array is a per-atom vector channel if shaped `[n_frames, n_atoms, 3]` (name it `force`, `velocity`, ... as the site property it becomes) or a per-frame scalar if shaped `[n_frames]` (`energy`, `temperature`, ...: plot rows and frame metadata); other shapes are rejected. JSON fields: `pbc` (3 booleans, needs a lattice, default all true), `metadata` (object), `time_step` (`{ value, unit }`). Positions, vectors and cells stay flat: each frame is encoded on read into a numeric MD frame, so no per-site JS objects are built beyond the frame-0 preview.
+- **`kind: 'volume'`** arrays: exactly one, `values` `[nx, ny, nz]` float in C order (z fastest). JSON fields as for the JSON volume: `id`, `lattice` (3x3), `origin` (Vec3), `periodic`, and optional `label`, `units`, `signed`, `source`; dims come from the `values` shape.
+
+Python side (pymatviz), with numpy:
+
+```python
+import numpy as np
+
+BINARY_FORMAT = "matterviz-binary-v1"
+
+
+def binary_array(values: np.typing.ArrayLike, dtype: str) -> dict:
+    """Encode an array as a matterviz-binary-v1 entry (C order, little-endian)."""
+    arr = np.ascontiguousarray(values, dtype=np.dtype(dtype).newbyteorder("<"))
+    return {"dtype": dtype, "shape": list(arr.shape), "data": memoryview(arr).cast("B")}
+
+
+def trajectory_payload(traj: "pymatgen.core.trajectory.Trajectory") -> dict:
+    """Binary envelope for the trajectory trait (Cartesian positions, per-frame cells)."""
+    frames = list(traj)  # Structures
+    payload = {
+        "format": BINARY_FORMAT,
+        "kind": "trajectory",
+        "arrays": {
+            "positions": binary_array([s.cart_coords for s in frames], "float32"),
+            "numbers": binary_array(frames[0].atomic_numbers, "uint8"),
+            "lattice": binary_array([s.lattice.matrix for s in frames], "float64"),
+            "steps": binary_array(np.arange(len(frames)), "int32"),
+        },
+        "pbc": list(frames[0].lattice.pbc),
+    }
+    forces = [props.get("forces") for props in traj.frame_properties or []]
+    if forces and all(frame_forces is not None for frame_forces in forces):
+        payload["arrays"]["force"] = binary_array(forces, "float32")
+    return payload
+
+
+def volume_payload(grid: np.ndarray, lattice: np.ndarray, *, vol_id: str, units: str | None) -> dict:
+    """Binary envelope for one volumetric_data entry (grid indexed [ix, iy, iz])."""
+    return {
+        "format": BINARY_FORMAT,
+        "kind": "volume",
+        "arrays": {"values": binary_array(grid, "float32")},
+        "id": vol_id,
+        "lattice": np.asarray(lattice).tolist(),
+        "origin": [0.0, 0.0, 0.0],
+        "periodic": True,
+        "units": units,
+    }
+
+
+# widget.trajectory = trajectory_payload(traj)  # Dict trait tagged sync=True
+# widget.volumetric_data = [volume_payload(chgcar.data["total"] / chgcar.structure.volume, ...)]
+```
+
+Benchmarks (Node 26, Apple arm64, decode = `JSON.parse` of the trait text + the JSON decoder vs the binary decoder; retained = heap + ArrayBuffer growth after GC):
+
+| payload                       | wire size   | decode                                                                 | retained                 | read all frames    |
+| ----------------------------- | ----------- | ---------------------------------------------------------------------- | ------------------------ | ------------------ |
+| trajectory 1000 x 1000, JSON  | 97 MB text  | 960-1030 ms (350 of it `JSON.parse`, peaking 207 MB of parsed objects) | 49 MB                    | 0 ms (pre-encoded) |
+| trajectory, binary float32    | 11 MB       | 7-8 ms                                                                 | 24 MB (float64 widening) | 26 ms              |
+| trajectory, binary float64    | 23 MB       | 4-5 ms                                                                 | ~0 MB (zero-copy)        | 27 ms              |
+| volume 200³, JSON nested grid | 150 MB text | 296-333 ms                                                             | 61 MB                    |                    |
+| volume 200³, binary float32   | 31 MB       | 17-25 ms                                                               | 61 MB (float64 widening) |                    |
+| volume 200³, binary float64   | 61 MB       | 13-25 ms                                                               | ~0 MB (zero-copy)        |                    |
+
 ## Bundle size
 
 Two large WASM dependencies are kept out of the inlined bundle (10.4 MB -> 3.4 MB),

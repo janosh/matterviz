@@ -33,6 +33,7 @@
   let {
     side,
     ticks,
+    minor_ticks = [],
     place,
     axis = {},
     pad,
@@ -52,6 +53,8 @@
   }: {
     side: Side
     ticks: number[]
+    // Unlabeled ticks drawn shorter and fainter than the major ones (log-axis decade fill)
+    minor_ticks?: number[]
     place: (value: number) => number // data value -> pixel for this axis
     axis?: AxisConfig
     pad: Required<Sides>
@@ -182,12 +185,14 @@
     if (side === `y`) return { x1: 0, x2: plot_w }
     return { x1: -plot_w, x2: 0 }
   })
-  const tick_mark = $derived.by(() => {
-    if (side === `x`) return { y1: 0, y2: inside ? -5 : 5 }
-    if (side === `x2`) return { y1: inside ? 0 : -5, y2: inside ? 5 : 0 }
-    if (side === `y`) return { x1: inside ? 0 : -5, x2: inside ? 5 : 0 }
-    return { x1: inside ? -5 : 0, x2: inside ? 0 : 5 }
-  })
+  const mark_of = (length: number) => {
+    if (side === `x`) return { y1: 0, y2: inside ? -length : length }
+    if (side === `x2`) return { y1: inside ? 0 : -length, y2: inside ? length : 0 }
+    if (side === `y`) return { x1: inside ? 0 : -length, x2: inside ? length : 0 }
+    return { x1: inside ? -length : 0, x2: inside ? 0 : length }
+  }
+  const tick_mark = $derived(mark_of(5))
+  const minor_tick_mark = $derived(mark_of(3))
 
   // With a domain: cull ticks whose pixel pos is off-plot and hide labels outside the domain
   const in_domain = (tick: number): boolean => !domain || in_range(tick, domain)
@@ -218,6 +223,20 @@
       pointer-events="none"
     />
   {/if}
+  {#each minor_ticks as minor_tick (minor_tick)}
+    {@const pos = place(minor_tick)}
+    {#if Number.isFinite(pos) && in_plot(pos)}
+      <line
+        class="minor-tick"
+        transform="translate({is_x ? pos : axis_x}, {is_x ? axis_y : pos})"
+        {...minor_tick_mark}
+        {stroke}
+        stroke-width="1"
+        stroke-opacity="0.5"
+        pointer-events="none"
+      />
+    {/if}
+  {/each}
   {#each tick_layout.visible_tick_indices as idx (idx)}
     {@const tick = ticks[idx]}
     {@const pos = tick_positions[idx]}

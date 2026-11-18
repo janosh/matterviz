@@ -8,6 +8,7 @@ import type { TrajectoryRun } from './run'
 import type { NumericFrame } from './frame'
 
 export * from './analysis'
+export { trajectory_from_binary } from './binary'
 export {
   group_atoms_by_element,
   unwrap_flat_positions,

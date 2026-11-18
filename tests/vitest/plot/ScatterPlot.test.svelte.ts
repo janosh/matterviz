@@ -2649,6 +2649,67 @@ describe(`ScatterPlot`, () => {
     expect(Math.max(...coords.map(Math.abs))).toBeLessThan(1000)
   })
 
+  test.each([
+    [`log axis default`, { scale_type: `log`, range: [1, 100] }, 16],
+    [`minor_ticks: false`, { scale_type: `log`, range: [1, 100], minor_ticks: false }, 0],
+    [`linear axis`, { range: [1, 100] }, 0],
+  ] satisfies [string, AxisConfig, number][])(
+    `y minor ticks: %s`,
+    async (_, y_axis, n_minor) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [1, 10, 100], y: [2, 20, 80] }],
+        x_axis: { range: [1, 100] },
+        y_axis,
+      })
+      const minors = plot.querySelectorAll(`.y-axis line.minor-tick`)
+      expect(minors).toHaveLength(n_minor)
+      // shorter and fainter than the major tick marks, and unlabeled (outside the .tick groups)
+      for (const line of minors) {
+        expect(line.getAttribute(`x1`)).toBe(`-3`)
+        expect(line.getAttribute(`stroke-opacity`)).toBe(`0.5`)
+        expect(line.closest(`.tick`)).toBeNull()
+      }
+    },
+  )
+
+  test(`derived x2 axis shows wavelength ticks above a photon-energy x axis`, async () => {
+    const hc = 1239.84198
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1.5, 3, 6], y: [1, 2, 3] }],
+      x_axis: { range: [1.5, 6], label: `Energy (eV)` },
+      x2_axis: {
+        label: `Wavelength (nm)`,
+        derive: { forward: (energy: number) => hc / energy, inverse: (nm: number) => hc / nm },
+      },
+    })
+    const x2_axis_ticks = [...plot.querySelectorAll(`.x2-axis .tick`)]
+    const labels = x2_axis_ticks.map((axis_tick) =>
+      axis_tick.querySelector(`text`)?.textContent?.trim(),
+    )
+    expect(x2_axis_ticks.length).toBeGreaterThanOrEqual(3)
+    // nice wavelengths (multiples of 100 nm) between 1240/6 and 1240/1.5
+    const values = labels.filter(Boolean).map((label) => Number(label?.replaceAll(`,`, ``)))
+    expect(values.every((nm) => nm % 100 === 0 && nm >= 206 && nm <= 827)).toBe(true)
+    // each wavelength sits where the x axis puts its photon energy: 400 nm at 3.0996 eV
+    const x_px = (axis_tick: Element) =>
+      Number(
+        /translate\((?<px>[-\d.]+)/.exec(axis_tick.getAttribute(`transform`) ?? ``)?.groups
+          ?.px,
+      )
+    const x_axis_ticks = [...plot.querySelectorAll(`.x-axis .tick`)]
+    const [x_lo, x_hi] = [x_axis_ticks[0], x_axis_ticks.at(-1)].map((axis_tick) => [
+      Number(axis_tick?.querySelector(`text`)?.textContent),
+      x_px(axis_tick as Element),
+    ])
+    const energy_px = (energy: number) =>
+      x_lo[1] + ((energy - x_lo[0]) / (x_hi[0] - x_lo[0])) * (x_hi[1] - x_lo[1])
+    for (const [idx, axis_tick] of x2_axis_ticks.entries()) {
+      expect(x_px(axis_tick)).toBeCloseTo(energy_px(hc / values[idx]), 6)
+    }
+    // the title renders with the axis although no series uses x2
+    expect(plot.querySelector(`.x2-axis`)?.textContent).toContain(`Wavelength (nm)`)
+  })
+
   const decorated_series = (): DataSeries[] => [
     { ...basic, label: `A`, color_values: basic.x },
     { ...basic, label: `B` },

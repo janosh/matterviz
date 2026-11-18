@@ -61,8 +61,9 @@
     {label_y}
     {pad}
     ticks={frame.ticks[side]}
+    minor_ticks={frame.minor_ticks[side]}
     place={frame.scales[side]}
-    domain={frame.ranges.current[side]}
+    domain={frame.axis_domains[side]}
     width={frame.width}
     height={frame.height}
     show_grid={display[`${side}_grid`]}
