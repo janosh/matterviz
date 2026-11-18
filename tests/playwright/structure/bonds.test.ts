@@ -21,6 +21,8 @@ import {
   webgl_on_ci_for_tagged,
   expect_canvas_changed,
   expect_canvas_changed_by,
+  open_settings_pane,
+  test_without_errors,
   zoom_wheel,
 } from '../helpers'
 
@@ -817,3 +819,35 @@ test.describe(`Bond component`, () => {
     })
   })
 })
+
+// Invalid pair cutoffs (min > max) reach every bond search of a real scene (bonds, boundary
+// image completion, whole molecules): the viewer keeps rendering with one notice and no
+// errors, and the cutoff row in the controls fixes the range, which clears the notice
+test_without_errors(
+  `invalid pair cutoffs keep the rendered viewer and its controls usable`,
+  { tag: `@webgl` },
+  async ({ page }, test_info) => {
+    const canvas = await goto_structure_test(page)
+    await set_scene_props(page, {
+      show_bonds: `always`,
+      bonding_strategy: `pair_cutoffs`,
+      bonding_options: { pair_cutoffs: { pair_cutoffs: { 'Cs-Cs': [6, 5] } } },
+    })
+    const pane = await open_settings_pane(page)
+    await pane.locator(`[data-key="keep_molecules_whole"] input[type="checkbox"]`).check()
+    await pane.locator(`[data-key="image_atom_completion"] select`).selectOption(`boundary`)
+    const notice = page.locator(`#test-structure .viewer-toast .toast-message`)
+    await expect(notice).toContainText(
+      `Invalid pair_cutoffs bonding option pair_cutoffs: 'Cs-Cs' must be [min, max]`,
+    )
+    await expect(canvas).toBeVisible()
+    const viewer = page.locator(`#test-structure`)
+    await viewer.screenshot({ path: test_info.outputPath(`invalid-cutoffs.png`) })
+    const max_input = pane.locator(`input[aria-label="Cs-Cs max (Å)"]`)
+    await max_input.fill(`7`)
+    await max_input.press(`Enter`)
+    await expect(notice).toHaveCount(0)
+    await expect(canvas).toBeVisible()
+    await viewer.screenshot({ path: test_info.outputPath(`fixed-cutoffs.png`) })
+  },
+)

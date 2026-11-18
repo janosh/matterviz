@@ -603,21 +603,34 @@ describe(`extract_volume_range`, () => {
   })
 
   // an over-budget source (100³ = 1M points) keeps its resolution in a crop that fits: the
-  // one-voxel peak at x index 1 vanished when the whole cell was coarsened to 79³ first
-  test(`a crop of an over-budget periodic grid meshes the source at native spacing`, () => {
-    const grid = make_grid(100, 100, 100, (idx_x) => (idx_x === 1 ? 1 : 0))
-    const volume = make_volume(grid, { lattice: cubic, periodic: true })
-    // oxfmt-ignore
-    const window = { range: [[0, 0.1], [0, 0.1], [0, 0.1]] as DisplayRange }
-    const { positions } = window_surface(volume, window, 0.9)
-    expect(positions.length).toBeGreaterThan(0)
-    const sample = create_volume_sampler(volume)
-    for (let idx = 0; idx < positions.length; idx += 3)
-      expect(sample([positions[idx], positions[idx + 1], positions[idx + 2]])).toBeCloseTo(
-        0.9,
-        5,
-      )
-  })
+  // one-voxel peak at x index 1 vanished when the whole cell was coarsened to 79³ first, and
+  // in crops starting between voxels resampled at 0.5/1.5/2.5 voxels (max 0.5, 0.6)
+  test.each([
+    [0, 0.1],
+    [0.005, 0.025],
+    [0.004, 0.104],
+  ])(
+    `a [%f, %f] x crop of an over-budget periodic grid meshes the source voxels`,
+    (lower, upper) => {
+      const grid = make_grid(100, 100, 100, (idx_x) => (idx_x === 1 ? 1 : 0))
+      const volume = make_volume(grid, { lattice: cubic, periodic: true })
+      // oxfmt-ignore
+      const range = [[lower, upper], [0, 0.1], [0, 0.1]] as DisplayRange
+      const { positions } = window_surface(volume, { range }, 0.9)
+      expect(positions.length).toBeGreaterThan(0)
+      const sample = create_volume_sampler(volume)
+      const to_frac = create_cart_to_frac(volume.lattice)
+      for (let idx = 0; idx < positions.length; idx += 3) {
+        const vertex: Vec3 = [positions[idx], positions[idx + 1], positions[idx + 2]]
+        expect(sample(vertex)).toBeCloseTo(0.9, 5)
+        // clipped to the crop, not the whole voxels around it
+        to_frac(vertex).forEach((frac, axis) => {
+          expect(frac).toBeGreaterThanOrEqual(range[axis][0] - 1e-6)
+          expect(frac).toBeLessThanOrEqual(range[axis][1] + 1e-6)
+        })
+      }
+    },
+  )
 
   // 1000 full-resolution copies of the 7616-triangle unit surface would be 7.6M
   test(`a large tiled window coarsens its unit grid to the triangle budget`, () => {

@@ -505,12 +505,10 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
   return cells
 }
 
-// Whether a (box) window holds at most MAX_GRID_POINTS samples at the source's density
-const window_fits = (volume: VolumeGrid, range: DisplayRange): boolean =>
-  range.reduce((prod, [lower, upper], axis) => {
-    const count = Math.round((upper - lower) * volume.dims[axis]) + 1
-    return prod * Math.max(2, count)
-  }, 1) <= MAX_GRID_POINTS
+// Whether voxel index spans [lo, hi] (inclusive, safe integers) hold at most MAX_GRID_POINTS
+const voxels_fit = (voxels: number[][]): boolean =>
+  voxels.flat().every(Number.isSafeInteger) &&
+  voxels.reduce((prod, [lower, upper]) => prod * (upper - lower + 1), 1) <= MAX_GRID_POINTS
 
 // A periodic grid trilinearly resampled to `dims` points per axis (z-fastest)
 export function resample_periodic(grid: ScalarGrid3D, dims: Vec3): ScalarGrid3D<Float64Array> {
@@ -545,13 +543,34 @@ export function prepare_geometry_grid(
   const in_budget = values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2)
   if (periodic) {
     const { range, frame = IDENTITY_3X3 } = window ?? { range: UNIT_CELL_RANGE }
-    // an over-budget source in a box window that fits at its own spacing (a crop): the window
-    // resampled at source density keeps the crossings that coarsening the whole cell loses
-    if (!in_budget && !window?.frame && window_fits(volume, range))
-      return prepare_geometry_grid(
-        { ...extract_volume_range(volume, range), periodic: false },
-        null,
-      )
+    // An over-budget source in a box window that fits at its own spacing (a crop) keeps its
+    // resolution: the whole voxels lo..hi + 1 around the crop, copied exactly and meshed as
+    // one periodic cell, clipped to the crop. Its wrap slab (hi + 1 back to lo) lies a whole
+    // voxel past the crop, so the clip drops it; coarsening the cell, or resampling a crop
+    // that starts between voxels, stepped over narrow crossings.
+    const voxels = range.map(([lower, upper], axis) => [
+      Math.floor(lower * dims[axis]),
+      Math.ceil(upper * dims[axis]) + 1,
+    ])
+    if (!in_budget && !window?.frame && voxels_fit(voxels)) {
+      const box = voxels.map((bounds, axis) =>
+        bounds.map((idx) => idx / dims[axis]),
+      ) as DisplayRange
+      const block = extract_volume_range(volume, box)
+      const counts = block.dims
+      const cell_range = range.map(([lower, upper], axis) =>
+        [lower, upper].map((bound) => (bound * dims[axis] - voxels[axis][0]) / counts[axis]),
+      ) as DisplayRange
+      return {
+        grid: block,
+        lattice: scale_lattice_matrix(
+          lattice,
+          counts.map((count, axis) => count / dims[axis]) as Vec3,
+        ),
+        origin: block.origin,
+        clip: { frame: IDENTITY_3X3, range: cell_range, cells: [[0, 0, 0]] },
+      }
+    }
     // read off the volume once: per-sample reads through a $state proxy are far slower
     const source = { values, dims: [...dims] as Vec3, order }
     const scale = Math.min(Math.cbrt(MAX_GRID_POINTS / values.length), 1)
