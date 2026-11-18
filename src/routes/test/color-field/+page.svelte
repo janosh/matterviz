@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Crystal } from '#lib'
-  import type { Matrix3x3 } from '#lib/math.js'
+  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { AtomColorField } from '#lib/structure/atom-color-field.js'
   import { cell_to_fractional } from '#lib/structure/cutaway.js'
@@ -19,19 +19,9 @@
   ]
   const structure: Crystal = {
     sites: [make_site(`C`, [0.5, 0.5, 0.5], [3, 3, 1.5], `C`)],
-    lattice: {
-      matrix,
-      pbc: [true, true, true],
-      a: 6,
-      b: 6,
-      c: 3,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 108,
-    },
+    lattice: { matrix, pbc: [true, true, true], ...compute_lattice_params(matrix) },
   }
-  const dims: [number, number, number] = [4, 4, 4]
+  const dims: Vec3 = [4, 4, 4]
   const colors = new Float32Array(dims[0] * dims[1] * dims[2] * 4)
   for (let offset = 0; offset < colors.length; offset += 4)
     colors.set([0.1, 0.3, 0.9, 0.3], offset) // straight RGB, density
@@ -50,7 +40,7 @@
     cell_surface_opacity: 0,
     show_cell_vectors: false,
     camera_projection: `orthographic` as const,
-    camera_direction: [0, 0, 1] as [number, number, number],
+    camera_direction: [0, 0, 1] as Vec3,
     gizmo: false,
   }
   const cases = [

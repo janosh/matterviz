@@ -708,7 +708,6 @@ describe(`scales`, () => {
     // a nice number: mantissa 1, 2, 2.5 or 5 times a power of ten (d3's linear tick steps
     // give multiples of those; check the tick is an integer multiple of a 1-2-5 step)
     const is_nice_multiple = (ticks: number[]) => {
-      if (ticks.length < 2) return true
       // descending derived domains (decreasing maps) tick in descending order
       const step = Math.abs(ticks[1] - ticks[0])
       const mantissa = step / 10 ** Math.floor(Math.log10(step))
@@ -756,10 +755,8 @@ describe(`scales`, () => {
     })
 
     test(`domain/range setters and copy act on the base preimage`, () => {
-      const scale = derived_scale(
-        scaleLinear().domain([1, 2]).range([0, 100]),
-        energy_to_wavelength,
-      )
+      const base = scaleLinear().domain([1, 2]).range([0, 100])
+      const scale = derived_scale(base, energy_to_wavelength)
       scale.domain([800, 400])
       expect(scale.domain().map((nm) => Math.round(nm))).toEqual([800, 400])
       scale.range([10, 20])
@@ -775,11 +772,8 @@ describe(`scales`, () => {
       const ticks = derived_scale(base, energy_to_wavelength, `log`).ticks()
       expect(ticks.map((tick) => Math.round(Math.log10(tick)))).toEqual([2, 3, 4, 5])
       // 1240 / 0 is not finite: no ticks rather than NaN positions
-      const at_zero = derived_scale(
-        scaleLinear().domain([0, 5]).range([0, 1]),
-        energy_to_wavelength,
-      )
-      expect(at_zero.ticks(5)).toEqual([])
+      const at_zero = scaleLinear().domain([0, 5]).range([0, 1])
+      expect(derived_scale(at_zero, energy_to_wavelength).ticks(5)).toEqual([])
     })
 
     // forward must be finite and monotonic over the whole x view, not just at its ends: a pole
@@ -802,31 +796,19 @@ describe(`scales`, () => {
       expect(scale.ticks(8)).toEqual([])
     })
 
-    test(`create_axis_scales builds a derived x2 over x, keeping x2's own range out of it`, () => {
+    test(`create_axis_scales builds a derived x2 over x, rejecting a time x axis`, () => {
+      const unit: Vec2 = [0, 1]
+      const ranges = { x: [250, 1000] as Vec2, x2: unit, y: unit, y2: unit }
+      const pad = { l: 10, r: 10, t: 10, b: 10 }
       const axes = { x: {}, x2: { derive: inverse_temperature }, y: {}, y2: {} }
-      const ranges = {
-        x: [250, 1000] as Vec2,
-        x2: [0, 1] as Vec2,
-        y: [0, 1] as Vec2,
-        y2: [0, 1] as Vec2,
-      }
-      const scales = create_axis_scales(axes, ranges, { l: 10, r: 10, t: 10, b: 10 }, 220, 100)
+      // x2's own range plays no part in the derived scale
+      const scales = create_axis_scales(axes, ranges, pad, 220, 100)
       expect(scales.x2.domain()).toEqual([4, 1])
       expect(scales.x2(2)).toBe(scales.x(500))
-    })
-
-    test(`create_axis_scales rejects a derived x2 over a time x axis`, () => {
-      const axes = {
-        x: { scale_type: `time` as const },
-        x2: { derive: linear_map },
-        y: {},
-        y2: {},
-      }
-      const range: Vec2 = [0, 1]
-      const ranges = { x: range, x2: range, y: range, y2: range }
-      expect(() =>
-        create_axis_scales(axes, ranges, { l: 0, r: 0, t: 0, b: 0 }, 100, 100),
-      ).toThrow(`x2_axis.derive needs a numeric x axis, got scale_type 'time'`)
+      const time_axes = { ...axes, x: { scale_type: `time` as const } }
+      expect(() => create_axis_scales(time_axes, ranges, pad, 100, 100)).toThrow(
+        `x2_axis.derive needs a numeric x axis, got scale_type 'time'`,
+      )
     })
   })
 

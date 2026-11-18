@@ -827,10 +827,12 @@ describe(`Export functionality`, () => {
       [x_val, 0.5 - y_val, z_val + 0.5],
     ]
     // n_rows: atom-site rows written (one per species of each asymmetric-unit site); hm: the
-    // H-M symbol, written only when the input is moyo's standard setting
+    // H-M symbol, written only when the input is moyo's standard setting; rows/absent: lines the
+    // CIF must (not) contain (labels, oxidation states of the written sites)
     // oxfmt-ignore
-    const cases: { name: string; lattice: Matrix3x3; sites: CaseSite[]; n_rows: number; hm?: string }[] = [
-      { name: `rock salt (standard setting)`, lattice: cubic_matrix(5.64), sites: rock_salt, n_rows: 2, hm: `F m -3 m` },
+    const cases: { name: string; lattice: Matrix3x3; sites: CaseSite[]; n_rows: number; hm?: string; rows?: RegExp[]; absent?: RegExp[] }[] = [
+      { name: `rock salt (standard setting)`, lattice: cubic_matrix(5.64), sites: rock_salt, n_rows: 2, hm: `F m -3 m`,
+        rows: [/^_atom_type_oxidation_number$/m, /^\S+ Na\+ 0\.00000000 0\.00000000 0\.00000000 1\.00000000$/m] },
       { name: `rock salt, primitive cell`, lattice: fcc_primitive_matrix(5.64), n_rows: 2,
         sites: [{ element: `Na`, abc: [0, 0, 0] }, { element: `Cl`, abc: [0.5, 0.5, 0.5] }] },
       { name: `rock salt, left-handed cell`, lattice: cubic_matrix(-5.64), sites: rock_salt, n_rows: 2 },
@@ -838,6 +840,7 @@ describe(`Export functionality`, () => {
         sites: rock_salt.flatMap(({ abc: [x_val, y_val, z_val], ...rest }) =>
           [0, 0.5].map((shift) => ({ ...rest, abc: [x_val / 2 + shift, y_val, z_val] as Vec3 }))) },
       { name: `wurtzite ZnO with labels`, lattice: hex_lattice, n_rows: 2, hm: `P 6_3 m c`,
+        rows: [/^Zn_a Zn /m, /^O_a O /m], absent: [/^Zn_b /m],
         sites: [
           { element: `Zn`, abc: [1 / 3, 2 / 3, 0], label: `Zn_a` }, { element: `Zn`, abc: [2 / 3, 1 / 3, 0.5], label: `Zn_b` },
           { element: `O`, abc: [1 / 3, 2 / 3, 0.38], label: `O_a` }, { element: `O`, abc: [2 / 3, 1 / 3, 0.88], label: `O_b` },
@@ -872,7 +875,7 @@ describe(`Export functionality`, () => {
 
     it.each(cases)(
       `$name: parse_cif regenerates every site`,
-      async ({ lattice, sites, n_rows, hm }) => {
+      async ({ lattice, sites, n_rows, hm, rows = [], absent = [] }) => {
         const structure = make_crystal(lattice, sites)
         const sym_data = await analyze_structure_symmetry(structure)
         const cif = structure_to_cif_str(structure, sym_data)
@@ -881,6 +884,8 @@ describe(`Export functionality`, () => {
         if (hm) expect(cif).toContain(`_space_group_name_H-M_alt '${hm}'`)
         else expect(cif).not.toContain(`_H-M_alt`)
         expect(cif.split(`_atom_site_occupancy\n`)[1].split(`\n`)).toHaveLength(n_rows)
+        for (const row of rows) expect(cif).toMatch(row)
+        for (const row of absent) expect(cif).not.toMatch(row)
 
         // split-partial sites (one position, several species) come back merged into one site
         const by_position = new Map<string, Site[`species`]>()
@@ -925,19 +930,6 @@ describe(`Export functionality`, () => {
       }
     })
 
-    it(`keeps labels, occupancies and oxidation states of the written sites`, async () => {
-      const [, , wurtzite] = [0, 0, cases[4]]
-      const structure = make_crystal(wurtzite.lattice, wurtzite.sites)
-      const cif = structure_to_cif_str(structure, await analyze_structure_symmetry(structure))
-      expect(cif).toMatch(/^Zn_a Zn /m)
-      expect(cif).toMatch(/^O_a O /m)
-      expect(cif).not.toMatch(/^Zn_b /m)
-      const salt = make_crystal(cubic_matrix(5.64), rock_salt)
-      const salt_cif = structure_to_cif_str(salt, await analyze_structure_symmetry(salt))
-      expect(salt_cif).toContain(`_atom_type_oxidation_number`)
-      expect(salt_cif).toMatch(/^\S+ Na\+ 0\.00000000 0\.00000000 0\.00000000 1\.00000000$/m)
-    })
-
     it.each([
       [`magmom`, { magmom: [0, 0, 1] }, `Magnetic moments need the P1 CIF`],
       [
@@ -951,24 +943,20 @@ describe(`Export functionality`, () => {
         },
         `ADPs) need the P1 CIF`,
       ],
-    ])(`%s sites are P1-only`, async (_, properties, reason) => {
+      [`all-zero magmom`, { magmom: [0, 0, 0] }, undefined], // no magnetic order to lose
+    ])(`%s sites: symmetrized CIF unavailable reason %s`, async (_, properties, reason) => {
       const structure = make_crystal(
         cubic_matrix(5.64),
         rock_salt.map((site) => ({ ...site, properties })),
       )
       const sym_data = await analyze_structure_symmetry(structure)
-      expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toContain(reason)
-      expect(() => structure_to_cif_str(structure, sym_data)).toThrow(reason)
-    })
-
-    it(`all-zero magmoms don't block the symmetrized CIF`, async () => {
-      const structure = make_crystal(
-        cubic_matrix(5.64),
-        rock_salt.map((site) => ({ ...site, properties: { magmom: [0, 0, 0] } })),
-      )
-      const sym_data = await analyze_structure_symmetry(structure)
-      expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toBeUndefined()
-      expect(parse_cif(structure_to_cif_str(structure, sym_data)).sites).toHaveLength(8)
+      if (reason) {
+        expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toContain(reason)
+        expect(() => structure_to_cif_str(structure, sym_data)).toThrow(reason)
+      } else {
+        expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toBeUndefined()
+        expect(parse_cif(structure_to_cif_str(structure, sym_data)).sites).toHaveLength(8)
+      }
     })
 
     it(`export pane: CIF always P1, the symmetrized CIF needs symmetry data`, async () => {

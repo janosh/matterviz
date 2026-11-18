@@ -14,6 +14,7 @@ import type { VolumetricData } from '#lib/isosurface/types.js'
 import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
+import { diagonal_matrix } from '#lib/structure/supercell.js'
 import { describe, expect, test } from 'vite-plus/test'
 import {
   cubic_matrix,
@@ -234,11 +235,7 @@ test.each([
 // A periodic diagonal supercell becomes an endpoint-inclusive base-fraction box, any other
 // supercell [0, 1]³ in its own frame (halo / |M_i| per axis); an explicit range overrides the
 // supercell and adds the halo; finite volumes ignore the supercell but crop to [0, 1]
-const diag_2_3_1: Matrix3x3 = [
-  [2, 0, 0],
-  [0, 3, 0],
-  [0, 0, 1],
-]
+const diag_2_3_1 = diagonal_matrix([2, 3, 1])
 const sheared: Matrix3x3 = [
   [1, 1, 0],
   [-1, 1, 0],
@@ -315,11 +312,7 @@ describe(`extract_volume_range`, () => {
   test(`a diagonal supercell frame reproduces the tiled window`, () => {
     const volume = wave_volume()
     const halo = 0.1
-    const frame: Matrix3x3 = [
-      [2, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
+    const frame = diagonal_matrix([2, 1, 1])
     const { range: tiled_range } =
       resolve_volume_window(volume, { supercell: frame, halo }) ?? {}
     const tiled = extract_volume_range(volume, tiled_range as DisplayRange)
@@ -335,18 +328,13 @@ describe(`extract_volume_range`, () => {
     expect(framed_pos).toEqual(tiled_pos)
   })
 
+  // the window's halo of 0.1/√2 supercell fractions is checked by the resolve_volume_window table
   test(`a sheared supercell frame fills its parallelepiped plus halo with true colors`, () => {
     const volume = wave_volume()
-    const frame: Matrix3x3 = [
-      [1, 1, 0],
-      [-1, 1, 0],
-      [0, 0, 1],
-    ]
+    const frame = sheared
     const { range } = resolve_volume_window(volume, { supercell: frame, halo: 0.1 }) ?? {}
     if (!range) throw new Error(`periodic volume got no window`)
     const extracted = extract_volume_range(volume, range, undefined, frame)
-    // a and b rows have |M_i| = √2, so halo 0.1 base cells is 0.1/√2 supercell fractions
-    expect(range[0][0]).toBeCloseTo(-0.1 / Math.SQRT2, 14)
     // Σ_j |M_ij|·8 = 16 intervals per a/b supercell length: round((1 + 0.2/√2)·16) + 1
     expect(extracted.dims).toEqual([19, 19, 11])
     // no source voxel is skipped: every one of the 8³ is some sample's nearest voxel (the
@@ -394,9 +382,12 @@ describe(`extract_volume_range`, () => {
       out_of_bounds: `fallback`,
     })
     const to_color_frac = create_cart_to_frac(color_vol.lattice)
+    let min_frac_a = Infinity
     for (let idx = 0; idx < positions.length; idx += 3) {
       const vertex: Vec3 = [positions[idx], positions[idx + 1], positions[idx + 2]]
-      to_super_frac(vertex).forEach((frac, axis) => {
+      const super_frac = to_super_frac(vertex)
+      min_frac_a = Math.min(min_frac_a, super_frac[0])
+      super_frac.forEach((frac, axis) => {
         expect(frac).toBeGreaterThanOrEqual(range[axis][0] - 1e-6)
         expect(frac).toBeLessThanOrEqual(range[axis][1] + 1e-6)
       })
@@ -406,12 +397,7 @@ describe(`extract_volume_range`, () => {
       expect(colors[idx / 3]).toBeCloseTo(frac_a + 2 * frac_b + 4 * frac_c, 5)
     }
     // the halo is drawn: some vertices lie beyond the parallelepiped's a faces
-    const fracs_a = Array.from(
-      { length: positions.length / 3 },
-      (_, idx) =>
-        to_super_frac([positions[3 * idx], positions[3 * idx + 1], positions[3 * idx + 2]])[0],
-    )
-    expect(Math.min(...fracs_a)).toBeLessThan(0)
+    expect(min_frac_a).toBeLessThan(0)
   })
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {

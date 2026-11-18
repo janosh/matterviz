@@ -202,45 +202,35 @@ describe(`classify_symmetry_op`, () => {
 describe(`symmetry_elements_from_ops: space group inventories`, () => {
   beforeAll(init_moyo_for_tests)
 
-  const elements_for = (spg_num: number, primitive = false): SymmetryElement[] =>
-    symmetry_elements_from_ops(
-      standard(operations_from_number(spg_num, { type: `Standard` }, primitive)),
-    )
+  const standard_ops = (spg: number) =>
+    operations_from_number(spg, { type: `Standard` }, false)
+  const elements_for = (spg: number): SymmetryElement[] =>
+    symmetry_elements_from_ops(standard(standard_ops(spg)))
 
   // A group's operations re-expressed in the sheared basis b' = b + 50a (x = M·x'), with the
   // standardized frame x = std_linear⁻¹·x' moyo would report for that input
   const to_old = math.IDENTITY_3X3.with(0, [1, 50, 0]) as Matrix3x3
   const to_new = math.IDENTITY_3X3.with(0, [1, -50, 0]) as Matrix3x3
-  const sheared_ops = (spg: number, primitive = false) => ({
+  const sheared_ops = (spg: number) => ({
     ...standard(
-      operations_from_number(spg, { type: `Standard` }, primitive).map(
-        ({ rotation, translation }) => {
-          const rot = math.dot(to_new, math.mat3x3_from_flat_col_major(rotation))
-          return {
-            rotation: col_major(math.dot(rot, to_old)),
-            translation: math.dot(to_new, translation),
-          }
-        },
-      ) as MoyoDataset[`operations`],
+      standard_ops(spg).map(({ rotation, translation }) => {
+        const rot = math.dot(to_new, math.mat3x3_from_flat_col_major(rotation))
+        return {
+          rotation: col_major(math.dot(rot, to_old)),
+          translation: math.dot(to_new, translation),
+        }
+      }) as MoyoDataset[`operations`],
     ),
     std_linear: col_major(to_new) as MoyoDataset[`std_linear`],
   })
 
   // Orbits of two generic points (Si, O) in the standard setting: exactly the group's
   // symmetry (one orbit alone can carry extra, e.g. any 2-site orbit is centrosymmetric)
+  const generic_points = { Si: [0.11, 0.23, 0.37], O: [0.31, 0.07, 0.19] } as const
   const orbit_sites = (spg: number) =>
-    (
-      [
-        [`Si`, [0.11, 0.23, 0.37]],
-        [`O`, [0.31, 0.07, 0.19]],
-      ] as const
-    ).flatMap(([element, point]) => {
+    Object.entries(generic_points).flatMap(([element, point]) => {
       const orbit = new Map<string, Vec3>()
-      for (const { rotation, translation } of operations_from_number(
-        spg,
-        { type: `Standard` },
-        false,
-      )) {
+      for (const { rotation, translation } of standard_ops(spg)) {
         const abc = math
           .add(
             math.mul_3x3_vec3(math.mat3x3_from_flat_col_major(rotation), [...point]),
@@ -452,7 +442,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // Smoke test: classification must not throw for ANY operation of ANY space group,
     // and every non-trivial op must classify to an element with a valid label
     for (let num = 1; num <= 230; num++) {
-      const ops = operations_from_number(num, { type: `Standard` }, false)
+      const ops = standard_ops(num)
       // centering vectors (needed to reduce screw/glide translations in centered cells)
       const centerings = ops
         .filter(

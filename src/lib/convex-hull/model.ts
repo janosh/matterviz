@@ -191,7 +191,8 @@ export function process_model_entries(
   open_elements: OpenElements | undefined,
 ): ProcessedPhaseData & { is_open: boolean } {
   const processed = thermo.process_hull_entries(entries, components)
-  const open = Object.entries(open_elements ?? {}) as [ElementSymbol, number][]
+  const open_map = open_elements ?? {}
+  const open = Object.entries(open_map) as [ElementSymbol, number][]
   if (open.length === 0) return { ...processed, is_open: false }
   if (components) throw new Error(`open_elements cannot be combined with components`)
   for (const [element, chem_pot] of open) {
@@ -206,9 +207,7 @@ export function process_model_entries(
   }
   const grand = processed.entries.flatMap((entry) => {
     const composition = Object.fromEntries(
-      Object.entries(entry.composition).filter(
-        ([el]) => !open.some(([open_el]) => open_el === el),
-      ),
+      Object.entries(entry.composition).filter(([el]) => !(el in open_map)),
     ) as CompositionType
     if (!(count_atoms_in_composition(composition) > 0)) return []
     if (!thermo.has_absolute_energy(entry)) {
@@ -258,10 +257,9 @@ export function to_model_composition(
   components: readonly string[] | undefined,
   open_elements: OpenElements | undefined,
 ): CompositionType | null {
+  const open_map = open_elements ?? {}
   let model: Record<string, number> = Object.fromEntries(
-    Object.entries(composition).filter(
-      ([el, amt]) => amt > 0 && !(el in (open_elements ?? {})),
-    ),
+    Object.entries(composition).filter(([el, amt]) => amt > 0 && !(el in open_map)),
   )
   if (components) {
     const component_comps = components.map((component) => parse_composition(component))
@@ -282,8 +280,6 @@ export function to_model_composition(
 }
 
 // Headless model construction uses the same numerical path as every hull renderer.
-// `open_elements` projects the hull to fixed chemical potentials of those elements (e.g.
-// { O: mu_O } renders Li-Co-Ni-O as a Li-Co-Ni grand-potential ternary).
 export function compute_hull_model(
   entries: readonly PhaseData[],
   {

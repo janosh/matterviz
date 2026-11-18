@@ -74,6 +74,7 @@ import type {
   PanConfig,
   RefLine,
   RefLineEvent,
+  AxisDerive,
   ScaleType,
 } from '#lib/plot/core/types.js'
 import { get_scale_type_name } from '#lib/plot/core/types.js'
@@ -598,13 +599,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  let last_scales:
-    | {
-        key: string
-        derive: AxisConfig[`derive`]
-        value: ReturnType<typeof create_axis_scales>
-      }
-    | undefined
+  type AxisScales = ReturnType<typeof create_axis_scales>
+  let last_scales: { key: string; derive?: AxisDerive; value: AxisScales } | undefined
   const scales = $derived.by(() => {
     const axes = opts.axes()
     const { current } = ranges

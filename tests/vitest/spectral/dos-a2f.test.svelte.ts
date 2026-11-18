@@ -172,13 +172,11 @@ test.each([
       color: line_style?.color,
       dash: line_style?.dash ?? `solid`,
     }))
-    expect(new Set(styles.map(({ color, dash }) => `${color} ${dash}`)).size).toBe(n_series)
-    const curve_colors = new Map<string, Set<string | undefined>>()
-    for (const { curve, color } of styles) {
-      curve_colors.set(curve, (curve_colors.get(curve) ?? new Set()).add(color))
-    }
-    expect(curve_colors.size).toBe(n_curves)
-    expect([...curve_colors.values()].every((colors) => colors.size === 1)).toBe(true)
-    expect(new Set(styles.map(({ color }) => color)).size).toBe(n_curves)
+    const n_unique = (keys: string[]) => new Set(keys).size
+    expect(n_unique(styles.map(({ color, dash }) => `${color} ${dash}`))).toBe(n_series)
+    // n_curves curves with n_curves (curve, colour) pairs: one colour each, all distinct
+    expect(n_unique(styles.map(({ curve }) => curve))).toBe(n_curves)
+    expect(n_unique(styles.map(({ curve, color }) => `${curve} ${color}`))).toBe(n_curves)
+    expect(n_unique(styles.map(({ color }) => `${color}`))).toBe(n_curves)
   },
 )

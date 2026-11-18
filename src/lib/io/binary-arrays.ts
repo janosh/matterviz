@@ -1,8 +1,8 @@
-// Decoding of the `matterviz-binary-v1` wire format: a small JSON envelope whose `arrays`
-// entries each carry { dtype, shape, data } with `data` a raw little-endian buffer (what
-// anywidget hands over for a traitlets Bytes value or a buffer nested in a Dict trait: a
-// DataView). Arrays decode into typed-array views over that buffer when its offset is aligned
-// to the element size, else into one aligned copy. Every mismatch throws: no JSON fallback.
+// Decoding of the `matterviz-binary-v1` wire format (extensions/anywidget/readme.md): a JSON
+// envelope whose `arrays` entries carry { dtype, shape, data } with `data` a raw little-endian
+// buffer (anywidget hands over a DataView). Every mismatch throws: no JSON fallback.
+
+import { is_plain_object } from 'svelte-widgets/utils'
 
 export const BINARY_FORMAT = `matterviz-binary-v1`
 
@@ -24,16 +24,13 @@ export interface BinaryArray {
   shape: number[]
 }
 
-const is_record = (value: unknown): value is Record<string, unknown> =>
-  typeof value === `object` && value !== null && !Array.isArray(value)
-
 // Envelopes are recognised by their format tag alone, so a JSON payload never reaches the
 // binary decoder and a broken binary one never falls through to the JSON parser
 export const is_binary_envelope = (value: unknown): boolean =>
-  is_record(value) && value.format === BINARY_FORMAT
+  is_plain_object(value) && value.format === BINARY_FORMAT
 
 export function decode_binary_array(spec: unknown, name: string): BinaryArray {
-  if (!is_record(spec)) throw new TypeError(`Binary array '${name}' must be an object`)
+  if (!is_plain_object(spec)) throw new TypeError(`Binary array '${name}' must be an object`)
   const { dtype, shape, data } = spec
   if (typeof dtype !== `string` || !Object.hasOwn(DTYPES, dtype)) {
     throw new TypeError(
@@ -78,7 +75,7 @@ export function decode_binary_envelope(
   value: unknown,
   kind: string,
 ): { arrays: Record<string, BinaryArray>; fields: Record<string, unknown> } {
-  if (!is_record(value)) throw new TypeError(`Binary ${kind} payload must be an object`)
+  if (!is_plain_object(value)) throw new TypeError(`Binary ${kind} payload must be an object`)
   if (value.format !== BINARY_FORMAT) {
     throw new TypeError(
       `Binary ${kind} payload format must be '${BINARY_FORMAT}', got ${JSON.stringify(value.format)}`,
@@ -89,7 +86,7 @@ export function decode_binary_envelope(
       `Binary payload kind must be '${kind}', got ${JSON.stringify(value.kind)}`,
     )
   }
-  if (!is_record(value.arrays))
+  if (!is_plain_object(value.arrays))
     throw new TypeError(`Binary ${kind} payload needs an arrays map`)
   const { format: _format, kind: _kind, arrays, ...fields } = value
   const decoded = Object.entries(arrays).map(([name, spec]) => [

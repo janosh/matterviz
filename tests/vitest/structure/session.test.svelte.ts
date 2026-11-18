@@ -1,7 +1,7 @@
 // Headless StructureSession: the display pipeline (supercell, image atoms, element map),
 // selection validated against what is displayed, invalidation on topology/transform/mode
 // changes, edit-atoms operations with undo/redo, the edit-bonds layer and pane bookkeeping.
-import type { Vec3 } from '#lib/math.js'
+import { euclidean_dist, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, StructureBond } from '#lib/structure/index.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import { bond_records } from '#lib/structure/bond-rendering.js'
@@ -22,6 +22,7 @@ import {
   make_rocksalt,
   make_srtio3,
 } from '../test-fixtures'
+import { expect_same_bonds } from './geometry-fixtures'
 import { crystal, flush_set, make_session, type SessionHost } from './session-harness.svelte'
 
 // Rendered explicit bond lengths (Å, cell_shift included) to 1e-9 Å: a wrong shift is Å off
@@ -78,7 +79,7 @@ describe(`display pipeline`, () => {
     const { host, session } = make_session({ structure: torn })
     const ch_dist = () => {
       const [site_c, site_h] = session.displayed_structure?.sites ?? []
-      return Math.hypot(...site_c.xyz.map((coord, axis) => coord - site_h.xyz[axis]))
+      return euclidean_dist(site_c.xyz, site_h.xyz)
     }
     expect(ch_dist()).toBeCloseTo(9, 10)
     flush_set(host, { keep_molecules_whole: true })
@@ -95,14 +96,10 @@ describe(`display pipeline`, () => {
     expect(sites).toHaveLength(4)
     const by_element = (elem: string) =>
       sites.filter((site) => site.species[0].element === elem)
-    for (const site_c of by_element(`C`))
-      expect(
-        Math.min(
-          ...by_element(`H`).map((site_h) =>
-            Math.hypot(...site_c.xyz.map((coord, axis) => coord - site_h.xyz[axis])),
-          ),
-        ),
-      ).toBeCloseTo(1, 10)
+    for (const site_c of by_element(`C`)) {
+      const dists = by_element(`H`).map((site_h) => euclidean_dist(site_c.xyz, site_h.xyz))
+      expect(Math.min(...dists)).toBeCloseTo(1, 10)
+    }
     // image atoms add no lone copy of a whole molecule's atom 0.05 A inside a face (C at
     // a = -0.005 after reassembly), while the wrapped view copies it to the far face
     const near_face = make_crystal(10, [
@@ -152,27 +149,14 @@ describe(`display pipeline`, () => {
     if (!unwrapped || !(`lattice` in unwrapped)) throw new Error(`no unwrapped crystal`)
     const options = { pbc: unwrapped.lattice.pbc }
     search.mockClear()
-    const carried = bond_records(get_bond_data(unwrapped, `electroneg_ratio`, options))
+    const carried = get_bond_data(unwrapped, `electroneg_ratio`, options)
     expect(search).not.toHaveBeenCalled()
     const fresh_copy = { ...unwrapped, sites: unwrapped.sites.map((site) => ({ ...site })) }
     const fresh = bond_records(get_bond_data(fresh_copy, `electroneg_ratio`, options))
     expect(search).toHaveBeenCalled()
     expect(fresh).toHaveLength(2)
-    expect(carried.some(({ cell_shift }) => cell_shift)).toBe(false) // both molecules whole
-    expect(carried).toHaveLength(fresh.length)
-    for (const [idx, bond] of fresh.entries()) {
-      const { pos_1, pos_2, bond_length, ...rest } = carried[idx]
-      const { pos_1: fresh_1, pos_2: fresh_2, bond_length: fresh_length, ...fresh_rest } = bond
-      expect(rest).toEqual(fresh_rest)
-      expect(Math.abs(bond_length - fresh_length)).toBeLessThan(1e-12)
-      for (const [vec, fresh_vec] of [
-        [pos_1, fresh_1],
-        [pos_2, fresh_2],
-      ] as const)
-        expect(
-          Math.max(...vec.map((val, axis) => Math.abs(val - fresh_vec[axis]))),
-        ).toBeLessThan(1e-12)
-    }
+    expect(bond_records(carried).some(({ cell_shift }) => cell_shift)).toBe(false) // both whole
+    expect_same_bonds(carried, fresh)
     search.mockRestore()
   })
 

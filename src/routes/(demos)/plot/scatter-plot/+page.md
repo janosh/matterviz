@@ -1147,16 +1147,6 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
         ),
       y_label: `Intensity`,
     },
-    'T → 1000/T (Arrhenius)': {
-      x: { label: `Temperature (K)`, range: [300, 1200] },
-      x2: {
-        label: `1000 / T (1/K)`,
-        derive: { forward: (temp) => 1000 / temp, inverse: (inv) => 1000 / inv },
-      },
-      curve: (temp) => 1e3 * Math.exp(-0.5 / (8.617e-5 * temp)),
-      y_label: `Rate (1/s)`,
-      y_scale: `log`,
-    },
   }
   let selected = $state(`Energy → wavelength`)
   const example = $derived(examples[selected])
@@ -1177,7 +1167,7 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
   {series}
   x_axis={example.x}
   x2_axis={example.x2}
-  y_axis={{ label: example.y_label, scale_type: example.y_scale }}
+  y_axis={{ label: example.y_label }}
   legend={null}
   style="height: 400px"
 />

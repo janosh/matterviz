@@ -57,8 +57,7 @@
     probe_composition?: CompositionType | null
     probe?: HullProbe | null
     elements?: ElementSymbol[]
-    // the hull's composition keys: typed formulas are solved for component amounts, or
-    // lose their open elements, before probing
+    // the hull's composition keys, which typed formulas are converted to before probing
     components?: readonly string[]
     open_elements?: OpenElements
     toggle_props?: PaneToggleProps

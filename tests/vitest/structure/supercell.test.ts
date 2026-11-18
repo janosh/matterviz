@@ -297,8 +297,6 @@ describe(`make_supercell`, () => {
     )
   })
 
-  // The non-diagonal case crosses the cap by many base sites rather than many lattice points:
-  // the translations are enumerated before the cap check, ~1 s for 2M of them
   // oxfmt-ignore
   test.each([
     [2, `100x100x100`, `2,000,000 sites (limit 1,000,000)`],

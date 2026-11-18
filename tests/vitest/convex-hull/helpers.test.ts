@@ -844,23 +844,16 @@ describe(`build_hull_overlay probe`, () => {
     ],
     { energy_source_mode: `on-the-fly` },
   )
-  const elements = [...model.elements]
-  const probe_of = (composition: Record<string, number>): helpers.HullProbe => {
-    const mixture = decompose_hull_composition(composition, model.entries, elements)
-    if (!mixture) throw new Error(`no decomposition for ${JSON.stringify(composition)}`)
-    return { composition, ...mixture }
-  }
+  const system = { entries: model.entries, elements: [...model.elements] }
+  const { elements } = system
   test.each([
     [{ Li: 1, O: 1 }, 2, [`probe`, `75%`, `25%`]],
     [{ Li: 2, O: 1 }, 0, [`probe`]],
   ])(`probe %j`, (composition, n_segments, ring_labels) => {
-    const probe = probe_of(composition)
-    const overlay = helpers.build_hull_overlay(
-      { entries: model.entries, elements },
-      null,
-      undefined,
-      probe,
-    )
+    const mixture = decompose_hull_composition(composition, model.entries, elements)
+    if (!mixture) throw new Error(`no decomposition for ${JSON.stringify(composition)}`)
+    const probe = { composition, ...mixture }
+    const overlay = helpers.build_hull_overlay(system, null, undefined, probe)
     expect(overlay.segments).toHaveLength(n_segments)
     expect(overlay.rings.map(({ label }) => label)).toEqual(ring_labels)
     const at = hull_plot_position(composition, probe.energy, elements, 2)

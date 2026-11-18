@@ -618,13 +618,11 @@ describe(`pymatgen cross-validation`, () => {
         Math.abs((entry.e_above_hull ?? NaN) - expected[entry.entry_id ?? ``]),
       )
       expect(Math.max(...diffs)).toBeLessThan(1e-6)
-      expect(
-        real.flatMap((entry) => (entry.is_stable ? [entry.entry_id ?? ``] : [])).toSorted(),
-      ).toEqual(
-        Object.keys(expected)
-          .filter((id) => expected[id] < 1e-6)
-          .toSorted(),
-      )
+      const stable = real
+        .filter((entry) => entry.is_stable)
+        .map(({ entry_id }) => entry_id ?? ``)
+      const expected_stable = Object.keys(expected).filter((id) => expected[id] < 1e-6)
+      expect(stable.toSorted()).toEqual(expected_stable.toSorted())
       // names keep the full formula; open-only entries (O2) leave the system
       expect(real.find((entry) => entry.composition.O)).toBeUndefined()
       expect(real.some((entry) => entry.name === `LiCoO2`)).toBe(true)
@@ -655,6 +653,7 @@ describe(`pymatgen cross-validation`, () => {
     expect(() => compute_hull_model(entries, options)).toThrow(message)
   })
 
+  type Keys = { components?: readonly string[]; open_elements?: Record<string, number> }
   // element compositions in model keys: component amounts solve A x = b with x >= 0, open
   // elements drop out; null when the system can't make the composition
   test.each([
@@ -668,12 +667,8 @@ describe(`pymatgen cross-validation`, () => {
     [{ Li: 1, Co: 1, O: 2 }, { open_elements: { O: -3 } }, { Li: 1, Co: 1 }],
     [{ O: 2 }, { open_elements: { O: -3 } }, null],
     [{ Li: 1, Co: 1, O: 2 }, {}, { Li: 1, Co: 1, O: 2 }],
-  ] as const)(`to_model_composition(%j, %j) = %j`, (composition, options, expected) => {
-    const model = to_model_composition(
-      composition,
-      `components` in options ? options.components : undefined,
-      `open_elements` in options ? options.open_elements : undefined,
-    )
+  ] as const)(`to_model_composition(%j, %j) = %j`, (composition, options: Keys, expected) => {
+    const model = to_model_composition(composition, options.components, options.open_elements)
     expect(model === null).toBe(expected === null)
     expect(Object.keys(model ?? {}).toSorted()).toEqual(Object.keys(expected ?? {}).toSorted())
     for (const [key, amount] of Object.entries(expected ?? {})) {

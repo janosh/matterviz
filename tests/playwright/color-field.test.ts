@@ -49,31 +49,23 @@ test.describe(`ColorFieldVolume across supercells`, { tag: `@webgl` }, () => {
     page,
   }) => {
     await page.goto(`/test/color-field`, { waitUntil: `networkidle` })
-    const read_all = async () =>
-      Object.fromEntries(
-        await Promise.all(
-          [`cloud-1x1x1`, `cloud-2x1x1`, `cloud-sheared`].map(
-            async (id) => [id, await cloud_stats(page, id)] as const,
-          ),
-        ),
-      )
+    const ids = [`cloud-1x1x1`, `cloud-2x1x1`, `cloud-sheared`]
     // wait until every cloud has drawn (the camera fit and texture upload land a few frames in)
     let stats: Record<string, CloudStats> = {}
     await expect
       .poll(async () => {
-        stats = await read_all()
+        const all = await Promise.all(ids.map((id) => cloud_stats(page, id)))
+        stats = Object.fromEntries(ids.map((id, idx) => [id, all[idx]]))
         return Math.min(...Object.values(stats).map(({ center_alpha }) => center_alpha))
       })
       .toBeGreaterThan(0.2)
     for (const { content_fraction } of Object.values(stats))
       expect(content_fraction).toBeGreaterThan(0.1)
     const reference = stats[`cloud-1x1x1`].center_alpha
-    // Every centre ray crosses one input cell along c, so the opacities agree up to 8-bit
-    // quantization (1/230 per pixel, averaged over 49), half-float density (~1e-3) and the
-    // sheared centre patch's partial rays (the sheared prism's footprint is 2 cells wide and
-    // only its centre column crosses the full slab: a 3 px offset loses ~3 px / L_px of path).
-    // Measured: 2x1x1 matches exactly, sheared is 1.2% low. Absorbing over the local steps
-    // (sqrt(2) per input cell when sheared) measured +21%, so 4% separates the two.
+    // Every centre ray crosses one input cell along c, so opacities agree up to 8-bit
+    // quantization, half-float density (~1e-3) and the sheared patch's partial rays. Measured:
+    // 2x1x1 exact, sheared 1.2% low; absorbing over local steps (sqrt(2) per input cell when
+    // sheared) measured +21%, so 4% separates the two.
     for (const id of [`cloud-2x1x1`, `cloud-sheared`])
       expect(Math.abs(stats[id].center_alpha / reference - 1), id).toBeLessThan(0.04)
   })

@@ -1003,10 +1003,9 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
   }
 }
 
-// V8's spread-argument limit scales with the stack: ~125k values on Node's main thread but ~490k
-// in Vitest's worker threads, so a 200k-element input never overflowed here. Math.max/Math.min
-// throw past `max_args` arguments for the rest of the test instead, so a spread of any input
-// longer than that fails as a browser tab's would, at a fraction of the size.
+// V8's spread-argument limit (~125k on Node's main thread) is ~490k in Vitest workers, so
+// Math.max and Math.min throw past `max_args` arguments for the rest of the test: a spread
+// overflows as in a browser tab, at a fraction of the input size.
 export const limit_math_spread = (max_args: number): void => {
   for (const key of [`max`, `min`] as const) {
     const native = Math[key]
@@ -1064,9 +1063,8 @@ export async function export_via_pane(
   return { offered, format: called_format, data, filename }
 }
 
-// Every src/lib component's prop docs, imported through the test server's virtual:prop-docs so
-// the whole-library extraction (seconds of TypeScript checking) runs once per test run, shared
-// by every file that needs it
+// Every src/lib component's prop docs via the test server's virtual:prop-docs, so the
+// whole-library extraction (seconds of TypeScript checking) runs once per test run
 export const library_prop_docs = async (): Promise<Record<string, ComponentDoc>> => {
   const { default: loaders } = await import(`virtual:prop-docs`)
   const docs = await Promise.all(

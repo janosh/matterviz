@@ -500,11 +500,10 @@ function is_standard_setting({ operations, std_linear, std_origin_shift }: Symme
   })
 }
 
-// Symmetrized fractional position of orbit representative `rep_idx`: its images under the site
-// stabilizer (the ops whose image lies nearest the representative among its orbit members),
-// each shifted by a lattice vector onto it, averaged. Exactly fixed by that stabilizer, so a
-// structure analysed with a loose symprec expands back to its own site count instead of a
-// cloud of near-duplicate images.
+// Symmetrized fractional position of orbit representative `rep_idx`: the average of its images
+// under the site stabilizer (ops mapping it nearest itself among its orbit), each moved by a
+// lattice vector onto it. Exactly stabilizer-fixed, so a loose-symprec analysis expands back to
+// the structure's own site count instead of a cloud of near-duplicate images.
 function symmetrized_rep_abc(
   { orbits, operations, input_cell: { positions } }: SymmetryDataset,
   rep_idx: number,
@@ -531,10 +530,9 @@ function symmetrized_rep_abc(
   return math.scale(math.add(...images), 1 / images.length)
 }
 
-// Original site indices of moyo's asymmetric unit (each orbit's representative, moyo's own
-// `orbits` choice, with every split-partial site merged into it), each with its symmetrized
-// fractional coords. Throws when sym_data was computed for another structure: an op list for
-// different sites would expand to nonsense.
+// Original site indices of moyo's asymmetric unit (its `orbits` representatives, with
+// split-partial sites merged in) with symmetrized fractional coords. Throws when sym_data was
+// computed for another structure: its ops would expand different sites to nonsense.
 function asymmetric_unit_sites(
   structure: Crystal,
   sym_data: SymmetryDataset,
@@ -547,43 +545,32 @@ function asymmetric_unit_sites(
       `CIF export: symmetry data covers ${n_covered} sites, the structure has ${structure.sites.length}`,
     )
   }
-  for (const [input_idx, indices] of by_input.entries()) {
-    for (const idx of indices) {
+  // each site's lattice offset from where the analysis saw it (input cell), kept on export
+  const offsets = by_input.map((indices, input_idx) =>
+    indices.map((idx) => {
       const abc = get_frac_coords(structure.sites[idx], cart_to_frac, idx)
-      const offset = abc.map((coord, dim) => coord - input_cell.positions[input_idx][dim])
+      const offset = math.subtract(abc, input_cell.positions[input_idx])
       if (offset.some((delta) => Math.abs(delta - Math.round(delta)) > 1e-6)) {
         throw new Error(
           `CIF export: site ${display_idx(idx)} at ${abc.join(`, `)} is not where the symmetry analysis saw it`,
         )
       }
-    }
-  }
-  return by_input.flatMap((indices, input_idx) => {
+      return { idx, offset }
+    }),
+  )
+  return offsets.flatMap((site_offsets, input_idx) => {
     if (orbits[input_idx] !== input_idx) return []
     const sym_abc = symmetrized_rep_abc(sym_data, input_idx, structure.lattice.matrix)
-    // keep each site's lattice offset from the analysed (input-cell) position
-    return indices.map((idx) => ({
-      idx,
-      abc: math.add(
-        sym_abc,
-        math.subtract(
-          get_frac_coords(structure.sites[idx], cart_to_frac, idx),
-          input_cell.positions[input_idx],
-        ),
-      ),
-    }))
+    return site_offsets.map(({ idx, offset }) => ({ idx, abc: math.add(sym_abc, offset) }))
   })
 }
 
-// CIF of a crystal: P1 with every site, or given sym_data (null: analysis missing, which throws)
-// the symmetrized one: the asymmetric unit in
-// the input setting plus the space group's operations (_space_group_symop_operation_xyz), from
-// which parse_cif and pymatgen regenerate every site. The input setting, not moyo's standardized
-// one, so the file keeps the user's exact cell and coordinates: a standardized cell would be
-// rotated, refined and re-originated, and its sites would no longer be the structure's. The H-M
-// symbol is written only when that setting is moyo's standard one (else it would name ops the
-// file doesn't list); the IT number is setting-independent. Labels are kept for the written
-// sites; images get parse_cif's `_k` suffixes.
+// CIF of a crystal: P1 with every site, or given sym_data (null throws: analysis missing) the
+// asymmetric unit plus the space group's operations, from which parse_cif and pymatgen
+// regenerate every site. Written in the input setting, so the file keeps the user's exact cell
+// and coordinates (moyo's standardized cell is rotated, refined and re-originated). The H-M
+// symbol only appears when that setting is moyo's standard one (else it would name unlisted
+// ops); the IT number is setting-independent. Images get parse_cif's `_k` label suffixes.
 export function structure_to_cif_str(
   input?: AnyStructure,
   sym_data?: SymmetryDataset | null,
@@ -734,7 +721,7 @@ export function structure_to_cif_str(
     tags: string[],
     values_of: (site: Site, idx: number) => number[] | null,
   ) => {
-    // written sites only: a symmetrized CIF's (zero) moments rows must name its own labels
+    // written sites only: a symmetrized CIF's rows must name its own labels
     const rows = written.flatMap(({ idx }) => {
       const values = values_of(structure.sites[idx], idx)
       return values ? [`${cif_token(site_labels[idx])} ${values.join(` `)}`] : []

@@ -353,17 +353,14 @@ export function find_drawn_completion_sites(
 }
 
 // Reassemble molecules torn across cell faces by per-atom wrapping. `bonds` is the periodic
-// bond graph (get_bond_data with the lattice's pbc): a bond (i, j, cell_shift) puts j's image
-// at cell_shift next to i. Each connected component is walked breadth-first from its first
-// site, giving every site the lattice translation that places it beside the neighbour that
-// reached it. A component that reaches a site again at a different translation connects to
-// its own periodic image (a chain, layer or 3D network, e.g. a MOF framework): no placement
-// makes it finite, so it stays wrapped. Finite fragments then move by whole cells so their
-// centroid (unweighted, fractional) lies in [0, 1) along each periodic axis, and their sites (of
-// fragments with 2+ sites) get provenance.whole_molecule, so image atoms add no lone face copy
-// of them. Sites keep their order and properties. Returns the input structure and bonds when
-// nothing changes, else the bonds carried over to the unwrapped sites (see carry_bonds), so
-// callers can seed the bond memo instead of searching the moved structure again.
+// bond graph: a bond (i, j, cell_shift) puts j's image at cell_shift next to i. A breadth-first
+// walk of each connected component gives every site the lattice translation placing it beside
+// the neighbour that reached it. A component reaching a site again at another translation
+// bonds to its own periodic image (chain, layer or network, e.g. a MOF): it stays wrapped.
+// Finite fragments then move by whole cells so their unweighted fractional centroid lies in
+// [0, 1) per periodic axis, and sites of 2+ site fragments get provenance.whole_molecule (image
+// atoms add no lone face copy of them). Site order and properties are kept. Returns the input
+// when nothing changes, else the bonds carried over (see carry_bonds) to seed the bond memo.
 export function unwrap_molecules<Struct extends AnyStructure>(
   structure: Struct,
   bonds: BondPair[] | BondFrame,
@@ -402,16 +399,14 @@ export function unwrap_molecules<Struct extends AnyStructure>(
       }
     }
     if (periodic) continue
-    const centroid = AXES.map(
-      (axis) =>
-        component.reduce(
-          (sum, idx) => sum + sites[idx].abc[axis] + (translations[idx] as Vec3)[axis],
-          0,
-        ) / component.length,
-    )
-    const recenter = AXES.map((axis) =>
-      lattice.pbc[axis] ? -Math.floor(centroid[axis]) : 0,
-    ) as Vec3
+    const recenter = AXES.map((axis) => {
+      if (!lattice.pbc[axis]) return 0
+      const sum = component.reduce(
+        (acc, idx) => acc + sites[idx].abc[axis] + (translations[idx] as Vec3)[axis],
+        0,
+      )
+      return -Math.floor(sum / component.length) // centroid into [0, 1)
+    }) as Vec3
     const whole = component.length > 1
     for (const site_idx of component) {
       const total = shifted(translations[site_idx] as Vec3, recenter)

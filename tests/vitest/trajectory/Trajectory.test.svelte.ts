@@ -846,15 +846,14 @@ describe(`controls`, () => {
       default_props({ data_inspector_open: false, show_controls: { hidden: [first] } }),
     )
     const target = await mount_ticked(props)
-    for (const [hidden] of HIDEABLE_CONTROLS) {
+    const names = HIDEABLE_CONTROLS.map(([name]) => name)
+    for (const hidden of names) {
       props.show_controls = { hidden: [hidden] }
       await tick()
       const shown = HIDEABLE_CONTROLS.filter(
         ([, selector]) => target.querySelector(`${CONTROLS} ${selector}`) !== null,
       ).map(([name]) => name)
-      expect(shown, hidden).toEqual(
-        HIDEABLE_CONTROLS.map(([name]) => name).filter((name) => name !== hidden),
-      )
+      expect(shown, hidden).toEqual(names.filter((name) => name !== hidden))
     }
   })
 
@@ -919,45 +918,41 @@ describe(`controls`, () => {
   })
 
   // Labels number frames from 1 like the step input: frame 1, then round numbers up to N.
-  // Explicit arrays are 0-based indices. One viewer per run, its step_labels swapped per case.
-  test.each([
-    [
-      11,
+  // Explicit arrays are 0-based indices. One viewer, its run and step_labels swapped per case.
+  test(`step_labels`, () => {
+    const props = $state(default_props())
+    const target = mount_trajectory(props)
+    for (const [kind, step_labels, expected, frame_count] of [
+      [`count`, 3, [`1`, `5`, `10`], 11],
       [
-        [`count`, 3, [`1`, `5`, `10`]],
-        [`count above frames`, 50, [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`]],
-        [`spacing`, -4, [`1`, `4`, `8`, `11`]],
-        [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`]],
-        [`explicit with repeats, unsorted`, [10, 0, 0, 7], [`1`, `8`, `11`]],
-        [`disabled`, 0, []],
+        `count above frames`,
+        50,
+        [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`],
+        11,
       ],
-    ],
-    [1, [[`single frame`, 5, []]]],
-  ] as [number, [string, Props[`step_labels`], string[]][]][])(
-    `step_labels on a %i-frame run`,
-    (frame_count, cases) => {
+      [`spacing`, -4, [`1`, `4`, `8`, `11`], 11],
+      [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`], 11],
+      [`explicit with repeats, unsorted`, [10, 0, 0, 7], [`1`, `8`, `11`], 11],
+      [`disabled`, 0, [], 11],
+      [`single frame`, 5, [], 1],
+    ] as [string, Props[`step_labels`], string[], number][]) {
       const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
-      const props = $state(
-        default_props({ trajectory: make_run({ steps }), step_labels: cases[0][1] }),
+      props.trajectory = make_run({ steps })
+      props.step_labels = step_labels
+      flushSync()
+      const labels = [...target.querySelectorAll(`.step-label`)].map((element) =>
+        element.textContent?.trim(),
       )
-      const target = mount_trajectory(props)
-      for (const [kind, step_labels, expected] of cases) {
-        props.step_labels = step_labels
-        flushSync()
-        const labels = [...target.querySelectorAll(`.step-label`)].map((element) =>
-          element.textContent?.trim(),
-        )
-        expect(labels, kind).toEqual(expected)
-        // Ticks sit at the frame's fraction of the slider (1.5% inset, 98% span)
-        const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
-          (element) => element.style.left,
-        )
-        expect(ticks, kind).toEqual(
-          expected.map((label) => `${1.5 + ((Number(label) - 1) / 10) * 98}%`),
-        )
-      }
-    },
-  )
+      expect(labels, kind).toEqual(expected)
+      // Ticks sit at the frame's fraction of the slider (1.5% inset, 98% span)
+      const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
+        (element) => element.style.left,
+      )
+      expect(ticks, kind).toEqual(
+        expected.map((label) => `${1.5 + ((Number(label) - 1) / 10) * 98}%`),
+      )
+    }
+  })
 })
 
 describe(`plot`, () => {

@@ -54,14 +54,10 @@ for (const method of [`showPopover`, `hidePopover`] as const) {
   }
 }
 
-// vi.waitFor's 1 s default (Vitest has no config for it) is too short for a loaded full-suite
-// run, e.g. a dynamic three.js import. 4 s stays well below the 10 s test timeout, so a
-// failing wait still reports its last assertion error instead of a bare timeout. Real-timer
-// polls retry every 5 ms instead of the 50 ms default (a wait for a few chained tasks otherwise
-// idles a whole interval per retry): parse-in-worker.test.ts runs 0.7 / 1.1 / 1.8 / 7.1 s at
-// 2 / 5 / 10 / 50 ms, so 5 ms keeps ~94% of the gain at 2.5x fewer retries of a failing
-// callback than 2 ms. Under fake timers each poll advances the clock by `interval`, so those
-// keep the default step.
+// vi.waitFor's 1 s default (no config for it) is too short for a loaded full run; 4 s stays
+// below the 10 s test timeout so a failing wait reports its last assertion. Real-timer polls
+// every 5 ms, not 50 (parse-in-worker.test.ts: 1.1 s vs 7.1 s); fake timers keep the default
+// step since each poll advances their clock by `interval`.
 const wait_for = vi.waitFor
 vi.waitFor = (callback, options = {}) =>
   wait_for(

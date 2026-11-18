@@ -343,8 +343,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         const data = get_prop(model, `structure_string`)
         return url || (data ? { data, filename: `string` } : undefined)
       }),
-      // Traits carry nested JSON grids or matterviz-binary-v1 envelopes (raw buffers, see
-      // readme); the renderer stores flat typed arrays
+      // Nested JSON grids or binary envelopes (readme); the renderer stores flat typed arrays
       derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
         const raw = get_prop(model, `volumetric_data`)
         if (raw == null) return undefined
@@ -368,16 +367,14 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       ...drive_props(`show_controls layout fullscreen_toggle auto_play step_labels
         property_labels`),
-      // The JSON trait (pymatgen Trajectory, { frames }, array of structures) or a
-      // matterviz-binary-v1 envelope of raw arrays (see readme) becomes an in-memory run;
-      // data_url is fetched and parsed by the file viewer itself. A malformed trait throws
-      // like a malformed spectral one, failing the mount with the parse error
+      // The JSON trait (pymatgen Trajectory, { frames }, array of structures) or a binary
+      // envelope (readme) becomes an in-memory run; data_url is fetched and parsed by the file
+      // viewer. A malformed trait throws like a malformed spectral one, failing the mount
       derived_prop(`trajectory`, [`trajectory`], (model) => {
         const value = get_prop(model, `trajectory`)
         if (value == null) return undefined
-        return is_binary_envelope(value)
-          ? trajectory_from_binary(value)
-          : trajectory_from_json(value, { format: `json` })
+        if (is_binary_envelope(value)) return trajectory_from_binary(value)
+        return trajectory_from_json(value, { format: `json` })
       }),
       derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump

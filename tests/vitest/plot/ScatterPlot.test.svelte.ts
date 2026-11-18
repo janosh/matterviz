@@ -2682,10 +2682,8 @@ describe(`ScatterPlot`, () => {
       },
     })
     expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(16)
-    const labels = [...plot.querySelectorAll(`.x2-axis .tick text`)].map(
-      (el) => el.textContent,
-    )
-    expect(labels).toEqual([`10`, `100`, `1k`])
+    const labels = plot.querySelectorAll(`.x2-axis .tick text`)
+    expect([...labels].map((el) => el.textContent)).toEqual([`10`, `100`, `1k`])
   })
 
   test(`derived x2 axis shows wavelength ticks above a photon-energy x axis`, async () => {
@@ -2699,28 +2697,22 @@ describe(`ScatterPlot`, () => {
       },
     })
     const x2_axis_ticks = [...plot.querySelectorAll(`.x2-axis .tick`)]
-    const labels = x2_axis_ticks.map((axis_tick) =>
-      axis_tick.querySelector(`text`)?.textContent?.trim(),
-    )
     expect(x2_axis_ticks.length).toBeGreaterThanOrEqual(3)
     // nice wavelengths (multiples of 100 nm) between 1240/6 and 1240/1.5
-    const values = labels.filter(Boolean).map((label) => Number(label?.replaceAll(`,`, ``)))
+    const values = x2_axis_ticks.map((axis_tick) =>
+      Number(axis_tick.querySelector(`text`)?.textContent?.replaceAll(`,`, ``)),
+    )
     expect(values.every((nm) => nm % 100 === 0 && nm >= 206 && nm <= 827)).toBe(true)
     // each wavelength sits where the x axis puts its photon energy: 400 nm at 3.0996 eV
-    const x_px = (axis_tick: Element) =>
-      Number(
-        /translate\((?<px>[-\d.]+)/.exec(axis_tick.getAttribute(`transform`) ?? ``)?.groups
-          ?.px,
-      )
     const x_axis_ticks = [...plot.querySelectorAll(`.x-axis .tick`)]
     const [x_lo, x_hi] = [x_axis_ticks[0], x_axis_ticks.at(-1)].map((axis_tick) => [
       Number(axis_tick?.querySelector(`text`)?.textContent),
-      x_px(axis_tick as Element),
+      translate_of(axis_tick).x,
     ])
     const energy_px = (energy: number) =>
       x_lo[1] + ((energy - x_lo[0]) / (x_hi[0] - x_lo[0])) * (x_hi[1] - x_lo[1])
     for (const [idx, axis_tick] of x2_axis_ticks.entries()) {
-      expect(x_px(axis_tick)).toBeCloseTo(energy_px(hc / values[idx]), 6)
+      expect(translate_of(axis_tick).x).toBeCloseTo(energy_px(hc / values[idx]), 6)
     }
     // the title renders with the axis although no series uses x2
     expect(plot.querySelector(`.x2-axis`)?.textContent).toContain(`Wavelength (nm)`)

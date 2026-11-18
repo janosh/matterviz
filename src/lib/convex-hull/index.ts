@@ -103,13 +103,11 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // formulas for a pseudo-binary/ternary reaction hull. Entries then hold pseudo-compositions
   // such as { BaO: 0.4, TiO2: 0.6 } and the corners are the components.
   components?: readonly string[]
-  // Elements exchanged with a reservoir at fixed chemical potential (absolute eV/atom), e.g.
-  // { O: -6.4 }: the hull is drawn in grand potential Φ = E - Σ μ N per non-open atom without
-  // their axes (pymatgen's GrandPotentialPhaseDiagram), so Li-Co-Ni-O at fixed μ_O is a ternary
+  // Elements at fixed chemical potential (absolute eV/atom), e.g. { O: -6.4 }: a grand-potential
+  // hull without their axes (pymatgen's GrandPotentialPhaseDiagram), Li-Co-Ni-O → Li-Co-Ni
   open_elements?: OpenElements
-  // Composition to decompose into its equilibrium hull products, keyed like the entries
-  // (components, or elements without the open ones), drawn as a ring on the hull with
-  // tie-lines to the products. Bindable; formulas typed into the info pane are converted.
+  // Composition (keyed like the entries) to decompose into its equilibrium hull products, drawn
+  // as a ring with tie-lines to them. Bindable; formulas typed into the info pane are converted.
   probe_composition?: CompositionType | null
   // Options for the controls pane: title, show_counts and show_label_controls.
   controls?: Partial<ConvexHullControlsType>

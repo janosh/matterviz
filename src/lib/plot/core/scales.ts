@@ -260,12 +260,10 @@ export function create_scale(
 }
 
 const DERIVE_SAMPLES = 64
-// Scale of an axis showing a function of another one (x2_axis.derive): values in derived units
-// (wavelength over a photon-energy x axis) sit where `base` puts their inverse. Its domain is the
-// forward image of base's, descending for a decreasing map; ticks are nice in derived units on
-// `tick_scale_type`. Where forward is non-finite or non-monotonic anywhere in base's view (sampled
-// at DERIVE_SAMPLES pixel steps: 1240 / x at or across 0, x^2 over [-2, 3]) the domain is NaN
-// and the axis shows no ticks rather than misplaced ones.
+// Scale of an axis showing a function of another (x2_axis.derive): derived values sit where
+// `base` puts their inverse; the domain is the forward image of base's (descending for a
+// decreasing map). If forward is non-finite or non-monotonic anywhere in base's view (sampled at
+// DERIVE_SAMPLES pixel steps) the domain is NaN and the axis shows no ticks, not misplaced ones.
 export function derived_scale(
   base: ScaleContinuousNumeric<number, number> | ArcsinhScale,
   { forward, inverse }: AxisDerive,
@@ -310,10 +308,8 @@ export function derived_scale(
   return scale
 }
 
-// Minor ticks of a log axis: unlabeled 2..9 x each decade, thinned as decades get dense (2 and 5
-// past 4 decades, none past 8), plus every power of ten the major ticks skip (strided majors over
-// wide ranges). Values within 1e-9 relative of a major tick are dropped; more than `max_count`
-// returns none rather than a solid band.
+// Minor ticks of a log axis: 2..9 x each decade (2 and 5 past 4 decades, none past 8) plus every
+// power of ten strided majors skip, minus the majors. Over `max_count` gives none, not a band.
 export function generate_log_minor_ticks(
   domain: Vec2,
   major_ticks: readonly number[],
@@ -340,8 +336,8 @@ export function generate_log_minor_ticks(
 }
 
 // Build the four axis scales for a 2D plot in one call: x/x2 share the horizontal pixel span,
-// y/y2 the inverted vertical one. An x2 axis with `derive` is a derived_scale over x, its own
-// scale_type (default x's) choosing the tick scheme. Shared by cartesian-frame and charts.
+// y/y2 the inverted vertical one; an x2 with `derive` is a derived_scale over x. Shared by
+// cartesian-frame and BarPlot/BoxPlot/Histogram.
 export function create_axis_scales<A extends { scale_type?: ScaleType; derive?: AxisDerive }>(
   axes: { x: A; x2: A; y: A; y2: A },
   ranges: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 },

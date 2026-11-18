@@ -18,6 +18,7 @@ import {
   marker_fill,
   mock_parse_worker,
   mount_sized,
+  set_input,
 } from '../setup'
 import { make_phase, png_blob } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
@@ -328,6 +329,11 @@ describe(`convex hull replacement state`, () => {
     expect(sizes).toEqual([[1600, 1200]]) // 2x the unmeasured canvas's 800x600 CSS size
   })
 
+  const submit_probe = async (text: string) => {
+    set_input(doc_query<HTMLInputElement>(`.composition-probe input`), text)
+    doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
+    await tick()
+  }
   // LiO is no entry: it decomposes to 3/4 Li2O + 1/4 O by atoms at 3/4 of Li2O's -2 eV/atom
   test(`info pane composition probe decomposes any composition`, async () => {
     const entries = [
@@ -336,21 +342,14 @@ describe(`convex hull replacement state`, () => {
       make_phase({ Li: 2, O: 1 }, -2, { entry_id: `Li2O`, reduced_formula: `Li2O` }),
     ]
     const target = await mount_hull({ entries, info_pane_open: true })
-    const input = doc_query<HTMLInputElement>(`.composition-probe input`)
-    const submit = async (text: string) => {
-      input.value = text
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
-      await tick()
-    }
-    await submit(`LiO`)
+    await submit_probe(`LiO`)
     expect(test_text(`probe-energy`)).toContain(`-1.5 eV/atom`.replace(`-`, `−`))
     expect([0, 1].map((idx) => test_text(`probe-product-${idx}`))).toEqual([
       `Li2O 75%`,
       `O 25%`,
     ])
     expect(target.querySelector(`.probe-error`)).toBeNull()
-    await submit(`NaCl`)
+    await submit_probe(`NaCl`)
     expect(doc_query(`.probe-error`).textContent).toContain(`outside the`)
     expect(target.querySelector(`[data-testid="probe-energy"]`)).toBeNull()
   })
@@ -381,15 +380,11 @@ describe(`convex hull replacement state`, () => {
           : make_phase(composition, 0),
       )
       const target = await mount_hull({ entries, ...props, info_pane_open: true })
-      const input = doc_query<HTMLInputElement>(`.composition-probe input`)
       for (const [text, inside] of [
         [formula, true],
         [`NaCl`, false],
       ] as const) {
-        input.value = text
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
-        await tick()
+        await submit_probe(text)
         expect(target.querySelector(`.probe-error`)?.textContent ?? null).toBe(
           inside ? null : `NaCl is outside the ${system} system`,
         )

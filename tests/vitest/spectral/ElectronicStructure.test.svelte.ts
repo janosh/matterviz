@@ -1588,18 +1588,13 @@ test.each([
       props.frame_idx = frame_idx
       flushSync()
       const [main_label, compare_label] = side_labels(root)
-      expect(main_label, `frame ${frame_idx}`).toBe(
+      const far = root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``
+      expect([main_label, compare_label, far, viewers.trends?.compare]).toEqual([
         `a · ${sweep.series[0].frames[frame_idx].value} GPa`,
-      )
-      expect(compare_label, `frame ${frame_idx}`).toBe(notice ? `${label} ${notice}` : label)
-      expect(
-        root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``,
-        `frame ${frame_idx}`,
-      ).toBe(notice)
-      expect(viewers.trends?.compare, `frame ${frame_idx}`).toEqual({
-        series_id: `b`,
-        frame_idx: compare_idx,
-      })
+        notice ? `${label} ${notice}` : label,
+        notice,
+        { series_id: `b`, frame_idx: compare_idx },
+      ])
     }
   },
 )

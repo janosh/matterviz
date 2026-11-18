@@ -50,12 +50,10 @@ describe(`unwrap_flat_positions`, () => {
     expect(unwrapped).toEqual(reference(pbc))
     expect(unwrapped).not.toEqual(positions) // steps did cross cell faces
   })
-  // NPT ground truth the way a barostat produces it: the atom drifts across 3+ faces in a
-  // fixed cell, then sits at a fixed fractional coordinate while the cell breathes +-5 %,
-  // so its real displacement is only the affine scaling of its wrapped coordinate. The
-  // per-step minimum image in each frame's own cell (von Bulow et al., JCP 153, 021101
-  // (2020), "TOR") recovers that; image-flag unwrapping x + L_f n_f instead moves the atom
-  // by n_f dL each breath (artificial diffusion growing with the crossings), measured here.
+  // NPT as a barostat makes it: the atom drifts across 3+ faces, then rests at a fixed
+  // fractional coordinate while the cell breathes +-5 %. Per-step minimum image in each
+  // frame's own cell (von Bulow et al., JCP 153, 021101 (2020)) recovers that path; image-flag
+  // unwrapping x + L_f n_f moves the atom by n_f dL each breath (artificial diffusion).
   it.each([
     [`orthogonal`, IDENTITY_MATRIX3],
     [
@@ -99,11 +97,8 @@ describe(`unwrap_flat_positions`, () => {
       }
       wrapped.set(cart_of(frac, cell), idx * 3)
     }
-    const unwrapped = unwrap_flat_positions(wrapped, cells.length, 1, cells, [
-      true,
-      true,
-      true,
-    ])
+    const pbc: Pbc = [true, true, true]
+    const unwrapped = unwrap_flat_positions(wrapped, cells.length, 1, cells, pbc)
     // displacements from frame 0, which the unwrap keeps as its wrapped reference
     const max_err = Math.max(
       ...truth.flatMap((point, idx) =>

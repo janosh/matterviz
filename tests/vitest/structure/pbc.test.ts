@@ -19,7 +19,7 @@ import {
   get_majority_element,
 } from '#lib/structure/bonding.js'
 import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
-import { bond_records, bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering.js'
+import { bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering.js'
 import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { get_element_counts } from '#lib/structure/density.js'
@@ -39,6 +39,7 @@ import {
   SRTIO3_A,
 } from '../test-fixtures'
 import { max_abs_error } from '../numeric-helpers'
+import { expect_same_bonds } from './geometry-fixtures'
 
 const mp_1_struct = structure_map.get(`mp-1`) as Crystal
 const mp_2_struct = structure_map.get(`mp-2`) as Crystal
@@ -754,38 +755,17 @@ describe(`unwrap_molecules`, () => {
     const { structure: unwrapped, bonds: carried } = unwrap_molecules(crystal, bonds)
     expect(unwrapped).not.toBe(crystal)
     // record and packed (BondFrame) bonds carry over to what a fresh search of the moved sites
-    // finds: same pairs and orders, shifts now in-cell, positions within 1e-12 A
+    // finds: same pairs and orders, shifts now in-cell, positions within 1e-12 A, and the
+    // input's minimum-image bond_length now the in-cell distance (fresh lengths within 1e-12 A)
     const packed = get_bond_data(crystal, `pair_cutoffs`, {
       ...cutoffs,
       pbc: crystal.lattice.pbc,
     })
     const fresh = periodic_bonds(unwrapped)
     expect(fresh.some(({ cell_shift }) => cell_shift)).toBe(false)
-    for (const carried_bonds of [carried, unwrap_molecules(crystal, packed).bonds]) {
-      const records = bond_records(carried_bonds)
-      expect(records).toHaveLength(fresh.length)
-      for (const [idx, { pos_1, pos_2, bond_length, ...rest }] of records.entries()) {
-        const {
-          pos_1: fresh_1,
-          pos_2: fresh_2,
-          bond_length: fresh_length,
-          ...fresh_rest
-        } = fresh[idx]
-        expect(rest).toEqual(fresh_rest)
-        expect(Math.abs(bond_length - fresh_length)).toBeLessThan(1e-12)
-        expect(max_abs_error(pos_1, fresh_1)).toBeLessThan(1e-12)
-        expect(max_abs_error(pos_2, fresh_2)).toBeLessThan(1e-12)
-      }
-    }
-    // bond_length is the minimum-image distance; the torn bonds were ~8-10 A apart in the input
-    expect(bonds.some(({ cell_shift }) => cell_shift)).toBe(true)
-    for (const { site_idx_1, site_idx_2, bond_length } of bonds) {
-      const length = euclidean_dist(
-        unwrapped.sites[site_idx_1].xyz,
-        unwrapped.sites[site_idx_2].xyz,
-      )
-      expect(Math.abs(length - bond_length)).toBeLessThan(1e-10)
-    }
+    for (const carried_bonds of [carried, unwrap_molecules(crystal, packed).bonds])
+      expect_same_bonds(carried_bonds, fresh)
+    expect(bonds.some(({ cell_shift }) => cell_shift)).toBe(true) // torn in the input
     const frac_to_cart = create_frac_to_cart(lattice)
     for (const [idx, site] of unwrapped.sites.entries()) {
       expect(max_abs_error(site.xyz, frac_to_cart(site.abc))).toBeLessThan(1e-10)
@@ -809,49 +789,34 @@ describe(`unwrap_molecules`, () => {
     expect(unwrapped.sites.every((site) => site.provenance?.whole_molecule)).toBe(true)
   })
 
+  // 2 C 1.5 A apart along a 3 A axis bond into an infinite chain through the a face
+  const chain_lattice: Matrix3x3 = [
+    [3, 0, 0],
+    [0, 10, 0],
+    [0, 0, 10],
+  ]
+  const chain: [string, Vec3][] = [
+    [`C`, [0.9, 0.2, 0.2]],
+    [`C`, [0.4, 0.2, 0.2]],
+  ]
+
+  // network: one atom bonded to its own image along every axis (self-loop)
   test.each([
-    // 2 atoms 1.5 A apart along a 3 A axis: an infinite chain through the a face
-    {
-      desc: `chain`,
-      sites: [
-        [`C`, [0.9, 0.5, 0.5]],
-        [`C`, [0.4, 0.5, 0.5]],
-      ],
-    },
-    // one atom bonded to its own image along every axis (self-loop, 3D network)
-    { desc: `network`, sites: [[`C`, [0.99, 0.99, 0.99]]], cubic: 1.5 },
-  ] as { desc: string; sites: [string, Vec3][]; cubic?: number }[])(
-    `periodic $desc stays wrapped`,
-    ({ sites, cubic }) => {
-      const crystal = make_crystal(
-        cubic ?? [
-          [3, 0, 0],
-          [0, 10, 0],
-          [0, 0, 10],
-        ],
-        sites,
-      )
-      const bonds = periodic_bonds(crystal)
-      expect(bonds.length).toBeGreaterThan(0)
-      expect(unwrap_molecules(crystal, bonds).structure).toBe(crystal)
-    },
-  )
+    [`chain`, make_crystal(chain_lattice, chain)],
+    [`network`, make_crystal(1.5, [[`C`, [0.99, 0.99, 0.99]]])],
+  ])(`periodic %s stays wrapped`, (_, crystal) => {
+    const bonds = periodic_bonds(crystal)
+    expect(bonds.length).toBeGreaterThan(0)
+    expect(unwrap_molecules(crystal, bonds).structure).toBe(crystal)
+  })
 
   test(`a molecule beside a periodic chain moves while the chain stays`, () => {
-    const crystal = make_crystal(
-      [
-        [3, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ],
-      [
-        [`C`, [0.9, 0.2, 0.2]],
-        [`C`, [0.4, 0.2, 0.2]],
-        // C-C dimer torn across the c face, far from the chain
-        [`C`, [0.5, 0.7, 0.96]],
-        [`C`, [0.5, 0.7, 0.06]],
-      ],
-    )
+    // C-C dimer torn across the c face, far from the chain
+    const crystal = make_crystal(chain_lattice, [
+      ...chain,
+      [`C`, [0.5, 0.7, 0.96]],
+      [`C`, [0.5, 0.7, 0.06]],
+    ])
     const unwrapped = unwrap_molecules(crystal, periodic_bonds(crystal)).structure
     expect(unwrapped.sites.slice(0, 2)).toEqual(crystal.sites.slice(0, 2))
     expect(euclidean_dist(unwrapped.sites[2].xyz, unwrapped.sites[3].xyz)).toBeCloseTo(1, 10)

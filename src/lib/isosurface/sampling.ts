@@ -269,10 +269,9 @@ export type VolumeWindow = { range: DisplayRange; frame?: Matrix3x3 }
 // Periodic volumes always get an endpoint-inclusive window, even for an integer supercell: an
 // N-point periodic grid spans [0, 1) but finite marching cubes reads N points as [0, 1], so
 // [0, S] is resampled to N*S + 1 points (same spacing, closed final interval). A diagonal
-// supercell is that box in base fractions (separable resampling); any other is [0, 1]³ in its
-// own frame, filling exactly its parallelepiped. The halo pads every outer face by `halo` base
-// cells along M's rows (halo / |M_i| frame fractions). An explicit display_range (base
-// fractions) wins over the supercell; finite volumes get a window only from it, never padded.
+// supercell is that box in base fractions, any other [0, 1]³ in its own frame. The halo pads
+// each outer face by `halo` base cells (halo / |M_i| frame fractions). An explicit
+// display_range (base fractions) wins over the supercell; finite volumes get only that, unpadded.
 export function resolve_volume_window(
   volume: VolumetricData,
   {
@@ -300,10 +299,9 @@ export function resolve_volume_window(
 
 // Endpoint-inclusive sample counts per axis for a (sanitized) fractional window at the
 // source voxel density: periodic volumes have n intervals per cell, finite ones n - 1. A
-// supercell `frame` axis (row M_i in base fractions) takes Σ_j |M_ij|·n_j intervals (its row
-// L1 norm in voxels): a step along M_i then moves at most one voxel in total over the base
-// axes, so the samples hit every source voxel. max_j |M_ij|·n_j would step diagonally for a
-// sheared M and visit only an index-|det M| sublattice of voxels.
+// supercell `frame` axis M_i takes Σ_j |M_ij|·n_j intervals, so a step moves at most one voxel
+// in total and hits every source voxel (max_j |M_ij|·n_j steps diagonally for a sheared M,
+// visiting only an index-|det M| sublattice).
 export const range_sample_counts = (
   volume: VolumeGrid,
   range: DisplayRange,

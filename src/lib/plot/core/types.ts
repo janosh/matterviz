@@ -630,14 +630,11 @@ export interface AxisConfig {
   // Full config: { mode: Y2SyncMode, align_value?: number }
   sync?: Y2SyncConfig | Y2SyncMode
   categories?: readonly string[] // explicit category order/filter for categorical bar plots
-  // Unlabeled minor ticks at 2..9 x each decade on log axes (thinned when decades are dense).
-  // On by default for log axes, no effect on others.
+  // Unlabeled minor ticks at 2..9 x each decade, on by default for log axes only
   minor_ticks?: boolean
-  // x2_axis only: show a function of the x axis on top (photon energy -> wavelength, 2θ ->
-  // d-spacing, T -> 1000 / T) with no series of its own. Ticks are nice values of the derived
-  // quantity placed at x = inverse(tick); `scale_type` picks their scheme (default x's).
-  // forward must be finite and monotonic over the visible x range, else x2 shows no ticks
-  // there (1240 / x panned across 0); a time-scale x axis throws.
+  // x2_axis only: label the top axis with a function of x (photon energy -> wavelength), ticks
+  // at x = inverse(tick) on `scale_type`'s scheme (default x's). No ticks where forward isn't
+  // finite and monotonic over the view (1240 / x across 0); a time-scale x axis throws.
   derive?: AxisDerive
 }
 

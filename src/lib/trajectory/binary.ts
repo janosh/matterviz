@@ -1,8 +1,6 @@
-// Trajectory from a `matterviz-binary-v1` envelope (kind 'trajectory'), e.g. the anywidget
-// `trajectory` trait when pymatviz ships numpy arrays as raw buffers. Positions, vectors and
-// cells stay the decoded typed arrays (float32 ones are widened per frame on read); each frame
-// is encoded on read straight into a numeric MD frame, so no per-site JS objects exist beyond
-// frame 0's preview. Wire format: extensions/anywidget/readme.md
+// Trajectory from a `matterviz-binary-v1` envelope (kind 'trajectory', wire format in
+// extensions/anywidget/readme.md). Arrays stay the decoded typed arrays, each frame encoded on
+// read into a numeric MD frame, so no per-site JS objects exist beyond frame 0's preview.
 import { element_by_symbol } from '#lib/element/data.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import {
@@ -87,20 +85,12 @@ export function trajectory_from_binary(
     )
   const cell_of = (frame_idx: number): Matrix3x3 | undefined =>
     cells && matrix_at(cells, shared_cell ? 0 : frame_idx * 9)
-  let pbc: Pbc | undefined
-  if (fields.pbc !== undefined) {
-    if (!cells) throw new TypeError(`Binary trajectory pbc needs a lattice`)
-    const { pbc: value } = fields
-    if (
-      !Array.isArray(value) ||
-      value.length !== 3 ||
-      !value.every((v) => typeof v === `boolean`)
-    )
-      throw new TypeError(
-        `Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(value)}`,
-      )
-    pbc = [value[0], value[1], value[2]]
-  }
+  const pbc = fields.pbc as Pbc | undefined
+  if (pbc !== undefined && !cells) throw new TypeError(`Binary trajectory pbc needs a lattice`)
+  const pbc_ok =
+    Array.isArray(pbc) && pbc.length === 3 && pbc.every((flag) => typeof flag === `boolean`)
+  if (pbc !== undefined && !pbc_ok)
+    throw new TypeError(`Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(pbc)}`)
 
   const step_values =
     arrays.steps && finite_values(checked_array(arrays.steps, `steps`, [n_frames]), `steps`)

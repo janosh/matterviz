@@ -279,9 +279,8 @@ function glide_type(glide_vec: Vec3, axis_plane: boolean, hexagonal: boolean): s
 // ITA letter of the mirror/glide (W, w) from its whole glide class w_i + (Λ ∩ plane), read in a
 // standardized conventional frame (info built there): m if the class holds the null vector, e
 // (double glide) if it holds two of a, b, c, n (or a diagonal (a±b)/2 next to c/2), else the
-// single a/b/c/n, then d, else g. Classifying the class rather than one reduced representative
-// is what makes the letter independent of the representative and the input cell.
-// `hexagonal` marks a hexagonal-axes frame (trigonal and hexagonal groups), see glide_type.
+// single a/b/c/n, then d, else g. Classifying the whole class, not one reduced representative,
+// makes the letter independent of the representative and the input cell.
 function ita_glide_letter(
   { normal_eq, plane_basis, plane_offsets }: RotationInfo & { kind: `mirror` },
   w_intrinsic: Vec3,
@@ -523,7 +522,7 @@ function classify_with_rotation_info(
 // cells, pass the centering vectors so intrinsic screw/glide translations are reduced modulo
 // the TRUE lattice — e.g. along a ⟨111⟩ axis of a body-centered cell the lattice period
 // is (1/2)(1,1,1), and a C-centering-composed mirror is still a mirror, not an n-glide.
-// `hexagonal` marks a hexagonal-axes frame (trigonal and hexagonal groups), see glide_type.
+// `hexagonal`: hexagonal axes (trigonal and hexagonal groups), see glide_type.
 export function classify_symmetry_op(
   rotation: readonly number[],
   translation: readonly number[],
@@ -554,8 +553,7 @@ const lex_greater = (score: number[], other: number[]): boolean => {
   return idx !== -1 && score[idx] > other[idx]
 }
 
-// What symmetry_elements_from_ops reads from a moyo dataset: the operations (input frame) and
-// where moyo's standardized conventional cell sits relative to the input
+// The operations (input frame) and moyo's standardized conventional cell relative to the input
 export type SymmetryFrameData = Pick<
   MoyoDataset,
   `operations` | `std_linear` | `std_origin_shift` | `std_rotation_matrix`
@@ -653,23 +651,32 @@ export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): Symmetr
     for (const image of basis_images) add_std(math.add(vec, image))
   const std_centerings = [...std_group.values()]
 
-  // Each distinct rotation in the standardized frame, W_std = Q·W·Q⁻¹ for Q = std_from_input
-  // (supercell inputs repeat at most 48 distinct W across thousands of ops)
-  const std_mats = new Map<string, Matrix3x3>()
+  // Rotation-dependent analysis in both frames per distinct rotation (null: identity), with
+  // W_std = Q·W·Q⁻¹ for Q = std_from_input (supercell inputs repeat at most 48 distinct W
+  // across thousands of ops)
+  type RotationData = { info: RotationInfo; std_info: RotationInfo; std_offset: Vec3 }
+  const info_cache = new Map<string, RotationData | null>()
+  const std_mats: Matrix3x3[] = []
   for (const { rotation } of operations) {
     const rot_key = rotation.join(`,`)
-    if (std_mats.has(rot_key)) continue
+    if (info_cache.has(rot_key)) continue
     const mat = math.mat3x3_from_flat_col_major(rotation)
-    const std_mat = math.dot(math.dot(std_from_input, mat), input_from_std)
-    if (!std_mat.flat().every(is_integer)) {
+    const raw_std_mat = math.dot(math.dot(std_from_input, mat), input_from_std)
+    if (!raw_std_mat.flat().every(is_integer)) {
       throw new Error(
         `Rotation ${rot_key} is not integral in the standardized frame (std_linear ${sym_data.std_linear.join(`,`)})`,
       )
     }
-    std_mats.set(rot_key, mat_round(std_mat))
+    const std_mat = mat_round(raw_std_mat)
+    std_mats.push(std_mat)
+    const info = build_rotation_info(rotation, centerings)
+    const std_info = build_rotation_info(math.transpose_3x3(std_mat).flat(), std_centerings)
+    // w_std = Q·w + (I − W_std)·q for x_std = Q·x + q
+    const std_offset = math.subtract(std_origin, math.mul_3x3_vec3(std_mat, std_origin))
+    info_cache.set(rot_key, info && std_info && { info, std_info, std_offset })
   }
   // Hexagonal axes: a proper 3- or 6-fold (trace 0 or 2) fixing c
-  const hexagonal = [...std_mats.values()].some(
+  const hexagonal = std_mats.some(
     (mat) =>
       Math.round(math.det_3x3(mat)) === 1 &&
       [0, 2].includes(trace(mat)) &&
@@ -677,18 +684,6 @@ export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): Symmetr
       mat[1][2] === 0 &&
       mat[2][2] === 1,
   )
-
-  // Rotation-dependent analysis in both frames per distinct rotation (null: identity)
-  type RotationData = { info: RotationInfo; std_info: RotationInfo; std_offset: Vec3 }
-  const info_cache = new Map<string, RotationData | null>()
-  for (const [rot_key, std_mat] of std_mats) {
-    const rotation = rot_key.split(`,`).map(Number)
-    const info = build_rotation_info(rotation, centerings)
-    const std_info = build_rotation_info(math.transpose_3x3(std_mat).flat(), std_centerings)
-    // w_std = Q·w + (I − W_std)·q for x_std = Q·x + q
-    const std_offset = math.subtract(std_origin, math.mul_3x3_vec3(std_mat, std_origin))
-    info_cache.set(rot_key, info && std_info && { info, std_info, std_offset })
-  }
   const label_cache = new Map<string, string>()
   const seen = new Map<string, SymmetryElement>()
   for (const { rotation, translation } of operations) {

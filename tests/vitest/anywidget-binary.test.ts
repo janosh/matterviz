@@ -121,7 +121,7 @@ describe(`trajectory_from_binary`, () => {
       expect(json.vector_keys).toEqual([`force`])
       // xyz, fractional abc and forces column for column: bit-identical
       expect(binary.coordinates).toEqual(json.coordinates)
-      expect(binary.sites).toEqual(Uint8Array.of(14, 8))
+      expect(binary.sites).toEqual(numbers)
       expect(binary.structure.lattice?.matrix).toEqual(json.structure.lattice?.matrix)
     }
     // plot rows: same keys, values within 1e-12 relative (density sums masses either way)
@@ -136,10 +136,10 @@ describe(`trajectory_from_binary`, () => {
           1e-12 * Math.abs(value),
         )
     }
-    expect(run.preview.structure.sites.map((site) => site.species[0].element)).toEqual([
-      `Si`,
-      `O`,
-    ])
+    const preview_elements = run.preview.structure.sites.map(
+      ({ species }) => species[0].element,
+    )
+    expect(preview_elements).toEqual([`Si`, `O`])
   })
 
   test(`float32 positions and vectors widen exactly, a shared cell and default steps apply to every frame`, async () => {
@@ -284,35 +284,20 @@ describe(`volume_from_binary`, () => {
     expect(volume.values.buffer === grid.buffer).toBe(dtype === `float64`)
   })
 
-  test.each([
+  test.each<[Record<string, unknown>, RegExp, object?]>([
     [
       { values: arr(grid, [2, 3, 4]), extra: arr(grid, [24]) },
-      {},
       /exactly one 'values' array, got \[values, extra\]/,
     ],
-    [{}, {}, /exactly one 'values' array, got \[\]/],
-    [
-      { values: arr(grid, [6, 4]) },
-      {},
-      /'values' must have shape \[\*, \*, \*\], got \[6, 4\]/,
-    ],
+    [{}, /exactly one 'values' array, got \[\]/],
+    [{ values: arr(grid, [6, 4]) }, /'values' must have shape \[\*, \*, \*\], got \[6, 4\]/],
     [
       { values: arr(Int32Array.from(grid), [2, 3, 4]) },
-      {},
       /'values' dtype must be float, got int32/,
     ],
-    [{ values: arr(grid, [2, 3, 4]) }, { dims: [2, 3, 4] }, /dims from the values shape/],
-    [
-      { values: arr(grid, [2, 3, 4]) },
-      {
-        lattice: [
-          [1, 0],
-          [0, 1],
-        ],
-      },
-      /needs a 3x3 lattice/,
-    ],
-  ])(`rejects malformed volume %#`, (arrays, fields, message) => {
+    [{ values: arr(grid, [2, 3, 4]) }, /dims from the values shape/, { dims: [2, 3, 4] }],
+    [{ values: arr(grid, [2, 3, 4]) }, /needs a 3x3 lattice/, { lattice: [[1, 0, 0]] }],
+  ])(`rejects malformed volume %#`, (arrays, message, fields = {}) => {
     expect(() =>
       volume_from_binary(envelope(`volume`, arrays, { ...geometry, ...fields })),
     ).toThrow(message)

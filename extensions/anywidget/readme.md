@@ -70,22 +70,8 @@ def trajectory_payload(traj: "pymatgen.core.trajectory.Trajectory") -> dict:
     return payload
 
 
-def volume_payload(grid: np.ndarray, lattice: np.ndarray, *, vol_id: str, units: str | None) -> dict:
-    """Binary envelope for one volumetric_data entry (grid indexed [ix, iy, iz])."""
-    return {
-        "format": BINARY_FORMAT,
-        "kind": "volume",
-        "arrays": {"values": binary_array(grid, "float32")},
-        "id": vol_id,
-        "lattice": np.asarray(lattice).tolist(),
-        "origin": [0.0, 0.0, 0.0],
-        "periodic": True,
-        "units": units,
-    }
-
-
 # widget.trajectory = trajectory_payload(traj)  # Dict trait tagged sync=True
-# widget.volumetric_data = [volume_payload(chgcar.data["total"] / chgcar.structure.volume, ...)]
+# a volume: kind "volume", arrays {"values": binary_array(grid, "float32")} + the JSON volume fields
 ```
 
 Benchmarks (Node 26, Apple arm64, decode = `JSON.parse` of the trait text + the JSON decoder vs the binary decoder; retained = heap + ArrayBuffer growth after GC):
