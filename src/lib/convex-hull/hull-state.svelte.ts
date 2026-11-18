@@ -6,8 +6,13 @@ import { to_error } from 'svelte-widgets/utils'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import * as helpers from './helpers'
 import * as thermo from './thermodynamics'
-import type { EnergySourceMode } from './model'
-import { apply_formation_energies, build_hull_model, compute_energy_mode_info } from './model'
+import type { EnergySourceMode, OpenElements } from './model'
+import {
+  apply_formation_energies,
+  build_hull_model,
+  compute_energy_mode_info,
+  process_model_entries,
+} from './model'
 import type {
   EntryCategoryConfig,
   GasSpecies,
@@ -27,6 +32,8 @@ interface HullDataPipelineInputs {
   energy_source_mode: () => EnergySourceMode
   // Pseudo-component keys (e.g. precursor formulas) in place of element symbols
   components: () => readonly string[] | undefined
+  // Elements at fixed chemical potential (eV/atom): a grand-potential hull without their axes
+  open_elements: () => OpenElements | undefined
   max_hull_dist_show_phases: () => number
   show_stable: () => boolean
   show_unstable: () => boolean
@@ -65,11 +72,15 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const normalized_source = $derived.by(() => {
     try {
       return {
-        ...thermo.process_hull_entries(inputs.entries(), inputs.components()),
+        ...process_model_entries(
+          inputs.entries(),
+          inputs.components(),
+          inputs.open_elements(),
+        ),
         error: null,
       }
     } catch (err) {
-      return { entries: [], elements: [], error: to_error(err).message }
+      return { entries: [], elements: [], is_open: false, error: to_error(err).message }
     }
   })
   const source_entries = $derived(normalized_source.entries)
@@ -112,7 +123,9 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     compute_energy_mode_info(
       gas_result.entries,
       inputs.energy_source_mode(),
-      temp_analysis.has_temp_data || gas_result.entries !== temp_filtered_entries,
+      normalized_source.is_open ||
+        temp_analysis.has_temp_data ||
+        gas_result.entries !== temp_filtered_entries,
     ),
   )
 
@@ -133,6 +146,9 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // rendered in place of the plot
   const error = $derived.by((): string | null => {
     if (normalized_source.error) return normalized_source.error
+    if (normalized_source.is_open && energy_info.energy_mode !== `on-the-fly`) {
+      return `open_elements needs an elemental reference with an absolute energy for each of ${elements.join(`, `)}`
+    }
     if (elements.length === 0 || elements.length === dim) return null
     return `Convex hulls require 2, 3 or 4 elements, found ${elements.length}: ${elements.join(`, `)}`
   })

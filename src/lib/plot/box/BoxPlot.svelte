@@ -304,8 +304,22 @@
   const draws_violin = (srs: BoxPlotSeries<Metadata>): boolean => effective_kind(srs) !== `box`
   const draws_box = (srs: BoxPlotSeries<Metadata>): boolean => effective_kind(srs) !== `violin`
 
-  // Legend visibility changes no samples, so summaries depend on the authored data.
-  let box_summaries = $derived(series_in.map((srs) => summarize_box_samples(srs.y)))
+  // The log axes as one string key (e.g. `x y2`), so a new axis object keeping its scale type
+  // doesn't recompute every KDE or box summary
+  const log_axes = $derived(
+    (Object.keys(plot_axes) as (keyof typeof plot_axes)[])
+      .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
+      .join(` `),
+  )
+  // Legend visibility changes no samples, so summaries depend on the authored data. On a log
+  // value axis only positive samples are drawable, so the box, violin and strip points all
+  // summarize those.
+  let box_summaries = $derived(
+    series_in.map((srs) => {
+      const log = log_axes.split(` `).includes(val_axis_key(srs))
+      return summarize_box_samples(log ? Array.from(srs.y).filter((val) => val > 0) : srs.y)
+    }),
+  )
   let box_stats = $derived(
     series.map((srs, idx) =>
       compute_box_whiskers(box_summaries[idx], {
@@ -367,18 +381,12 @@
   )
 
   type ViolinKde = KdeResult & { max_density: number }
-  // The log axes as one string key (e.g. `x y2`), so a new axis object keeping its scale type
-  // doesn't recompute every KDE
-  const log_axes = $derived(
-    (Object.keys(plot_axes) as (keyof typeof plot_axes)[])
-      .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
-      .join(` `),
-  )
   // KDEs read series_in so legend toggles don't recompute them. On log axes density is
   // estimated over log10 of the positive samples (bandwidth in decades), in input order.
+  // Same sample set as the box summary (finite and > 0), kept in input order
   const log10_positive = (values: Iterable<number>): number[] => {
     const logs: number[] = []
-    for (const val of values) if (val > 0) logs.push(Math.log10(val))
+    for (const val of values) if (val > 0 && Number.isFinite(val)) logs.push(Math.log10(val))
     return logs
   }
   const to_log = (bound: number | null) =>
@@ -406,17 +414,16 @@
   // === Strip / swarm sample points ===
   // Marker centers are range-bounded; their full circles may reach into the plot padding
   const in_plot = ([px_x, px_y]: Vec2): boolean => frame.in_plot(px_x, px_y)
-  // Each visible box's drawn samples (minus non-positive ones on a log axis) and their
+  // Each visible box's drawn samples (already positive-only on a log axis) and their
   // cross-axis offsets, packed in a px frame scaled like the plot's but not offset (pans reuse it)
   let box_offsets = $derived.by(() => {
-    const map = new Map<number, { values: number[]; offsets: Float64Array }>()
+    const map = new Map<number, { values: readonly number[]; offsets: Float64Array }>()
     for (const { series: srs, idx } of visible_boxes) {
       const mode = point_mode(srs)
       if (mode === `none`) continue
       const axis_key = val_axis_key(srs)
       const { scale_type } = plot_axes[axis_key]
-      const log = get_scale_type_name(scale_type) === `log`
-      const values = box_summaries[idx].values.filter((val) => !log || val > 0)
+      const { values } = box_summaries[idx]
       const { forward } = axis_transform(scale_type)
       const value_px = values.map((val) => frame.px_per_unit[axis_key] * forward(val))
       const body = violin_kdes.has(idx)

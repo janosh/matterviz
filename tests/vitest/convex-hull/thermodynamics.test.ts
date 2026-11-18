@@ -4,6 +4,7 @@ import {
   compute_e_form_per_atom,
   compute_lower_hull_nd,
   compute_quickhull_nd,
+  decompose_hull_composition,
   find_lowest_energy_unary_refs,
   get_convex_hull_stats,
   has_absolute_energy,
@@ -22,6 +23,7 @@ import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../test-fixtures'
 import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
+import pymatgen_grand from './fixtures/li_co_ni_o_grand_potential_reference.json' with { type: 'json' }
 
 const make_elem = (element: string, energy = -1.0) =>
   make_phase({ [element]: 1 }, energy, { entry_id: element })
@@ -598,6 +600,39 @@ describe(`pymatgen cross-validation`, () => {
     }
   })
 
+  // Fixed mu_O (O2 reference, -1.5 and -3 eV below it) projects Li-Co-Ni-O to a Li-Co-Ni
+  // ternary of grand potentials per non-O atom; regenerate with generate_pymatgen_grand_potential.py
+  test.each(pymatgen_grand.cases)(
+    `Li-Co-Ni-O at mu_O = $mu_O matches pymatgen GrandPotentialPhaseDiagram`,
+    ({ mu_O, e_above_hull: expected }) => {
+      const entries = load_json<PhaseData[]>(`${site_dir}/Li-Co-Ni-O.json.gz`)
+      const model = compute_hull_model(entries, { open_elements: { O: mu_O } })
+      expect(model.elements.toSorted()).toEqual([`Co`, `Li`, `Ni`])
+      const real = model.entries.filter((entry) => !entry.is_synthetic)
+      const compare_ids = (id_a?: string, id_b?: string) =>
+        (id_a ?? ``).localeCompare(id_b ?? ``)
+      const ids = real.map((entry) => entry.entry_id ?? ``)
+      expect(ids.toSorted(compare_ids)).toEqual(Object.keys(expected).toSorted(compare_ids))
+      const diffs = real.map((entry) =>
+        Math.abs(
+          (entry.e_above_hull ?? NaN) - expected[entry.entry_id as keyof typeof expected],
+        ),
+      )
+      expect(Math.max(...diffs)).toBeLessThan(1e-6)
+      const stable = (hulls: [string, number][]) =>
+        hulls.flatMap(([id, dist]) => (dist < 1e-6 ? [id] : [])).toSorted(compare_ids)
+      expect(
+        real
+          .filter((entry) => entry.is_stable)
+          .map((entry) => entry.entry_id)
+          .toSorted(compare_ids),
+      ).toEqual(stable(Object.entries(expected)))
+      // names keep the full formula; open-only entries (O2) leave the system
+      expect(real.find((entry) => entry.composition.O)).toBeUndefined()
+      expect(real.some((entry) => entry.name === `LiCoO2`)).toBe(true)
+    },
+  )
+
   test(`single-entry mode matches batch mode`, () => {
     const batch = compute_e_above_hull(quinary, quinary)
     for (const [idx, entry] of quinary.entries())
@@ -624,7 +659,9 @@ describe(`get_convex_hull_stats`, () => {
       quaternary: 0,
       quinary_plus: 1,
       stable: 2,
-      unstable: 4,
+      // the quinary has no hull distance: unknown, not unstable
+      unstable: 3,
+      unknown_stability: 1,
       elements: 3,
       chemical_system: `Li-Fe-O`,
       max_arity: 3,
@@ -802,5 +839,50 @@ describe(`hull decomposition`, () => {
     expect(system_fractions({ Li: 1, O: 3 }, [...elements])).toEqual([0.25, 0.75])
     const lio2 = decompose(make_phase({ Li: 1, O: 2 }, -0.5, above))
     expect(lio2?.decomposition.map(({ phase }) => phase.entry_id)).toEqual([`O`, `li2o`])
+    // composition probe: any composition, a stable entry's own included
+    const probe = (composition: Record<string, number>) =>
+      decompose_hull_composition(composition, model.entries, [...elements])
+    expect(probe({ Li: 4, O: 2 })?.decomposition).toEqual([
+      { phase: li2o, atom_fraction: expect.closeTo(1, 12) },
+    ])
+    // 3/4 Li2O + 1/4 O by atoms at -2 eV/atom, never the excluded LiO below it
+    expect(probe({ Li: 1, O: 1 })?.energy).toBeCloseTo(0.75 * -2, 12)
+    expect(probe({ Li: 1, Na: 1 })).toBeNull()
+  })
+
+  // Probes off every entry: the LP mixture must equal the facet-plane hull energy there, which
+  // compute_hull_model reports for an excluded zero-E_form marker as -e_above_hull
+  test.each([
+    [[`Li`, `O`], 4],
+    [[`Li`, `Na`, `O`], 5],
+    [[`Li`, `Na`, `Cl`, `O`], 6],
+  ])(`%j: probes at arbitrary compositions match the facet hull`, (elements, seed) => {
+    const rng = make_rng(seed)
+    const entries = [
+      ...elements.map((element) => make_elem(element, 0)),
+      ...Array.from({ length: 30 }, (_, idx) =>
+        make_phase(
+          Object.fromEntries(elements.map((element) => [element, 1 + Math.floor(rng() * 3)])),
+          -2 * rng(),
+          { entry_id: `e${idx}` },
+        ),
+      ),
+    ]
+    const probes = Array.from({ length: 10 }, () =>
+      Object.fromEntries(elements.map((element) => [element, 0.05 + rng()])),
+    )
+    const markers = probes.map((composition, idx) =>
+      make_phase(composition, 0, { entry_id: `probe${idx}`, exclude_from_hull: true }),
+    )
+    const model = compute_hull_model([...entries, ...markers], {
+      energy_source_mode: `on-the-fly`,
+    })
+    for (const [idx, composition] of probes.entries()) {
+      const marker = model.entries.find((entry) => entry.entry_id === `probe${idx}`)
+      const result = decompose_hull_composition(composition, model.entries, model.elements)
+      expect(result?.energy).toBeCloseTo(-(marker?.e_above_hull ?? NaN), 9)
+      const total = result?.decomposition.reduce((sum, item) => sum + item.atom_fraction, 0)
+      expect(total).toBeCloseTo(1, 9)
+    }
   })
 })

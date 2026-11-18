@@ -1,10 +1,11 @@
+import type { CompositionType } from '#lib/composition/index.js'
 import type { ShowControlsProp } from '#lib/controls.js'
 import type { ExportProps } from '#lib/io/export.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
-import type { EnergySourceMode, HullModel } from './model'
+import type { EnergySourceMode, HullModel, OpenElements } from './model'
 import type {
   ConvexHullConfig,
   ConvexHullControlsType,
@@ -56,7 +57,7 @@ export {
   visible_entries,
 } from './helpers'
 export type { PolymorphStats, TemperatureAnalysis, TemperatureFilterOptions } from './helpers'
-export { compute_hull_model } from './model'
+export { compute_hull_model, grand_potential_entries, type OpenElements } from './model'
 export type { EnergyModeInfo, EnergySourceMode, HullModel } from './model'
 export { default as StructurePopup } from './StructurePopup.svelte'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
@@ -102,6 +103,13 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // formulas for a pseudo-binary/ternary reaction hull. Entries then hold pseudo-compositions
   // such as { BaO: 0.4, TiO2: 0.6 } and the corners are the components.
   components?: readonly string[]
+  // Elements exchanged with a reservoir at fixed chemical potential (absolute eV/atom), e.g.
+  // { O: -6.4 }: the hull is drawn in grand potential Φ = E - Σ μ N per non-open atom without
+  // their axes (pymatgen's GrandPotentialPhaseDiagram), so Li-Co-Ni-O at fixed μ_O is a ternary
+  open_elements?: OpenElements
+  // Composition to decompose into its equilibrium hull products (bindable; also entered in
+  // the info pane), drawn as a ring on the hull with tie-lines to the products
+  probe_composition?: CompositionType | null
   // Options for the controls pane: title, show_counts and show_label_controls.
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>

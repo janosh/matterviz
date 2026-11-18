@@ -760,6 +760,25 @@ describe(`BoxPlot`, () => {
     expect(paths.filter((path) => path?.includes(`NaN`))).toEqual([])
   })
 
+  // The box summarizes the same positive samples the violin and strip points draw on a log
+  // axis: [-5, 0, 1, 10, 100] has median 1 over all samples but 10 over the drawable ones
+  test.each([
+    [`log`, { median: 10, min: 1, n: 3 }],
+    [`linear`, { median: 1, min: -5, n: 5 }],
+  ] as const)(`%s value axis box stats`, async (scale_type, expected) => {
+    const on_box_click = vi.fn()
+    const plot = await mount_sized_box_plot({
+      series: [{ y: [-5, 0, 1, 10, 100], label: `A` }],
+      y_axis: { scale_type, ...(scale_type === `log` && { range: [0.5, 200] }) },
+      on_box_click,
+    })
+    await fire(
+      query(plot, `g.box-series[role="button"]`),
+      new MouseEvent(`click`, { bubbles: true }),
+    )
+    expect(on_box_click.mock.calls[0]?.[0].stats).toMatchObject(expected)
+  })
+
   // Stats <= 0 (whisker_low is exactly 0 here) clamp to the log floor instead of rendering NaN,
   // and the violin is estimated in log10 space over the positive samples: its outline points
   // are evenly spaced on screen and a numeric bandwidth is in decades

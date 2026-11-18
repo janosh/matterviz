@@ -50,6 +50,81 @@ describe(`unwrap_flat_positions`, () => {
     expect(unwrapped).toEqual(reference(pbc))
     expect(unwrapped).not.toEqual(positions) // steps did cross cell faces
   })
+  // NPT ground truth the way a barostat produces it: the atom drifts across 3+ faces in a
+  // fixed cell, then sits at a fixed fractional coordinate while the cell breathes +-5 %,
+  // so its real displacement is only the affine scaling of its wrapped coordinate. The
+  // per-step minimum image in each frame's own cell (von Bulow et al., JCP 153, 021101
+  // (2020), "TOR") recovers that; image-flag unwrapping x + L_f n_f instead moves the atom
+  // by n_f dL each breath (artificial diffusion growing with the crossings), measured here.
+  it.each([
+    [`orthogonal`, IDENTITY_MATRIX3],
+    [
+      `sheared`,
+      [
+        [1, 0, 0],
+        [0.3, 1, 0],
+        [0.2, -0.25, 1],
+      ] as typeof IDENTITY_MATRIX3,
+    ],
+  ])(`recovers the barostat path in a breathing %s cell`, (_label, base) => {
+    const [n_drift, n_breathe, box_len, speed] = [40, 40, 10, 0.9]
+    const cells = Array.from({ length: n_drift + n_breathe }, (_, idx) => {
+      const breath = idx < n_drift ? 1 : 1 + 0.05 * Math.sin((idx - n_drift) / 3)
+      return base.map((row) => row.map((val) => val * box_len * breath)) as typeof base
+    })
+    const frac_of = (cart: Vec3, cell: typeof base): Vec3 => {
+      // solve s . cell = cart for a lower-triangular cell
+      const s_c = cart[2] / cell[2][2]
+      const s_b = (cart[1] - s_c * cell[2][1]) / cell[1][1]
+      return [(cart[0] - s_b * cell[1][0] - s_c * cell[2][0]) / cell[0][0], s_b, s_c]
+    }
+    const cart_of = (frac: Vec3, cell: typeof base): Vec3 =>
+      [0, 1, 2].map(
+        (ax) => frac[0] * cell[0][ax] + frac[1] * cell[1][ax] + frac[2] * cell[2][ax],
+      ) as Vec3
+    const truth: Vec3[] = []
+    const wrapped = new Float64Array((n_drift + n_breathe) * 3)
+    let rest_frac: Vec3 = [0, 0, 0]
+    for (const [idx, cell] of cells.entries()) {
+      let frac: Vec3
+      if (idx < n_drift) {
+        const cart: Vec3 = [1 + speed * idx, 2 + 0.4 * speed * idx, 3 - 0.3 * speed * idx]
+        truth.push(cart)
+        frac = frac_of(cart, cell).map((val) => val - Math.floor(val)) as Vec3
+        rest_frac = frac
+      } else {
+        frac = rest_frac
+        const [first_rest, now] = [cart_of(frac, cells[n_drift - 1]), cart_of(frac, cell)]
+        truth.push(truth[n_drift - 1].map((val, ax) => val + now[ax] - first_rest[ax]) as Vec3)
+      }
+      wrapped.set(cart_of(frac, cell), idx * 3)
+    }
+    const unwrapped = unwrap_flat_positions(wrapped, cells.length, 1, cells, [
+      true,
+      true,
+      true,
+    ])
+    // displacements from frame 0, which the unwrap keeps as its wrapped reference
+    const max_err = Math.max(
+      ...truth.flatMap((point, idx) =>
+        point.map((val, ax) =>
+          Math.abs(unwrapped[idx * 3 + ax] - wrapped[ax] - val + truth[0][ax]),
+        ),
+      ),
+    )
+    expect(max_err).toBeLessThan(1e-12)
+    // image-flag reference: n_f is constant while breathing, so x + L_f n_f strays by n dL
+    const last = cells.length - 1
+    const flags = frac_of(truth[n_drift - 1], cells[n_drift - 1]).map(Math.floor) as Vec3
+    const last_wrapped = Array.from(wrapped.subarray(last * 3)) as Vec3
+    const last_frac = frac_of(last_wrapped, cells[last])
+    const image_flag = cart_of(
+      last_frac.map((val, ax) => val + flags[ax]) as Vec3,
+      cells[last],
+    )
+    const image_flag_err = Math.hypot(...image_flag.map((val, ax) => val - truth[last][ax]))
+    expect(image_flag_err).toBeGreaterThan(0.5) // Angstrom: 3+ crossings x ~0.3 A breath
+  })
   // Fractional steps are checked one by one: 1e308 + 1e308 overflows, each alone is finite
   it(`accepts huge but finite steps like the generic path`, () => {
     const huge = Float64Array.of(0, 0, 0, 1e308, 1e308, 0)

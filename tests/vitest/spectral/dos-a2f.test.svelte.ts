@@ -2,7 +2,7 @@
 import type { DataSeries } from '#lib/plot/index.js'
 import type ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import Dos from '#lib/spectral/Dos.svelte'
-import type { PhononDos } from '#lib/spectral/types.js'
+import type { ElectronicDos, PhononDos } from '#lib/spectral/types.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 
@@ -135,5 +135,50 @@ test.each([
     flushSync()
     expect(read().axis?.range).toEqual([0, 1])
     expect(props.a2f_extent).toEqual([0, 0.3])
+  },
+)
+
+// Overlaid spin channels keep their DOS's colour (spin-down dashed), so no DOS borrows
+// another's colour; α²F curves (phonon only, so never beside spin channels) take the colours
+// after the DOSes, dashed their own way
+const spin_dos: ElectronicDos = {
+  type: `electronic`,
+  energy_unit: `eV`,
+  energies: [0, 3, 6],
+  densities: [0, 2, 0],
+  spin_down_densities: [0, 1, 0],
+}
+test.each([
+  [
+    `spin overlay`,
+    { doses: { A: spin_dos, B: spin_dos, C: spin_dos }, spin_mode: `overlay` },
+    6,
+    3,
+  ],
+  [
+    `phonon + α²F`,
+    { doses: { A: phonon_dos, B: phonon_dos }, a2f: { F1: a2f, F2: a2f } },
+    4,
+    4,
+  ],
+] as const)(
+  `%s: one colour per curve, unique colour + dash per series`,
+  (_desc, props, n_series, n_curves) => {
+    mount_dos(props)
+    const series: readonly DataSeries[] = plot.props?.series ?? []
+    expect(series).toHaveLength(n_series)
+    const styles = series.map(({ label, line_style }) => ({
+      curve: String(label).replace(/ \([↑↓]\)$/, ``),
+      color: line_style?.color,
+      dash: line_style?.dash ?? `solid`,
+    }))
+    expect(new Set(styles.map(({ color, dash }) => `${color} ${dash}`)).size).toBe(n_series)
+    const curve_colors = new Map<string, Set<string | undefined>>()
+    for (const { curve, color } of styles) {
+      curve_colors.set(curve, (curve_colors.get(curve) ?? new Set()).add(color))
+    }
+    expect(curve_colors.size).toBe(n_curves)
+    expect([...curve_colors.values()].every((colors) => colors.size === 1)).toBe(true)
+    expect(new Set(styles.map(({ color }) => color)).size).toBe(n_curves)
   },
 )

@@ -127,6 +127,15 @@
         rows: [
           count_row(`Stable phases`, phase_stats.stable, `stable-phases`),
           count_row(`Unstable phases`, phase_stats.unstable, `unstable-phases`),
+          ...(phase_stats.unknown_stability > 0
+            ? [
+                count_row(
+                  `Unknown stability`,
+                  phase_stats.unknown_stability,
+                  `unknown-stability`,
+                ),
+              ]
+            : []),
         ],
       },
       e_form: e_form_range

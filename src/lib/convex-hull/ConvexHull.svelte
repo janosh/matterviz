@@ -37,6 +37,8 @@
   import MissingConvexHullData from './MissingConvexHullData.svelte'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import { build_hull_overlay, current_entry, HULL_STABILITY_TOL } from './helpers'
+  import type { HullProbe } from './helpers'
+  import { decompose_hull_composition } from './thermodynamics'
 
   // One public viewer infers dimensionality; renderers only handle their plot geometry.
   type ConvexHullProps = BaseConvexHullProps &
@@ -48,6 +50,7 @@
   let {
     entries: entries_prop,
     components,
+    open_elements,
     label_threshold = 50,
     interpolate_temperature = true,
     max_interpolation_gap = 500,
@@ -77,6 +80,7 @@
     highlighted_entries = $bindable([]),
     link_hover,
     selected_entry = $bindable(null),
+    probe_composition = $bindable(null),
     temperature = $bindable(),
     gas_pressures = $bindable({}),
     controls = {},
@@ -120,6 +124,7 @@
   const hull_data = create_hull_data_pipeline({
     entries: () => entries,
     components: () => components,
+    open_elements: () => open_elements,
     temperature: () => temperature,
     interpolate_temperature: () => interpolate_temperature,
     max_interpolation_gap: () => max_interpolation_gap,
@@ -219,9 +224,16 @@
       selected_entry && current_entry(selected_entry, hull_data.plot_entries),
     ].find((entry) => entry && (entry.e_above_hull ?? 0) > HULL_STABILITY_TOL) ?? null,
   )
+  // Composition probe: equilibrium products of any composition (null outside the system)
+  const probe = $derived.by((): HullProbe | null => {
+    if (!probe_composition || hull_data.error) return null
+    const { entries: model_entries, elements } = hull_data.model
+    const mixture = decompose_hull_composition(probe_composition, model_entries, elements)
+    return mixture && { composition: probe_composition, ...mixture }
+  })
   const overlay = $derived(
-    decomposition_focus || annotations
-      ? build_hull_overlay(hull_data.model, decomposition_focus, annotations)
+    decomposition_focus || annotations || probe
+      ? build_hull_overlay(hull_data.model, decomposition_focus, annotations, probe)
       : undefined,
   )
   // Hovered entries link by entry_id; one hovered in another view highlights here
@@ -340,6 +352,9 @@
     {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
       <ConvexHullInfoPane
         bind:pane_open={info_pane_open}
+        bind:probe_composition
+        {probe}
+        elements={hull_data.model.elements}
         {phase_stats}
         {stable_entries}
         {unstable_entries}

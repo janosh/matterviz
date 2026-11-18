@@ -20,6 +20,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   quinary_plus: 0,
   stable: 15,
   unstable: 85,
+  unknown_stability: 0,
   elements: 4,
   chemical_system: `Li-Fe-P-O`,
   e_form_range: { min: -2.5, max: 0.5, avg: -0.8 },
@@ -102,7 +103,8 @@ describe(`ConvexHullStats`, () => {
       phase_stats: mock_stats({
         total: 150,
         stable: 25,
-        unstable: 125,
+        unstable: 120,
+        unknown_stability: 5,
         e_form_range: { min: -2.567, max: 0.123, avg: -1.234 },
         hull_distance: { max: 0.456, avg: 0.089 },
       }),
@@ -114,6 +116,8 @@ describe(`ConvexHullStats`, () => {
     for (const snippet of [
       `Total entries in Li-Fe-P-O 150`,
       `Stable phases 25 (16.7%)`,
+      `Unstable phases 120 (80%)`,
+      `Unknown stability 5 (3.3%)`,
       `Binary phases 20 (13.3%)`,
       `Min / avg / max (eV/atom) −2.567 / −1.234 / 0.123`,
       `Max / avg (eV/atom) 0.456 / 0.089`,

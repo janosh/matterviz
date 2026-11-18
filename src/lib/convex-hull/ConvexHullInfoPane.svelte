@@ -6,8 +6,16 @@
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShortcutScope } from '#lib/shortcuts.js'
+  import type { CompositionType } from '#lib/composition/index.js'
+  import { parse_composition } from '#lib/composition/parse.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
   import ConvexHullStats from './ConvexHullStats.svelte'
-  import { visible_entries as filter_visible } from './helpers'
+  import {
+    get_entry_label,
+    type HullProbe,
+    visible_entries as filter_visible,
+  } from './helpers'
+  import { system_fractions } from './thermodynamics'
   import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
@@ -23,6 +31,9 @@
     max_hull_dist_show_labels,
     label_threshold,
     pane_open = $bindable(false),
+    probe_composition = $bindable(null),
+    probe = null,
+    elements = [],
     toggle_props = {},
     pane_props = {},
     shortcut_scopes,
@@ -39,6 +50,10 @@
     max_hull_dist_show_labels: number
     label_threshold: number
     pane_open?: boolean
+    // Composition entered in the probe field, and its decomposition (null: none or outside)
+    probe_composition?: CompositionType | null
+    probe?: HullProbe | null
+    elements?: ElementSymbol[]
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     shortcut_scopes?: readonly ShortcutScope[] // the hull's, listed at the pane's bottom
@@ -75,6 +90,42 @@
         ]
       : []),
   ])
+  // === Composition probe ===
+  let probe_text = $state(``)
+  let probe_error = $state<string | null>(null)
+  const submit_probe = (event: SubmitEvent) => {
+    event.preventDefault()
+    const text = probe_text.trim()
+    probe_error = null
+    if (!text) {
+      probe_composition = null
+      return
+    }
+    try {
+      const composition = parse_composition(text)
+      if (!system_fractions(composition, elements)) {
+        probe_error = `${text} is outside the ${elements.join(`-`)} system`
+        return
+      }
+      probe_composition = composition
+    } catch (err) {
+      probe_error = `Can't parse ${text}: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+  let probe_card = $derived(
+    probe && {
+      title: `Decomposition`,
+      rows: [
+        { label: `Hull E<sub>form</sub>`, value: energy(probe.energy), key: `probe-energy` },
+        ...probe.decomposition.map(({ phase, atom_fraction }, idx) => ({
+          label: get_entry_label(phase, elements),
+          value: format_num(atom_fraction, `.1~%`),
+          key: `probe-product-${idx}`,
+        })),
+      ],
+    },
+  )
+
   let info_cards = $derived([
     { title: `Visualization Settings`, rows: settings_rows },
     { title: `Usage Tips`, rows: usage_tips },
@@ -100,6 +151,30 @@
   {shortcut_scopes}
   {...rest}
 >
+  <form class="composition-probe" onsubmit={submit_probe}>
+    <label>
+      Probe composition
+      <input
+        type="text"
+        bind:value={probe_text}
+        placeholder="e.g. {elements.join(``)}"
+        aria-invalid={probe_error !== null}
+      />
+    </label>
+    <button type="submit">Decompose</button>
+  </form>
+  {#if probe_error}
+    <p class="probe-error" role="alert">{probe_error}</p>
+  {:else if probe_card}
+    <InfoPaneCards
+      cards={[probe_card]}
+      show_filter={false}
+      empty_label="decomposition"
+      heading_level={5}
+      style={info_card_style}
+    />
+  {/if}
+
   <!-- A closed pane stays mounted (hidden), and these stats rebuild their entry table on every
     threshold step, so they only exist while someone can see them -->
   {#if pane_open}
@@ -121,3 +196,26 @@
     style={info_card_style}
   />
 </ViewerPane>
+
+<style>
+  .composition-probe {
+    display: flex;
+    gap: 4pt;
+    align-items: end;
+    padding: 3pt;
+    label {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      font-size: 0.9em;
+    }
+    input {
+      min-width: 0;
+    }
+  }
+  .probe-error {
+    margin: 0 3pt;
+    color: var(--error-color, #c00);
+    font-size: 0.85em;
+  }
+</style>

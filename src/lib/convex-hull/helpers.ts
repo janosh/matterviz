@@ -1,5 +1,6 @@
 import { format_num } from 'svelte-widgets/format'
 import { HIGHLIGHT } from '#lib/colors/index.js'
+import type { CompositionType } from '#lib/composition/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_amount } from '#lib/composition/format.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
@@ -8,6 +9,7 @@ import {
   entry_has_temp_data,
   get_energy_per_atom,
   get_hull_decomposition,
+  type LowestEnergyMixture,
   system_fractions,
 } from './thermodynamics'
 import { hull_plot_position } from './model'
@@ -555,25 +557,40 @@ export function get_entry_label(
     .join(``)
 }
 
-const [TIE_LINE_COLOR, ANNOTATION_COLOR] = [`#e8590c`, `#c026d3`]
+const [TIE_LINE_COLOR, ANNOTATION_COLOR, PROBE_COLOR] = [`#e8590c`, `#c026d3`, `#0d9488`]
+
+// A probed composition with its equilibrium products and hull E_form (eV/atom)
+export type HullProbe = {
+  composition: CompositionType
+} & LowestEnergyMixture<ConvexHullEntry>
 
 // Linked-view overlay in plot coords: dashed tie-lines from an above-hull `focus` to its ringed
-// products (atom fractions), plus host annotations (skipped with a warning outside the system)
+// products (atom fractions), the same for a composition `probe` from its point on the hull,
+// plus host annotations (skipped with a warning outside the system)
 export function build_hull_overlay(
   { entries, elements }: { entries: readonly ConvexHullEntry[]; elements: ElementSymbol[] },
   focus: ConvexHullEntry | null,
   annotations: HullAnnotations | undefined,
+  probe: HullProbe | null = null,
 ): HullOverlay {
   const dim = elements.length
   const overlay: HullOverlay = { segments: [], rings: [] }
   if (dim !== 2 && dim !== 3 && dim !== 4) return overlay
-  if (focus) {
-    const products = get_hull_decomposition(focus, entries, elements)?.decomposition ?? []
+  const add_tie_lines = (from: Point3D, products: HullProbe[`decomposition`]) => {
     for (const { phase, atom_fraction } of products) {
-      overlay.segments.push({ from: focus, to: phase, color: TIE_LINE_COLOR, dashed: true })
+      overlay.segments.push({ from, to: phase, color: TIE_LINE_COLOR, dashed: true })
       const label = format_num(atom_fraction, `.0%`)
       overlay.rings.push({ at: phase, color: TIE_LINE_COLOR, label })
     }
+  }
+  if (focus) {
+    add_tie_lines(focus, get_hull_decomposition(focus, entries, elements)?.decomposition ?? [])
+  }
+  if (probe) {
+    const at = hull_plot_position(probe.composition, probe.energy, elements, dim)
+    overlay.rings.push({ at, color: PROBE_COLOR, label: `probe` })
+    // a probe on a stable entry is that entry: nothing to tie
+    if (probe.decomposition.length > 1) add_tie_lines(at, probe.decomposition)
   }
   const position = (mark: HullMark): Point3D | null => {
     if (!system_fractions(mark.composition, elements)) {

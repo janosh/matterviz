@@ -328,6 +328,33 @@ describe(`convex hull replacement state`, () => {
     expect(sizes).toEqual([[1600, 1200]]) // 2x the unmeasured canvas's 800x600 CSS size
   })
 
+  // LiO is no entry: it decomposes to 3/4 Li2O + 1/4 O by atoms at 3/4 of Li2O's -2 eV/atom
+  test(`info pane composition probe decomposes any composition`, async () => {
+    const entries = [
+      make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+      make_phase({ O: 1 }, 0, { entry_id: `O` }),
+      make_phase({ Li: 2, O: 1 }, -2, { entry_id: `Li2O`, reduced_formula: `Li2O` }),
+    ]
+    const target = await mount_hull({ entries, info_pane_open: true })
+    const input = doc_query<HTMLInputElement>(`.composition-probe input`)
+    const submit = async (text: string) => {
+      input.value = text
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
+      await tick()
+    }
+    await submit(`LiO`)
+    expect(test_text(`probe-energy`)).toContain(`-1.5 eV/atom`.replace(`-`, `−`))
+    expect([0, 1].map((idx) => test_text(`probe-product-${idx}`))).toEqual([
+      `Li2O 75%`,
+      `O 25%`,
+    ])
+    expect(target.querySelector(`.probe-error`)).toBeNull()
+    await submit(`NaCl`)
+    expect(doc_query(`.probe-error`).textContent).toContain(`outside the`)
+    expect(target.querySelector(`[data-testid="probe-energy"]`)).toBeNull()
+  })
+
   // synthetic corners close the hull but are no data entries, so the pane counts skip them
   test(`pane counts leave out synthetic corners`, async () => {
     // precomputed E_form: an excluded unary is no reference to compute it against
@@ -492,6 +519,23 @@ describe(`convex hull replacement state`, () => {
     expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
     expect(target.querySelector(`.empty-state`)).toBeNull()
     expect(model_entries()?.map((entry) => entry.entry_id)).toContain(`compound`)
+  })
+
+  // Fe-Li-O open to O renders as an Fe-Li binary of grand potentials: at mu_O = -3 the
+  // compound's Φ = -12 + 3 * 2 = -6 eV over 2 non-O atoms lies 3 eV/atom below the unaries
+  test(`open_elements projects a ternary to a grand-potential binary`, async () => {
+    const entries = [
+      ...[`Fe`, `Li`, `O`].map((element) =>
+        make_phase({ [element]: 1 }, 0, { entry_id: element }),
+      ),
+      make_phase({ Fe: 1, Li: 1, O: 2 }, -3, { entry_id: `compound` }), // -12 eV total
+    ]
+    const target = await mount_hull({ entries, open_elements: { O: -3 } })
+    flushSync()
+    expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
+    const compound = model_entries()?.find((entry) => entry.entry_id === `compound`)
+    expect(compound).toMatchObject({ composition: { Fe: 1, Li: 1 }, is_stable: true })
+    expect(compound?.e_form_per_atom).toBeCloseTo(-3, 12)
   })
 
   // the info pane ends with the shortcuts of the hull's dimension

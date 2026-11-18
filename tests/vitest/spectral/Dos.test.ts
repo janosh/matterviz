@@ -339,10 +339,9 @@ describe(`Dos component`, () => {
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)
     expect(area_paths).toHaveLength(4)
 
-    // Spin-up and spin-down channels are visually distinct (spin-up uses the color at
-    // dos_idx, spin-down at dos_idx * 2 + 1), so at least two fills appear
+    // both spins of a DOS share its colour (spin-down is told apart by its dash)
     const fill_colors = Array.from(area_paths).map((path) => path.getAttribute(`fill`))
-    expect(new Set(fill_colors).size).toBeGreaterThanOrEqual(2)
+    expect(new Set(fill_colors).size).toBe(2)
     const reset = `button[title="Reset spin display to defaults"]`
     doc_query<HTMLButtonElement>(reset).click()
     await tick()

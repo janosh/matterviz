@@ -175,6 +175,8 @@ export interface PhaseStats {
   quinary_plus: number
   stable: number
   unstable: number
+  // Entries with no stability flag and no finite e_above_hull (neither stable nor unstable)
+  unknown_stability: number
   // Formation energy distribution (eV/atom), null when no entry has a formation energy
   e_form_range: { min: number; max: number; avg: number } | null
   hull_distance: { max: number; avg: number }
