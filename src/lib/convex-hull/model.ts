@@ -276,6 +276,37 @@ export function missing_open_reference(
   return `open_elements needs an elemental reference for ${missing.join(`, `)}${at_temp}`
 }
 
+// The last submitted probe formula, the probe it set (as read back from the binding, so a host
+// replacement is told apart by identity) and why it failed, if it did
+export type ProbeSubmission = {
+  text: string
+  probe: CompositionType | null
+  error: string | null
+}
+
+// A probe formula in model coordinates (null when empty or outside the system) and the error to
+// show; `probe` is absent when the formula can't be read, so the current probe stays
+export function probe_from_text(
+  text: string,
+  components: readonly string[] | undefined,
+  open_elements: OpenElements | undefined,
+  elements: readonly string[],
+): { probe?: CompositionType | null; error: string | null } {
+  try {
+    const parsed = text ? parse_composition(text) : null
+    const probe = parsed && to_model_composition(parsed, components, open_elements)
+    const outside = parsed && !probe
+    return {
+      probe,
+      error: outside ? `${text} is outside the ${elements.join(`-`)} system` : null,
+    }
+  } catch (err) {
+    return {
+      error: `Can't parse ${text}: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
 // An element composition (e.g. a probed formula) in the model's composition keys: without
 // the open elements, or with components the non-negative amount of each whose elements sum
 // to it (A x = b, x >= 0). Null when the system can't make it. Throws for linearly dependent

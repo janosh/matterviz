@@ -437,7 +437,8 @@ export function unwrap_molecules<Struct extends AnyStructure>(
   const unwrapped = {
     ...structure,
     sites: new_sites,
-    ...(explicit && {
+    // a non-array value is no bond list (the reader ignores it), so it stays as is
+    ...(Array.isArray(explicit) && {
       properties: {
         ...structure.properties,
         bonds: explicit.map((bond) => {

@@ -962,7 +962,6 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get px_per_unit() {
       return px_per_unit
     },
-    tick_scale_type, // the metric px_per_unit is in
     // Pixel scale of a value axis whose log floor holds bar bases and whisker lows at the
     // axis minimum instead of NaN. The floor is the scale's own (positive) domain, as the
     // view's range can reach below zero on a log axis switched to over signed data.

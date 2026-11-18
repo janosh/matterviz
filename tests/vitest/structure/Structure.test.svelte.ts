@@ -2512,11 +2512,23 @@ test(`invalid pair cutoffs keep the viewer usable with one notice until fixed`, 
   expect(toast()).toContain(`Invalid pair_cutoffs bonding option pair_cutoffs: 'O-Ti'`)
   expect(analysis.displayed_structure?.sites.length).toBeGreaterThan(5)
   expect(scene_stub.props?.bonding_options).toEqual({ pair_cutoffs: {} })
-  if (!props.scene_props) throw new Error(`scene_props missing`)
-  props.scene_props.bonding_options = bonding([1, 2.5])
+  // the controls stay usable: raising the max past the min in the cutoff row fixes the range
+  await fire(doc_query(`button.structure-controls-toggle`))
+  const max_input = doc_query<HTMLInputElement>(`input[aria-label="O-Ti max (Å)"]`)
+  max_input.value = `2.5`
+  max_input.dispatchEvent(new Event(`change`, { bubbles: true }))
   await tick()
   expect(toast()).toBeNull()
-  expect(scene_stub.props?.bonding_options).toEqual(bonding([1, 2.5]))
+  expect(scene_stub.props?.bonding_options).toEqual(bonding([2, 2.5]))
+  if (!props.scene_props) throw new Error(`scene_props missing`)
+  // an unknown strategy name gets the same single notice, naming what bonds instead
+  props.scene_props.bonding_strategy = `nope` as `pair_cutoffs`
+  await tick()
+  expect(toast()).toContain(
+    `Unknown bonding strategy 'nope', expected one of electroneg_ratio, pair_cutoffs, explicit_only (bonding with the electroneg_ratio defaults)`,
+  )
+  expect(scene_stub.props?.bonding_strategy).toBe(`electroneg_ratio`)
+  expect(analysis.displayed_structure?.sites.length).toBeGreaterThan(5)
 })
 
 test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {

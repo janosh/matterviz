@@ -30,8 +30,12 @@
   import type { HullFaceColorMode } from './types'
   import { DEFAULT_GAS_TEMP, MAGNETIC_ORDERING_CATEGORY } from './types'
   import { default_controls } from './index'
-  import type { HullModel } from './model'
-  import { to_model_composition } from './model'
+  import {
+    type HullModel,
+    type ProbeSubmission,
+    probe_from_text,
+    to_model_composition,
+  } from './model'
   import ConvexHull2D from './ConvexHull2D.svelte'
   import ConvexHullCanvas from './ConvexHullCanvas.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
@@ -39,7 +43,10 @@
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import { build_hull_overlay, current_entry, HULL_STABILITY_TOL } from './helpers'
   import type { HullProbe } from './helpers'
-  import { decompose_hull_composition } from './thermodynamics'
+  import {
+    decompose_hull_composition,
+    normalize_hull_composition_keys,
+  } from './thermodynamics'
   import type { CompositionType } from '#lib/composition/index.js'
   import type { ElementSymbol } from '#lib/element/index.js'
 
@@ -227,11 +234,33 @@
       selected_entry && current_entry(selected_entry, hull_data.plot_entries),
     ].find((entry) => entry && (entry.e_above_hull ?? 0) > HULL_STABILITY_TOL) ?? null,
   )
-  // raw: a deep proxy would wrap the probe and break the pane's identity check
-  let probe_submission = $state.raw<{
-    text: string
-    probe: CompositionType | null
-  } | null>(null)
+  // raw: a deep proxy would wrap the probe and break the identity check below
+  let probe_submission = $state.raw<ProbeSubmission | null>(null)
+  // A new component basis or set of open elements gives the submitted formula other model
+  // coordinates: project it again (here, so it holds with the info pane closed). A probe the
+  // host has set since (even at equal coordinates) stays as given, and so does every probe
+  // when only a chemical potential changes.
+  const probe_basis = $derived(JSON.stringify([components, Object.keys(open_elements ?? {})]))
+  $effect(() => {
+    void probe_basis
+    untrack(() => {
+      const submission = probe_submission
+      if (!submission || probe_composition !== submission.probe) return
+      const { elements } = hull_data.model
+      const projected = probe_from_text(submission.text, components, open_elements, elements)
+      if (projected.probe !== undefined) probe_composition = projected.probe
+      probe_submission = { ...submission, probe: probe_composition, error: projected.error }
+    })
+  })
+  // A host probe keyed like the entries ("Fe3+" included) is normalized
+  const host_probe = (composition: CompositionType): CompositionType | null => {
+    try {
+      const keys = normalize_hull_composition_keys(composition)
+      return to_model_composition(keys, components, open_elements)
+    } catch {
+      return null // unreadable keys: the info pane says it is outside the system
+    }
+  }
   // Composition probe: equilibrium products of any composition (null outside the system). A
   // probe keyed like the input entries goes through the open elements and components as typed
   // formulas do; one already in model coordinates (component keys) stays as given.
@@ -241,9 +270,7 @@
     const in_model = Object.keys(probe_composition).every((key) =>
       elements.includes(key as ElementSymbol),
     )
-    const composition = in_model
-      ? probe_composition
-      : to_model_composition(probe_composition, components, open_elements)
+    const composition = in_model ? probe_composition : host_probe(probe_composition)
     const mixture =
       composition && decompose_hull_composition(composition, model_entries, elements)
     return mixture && { composition, ...mixture }

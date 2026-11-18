@@ -594,6 +594,29 @@ describe(`extract_volume_range`, () => {
     expect(() => prepare_geometry_grid(periodic_vol(), { range: huge })).toThrow(
       /covers 1e\+308 cells/,
     )
+    // 2 candidate cells, but at 2^53 the cell index can't advance (2^53 + 1 === 2^53)
+    // oxfmt-ignore
+    const unsafe: DisplayRange = [[2 ** 53, 2 ** 53 + 2], [0, 1], [0, 1]]
+    expect(() => prepare_geometry_grid(periodic_vol(), { range: unsafe })).toThrow(
+      /cell bounds past 2\^53/,
+    )
+  })
+
+  // an over-budget source (100³ = 1M points) keeps its resolution in a crop that fits: the
+  // one-voxel peak at x index 1 vanished when the whole cell was coarsened to 79³ first
+  test(`a crop of an over-budget periodic grid meshes the source at native spacing`, () => {
+    const grid = make_grid(100, 100, 100, (idx_x) => (idx_x === 1 ? 1 : 0))
+    const volume = make_volume(grid, { lattice: cubic, periodic: true })
+    // oxfmt-ignore
+    const window = { range: [[0, 0.1], [0, 0.1], [0, 0.1]] as DisplayRange }
+    const { positions } = window_surface(volume, window, 0.9)
+    expect(positions.length).toBeGreaterThan(0)
+    const sample = create_volume_sampler(volume)
+    for (let idx = 0; idx < positions.length; idx += 3)
+      expect(sample([positions[idx], positions[idx + 1], positions[idx + 2]])).toBeCloseTo(
+        0.9,
+        5,
+      )
   })
 
   // 1000 full-resolution copies of the 7616-triangle unit surface would be 7.6M

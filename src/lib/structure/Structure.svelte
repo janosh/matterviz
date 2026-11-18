@@ -59,8 +59,12 @@
   import { DEFAULTS, type ShowBonds } from '#lib/settings.js'
   import type { ImageAtomCompletion } from './pbc'
   import { polyhedra_options_from } from './polyhedra'
-  import type { BondingOptions } from './bonding'
-  import { strategy_bonding_options, validate_bonding_options } from './bonding'
+  import type { BondingOptions, BondingStrategy } from './bonding'
+  import {
+    BONDING_STRATEGIES,
+    strategy_bonding_options,
+    validate_bonding_options,
+  } from './bonding'
   import type {
     AnyStructure,
     BondEditMode,
@@ -470,21 +474,25 @@
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
   let series_key = $derived(structure_series_key ?? structure)
-  const bonding_strategy = $derived(
-    scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
-  )
   // Checked once for every bond search (scene bonds and polyhedra, image completion, whole
-  // molecules): invalid settings (e.g. pair cutoffs with min > max) bond with the strategy's
-  // defaults and say why in one notice, cleared once a valid value replaces them
-  const bonding = $derived.by((): { options: BondingOptions; notice?: string } => {
-    const options = strategy_bonding_options(scene_props.bonding_options, bonding_strategy)
-    try {
-      return { options: validate_bonding_options(bonding_strategy, options) }
-    } catch (error) {
-      const notice = `${to_error(error).message} (bonding with the ${bonding_strategy} defaults)`
-      return { options: {}, notice }
-    }
-  })
+  // molecules): invalid settings (pair cutoffs with min > max, an unknown strategy name) bond
+  // with a known strategy's defaults and say so in one notice, cleared once valid ones return
+  const bonding = $derived.by(
+    (): { strategy: BondingStrategy; options: BondingOptions; notice?: string } => {
+      const requested = scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy
+      const options = strategy_bonding_options(scene_props.bonding_options, requested)
+      try {
+        return { strategy: requested, options: validate_bonding_options(requested, options) }
+      } catch (error) {
+        const strategy = Object.hasOwn(BONDING_STRATEGIES, requested)
+          ? requested
+          : DEFAULTS.structure.bonding_strategy
+        const notice = `${to_error(error).message} (bonding with the ${strategy} defaults)`
+        return { strategy, options: {}, notice }
+      }
+    },
+  )
+  const bonding_strategy = $derived(bonding.strategy)
   const bonding_options = $derived(bonding.options)
   let shown_bonding_notice: string | undefined
   $effect(() => {
@@ -1129,6 +1137,9 @@
     },
     get slice_polygon() {
       return slice_polygon
+    },
+    get bonding_strategy() {
+      return bonding_strategy
     },
     get bonding_options() {
       return { [bonding_strategy]: bonding_options }

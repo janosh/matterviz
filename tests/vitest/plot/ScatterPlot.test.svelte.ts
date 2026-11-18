@@ -511,37 +511,35 @@ describe(`ScatterPlot`, () => {
       expect(groups.map((group) => group.getAttribute(`opacity`))).toEqual([`1`, `0.25`])
     })
 
-    // a series on a derived x2 (10x over a log x) is the same points as its x twin, so its
-    // contours match: x2's px per unit is in the inherited log metric, not a linear one
-    test(`contours on a derived log x2 match the same points on x`, async () => {
-      const on_x = cloud(5, 5)
-      const props = {
-        x_axis: { scale_type: `log` as const, range: [1, 10] as [number, number] },
-        y_axis: { range: [0, 10] as [number, number] },
-      }
-      const contour_paths = async (series: DataSeries) => {
-        document.body.innerHTML = ``
-        const plot = await mount_sized_scatter_plot({
-          ...props,
-          series: [series],
-          x2_axis: {
-            derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
-          },
-          density_contours: { bandwidth: 10, levels: [0.5] },
-        })
-        return [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
-          path.getAttribute(`d`),
-        )
-      }
-      const x_paths = await contour_paths(on_x)
-      expect(x_paths.length).toBeGreaterThan(0)
-      const on_x2 = {
-        ...on_x,
-        x: Array.from(on_x.x, (val) => 10 * val),
-        x_axis: `x2` as const,
-      }
-      expect(await contour_paths(on_x2)).toEqual(x_paths)
-    })
+    // a series on a derived x2 over a log x is the same points as its x twin, so its contours
+    // match: they are densities in the rendered pixel metric, also when x2 - 10's signed domain
+    // ticks linearly
+    test.each([
+      [`10x`, (val: number) => 10 * val, (val: number) => val / 10],
+      [`x - 10`, (val: number) => val - 10, (val: number) => val + 10],
+    ])(
+      `contours on a derived %s x2 over log x match the same points on x`,
+      async (_name, forward, inverse) => {
+        const on_x = cloud(5, 5)
+        const contour_paths = async (series: DataSeries) => {
+          document.body.innerHTML = ``
+          const plot = await mount_sized_scatter_plot({
+            x_axis: { scale_type: `log`, range: [1, 10] },
+            y_axis: { range: [0, 10] },
+            series: [series],
+            x2_axis: { derive: { forward, inverse } },
+            density_contours: { bandwidth: 10, levels: [0.5] },
+          })
+          return [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
+            path.getAttribute(`d`),
+          )
+        }
+        const x_paths = await contour_paths(on_x)
+        expect(x_paths.length).toBeGreaterThan(0)
+        const on_x2 = { ...on_x, x: Array.from(on_x.x, forward), x_axis: `x2` as const }
+        expect(await contour_paths(on_x2)).toEqual(x_paths)
+      },
+    )
 
     test(`contours ring the cluster centroid, inner levels tighter`, async () => {
       const plot = await mount_sized_scatter_plot({
@@ -2785,6 +2783,19 @@ describe(`ScatterPlot`, () => {
       marginals: { top: { type: `histogram`, axis: `x2` } },
     })
     expect(plot.querySelectorAll(`.marginal-top rect`)).toHaveLength(3)
+    // and its markers and lines are culled against that domain too: all 5 points draw
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
+    // a line wholly outside x2's own range but inside the derived domain is drawn
+    const line_plot = await mount_sized_scatter_plot({
+      series: [{ x: [70, 80], y: [1, 2], x_axis: `x2`, markers: `line` }],
+      x_axis: { range: [0, 10] },
+      x2_axis: {
+        range: [40, 60],
+        derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
+      },
+      line_tween: { duration: 0 },
+    })
+    expect(plot_svg(line_plot).querySelectorAll(`path[fill="none"][d^="M"]`)).toHaveLength(1)
   })
 
   // domain sampling (64 steps) misses a narrow gap where the conversion is undefined: interval

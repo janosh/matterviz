@@ -819,6 +819,10 @@ describe(`unwrap_molecules`, () => {
     ])
     expect(moved_bonds?.[1]).toBe(explicit[1])
     expect(explicit[0].cell_shift).toBe(torn.cell_shift)
+    // a non-array bonds value (the reader ignores it) is kept as is, not mapped
+    const bonds_object = { properties: { bonds: {} as StructureBond[] } }
+    const kept = unwrap_molecules({ ...crystal, ...bonds_object }, bonds).structure
+    expect(kept.properties?.bonds).toBe(bonds_object.properties.bonds)
     // bond edits stay in the wrapped input frame: on the moved sites the torn edit reads in-cell
     // (as the bond it names is now drawn), and maps back to its saved shift; an edit between
     // sites that moved together keeps its object, and without moved sites the array is kept

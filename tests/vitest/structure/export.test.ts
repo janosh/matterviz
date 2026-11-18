@@ -1081,23 +1081,28 @@ describe(`Export functionality`, () => {
         expect(() => structure_to_cif_str(in_flight, fresh_sym)).toThrow(error)
       }
       // occupancies the CIF writes differently (8 decimals) are distinct orbits, not one
-      // that writes the representative's occupancy at both bcc sites
-      const occus = [0.4999996, 0.5000004]
-      const bcc = make_crystal(
-        cubic_matrix(2.87),
-        occus.map((occu, idx) => ({
-          element: `Fe`,
-          abc: [idx / 2, idx / 2, idx / 2] as Vec3,
-          occu,
-        })),
-      )
-      const bcc_sym = await analyze_structure_symmetry(bcc)
-      const bcc_sites = parse_cif(structure_to_cif_str(bcc, bcc_sym)).sites
-      expect(
-        bcc_sites
-          .map(({ species }) => species[0].occu)
-          .toSorted((occu_a, occu_b) => occu_a - occu_b),
-      ).toEqual(occus)
+      // that writes the representative's occupancy at both bcc sites, also next to full
+      // occupancy (0.999999991 writes 0.99999999)
+      for (const occus of [
+        [0.4999996, 0.5000004],
+        [0.999999991, 1],
+      ]) {
+        const bcc = make_crystal(
+          cubic_matrix(2.87),
+          occus.map((occu, idx) => ({
+            element: `Fe`,
+            abc: [idx / 2, idx / 2, idx / 2] as Vec3,
+            occu,
+          })),
+        )
+        const bcc_sym = await analyze_structure_symmetry(bcc)
+        const bcc_sites = parse_cif(structure_to_cif_str(bcc, bcc_sym)).sites
+        expect(
+          bcc_sites
+            .map(({ species }) => species[0].occu)
+            .toSorted((occu_a, occu_b) => occu_a - occu_b),
+        ).toEqual(occus.map((occu) => Number(occu.toFixed(8))))
+      }
       // whole lattice vectors off the analyzed positions still export
       const shifted = make_crystal(cubic_matrix(5.64), [
         { ...rock_salt[0], abc: [1, 0, -1] },

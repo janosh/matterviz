@@ -1,7 +1,7 @@
 // Headless StructureSession: the display pipeline (supercell, image atoms, element map),
 // selection validated against what is displayed, invalidation on topology/transform/mode
 // changes, edit-atoms operations with undo/redo, the edit-bonds layer and pane bookkeeping.
-import { euclidean_dist, type Vec3 } from '#lib/math.js'
+import { euclidean_dist, type Vec2, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, StructureBond } from '#lib/structure/index.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import { bond_records } from '#lib/structure/bond-rendering.js'
@@ -96,9 +96,14 @@ describe(`display pipeline`, () => {
     flush_set(host, { measure_mode: `edit-atoms` })
     const search = vi.spyOn(neighbor_list, `neighbor_query_cutoff`)
     session.dragging_atoms = true
+    const c_abc = () => session.displayed_structure?.sites[0].abc[0]
+    // C (wrapped 0.97, shown -0.03) dragged +0.5 A wraps to 0.02 in the input: shown at 0.02
+    session.move_sites([0], [0.5, 0, 0])
+    flushSync()
+    expect(c_abc()).toBeCloseTo(0.02, 12)
+    session.move_sites([0], [-0.5, 0, 0])
     session.move_sites([1], [4, 0, 0])
     flushSync()
-    const c_abc = () => session.displayed_structure?.sites[0].abc[0]
     expect([c_abc(), search.mock.calls.length]).toEqual([expect.closeTo(-0.03, 12), 0])
     session.dragging_atoms = false
     flushSync()
@@ -128,6 +133,26 @@ describe(`display pipeline`, () => {
     expect(session.displayed_structure?.sites).toHaveLength(2)
     flush_set(host, { keep_molecules_whole: false })
     expect(session.displayed_structure?.sites).toHaveLength(3)
+  })
+
+  // valid options can still fail the search (a cutoff 100 cells long overflows the image
+  // cloud): the wrapped structure shows, one notice says why, a new structure or option retries
+  it(`keep_molecules_whole falls back to the wrapped cell when the bond search throws`, () => {
+    const options = $state({ value: { pair_cutoffs: { 'C-C': [0.5, 100] as Vec2 } } })
+    const { host, session, notices } = make_session(
+      { structure: make_crystal(1, [[`C`, [0.5, 0.5, 0.5]]]), keep_molecules_whole: true },
+      { bonding_strategy: () => `pair_cutoffs`, bonding_options: () => options.value },
+    )
+    expect(session.displayed_structure?.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+    flush_set(host, { structure: make_crystal(1, [[`C`, [0.5, 0.5, 0.5]]]) })
+    const failed = () =>
+      notices.filter((msg) => msg.startsWith(`Cannot keep molecules whole:`))
+    expect(failed()).toHaveLength(1)
+    expect(failed()[0]).toContain(`4000000 positions`)
+    options.value = { pair_cutoffs: { 'C-C': [0.5, 0.9] } }
+    flushSync()
+    expect(session.displayed_structure?.sites).toHaveLength(1)
+    expect(failed()).toHaveLength(1)
   })
 
   it(`keep_molecules_whole costs no extra bond search and carries the bonds over`, () => {

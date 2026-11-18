@@ -4,20 +4,17 @@
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
   import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { CompositionType } from '#lib/composition/index.js'
-  import { parse_composition } from '#lib/composition/parse.js'
   import type { ElementSymbol } from '#lib/element/index.js'
-  import { type OpenElements, to_model_composition } from './model'
+  import { type OpenElements, type ProbeSubmission, probe_from_text } from './model'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import {
     get_entry_label,
     type HullProbe,
     visible_entries as filter_visible,
   } from './helpers'
-  import { to_error } from 'svelte-widgets/utils'
   import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
@@ -59,7 +56,7 @@
     probe_composition?: CompositionType | null
     // The last submitted formula and the probe it set (the object read back from the binding,
     // so a host replacement is told apart by identity), kept by the hull across remounts
-    probe_submission?: { text: string; probe: CompositionType | null } | null
+    probe_submission?: ProbeSubmission | null
     probe?: HullProbe | null
     elements?: ElementSymbol[]
     // the hull's composition keys, which typed formulas are converted to before probing
@@ -103,39 +100,19 @@
   ])
   // === Composition probe ===
   let probe_text = $state(``)
-  let parse_error = $state<string | null>(null)
   const apply_probe = (text: string) => {
-    parse_error = null
-    try {
-      const parsed = text ? parse_composition(text) : null
-      probe_composition = parsed && to_model_composition(parsed, components, open_elements)
-      if (parsed && !probe_composition) {
-        parse_error = `${text} is outside the ${elements.join(`-`)} system`
-      }
-    } catch (err) {
-      parse_error = `Can't parse ${text}: ${to_error(err).message}`
-    }
-    probe_submission = { text, probe: probe_composition }
+    const projected = probe_from_text(text, components, open_elements, elements)
+    if (projected.probe !== undefined) probe_composition = projected.probe
+    probe_submission = { text, probe: probe_composition, error: projected.error }
   }
   const submit_probe = (event: SubmitEvent) => {
     event.preventDefault()
     apply_probe(probe_text.trim())
   }
-  // A new component basis or set of open elements gives the submitted formula other model
-  // coordinates: project it again. A probe the host has set since (even at equal coordinates)
-  // stays as given, and so does every probe when only a chemical potential changes.
-  const basis = $derived(JSON.stringify([components, Object.keys(open_elements ?? {})]))
-  $effect(() => {
-    void basis
-    untrack(() => {
-      if (probe_submission && probe_composition === probe_submission.probe) {
-        apply_probe(probe_submission.text)
-      }
-    })
-  })
   // a composition set here or by the host that the hull can't decompose is outside its system
+  // a submission's error shows while its probe does: a host probe set since replaces it
   const probe_error = $derived(
-    parse_error ??
+    (probe_submission?.probe === probe_composition ? probe_submission.error : null) ??
       (probe_composition && !probe
         ? `${get_entry_label({ composition: probe_composition }, elements)} is outside the ${elements.join(`-`)} system`
         : null),

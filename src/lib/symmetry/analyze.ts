@@ -169,7 +169,7 @@ function moyo_site_labels(sites: Site[], numbers: number[]): number[] {
     const [first] = species
     if (
       species.length === 1 &&
-      Math.abs(first.occu - 1) <= OCCUPANCY_EPS &&
+      first.occu.toFixed(8) === `1.00000000` && // full as the CIF writes it, not 0.99999999
       first.oxidation_state === undefined
     )
       return numbers[site_idx]

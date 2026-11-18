@@ -1,4 +1,5 @@
 // ConvexHullInfoPane's composition probe across changes of the hull's composition keys
+import type { CompositionType } from '#lib/composition/index.js'
 import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test } from 'vite-plus/test'
@@ -49,9 +50,31 @@ test(`a submitted probe is projected again when the open elements change`, async
   props.open_elements = undefined
   flushSync()
   expect(props.probe_composition).toEqual({ Li: 1, Co: 1 })
-  // a host probe keyed like the entries is projected through the open elements, as typed ones
+  // a host probe keyed like the entries (species keys included) is normalized and projected
+  // through the open elements, as typed ones
   props.open_elements = { O: -3 }
-  props.probe_composition = { Li: 1, Co: 1, O: 2 }
+  props.probe_composition = { Li: 1, 'Co3+': 1, O: 2 } as Record<
+    string,
+    number
+  > as CompositionType
   flushSync()
   expect([product(0), product(1)]).toEqual([`compound 100%`, null])
+  // a failed submission's error belongs to it: a host probe set since replaces it
+  const probe_form = doc_query<HTMLFormElement>(`.composition-probe`)
+  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `Qq2`)
+  probe_form.requestSubmit()
+  await tick()
+  const alert = () => document.querySelector(`.probe-error`)?.textContent ?? null
+  expect(alert()).toContain(`Can't parse Qq2`)
+  props.probe_composition = { Li: 1, Co: 1 }
+  flushSync()
+  expect([alert(), product(0)]).toEqual([null, `compound 100%`])
+  // the hull reprojects a submission with the info pane closed too
+  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `LiCoO2`)
+  probe_form.requestSubmit()
+  await tick()
+  props.enable_info_pane = false
+  props.open_elements = undefined
+  flushSync()
+  expect(props.probe_composition).toEqual({ Li: 1, Co: 1, O: 2 })
 })

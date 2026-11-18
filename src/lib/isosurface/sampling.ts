@@ -486,6 +486,10 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
   if (!(n_candidates <= MAX_GRID_POINTS)) {
     throw new RangeError(`Volume window ${JSON.stringify(range)} covers ${n_candidates} cells`)
   }
+  // past 2^53 a cell index stops advancing (2^53 + 1 === 2^53): the loops below never end
+  if (!spans.flat().every(Number.isSafeInteger)) {
+    throw new RangeError(`Volume window ${JSON.stringify(range)} has cell bounds past 2^53`)
+  }
   const cells: Vec3[] = []
   for (let cell_a = spans[0][0]; cell_a < spans[0][1]; cell_a++)
     for (let cell_b = spans[1][0]; cell_b < spans[1][1]; cell_b++)
@@ -500,6 +504,13 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
       }
   return cells
 }
+
+// Whether a (box) window holds at most MAX_GRID_POINTS samples at the source's density
+const window_fits = (volume: VolumeGrid, range: DisplayRange): boolean =>
+  range.reduce((prod, [lower, upper], axis) => {
+    const count = Math.round((upper - lower) * volume.dims[axis]) + 1
+    return prod * Math.max(2, count)
+  }, 1) <= MAX_GRID_POINTS
 
 // A periodic grid trilinearly resampled to `dims` points per axis (z-fastest)
 export function resample_periodic(grid: ScalarGrid3D, dims: Vec3): ScalarGrid3D<Float64Array> {
@@ -534,6 +545,13 @@ export function prepare_geometry_grid(
   const in_budget = values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2)
   if (periodic) {
     const { range, frame = IDENTITY_3X3 } = window ?? { range: UNIT_CELL_RANGE }
+    // an over-budget source in a box window that fits at its own spacing (a crop): the window
+    // resampled at source density keeps the crossings that coarsening the whole cell loses
+    if (!in_budget && !window?.frame && window_fits(volume, range))
+      return prepare_geometry_grid(
+        { ...extract_volume_range(volume, range), periodic: false },
+        null,
+      )
     // read off the volume once: per-sample reads through a $state proxy are far slower
     const source = { values, dims: [...dims] as Vec3, order }
     const scale = Math.min(Math.cbrt(MAX_GRID_POINTS / values.length), 1)
