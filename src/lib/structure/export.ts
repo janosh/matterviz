@@ -490,6 +490,21 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     `_atom_site_fract_z`,
     `_atom_site_occupancy`,
   )
+  // An isotropic U = u·I (a CIF Uiso row reads back as one) is written as _U_iso_or_equiv
+  // with adp_type Uiso, not as aniso rows; anisotropic sites list U_eq = tr(U)/3 as Uani.
+  // Columns only appear when some site is isotropic, so other exports stay unchanged.
+  const adp_info = structure.sites.map((site) => {
+    const adp = site_adp(site)
+    if (!adp) return null
+    const u_eq = (adp[0][0] + adp[1][1] + adp[2][2]) / 3
+    // relative 1e-10: parsing Uiso·I through the lattice leaves ~1e-16 relative round-off
+    const isotropic = adp.every((row, idx) =>
+      row.every((val, col) => Math.abs(val - (idx === col ? u_eq : 0)) <= 1e-10 * u_eq),
+    )
+    return { u_eq, isotropic }
+  })
+  const has_u_iso = adp_info.some((info) => info?.isotropic)
+  if (has_u_iso) lines.push(`_atom_site_U_iso_or_equiv`, `_atom_site_adp_type`)
 
   const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
   // CIF stores only cell parameters, which readers rebuild as a right-handed cell, so a
@@ -516,7 +531,10 @@ export function structure_to_cif_str(input?: AnyStructure): string {
         ? claim_free_label(`${site_label}_${spec_idx}`, taken)
         : site_label
       const occu = (species.occu ?? 1).toFixed(8)
-      lines.push(`${cif_token(label)} ${symbol} ${coords_str} ${occu}`)
+      const info = adp_info[idx]
+      const adp_type = info?.isotropic ? `Uiso` : `Uani`
+      const adp_cols = has_u_iso ? ` ${info ? `${info.u_eq} ${adp_type}` : `. .`}` : ``
+      lines.push(`${cif_token(label)} ${symbol} ${coords_str} ${occu}${adp_cols}`)
     }
   }
 
@@ -524,9 +542,12 @@ export function structure_to_cif_str(input?: AnyStructure): string {
   // reads: lattice-basis components f = cart_to_frac(m), and U_ij = ê*_i · U ê*_j with ê*_i
   // the unit reciprocal vectors (U* = N⁻¹ A⁻¹ U A⁻ᵀ N⁻¹, A⁻¹'s rows being a*, b*, c*). The
   // (-a, -b, -c) basis of a left-handed lattice negates f and keeps U.
-  const site_loop = (tags: string[], values_of: (site: Site) => number[] | null) => {
+  const site_loop = (
+    tags: string[],
+    values_of: (site: Site, idx: number) => number[] | null,
+  ) => {
     const rows = structure.sites.flatMap((site, idx) => {
-      const values = values_of(site)
+      const values = values_of(site, idx)
       return values ? [`${cif_token(site_labels[idx])} ${values.join(` `)}`] : []
     })
     if (rows.length > 0) lines.push(``, `loop_`, ...tags, ...rows)
@@ -542,9 +563,9 @@ export function structure_to_cif_str(input?: AnyStructure): string {
   )
   site_loop(
     [`_atom_site_aniso_label`, ...ADP_COMPONENTS.map((ij) => `_atom_site_aniso_U_${ij}`)],
-    (site) => {
+    (site, idx) => {
       const adp = site_adp(site)
-      if (!adp) return null
+      if (!adp || adp_info[idx]?.isotropic) return null
       // only when needed: a singular lattice can still write its sites' abc
       const units = math
         .reciprocal_lattice(lattice.matrix)

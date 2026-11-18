@@ -384,9 +384,13 @@ function decode_ase_numeric_frame(
     const mass = ase_momentum_mass(elements[atom_idx], masses?.[atom_idx], label)
     return momentum.map((component) => ase_velocity(component, mass))
   })
-  const vectors = [forces && [`force`, forces], velocities && [`velocity`, velocities]].filter(
-    (entry): entry is [string, number[][]] => Boolean(entry),
-  )
+  // momenta also stay as `momentum` (as the extXYZ reader keeps them), so an extXYZ export
+  // writes ASE's own `momenta` column back
+  const vectors = [
+    forces && [`force`, forces],
+    velocities && [`velocity`, velocities],
+    momenta && [`momentum`, momenta],
+  ].filter((entry): entry is [string, number[][]] => Boolean(entry))
   const numeric = create_numeric_md_frame(
     positions,
     Uint8Array.from(numbers),

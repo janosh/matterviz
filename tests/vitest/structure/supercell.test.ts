@@ -297,15 +297,20 @@ describe(`make_supercell`, () => {
     )
   })
 
+  // The non-diagonal case crosses the cap by many base sites rather than many lattice points:
+  // the translations are enumerated before the cap check, ~1 s for 2M of them
   // oxfmt-ignore
   test.each([
-    [`100x100x100`, `2,000,000 sites (limit 1,000,000)`],
-    [[[1000, 0, 1], [0, 1000, 0], [0, 0, 2]], `4,000,000 sites (limit 1,000,000)`],
-    [`50x100x100`, null], // right at the cap
-  ] as [string | Matrix3x3, string | null][])(`site cap on supercell %j: %s`, (scaling, message) => {
-    const two_sites = make_crystal(1, [[`H`, [0, 0, 0]], [`H`, [0.5, 0.5, 0.5]]])
-    if (message) expect(() => make_supercell(two_sites, scaling)).toThrow(message)
-    else expect(make_supercell(two_sites, scaling).sites).toHaveLength(1_000_000)
+    [2, `100x100x100`, `2,000,000 sites (limit 1,000,000)`],
+    [1001, [[10, 0, 1], [0, 10, 0], [0, 0, 10]], `1,001,000 sites (limit 1,000,000)`],
+    [2, `50x100x100`, null], // right at the cap
+  ] as [number, string | Matrix3x3, string | null][])(`site cap on %i sites, supercell %j: %s`, (n_sites, scaling, message) => {
+    const base = make_crystal(
+      1,
+      Array.from({ length: n_sites }, (_, idx): [string, Vec3] => [`H`, [idx / n_sites, 0.5, 0.5]]),
+    )
+    if (message) expect(() => make_supercell(base, scaling)).toThrow(message)
+    else expect(make_supercell(base, scaling).sites).toHaveLength(1_000_000)
   })
 
   // `_${ii}${jj}${kk}` stops being injective once an index reaches two digits: in a

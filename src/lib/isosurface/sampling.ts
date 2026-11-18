@@ -2,7 +2,7 @@
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
+import { dot, reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
 import { clamp01 } from '#lib/utils.js'
 import { lower_corner, type ScalarGrid3D, upper_corner } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
@@ -265,34 +265,52 @@ interface VolumeDisplayRangeOptions {
   display_range?: DisplayRange
   tiling?: Vec3
   halo?: number
+  // Supercell matrix M whose own fractional frame the window spans ([0, 1]³ plus halo)
+  frame?: Matrix3x3
 }
 
 // The finite window marching cubes runs on. Periodic volumes always get an endpoint-inclusive
 // one, even for an integer supercell: an N-point periodic grid spans [0, 1) but finite marching
 // cubes reads N points as [0, 1], so [0, S] is resampled to N*S + 1 points (same spacing,
 // closed final interval). Finite volumes get one only on request and never follow tiling.
+// In a supercell `frame` the halo pads each axis by `halo` base cells along M's row, i.e.
+// halo / |M_i| supercell fractions (halo / M_ii for a diagonal M, matching tiling).
 export function resolve_volume_display_range(
   volume: VolumetricData,
-  { display_range, tiling = [1, 1, 1], halo = 0 }: VolumeDisplayRangeOptions = {},
+  { display_range, tiling = [1, 1, 1], halo = 0, frame }: VolumeDisplayRangeOptions = {},
 ): DisplayRange | null {
   if (!display_range && !volume.periodic) return null
 
   const range = display_range
     ? sanitize_display_range(display_range, volume.periodic)
-    : (tiling.map((factor) => [0, factor]) as DisplayRange)
+    : frame
+      ? UNIT_CELL_RANGE
+      : (tiling.map((factor) => [0, factor]) as DisplayRange)
 
   if (!volume.periodic) return range
-  const padding = Math.max(0, halo)
-  return range.map(([lower, upper]) => [lower - padding, upper + padding]) as DisplayRange
+  return range.map(([lower, upper], axis) => {
+    const padding = Math.max(0, halo) / (frame ? Math.hypot(...frame[axis]) : 1)
+    return [lower - padding, upper + padding]
+  }) as DisplayRange
 }
 
 // Endpoint-inclusive sample counts per axis for a (sanitized) fractional window at the
-// source voxel density: periodic volumes have n intervals per cell, finite ones n - 1
-export const range_sample_counts = (volume: VolumeGrid, range: DisplayRange): Vec3 =>
-  range.map(([lower, upper], axis) => {
-    const intervals = volume.periodic ? volume.dims[axis] : Math.max(volume.dims[axis] - 1, 1)
-    return Math.max(2, Math.round((upper - lower) * intervals) + 1)
+// source voxel density: periodic volumes have n intervals per cell, finite ones n - 1. A
+// supercell `frame` axis (row M_i in base fractions) takes max_j |M_ij|·n_j intervals, so no
+// step skips a source voxel along any base axis.
+export const range_sample_counts = (
+  volume: VolumeGrid,
+  range: DisplayRange,
+  frame?: Matrix3x3,
+): Vec3 => {
+  const intervals = volume.dims.map((dim) => (volume.periodic ? dim : Math.max(dim - 1, 1)))
+  return range.map(([lower, upper], axis) => {
+    const axis_intervals = frame
+      ? Math.max(...frame[axis].map((val, col) => Math.abs(val) * intervals[col]))
+      : intervals[axis]
+    return Math.max(2, Math.round((upper - lower) * axis_intervals) + 1)
   }) as Vec3
+}
 
 interface AxisInterpolation {
   lower: Int32Array
@@ -332,12 +350,15 @@ const precompute_axis_interpolation = (
 // finite grid whose bounds land exactly on the range, so marching cubes clips there instead of
 // at cell boundaries. Periodic volumes wrap; resolution follows the source voxel density,
 // capped at max_points. The lattice spans the range and the origin shifts by range_min·lattice,
-// keeping vertices in the source's Cartesian frame.
+// keeping vertices in the source's Cartesian frame. With a supercell `frame` M the range is
+// fractional in M · lattice: the grid covers that (sheared) parallelepiped, each point
+// resampled at its base fractions s · M.
 export function extract_volume_range(
   volume: VolumeGrid &
     Partial<Pick<VolumetricData, `label` | `units` | `source` | `source_filename`>>,
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
+  frame?: Matrix3x3,
 ): Omit<VolumetricData, `id`> {
   const sanitized = sanitize_display_range(range, volume.periodic)
   const [range_x, range_y, range_z] = sanitized
@@ -345,7 +366,7 @@ export function extract_volume_range(
 
   // Cap to the point budget; the loop catches cbrt undershoot when the min-2 floor stops an
   // axis from shrinking
-  let counts = range_sample_counts(volume, sanitized)
+  let counts = range_sample_counts(volume, sanitized, frame)
   const total = counts[0] * counts[1] * counts[2]
   if (total > max_points) {
     const shrink = Math.cbrt(max_points / total)
@@ -365,7 +386,27 @@ export function extract_volume_range(
   const z_samples = precompute_axis_interpolation(range_z, size_z, src_nz, volume.periodic)
   const values = new Float64Array(size_x * size_y * size_z)
   let out_idx = 0
-  if (x_samples.direct && y_samples.direct && z_samples.direct) {
+  if (frame) {
+    const grid: ScalarGrid3D = { values: src, dims: volume.dims, order: volume.order }
+    const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = frame
+    const steps = widths.map((width, axis) => width / (counts[axis] - 1))
+    for (let x_idx = 0; x_idx < size_x; x_idx++) {
+      const frac_a = range_x[0] + x_idx * steps[0]
+      for (let y_idx = 0; y_idx < size_y; y_idx++) {
+        const frac_b = range_y[0] + y_idx * steps[1]
+        for (let z_idx = 0; z_idx < size_z; z_idx++) {
+          const frac_c = range_z[0] + z_idx * steps[2]
+          values[out_idx++] = trilinear_interpolate(
+            grid,
+            frac_a * m00 + frac_b * m10 + frac_c * m20,
+            frac_a * m01 + frac_b * m11 + frac_c * m21,
+            frac_a * m02 + frac_b * m12 + frac_c * m22,
+            volume.periodic,
+          )
+        }
+      }
+    }
+  } else if (x_samples.direct && y_samples.direct && z_samples.direct) {
     // Sample points coincide with source voxels: copy without blending
     const nearest = ({ lower, upper, weight }: AxisInterpolation, idx: number) =>
       weight[idx] > 0.5 ? upper[idx] : lower[idx]
@@ -408,7 +449,8 @@ export function extract_volume_range(
     }
   }
 
-  const [row_a, row_b, row_c] = volume.lattice
+  const axes_lattice = frame ? dot(frame, volume.lattice) : volume.lattice
+  const [row_a, row_b, row_c] = axes_lattice
   const { label, units, source, source_filename } = volume
   return {
     values,
@@ -419,7 +461,7 @@ export function extract_volume_range(
     units: units ?? null, // a bare grid names none
     source,
     source_filename,
-    lattice: scale_lattice_matrix(volume.lattice, widths),
+    lattice: scale_lattice_matrix(axes_lattice, widths),
     origin: [
       volume.origin[0] + range_x[0] * row_a[0] + range_y[0] * row_b[0] + range_z[0] * row_c[0],
       volume.origin[1] + range_x[0] * row_a[1] + range_y[0] * row_b[1] + range_z[0] * row_c[1],
@@ -443,10 +485,11 @@ export const UNIT_CELL_RANGE: DisplayRange = [
 export function prepare_geometry_grid(
   volume: VolumeGrid,
   range: DisplayRange | null,
+  frame?: Matrix3x3,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3 } {
   const { values, dims, lattice, origin, periodic } = volume
   if (!range && !periodic && values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2))
     return { grid: volume, lattice, origin }
-  const extracted = extract_volume_range(volume, range ?? UNIT_CELL_RANGE)
+  const extracted = extract_volume_range(volume, range ?? UNIT_CELL_RANGE, undefined, frame)
   return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

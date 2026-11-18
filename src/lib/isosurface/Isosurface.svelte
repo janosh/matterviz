@@ -5,8 +5,8 @@
   // only remap through the LUT and never rerun marching cubes.
   import { value_key } from '#lib/utils.js'
   import type { Matrix3x3, Vec3 } from '../math'
-  import { create_frac_to_cart, IDENTITY_3X3 } from '../math'
-  import { diagonal_scaling, supercell_translations } from '#lib/structure/supercell.js'
+  import { IDENTITY_3X3 } from '../math'
+  import { diagonal_scaling } from '#lib/structure/supercell.js'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
@@ -78,28 +78,25 @@
     return identifier
   }
 
-  // A diagonal supercell is one box of cells, extracted as one tiled window with the halo
-  // around the whole block. Any other draws unpadded one-cell copies at each cell's t·L, so
-  // no two copies overlap. An explicit display range or a finite volume draws its window once.
+  // Every supercell is one window with the halo on its outer faces: a diagonal one tiles the
+  // base cell's fractions, any other is resampled in its own fractional frame (rows of M), so
+  // the surface fills exactly its parallelepiped. An explicit display range wins over both.
   const tiling = $derived(diagonal_scaling(supercell))
-  const translations = $derived(tiling ? [] : supercell_translations(supercell).translations)
-  const copy_offsets = (vol: VolumetricData): Vec3[] => {
-    if (!vol.periodic || settings.display_range || !translations.length) return [[0, 0, 0]]
-    const to_cart = create_frac_to_cart(vol.lattice)
-    return translations.map((translation) => to_cart(translation))
-  }
+  const window_frame = (vol: VolumetricData): Matrix3x3 | undefined =>
+    vol.periodic && !settings.display_range && !tiling ? supercell : undefined
   // Finite extraction range: always for periodic volumes (tiling and fractional bounds share
   // endpoint semantics), only an explicit crop for finite ones
   const effective_range = (vol: VolumetricData): DisplayRange | null =>
     resolve_volume_display_range(vol, {
       display_range: settings.display_range,
       tiling: tiling ?? [1, 1, 1],
-      halo: copy_offsets(vol).length > 1 ? 0 : settings.halo,
+      halo: settings.halo,
+      frame: window_frame(vol),
     })
 
   // === Prepared geometry grids ===
   // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The range
-  // fully determines it (it encodes tiling and halo, which finite volumes ignore).
+  // and frame fully determine it (they encode tiling and halo, which finite volumes ignore).
   type PreparedGrid = {
     key: string
     grid: ScalarGrid3D<Float64Array>
@@ -110,7 +107,7 @@
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
   const range_key = (vol: VolumetricData): string =>
-    effective_range(vol)?.flat().join(`,`) ?? ``
+    [effective_range(vol), window_frame(vol)].map((arr) => arr?.flat().join(`,`)).join(`|`)
 
   // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
   // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
@@ -120,7 +117,7 @@
     if (cached?.key === key) return cached
     const prepared = time_stage(
       `prepare_geometry`,
-      () => ({ key, ...prepare_geometry_grid(vol, effective_range(vol)) }),
+      () => ({ key, ...prepare_geometry_grid(vol, effective_range(vol), window_frame(vol)) }),
       ({ grid }) => ({ output_points: grid.values.length }),
     )
     prepared_cache.set(vol, prepared)
@@ -210,7 +207,7 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // range_key covers halo + tiling, so the geometry identity needs no other inputs
+  // range_key covers halo, tiling and frame, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
     value_key([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
 
@@ -564,44 +561,40 @@
     {@const color = vertex_colored ? `#ffffff` : lobe_color(layer, entry.sign)}
     {@const opacity = layer.opacity}
     {@const transparent = opacity < 1}
-    {#each copy_offsets(layer.volume) as offset, copy_idx (copy_idx)}
-      <T.Group position={offset}>
-        <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->
-        {#key vertex_colored}
-          {#if settings.wireframe}
-            <T.Mesh geometry={entry.geometry} frustumCulled={false}>
-              <T.MeshBasicMaterial
-                {color}
-                vertexColors={vertex_colored}
-                wireframe
-                {transparent}
-                {opacity}
-              />
-            </T.Mesh>
-          {:else}
-            <!-- Transparent surfaces render back then front faces in two passes for
-              correct blending; opaque surfaces need a single double-sided pass -->
-            {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
-              <T.Mesh
-                geometry={entry.geometry}
-                renderOrder={entry.render_order + pass_idx}
-                frustumCulled={false}
-              >
-                <T.MeshStandardMaterial
-                  {color}
-                  vertexColors={vertex_colored}
-                  {transparent}
-                  {opacity}
-                  {side}
-                  depthWrite={!transparent}
-                  metalness={0.1}
-                  roughness={0.6}
-                />
-              </T.Mesh>
-            {/each}
-          {/if}
-        {/key}
-      </T.Group>
-    {/each}
+    <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->
+    {#key vertex_colored}
+      {#if settings.wireframe}
+        <T.Mesh geometry={entry.geometry} frustumCulled={false}>
+          <T.MeshBasicMaterial
+            {color}
+            vertexColors={vertex_colored}
+            wireframe
+            {transparent}
+            {opacity}
+          />
+        </T.Mesh>
+      {:else}
+        <!-- Transparent surfaces render back then front faces in two passes for
+          correct blending; opaque surfaces need a single double-sided pass -->
+        {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
+          <T.Mesh
+            geometry={entry.geometry}
+            renderOrder={entry.render_order + pass_idx}
+            frustumCulled={false}
+          >
+            <T.MeshStandardMaterial
+              {color}
+              vertexColors={vertex_colored}
+              {transparent}
+              {opacity}
+              {side}
+              depthWrite={!transparent}
+              metalness={0.1}
+              roughness={0.6}
+            />
+          </T.Mesh>
+        {/each}
+      {/if}
+    {/key}
   {/if}
 {/each}

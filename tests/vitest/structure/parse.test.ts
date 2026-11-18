@@ -1118,14 +1118,15 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(Math.hypot(...magmom)).toBeCloseTo(Math.sqrt(5), 14)
     })
 
-    const adp_cif = (cell: string, aniso_loop: string, ops = [`x,y,z`]): string =>
+    // O1 gets an isotropic ADP only from an `o_u_iso` U_iso_or_equiv value
+    const adp_cif = (cell: string, aniso_loop: string, ops = [`x,y,z`], o_u_iso = `.`) =>
       [
         `data_test`,
         cell,
         symop_rows(ops),
-        site_loop,
-        `Fe1 Fe 0.1 0.2 0.3`,
-        `O1 O 0.6 0.7 0.8`,
+        `${site_loop}\n_atom_site_U_iso_or_equiv`,
+        `Fe1 Fe 0.1 0.2 0.3 .`,
+        `O1 O 0.6 0.7 0.8 ${o_u_iso}`,
         aniso_loop,
       ].join(`\n`)
     const aniso_loop = (kind: string, row: string): string =>
@@ -1200,13 +1201,24 @@ O2   O   0.410  0.140  0.880  1.000`
     })
 
     // export writes both back (the inverse transforms), so parse -> export -> parse keeps
-    // every symmetry image's Cartesian moment and U in an oblique cell
+    // every symmetry image's Cartesian moment and U in an oblique cell. Uiso O1 stays Uiso
+    // (no aniso row, whose oblique-cell U_ij would all be nonzero); aniso Fe stays aniso, as
+    // does O1's -x,y,-z image (not a symmetry of this triclinic cell, so not u·I).
     test(`moments and ADPs round-trip through CIF export`, () => {
       const aniso = aniso_loop(`U`, `Fe1 0.011 0.022 0.033 0.004 -0.005 0.006`)
       const loops = [aniso, `loop_`, ...moment_tags(`_`), `Fe1 1 -2 3`, `O1 0.5 0 0.25`]
       const cell = cif_cell(5, 6, 7, [80, 100, 110])
-      const original = parse_cif(adp_cif(cell, loops.join(`\n`), [`x,y,z`, `-x,y,-z`]))
-      const reparsed = parse_cif(structure_to_cif_str(original))
+      const ops = [`x,y,z`, `-x,y,-z`]
+      const original = parse_cif(adp_cif(cell, loops.join(`\n`), ops, `0.02`))
+      const exported = structure_to_cif_str(original)
+      const reparsed = parse_cif(exported)
+      const aniso_rows = exported.split(`_atom_site_aniso_U_23\n`)[1].split(`\n\n`)[0]
+      expect(aniso_rows.split(`\n`).map((row) => row.split(` `)[0])).toEqual([
+        `Fe1`,
+        `Fe1_1`,
+        `O1_1`,
+      ])
+      expect(exported).toMatch(/^O1 O .* 0\.02\d* Uiso$/m)
       for (const key of [`magmom`, `adp_U_cart`]) {
         const [before, after] = [original, reparsed].map(({ sites }) =>
           sites.flatMap((site) => [site.properties[key] ?? []].flat(2) as number[]),

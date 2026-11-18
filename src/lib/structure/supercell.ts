@@ -328,9 +328,11 @@ function make_matrix_supercell(
         `Supercell matrix ${JSON.stringify(matrix)} mixes non-periodic axis ${`abc`[axis]} with the others`,
       )
   }
-  const { translations, to_frac } = supercell_translations(matrix)
   const { sites } = structure
-  check_site_cap(sites.length, translations.length, JSON.stringify(matrix))
+  // |det M| copies, known before enumerating them, so an oversized matrix fails at once
+  const n_copies = Math.abs(Math.round(math.det_3x3(matrix)))
+  check_site_cap(sites.length, n_copies, JSON.stringify(matrix))
+  const { translations, to_frac } = supercell_translations(matrix)
   const new_matrix = math.dot(matrix, lattice) // rows of M · L: the new lattice vectors
   const to_old_cart = math.create_frac_to_cart(lattice)
   const to_new_cart = math.create_frac_to_cart(new_matrix)

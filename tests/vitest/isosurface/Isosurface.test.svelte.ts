@@ -13,7 +13,7 @@ import type * as worker_client from '#lib/worker-client.svelte.js'
 import { parse_supercell_matrix } from '#lib/structure/supercell.js'
 import { compute_isosurface_geometries } from '#lib/isosurface/geometry.js'
 import { type DisplayRange, prepare_geometry_grid } from '#lib/isosurface/sampling.js'
-import type { Vec3 } from '#lib/math.js'
+import type { Matrix3x3 } from '#lib/math.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -231,25 +231,23 @@ describe(`Isosurface`, () => {
     expect(colors).toEqual(expected_colors)
   })
 
-  // A diagonal supercell extracts main's one tiled window (halo around the whole block); any
-  // other draws unpadded one-cell copies at t·L ((0, 1, 0) · M⁻¹ = (½, ½, 0) here), so a
-  // halo never double-draws the faces copies share
+  // Every supercell extracts one window with the halo on its outer faces: a diagonal one in
+  // base fractions, a sheared one in its own frame (halo / |M_i| = 0.1 / √2 along a and b)
+  const sheared_pad = 0.1 / Math.SQRT2
   // oxfmt-ignore
   test.each([
-    [`2 1 1`, [[-0.1, 2.1], [-0.1, 1.1], [-0.1, 1.1]], [[0, 0, 0]]],
-    [`1 1 0 -1 1 0 0 0 1`, [[0, 1], [0, 1], [0, 1]], [[0, 0, 0], [0, 5, 0]]],
-  ] as [string, DisplayRange, Vec3[]][])(`supercell %s extracts %j at %j`, async (scaling, range, offsets) => {
+    [`2 1 1`, [[-0.1, 2.1], [-0.1, 1.1], [-0.1, 1.1]], undefined],
+    [`1 1 0 -1 1 0 0 0 1`, [[-sheared_pad, 1 + sheared_pad], [-sheared_pad, 1 + sheared_pad], [-0.1, 1.1]], parse_supercell_matrix(`1 1 0 -1 1 0 0 0 1`)],
+  ] as [string, DisplayRange, Matrix3x3 | undefined][])(`supercell %s extracts %j in frame %j`, async (scaling, range, frame) => {
     // isovalue 0.001 crosses the cell faces (the blob is ~0.002 there), so padding shows
     const volume = positive_volume()
     const settings = with_layers([layer(0.001, { opacity: 1 })], { halo: 0.1 })
     mount_isosurface({ volumes: [volume], settings, supercell: parse_supercell_matrix(scaling) })
     await settle()
-    const job = { ...prepare_geometry_grid(volume, range), surfaces: [{ token: ``, isovalue: 0.001 }] }
+    const job = { ...prepare_geometry_grid(volume, range, frame), surfaces: [{ token: ``, isovalue: 0.001 }] }
     const [{ positions }] = compute_isosurface_geometries({ volumes: [job] }).surfaces
-    const drawn = meshes().map((node) => geometry_of(node).getAttribute(`position`).array)
-    expect(drawn).toEqual(offsets.map(() => positions))
-    const groups = threlte_stub.nodes.filter((node) => node.tag === `Group`)
-    expect(groups.map(({ props }) => props.position)).toEqual(offsets)
+    expect(meshes().map((node) => geometry_of(node).getAttribute(`position`).array)).toEqual([positions])
+    expect(threlte_stub.nodes.some((node) => node.tag === `Group`)).toBe(false)
   })
 
   test(`layers skip missing volume IDs without retargeting`, async () => {

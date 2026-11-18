@@ -13,7 +13,7 @@ import type { DisplayRange } from '#lib/isosurface/sampling.js'
 import type { VolumetricData } from '#lib/isosurface/types.js'
 import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_frac_to_cart } from '#lib/math.js'
+import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
 import { describe, expect, test } from 'vite-plus/test'
 import {
   cubic_matrix,
@@ -263,25 +263,32 @@ describe(`extract_volume_range`, () => {
     expect(extracted.periodic).toBe(false)
   })
 
-  test(`self-sampling an integer-supercell surface recovers its isovalue`, () => {
-    const n_pts = 8
-    const phase = (2 * Math.PI) / n_pts
+  // Smooth periodic 8³ field without mirror symmetry along any axis
+  const wave_volume = () => {
+    const phase = (2 * Math.PI) / 8
     const grid = make_grid(
-      n_pts,
-      n_pts,
-      n_pts,
+      8,
+      8,
+      8,
       (idx_x, idx_y, idx_z) =>
         Math.sin(idx_x * phase) +
         0.35 * Math.cos(idx_y * phase) +
         0.2 * Math.sin(idx_z * phase),
     )
-    const volume = make_volume(grid, { lattice: cubic, periodic: true })
-    const extracted = extract_volume_range(volume, x_window(0, 2))
-    const isovalue = 0.15
-    const { positions } = marching_cubes(extracted, isovalue, extracted.lattice, {
+    return make_volume(grid, { lattice: cubic, periodic: true })
+  }
+  const surface = (grid: ReturnType<typeof extract_volume_range>, isovalue: number) =>
+    marching_cubes(grid, isovalue, grid.lattice, {
       periodic: false,
       normals: false,
-    })
+      position_offset: grid.origin,
+    }).positions
+
+  test(`self-sampling an integer-supercell surface recovers its isovalue`, () => {
+    const volume = wave_volume()
+    const extracted = extract_volume_range(volume, x_window(0, 2))
+    const isovalue = 0.15
+    const positions = surface(extracted, isovalue)
     const sample = create_volume_sampler(volume)
     expect(positions.length).toBeGreaterThan(0)
     for (let idx = 0; idx < positions.length; idx += 3) {
@@ -289,6 +296,90 @@ describe(`extract_volume_range`, () => {
       // Float32 vertex rounding (~1e-7) times the field gradient (≤ ~0.8/Å) stays under 1e-5
       expect(sample(vertex)).toBeCloseTo(isovalue, 4)
     }
+  })
+
+  test(`a diagonal supercell frame reproduces the tiled window`, () => {
+    const volume = wave_volume()
+    const halo = 0.1
+    const frame: Matrix3x3 = [
+      [2, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    const tiled = extract_volume_range(
+      volume,
+      resolve_volume_display_range(volume, { tiling: [2, 1, 1], halo }) as DisplayRange,
+    )
+    const framed = extract_volume_range(
+      volume,
+      resolve_volume_display_range(volume, { frame, halo }) as DisplayRange,
+      undefined,
+      frame,
+    )
+    // measured bit-identical: s·M lands on the same f64 fractions as the tiled i/n samples
+    for (const key of [`dims`, `values`, `lattice`, `origin`] as const)
+      expect(framed[key]).toEqual(tiled[key])
+    const [framed_pos, tiled_pos] = [framed, tiled].map((grid) => surface(grid, 0.15))
+    expect(framed_pos.length).toBeGreaterThan(0)
+    expect(framed_pos).toEqual(tiled_pos)
+  })
+
+  test(`a sheared supercell frame fills its parallelepiped plus halo with true colors`, () => {
+    const volume = wave_volume()
+    const frame: Matrix3x3 = [
+      [1, 1, 0],
+      [-1, 1, 0],
+      [0, 0, 1],
+    ]
+    const range = resolve_volume_display_range(volume, { frame, halo: 0.1 }) as DisplayRange
+    const extracted = extract_volume_range(volume, range, undefined, frame)
+    // a and b rows have |M_i| = √2, so halo 0.1 base cells is 0.1/√2 supercell fractions
+    expect(range[0][0]).toBeCloseTo(-0.1 / Math.SQRT2, 14)
+    // max_j |M_ij|·8 = 8 intervals per a/b supercell length: round((1 + 0.2/√2)·8) + 1
+    expect(extracted.dims).toEqual([10, 10, 11])
+    // every grid point holds the periodic source field at its own Cartesian position
+    const sample = create_volume_sampler(volume)
+    const to_cart = create_frac_to_cart(extracted.lattice)
+    const [size_x, size_y, size_z] = extracted.dims
+    for (let x_idx = 0; x_idx < size_x; x_idx++)
+      for (let y_idx = 0; y_idx < size_y; y_idx++)
+        for (let z_idx = 0; z_idx < size_z; z_idx++) {
+          const offset = to_cart([
+            x_idx / (size_x - 1),
+            y_idx / (size_y - 1),
+            z_idx / (size_z - 1),
+          ])
+          const point = offset.map((val, axis) => val + extracted.origin[axis]) as Vec3
+          expect(grid_value(extracted, x_idx, y_idx, z_idx)).toBeCloseTo(sample(point), 12)
+        }
+    const positions = surface(extracted, 0.15)
+    expect(positions.length).toBeGreaterThan(0)
+    const to_super_frac = create_cart_to_frac(dot(frame, volume.lattice))
+    // Color volume not periodic with the geometry cell: a finite linear field f_a + 2f_b + 4f_c
+    // over a box enclosing the supercell, which trilinear interpolation reproduces exactly
+    const color_vol = linear_volume(11, cubic_matrix(25), false, [-12, -2, -2])
+    const colors = sample_volume_at_positions(color_vol, positions, {
+      out_of_bounds: `fallback`,
+    })
+    const to_color_frac = create_cart_to_frac(color_vol.lattice)
+    for (let idx = 0; idx < positions.length; idx += 3) {
+      const vertex: Vec3 = [positions[idx], positions[idx + 1], positions[idx + 2]]
+      to_super_frac(vertex).forEach((frac, axis) => {
+        expect(frac).toBeGreaterThanOrEqual(range[axis][0] - 1e-6)
+        expect(frac).toBeLessThanOrEqual(range[axis][1] + 1e-6)
+      })
+      const [frac_a, frac_b, frac_c] = to_color_frac(
+        vertex.map((val, axis) => val - color_vol.origin[axis]) as Vec3,
+      )
+      expect(colors[idx / 3]).toBeCloseTo(frac_a + 2 * frac_b + 4 * frac_c, 5)
+    }
+    // the halo is drawn: some vertices lie beyond the parallelepiped's a faces
+    const fracs_a = Array.from(
+      { length: positions.length / 3 },
+      (_, idx) =>
+        to_super_frac([positions[3 * idx], positions[3 * idx + 1], positions[3 * idx + 2]])[0],
+    )
+    expect(Math.min(...fracs_a)).toBeLessThan(0)
   })
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {

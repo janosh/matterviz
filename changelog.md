@@ -14,9 +14,13 @@
 - Supercells: the session exposes `supercell_matrix` instead of `supercell_tiling`, and `LatticePlanes` prop `tiling` → `supercell` [#515](https://github.com/janosh/matterviz/pull/515)
 - Units: `BandGridData`, `FermiSurfaceData` and `ElectronicDos` require `energy_unit` (`null` when the file states none), `VolumetricData` requires `units`; `ElectronicBandStructure.band_gap` and `is_spin_polarized` are removed [#515](https://github.com/janosh/matterviz/pull/515)
 - `materialize_series_points` throws on series whose `x`/`y` are not arrays or typed arrays instead of skipping them [#515](https://github.com/janosh/matterviz/pull/515)
+- `high_symmetry_kpath` returns primitive-basis k-points plus `primitive`/`k_lattice`; `kpath_to_k_path_data` takes one object. `Isosurface`/`ColorFieldVolume` `tiling` → `supercell` matrix, likewise the symmetry-element tiling API [#516](https://github.com/janosh/matterviz/pull/516)
+- `ImageAtom` is a `{ site_idx, xyz, abc, is_completion }` record, `displacement_pbc`/`pick_displacement` take `{ converters, pbc }`, `PhaseData.energy` is optional [#516](https://github.com/janosh/matterviz/pull/516)
+- Plots: one `LineStyle { color, width, dash, curve }` (`stroke`/`stroke_width`/`line_dash` keys and `scatter_line_style` removed), one-sided `SizeScaleConfig.value_range`, log-axis KDE `bandwidth` in decades; `normalize_band_structure` throws on malformed input; `apply_gaussian_smearing` removed [#516](https://github.com/janosh/matterviz/pull/516)
 
 ### 🚀 New Features
 
+- CIF moment/ADP export, Uiso ellipsoids, non-diagonal supercell volumes and symmetry elements, primitive-zone default k-paths, bar error tooltips, Ry/Ha Fermi-band links, ASE-compatible extXYZ [#516](https://github.com/janosh/matterviz/pull/516)
 - Typed bonding options, VESTA-style `pair_cutoffs` bonding strategy with an editor, general integer supercell matrices, mCIF magnetic moments, ADPs with thermal ellipsoids, Kα1/Kα2 XRD doublets, EOS standard errors, band-gap VBM/CBM and direct/indirect detail, Setyawan–Curtarolo default k-paths (`high_symmetry_kpath`), bar error bars and typed-array plot series [#515](https://github.com/janosh/matterviz/pull/515)
 - LAMMPS dumps with `reset_timestep`, labelled species (`Fe1`, `OW`) in XYZ/LAMMPS and pre-5.3 XDATCAR now open [#515](https://github.com/janosh/matterviz/pull/515)
 
