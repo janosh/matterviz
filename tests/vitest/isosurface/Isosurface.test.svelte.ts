@@ -12,8 +12,7 @@ import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from '#lib/isosurface/ty
 import type * as worker_client from '#lib/worker-client.svelte.js'
 import { parse_supercell_matrix } from '#lib/structure/supercell.js'
 import { compute_isosurface_geometries } from '#lib/isosurface/geometry.js'
-import { type DisplayRange, prepare_geometry_grid } from '#lib/isosurface/sampling.js'
-import type { Matrix3x3 } from '#lib/math.js'
+import { prepare_geometry_grid, type VolumeWindow } from '#lib/isosurface/sampling.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -236,15 +235,15 @@ describe(`Isosurface`, () => {
   const sheared_pad = 0.1 / Math.SQRT2
   // oxfmt-ignore
   test.each([
-    [`2 1 1`, [[-0.1, 2.1], [-0.1, 1.1], [-0.1, 1.1]], undefined],
-    [`1 1 0 -1 1 0 0 0 1`, [[-sheared_pad, 1 + sheared_pad], [-sheared_pad, 1 + sheared_pad], [-0.1, 1.1]], parse_supercell_matrix(`1 1 0 -1 1 0 0 0 1`)],
-  ] as [string, DisplayRange, Matrix3x3 | undefined][])(`supercell %s extracts %j in frame %j`, async (scaling, range, frame) => {
+    [`2 1 1`, { range: [[-0.1, 2.1], [-0.1, 1.1], [-0.1, 1.1]] }],
+    [`1 1 0 -1 1 0 0 0 1`, { range: [[-sheared_pad, 1 + sheared_pad], [-sheared_pad, 1 + sheared_pad], [-0.1, 1.1]], frame: parse_supercell_matrix(`1 1 0 -1 1 0 0 0 1`) }],
+  ] as [string, VolumeWindow][])(`supercell %s extracts window %j`, async (scaling, window) => {
     // isovalue 0.001 crosses the cell faces (the blob is ~0.002 there), so padding shows
     const volume = positive_volume()
     const settings = with_layers([layer(0.001, { opacity: 1 })], { halo: 0.1 })
     mount_isosurface({ volumes: [volume], settings, supercell: parse_supercell_matrix(scaling) })
     await settle()
-    const job = { ...prepare_geometry_grid(volume, range, frame), surfaces: [{ token: ``, isovalue: 0.001 }] }
+    const job = { ...prepare_geometry_grid(volume, window), surfaces: [{ token: ``, isovalue: 0.001 }] }
     const [{ positions }] = compute_isosurface_geometries({ volumes: [job] }).surfaces
     expect(meshes().map((node) => geometry_of(node).getAttribute(`position`).array)).toEqual([positions])
     expect(threlte_stub.nodes.some((node) => node.tag === `Group`)).toBe(false)

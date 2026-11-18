@@ -57,7 +57,7 @@ export {
   visible_entries,
 } from './helpers'
 export type { PolymorphStats, TemperatureAnalysis, TemperatureFilterOptions } from './helpers'
-export { compute_hull_model, grand_potential_entries, type OpenElements } from './model'
+export { compute_hull_model, type OpenElements } from './model'
 export type { EnergyModeInfo, EnergySourceMode, HullModel } from './model'
 export { default as StructurePopup } from './StructurePopup.svelte'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
@@ -107,8 +107,9 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // { O: -6.4 }: the hull is drawn in grand potential Φ = E - Σ μ N per non-open atom without
   // their axes (pymatgen's GrandPotentialPhaseDiagram), so Li-Co-Ni-O at fixed μ_O is a ternary
   open_elements?: OpenElements
-  // Composition to decompose into its equilibrium hull products (bindable; also entered in
-  // the info pane), drawn as a ring on the hull with tie-lines to the products
+  // Composition to decompose into its equilibrium hull products, keyed like the entries
+  // (components, or elements without the open ones), drawn as a ring on the hull with
+  // tie-lines to the products. Bindable; formulas typed into the info pane are converted.
   probe_composition?: CompositionType | null
   // Options for the controls pane: title, show_counts and show_label_controls.
   controls?: Partial<ConvexHullControlsType>

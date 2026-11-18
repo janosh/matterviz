@@ -636,7 +636,8 @@ export interface AxisConfig {
   // x2_axis only: show a function of the x axis on top (photon energy -> wavelength, 2θ ->
   // d-spacing, T -> 1000 / T) with no series of its own. Ticks are nice values of the derived
   // quantity placed at x = inverse(tick); `scale_type` picks their scheme (default x's).
-  // forward must be monotonic (increasing or decreasing) over the visible x range.
+  // forward must be finite and monotonic over the visible x range, else x2 shows no ticks
+  // there (1240 / x panned across 0); a time-scale x axis throws.
   derive?: AxisDerive
 }
 

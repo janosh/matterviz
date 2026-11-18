@@ -259,10 +259,13 @@ export function create_scale(
   return scaleLinear().domain(domain).range(output_range)
 }
 
+const DERIVE_SAMPLES = 64
 // Scale of an axis showing a function of another one (x2_axis.derive): values in derived units
 // (wavelength over a photon-energy x axis) sit where `base` puts their inverse. Its domain is the
 // forward image of base's, descending for a decreasing map; ticks are nice in derived units on
-// `tick_scale_type`. Outside the map's domain (1240 / 0) the domain is non-finite and ticks empty.
+// `tick_scale_type`. Where forward is non-finite or non-monotonic anywhere in base's view (sampled
+// at DERIVE_SAMPLES pixel steps: 1240 / x at or across 0, x^2 over [-2, 3]) the domain is NaN
+// and the axis shows no ticks rather than misplaced ones.
 export function derived_scale(
   base: ScaleContinuousNumeric<number, number> | ArcsinhScale,
   { forward, inverse }: AxisDerive,
@@ -273,7 +276,18 @@ export function derived_scale(
   const scale = ((value: number): number => current(inverse(value))) as ArcsinhScale
   const derived_domain = (): Vec2 => {
     const [lo, hi] = current.domain()
-    return [forward(lo), forward(hi)]
+    const [px_lo, px_hi] = current.range()
+    const ends: Vec2 = [forward(lo), forward(hi)]
+    const values = [
+      ends[0],
+      ...Array.from({ length: DERIVE_SAMPLES - 1 }, (_, idx) =>
+        forward(current.invert(px_lo + ((idx + 1) / DERIVE_SAMPLES) * (px_hi - px_lo))),
+      ),
+      ends[1],
+    ]
+    const steps = values.slice(1).map((value, idx) => value - values[idx])
+    const monotonic = steps.every((step) => step >= 0) || steps.every((step) => step <= 0)
+    return monotonic && values.every(Number.isFinite) ? ends : [NaN, NaN]
   }
   scale.domain = function (domain?: Vec2): Vec2 | ArcsinhScale {
     if (domain === undefined) return derived_domain()
@@ -341,6 +355,9 @@ export function create_axis_scales<A extends { scale_type?: ScaleType; derive?: 
     create_scale(axis.scale_type ?? `linear`, domain, pixel_x)
   const x_scale = scale(axes.x, ranges.x, x_px)
   const { derive } = axes.x2
+  if (derive && get_scale_type_name(axes.x.scale_type) === `time`) {
+    throw new Error(`x2_axis.derive needs a numeric x axis, got scale_type 'time'`)
+  }
   return {
     x: x_scale,
     x2: derive

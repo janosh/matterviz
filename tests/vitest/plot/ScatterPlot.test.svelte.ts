@@ -2672,6 +2672,22 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  // a derived x2 without its own scale_type inherits x's log tick scheme, minor ticks included
+  test(`derived x2 over a log x axis gets log ticks and minor ticks`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1, 10, 100], y: [1, 2, 3] }],
+      x_axis: { scale_type: `log`, range: [1, 100] },
+      x2_axis: {
+        derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
+      },
+    })
+    expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(16)
+    const labels = [...plot.querySelectorAll(`.x2-axis .tick text`)].map(
+      (el) => el.textContent,
+    )
+    expect(labels).toEqual([`10`, `100`, `1k`])
+  })
+
   test(`derived x2 axis shows wavelength ticks above a photon-energy x axis`, async () => {
     const hc = 1239.84198
     const plot = await mount_sized_scatter_plot({

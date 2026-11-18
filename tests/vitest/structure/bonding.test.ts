@@ -1747,8 +1747,9 @@ describe(`neighbor_query`, () => {
     expect(bonds.slice(0, -1)).toEqual(hydrogen_bonds)
     expect(bonds.at(-1)).toMatchObject({ site_idx_1: 4600, site_idx_2: 4601, bond_length: 5 })
     // Inherently heavy: the refusals must actually cross the fixed 10M-pair limit (~160 MB of
-    // pair buffers) and the streaming check visits 21M pairs (~0.6 s alone, ~1 s in the suite)
-  })
+    // pair buffers) and the streaming check visits 21M pairs: ~0.6 s alone but 5-7 s under a
+    // loaded full-suite run
+  }, 20_000)
 
   // The refusal estimate counts the images that will actually be built (only those within
   // `cutoff` of the cell), not 27x the site count: here 27 * 150k = 4.05M exceeds the limit,

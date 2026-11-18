@@ -146,9 +146,6 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // rendered in place of the plot
   const error = $derived.by((): string | null => {
     if (normalized_source.error) return normalized_source.error
-    if (normalized_source.is_open && energy_info.energy_mode !== `on-the-fly`) {
-      return `open_elements needs an elemental reference with an absolute energy for each of ${elements.join(`, `)}`
-    }
     if (elements.length === 0 || elements.length === dim) return null
     return `Convex hulls require 2, 3 or 4 elements, found ${elements.length}: ${elements.join(`, `)}`
   })

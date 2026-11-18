@@ -354,6 +354,8 @@
         bind:pane_open={info_pane_open}
         bind:probe_composition
         {probe}
+        {components}
+        {open_elements}
         elements={hull_data.model.elements}
         {phase_stats}
         {stable_entries}

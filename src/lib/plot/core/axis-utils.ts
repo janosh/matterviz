@@ -13,11 +13,10 @@ export const AXIS_DEFAULTS = {
   tick_label: { shift: { x: 0, y: 0 }, inside: false },
   range: [null, null] as [number | null, number | null],
 }
-// The top (x2) axis title sits above the top edge by the tick-label band
-export const X2_AXIS_DEFAULTS = {
-  ...AXIS_DEFAULTS,
-  label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
-}
+// The top (x2) axis title sits above the top edge by the tick-label band. No default
+// scale_type: unset is linear, except a derived x2 (x2_axis.derive) takes x's
+const { scale_type: _scale_type, ...x2_base } = AXIS_DEFAULTS
+export const X2_AXIS_DEFAULTS = { ...x2_base, label_shift: { x: 0, y: AXIS_TITLE_OFFSET } }
 
 // Secondary-axis configs with library defaults merged in. Returned rather than assigned back
 // into the $bindable props, which would push library defaults into the parent's bound state.

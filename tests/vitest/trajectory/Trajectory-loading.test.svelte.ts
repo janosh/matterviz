@@ -475,8 +475,8 @@ describe(`drops`, () => {
 })
 
 // Each group choice mounts the full <Trajectory> viewer (~0.4 s cold for the first 3D mount
-// in a worker, 5-10x that under CPU contention) and the first test does so three times, so
-// the describe gets more than the 5 s default. Parsing a group itself takes ~5 ms.
+// in a worker, 5-10x that under CPU contention) and the first test does so three times.
+// Parsing a group itself takes ~5 ms.
 describe(`HDF5 group picker`, () => {
   // Writing the fixture loads and initialises h5wasm (the same instance the passthrough
   // parse then reuses). That WASM compile is the one slow step here: ~0.7 s alone, several

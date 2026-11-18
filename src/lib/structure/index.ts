@@ -129,6 +129,8 @@ export type Site = {
     // polyhedron it completed, false on the rest (no polyhedron, cut off at the shell's edge,
     // completion images), so truncated copies at the cell faces don't render
     polyhedron_center?: boolean
+    // In a bonded fragment unwrap_molecules kept whole: draws no face image copies
+    whole_molecule?: boolean
   }
 }
 

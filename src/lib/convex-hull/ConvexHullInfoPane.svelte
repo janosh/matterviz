@@ -9,13 +9,14 @@
   import type { CompositionType } from '#lib/composition/index.js'
   import { parse_composition } from '#lib/composition/parse.js'
   import type { ElementSymbol } from '#lib/element/index.js'
+  import { type OpenElements, to_model_composition } from './model'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import {
     get_entry_label,
     type HullProbe,
     visible_entries as filter_visible,
   } from './helpers'
-  import { system_fractions } from './thermodynamics'
+  import { to_error } from 'svelte-widgets/utils'
   import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
@@ -34,6 +35,8 @@
     probe_composition = $bindable(null),
     probe = null,
     elements = [],
+    components,
+    open_elements,
     toggle_props = {},
     pane_props = {},
     shortcut_scopes,
@@ -54,6 +57,10 @@
     probe_composition?: CompositionType | null
     probe?: HullProbe | null
     elements?: ElementSymbol[]
+    // the hull's composition keys: typed formulas are solved for component amounts, or
+    // lose their open elements, before probing
+    components?: readonly string[]
+    open_elements?: OpenElements
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     shortcut_scopes?: readonly ShortcutScope[] // the hull's, listed at the pane's bottom
@@ -92,26 +99,28 @@
   ])
   // === Composition probe ===
   let probe_text = $state(``)
-  let probe_error = $state<string | null>(null)
+  let parse_error = $state<string | null>(null)
   const submit_probe = (event: SubmitEvent) => {
     event.preventDefault()
     const text = probe_text.trim()
-    probe_error = null
-    if (!text) {
-      probe_composition = null
-      return
-    }
+    parse_error = null
     try {
-      const composition = parse_composition(text)
-      if (!system_fractions(composition, elements)) {
-        probe_error = `${text} is outside the ${elements.join(`-`)} system`
-        return
+      const parsed = text ? parse_composition(text) : null
+      probe_composition = parsed && to_model_composition(parsed, components, open_elements)
+      if (parsed && !probe_composition) {
+        parse_error = `${text} is outside the ${elements.join(`-`)} system`
       }
-      probe_composition = composition
     } catch (err) {
-      probe_error = `Can't parse ${text}: ${err instanceof Error ? err.message : String(err)}`
+      parse_error = `Can't parse ${text}: ${to_error(err).message}`
     }
   }
+  // a composition set here or by the host that the hull can't decompose is outside its system
+  const probe_error = $derived(
+    parse_error ??
+      (probe_composition && !probe
+        ? `${get_entry_label({ composition: probe_composition }, elements)} is outside the ${elements.join(`-`)} system`
+        : null),
+  )
   let probe_card = $derived(
     probe && {
       title: `Decomposition`,

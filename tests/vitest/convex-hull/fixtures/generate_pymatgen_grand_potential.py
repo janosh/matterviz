@@ -52,6 +52,6 @@ def generate_reference() -> dict:
 
 if __name__ == "__main__":
     reference = generate_reference()
-    out_path = f"{os.path.dirname(__file__)}/li_co_ni_o_grand_potential_reference.json"
-    with open(out_path, mode="w") as file:
-        json.dump(reference, file, indent=1)
+    out_path = f"{os.path.dirname(__file__)}/li_co_ni_o_grand_potential_reference.json.gz"
+    with gzip.GzipFile(out_path, mode="wb", mtime=0) as file:
+        file.write(json.dumps(reference, separators=(",", ":")).encode())

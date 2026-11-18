@@ -1,8 +1,10 @@
 // Numerical hull snapshots are independent of rendering, category styling, and visibility.
 import type { CompositionType } from '#lib/composition/index.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
+import { parse_composition } from '#lib/composition/parse.js'
 import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import { solve_linear_program } from '#lib/math.js'
 import { composition_to_simplex_coords } from './barycentric-coords'
 import { compute_hull_stability, is_unary_entry } from './entry-stability'
 import * as thermo from './thermodynamics'
@@ -178,27 +180,35 @@ export function build_hull_model(
 // Chemical potentials (absolute, eV/atom) of elements exchanged with a reservoir
 export type OpenElements = Readonly<Partial<Record<ElementSymbol, number>>>
 
-// Grand-potential entries for a hull open to `open_elements` (pymatgen's
-// GrandPotentialPhaseDiagram convention): Φ = E − Σ μ_el N_el in total eV, over the composition
-// with the open elements dropped, so the hull is drawn per non-open atom on fewer axes.
-// Entries made only of open elements leave the system. Their closed-system E_form, hull
-// distance and stability no longer apply and are dropped; formula names keep the full
-// composition (LiCoO2 stays LiCoO2 on the Li-Co axis).
-export function grand_potential_entries(
+// Normalized composition keys, then (with open elements) the grand-potential projection
+// (pymatgen's GrandPotentialPhaseDiagram): Φ = E − Σ μ_el N_el in total eV over the composition
+// without the open elements, so the hull is drawn per non-open atom on fewer axes. Entries made
+// only of open elements leave the system; closed-system E_form, hull distance and stability are
+// dropped (`is_open` forces recomputing them); names keep the full formula (LiCoO2 on Li-Co).
+export function process_model_entries(
   entries: readonly PhaseData[],
-  open_elements: OpenElements,
-): PhaseData[] {
-  const open = Object.entries(open_elements) as [ElementSymbol, number][]
+  components: readonly string[] | undefined,
+  open_elements: OpenElements | undefined,
+): ProcessedPhaseData & { is_open: boolean } {
+  const processed = thermo.process_hull_entries(entries, components)
+  const open = Object.entries(open_elements ?? {}) as [ElementSymbol, number][]
+  if (open.length === 0) return { ...processed, is_open: false }
+  if (components) throw new Error(`open_elements cannot be combined with components`)
   for (const [element, chem_pot] of open) {
     if (!Number.isFinite(chem_pot)) {
-      throw new TypeError(
-        `open_elements: chemical potential of ${element} must be finite, got ${chem_pot}`,
+      throw new TypeError(`open_elements: μ of ${element} must be finite, got ${chem_pot}`)
+    }
+    if (!processed.elements.includes(element)) {
+      throw new Error(
+        `open element ${element} is in no entry of the ${processed.elements.join(`-`)} system`,
       )
     }
   }
-  return entries.flatMap((entry) => {
+  const grand = processed.entries.flatMap((entry) => {
     const composition = Object.fromEntries(
-      Object.entries(entry.composition).filter(([element]) => !(element in open_elements)),
+      Object.entries(entry.composition).filter(
+        ([el]) => !open.some(([open_el]) => open_el === el),
+      ),
     ) as CompositionType
     if (!(count_atoms_in_composition(composition) > 0)) return []
     if (!thermo.has_absolute_energy(entry)) {
@@ -206,10 +216,9 @@ export function grand_potential_entries(
         `open_elements needs absolute energies, entry ${entry.entry_id ?? JSON.stringify(entry.composition)} has none`,
       )
     }
-    const n_atoms = count_atoms_in_composition(entry.composition)
     const grand_energy = open.reduce(
       (energy, [element, chem_pot]) => energy - chem_pot * (entry.composition[element] ?? 0),
-      thermo.get_energy_per_atom(entry) * n_atoms,
+      thermo.get_energy_per_atom(entry) * count_atoms_in_composition(entry.composition),
     )
     const {
       e_form_per_atom: _e_form,
@@ -231,22 +240,45 @@ export function grand_potential_entries(
       })
     return [{ ...rest, composition, energy: grand_energy, name }]
   })
+  const projected = thermo.process_hull_entries(grand)
+  // every grand entry has an absolute energy, so each element just needs a unary reference
+  const refs = thermo.find_lowest_energy_unary_refs(projected.entries)
+  const missing = projected.elements.filter((element) => !(element in refs))
+  if (missing.length > 0) {
+    throw new Error(`open_elements needs an elemental reference for ${missing.join(`, `)}`)
+  }
+  return { ...projected, is_open: true }
 }
 
-// Normalized composition keys, then (with open elements) the grand-potential projection.
-// `is_open` forces formation energies to be recomputed: grand potentials replace every energy.
-export function process_model_entries(
-  entries: readonly PhaseData[],
+// An element composition (e.g. a probed formula) in the model's composition keys: without
+// the open elements, or with components the non-negative amount of each whose elements sum
+// to it (A x = b, x >= 0). Null when the system can't make it.
+export function to_model_composition(
+  composition: CompositionType,
   components: readonly string[] | undefined,
   open_elements: OpenElements | undefined,
-): ProcessedPhaseData & { is_open: boolean } {
-  const processed = thermo.process_hull_entries(entries, components)
-  if (!open_elements || Object.keys(open_elements).length === 0) {
-    return { ...processed, is_open: false }
+): CompositionType | null {
+  let model: Record<string, number> = Object.fromEntries(
+    Object.entries(composition).filter(
+      ([el, amt]) => amt > 0 && !(el in (open_elements ?? {})),
+    ),
+  )
+  if (components) {
+    const component_comps = components.map((component) => parse_composition(component))
+    const keys = [...new Set([model, ...component_comps].flatMap(Object.keys))]
+    const { status, solution } = solve_linear_program(
+      components.map(() => 0),
+      keys.map((el) => component_comps.map((comp) => comp[el as ElementSymbol] ?? 0)),
+      keys.map((el) => model[el] ?? 0),
+    )
+    if (status !== `optimal`) return null
+    model = Object.fromEntries(
+      components.flatMap((component, idx) =>
+        solution[idx] > 0 ? [[component, solution[idx]]] : [],
+      ),
+    )
   }
-  if (components) throw new Error(`open_elements cannot be combined with components`)
-  const grand = grand_potential_entries(processed.entries, open_elements)
-  return { ...thermo.process_hull_entries(grand), is_open: true }
+  return Object.keys(model).length > 0 ? model : null
 }
 
 // Headless model construction uses the same numerical path as every hull renderer.
@@ -271,11 +303,6 @@ export function compute_hull_model(
   }
   // Grand potentials replace every energy, so formation energies must be recomputed from them
   const energy_info = compute_energy_mode_info(processed.entries, energy_source_mode, is_open)
-  if (is_open && energy_info.energy_mode !== `on-the-fly`) {
-    throw new Error(
-      `compute_hull_model: open_elements needs an elemental reference with an absolute energy for each of ${processed.elements.join(`, `)}`,
-    )
-  }
   return build_hull_model(
     apply_formation_energies(processed.entries, energy_info),
     processed.elements,

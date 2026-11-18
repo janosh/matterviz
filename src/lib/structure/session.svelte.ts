@@ -23,6 +23,7 @@ import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'
 import { get_property_colors } from './atom-properties'
 import type { BondingOptions, BondingStrategy } from './bonding'
 import {
+  cache_prepared_bonds,
   get_bond_data,
   merge_bond_edits,
   remap_bonds_after_deletion,
@@ -388,11 +389,13 @@ export class StructureSession {
     const struct = this.map_elements(this.supercell_structure)
     if (!this.inputs.keep_molecules_whole() || !struct || !(`lattice` in struct)) return struct
     const { pbc } = struct.lattice
+    const strategy = this.inputs.bonding_strategy()
     const options = { ...this.inputs.bonding_options(), pbc }
-    return unwrap_molecules(
-      struct,
-      get_bond_data(struct, this.inputs.bonding_strategy(), options),
-    )
+    const unwrapped = unwrap_molecules(struct, get_bond_data(struct, strategy, options))
+    // the image atoms' bond search on the moved sites would find the same bonds again
+    if (unwrapped.structure !== struct)
+      cache_prepared_bonds(unwrapped.structure, strategy, options, unwrapped.bonds)
+    return unwrapped.structure
   })
   // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing.
   // Only a settings change on the same structure can, so new frames build no image_set_key.

@@ -184,8 +184,6 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
 
 const is_integer = (val: number): boolean => Math.abs(val - Math.round(val)) < ELEM_TOL
 
-const is_zero_vec = (vec: Vec3): boolean => vec.every((val) => Math.abs(val) < ELEM_TOL)
-
 // Components of (x, y, z) past ELEM_TOL
 const n_nonzero = (x_val: number, y_val: number, z_val: number): number =>
   Number(Math.abs(x_val) > ELEM_TOL) +
@@ -283,8 +281,12 @@ function glide_type(glide_vec: Vec3, axis_plane: boolean, hexagonal: boolean): s
 // (double glide) if it holds two of a, b, c, n (or a diagonal (a±b)/2 next to c/2), else the
 // single a/b/c/n, then d, else g. Classifying the class rather than one reduced representative
 // is what makes the letter independent of the representative and the input cell.
-function ita_glide_letter(info: RotationInfo & { kind: `mirror` }, w_intrinsic: Vec3): string {
-  const { normal_eq, plane_basis, plane_offsets, hexagonal } = info
+// `hexagonal` marks a hexagonal-axes frame (trigonal and hexagonal groups), see glide_type.
+function ita_glide_letter(
+  { normal_eq, plane_basis, plane_offsets }: RotationInfo & { kind: `mirror` },
+  w_intrinsic: Vec3,
+  hexagonal: boolean,
+): string {
   const axis_plane = normal_eq.filter((val) => val !== 0).length === 1
   const [first, second] = plane_basis
   const gram = [math.dot(first, first), math.dot(first, second), math.dot(second, second)]
@@ -342,8 +344,6 @@ type RotationInfo = { mat: Matrix3x3; proj: Matrix3x3; mat_order: number; order:
       // spans ℤ³ ∩ plane and plane_offsets are the centerings lifted into the plane
       plane_basis: [Vec3, Vec3]
       plane_offsets: Vec3[]
-      // the frame is a hexagonal-axes cell (see glide_type)
-      hexagonal: boolean
     }
 )
 
@@ -352,7 +352,6 @@ type RotationInfo = { mat: Matrix3x3; proj: Matrix3x3; mat_order: number; order:
 function build_rotation_info(
   rotation: readonly number[],
   centerings: readonly Vec3[],
-  hexagonal: boolean,
 ): RotationInfo | null {
   const mat = mat_round(math.mat3x3_from_flat_col_major(rotation))
   const det = Math.round(math.det_3x3(mat))
@@ -413,16 +412,7 @@ function build_rotation_info(
       const in_plane = math.subtract(centering, math.scale(lift, Math.round(height)))
       plane_offsets.push(in_plane)
     }
-    return {
-      ...base,
-      kind: `mirror`,
-      order: 2,
-      axis,
-      normal_eq,
-      plane_basis,
-      plane_offsets,
-      hexagonal,
-    }
+    return { ...base, kind: `mirror`, order: 2, axis, normal_eq, plane_basis, plane_offsets }
   }
 
   const rotoinv_order_by_trace: Record<number, number> = { 0: 3, [-1]: 4, [-2]: 6 }
@@ -468,13 +458,13 @@ function screw_lambda(info: RotationInfo & { kind: `proper` }, w_intrinsic: Vec3
 }
 
 // ITA symbol of the operation (info.mat, w), read in the frame info was built in: "2", "4_2",
-// "-4", "-1", or a plane letter (see ita_glide_letter)
-function element_label(info: RotationInfo, width_value: Vec3): string {
+// "-4", "-1", or a plane letter (see ita_glide_letter; `hexagonal` describes that frame)
+function element_label(info: RotationInfo, width_value: Vec3, hexagonal: boolean): string {
   const { kind, order } = info
   if (kind === `inversion`) return `-1`
   if (kind === `rotoinversion`) return `-${order}`
   const w_intrinsic = math.mul_3x3_vec3(info.proj, width_value)
-  if (kind === `mirror`) return ita_glide_letter(info, w_intrinsic)
+  if (kind === `mirror`) return ita_glide_letter(info, w_intrinsic, hexagonal)
   const lambda = screw_lambda(info, w_intrinsic)
   if (lambda === 0) return `${order}`
   // ITA's N_p advances p/N of the period per +2π/N turn about +axis (3⁻ with 2/3 c is 3_1). In a
@@ -540,19 +530,23 @@ export function classify_symmetry_op(
   centerings: readonly Vec3[] = [],
   hexagonal = false,
 ): SymmetryElement | null {
-  const info = build_rotation_info(rotation, centerings, hexagonal)
-  return info
-    ? classify_with_rotation_info(
-        info,
-        translation as Vec3,
-        element_label(info, translation as Vec3),
-      )
-    : null
+  const info = build_rotation_info(rotation, centerings)
+  if (!info) return null
+  const width_value = translation as Vec3
+  return classify_with_rotation_info(
+    info,
+    width_value,
+    element_label(info, width_value, hexagonal),
+  )
 }
 
-// Translations mod ℤ³ snapped to 1e-6, so 1 - 1e-9 and 0 share a key
-const translation_key = (vec: Vec3): string =>
-  vec.map((val) => Math.round(val * 1e6) % 1_000_000).join(`,`)
+// Add vec mod ℤ³ to a set of distinct nonzero translations, keyed snapped to 1e-6 so
+// 1 - 1e-9 and 0 coincide
+const add_translation = (group: Map<string, Vec3>, vec: Vec3): void => {
+  const wrapped = wrap_to_unit_cell(vec)
+  const key = wrapped.map((val) => Math.round(val * 1e6) % 1_000_000).join(`,`)
+  if (key !== `0,0,0` && !group.has(key)) group.set(key, wrapped)
+}
 
 // Whether `score` is lexicographically larger than `other` beyond 1e-6
 const lex_greater = (score: number[], other: number[]): boolean => {
@@ -638,17 +632,11 @@ export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): Symmetr
   // Centering vectors are the pure-translation operations (identity rotation, w ∉ ℤ³).
   // They define the true lattice for screw/glide reduction in centered cells.
   // Deduplicated since supercell inputs repeat sublattice translations.
-  const centering_keys = new Set<string>()
-  const centerings: Vec3[] = []
-  for (const { rotation, translation } of operations) {
-    if (!is_identity(mat_round(math.mat3x3_from_flat_col_major(rotation)))) continue
-    const wrapped = wrap_to_unit_cell(translation)
-    if (is_zero_vec(wrapped)) continue
-    const key = wrapped.map((val) => val.toFixed(6)).join(`,`)
-    if (centering_keys.has(key)) continue
-    centering_keys.add(key)
-    centerings.push(wrapped)
-  }
+  const centering_group = new Map<string, Vec3>()
+  for (const { rotation, translation } of operations)
+    if (is_identity(mat_round(math.mat3x3_from_flat_col_major(rotation))))
+      add_translation(centering_group, translation)
+  const centerings = [...centering_group.values()]
 
   // The standardized frame's centerings: the input lattice (basis vectors and centerings) seen
   // from the conventional cell mod ℤ³, closed under addition (a primitive input's basis vectors
@@ -657,11 +645,7 @@ export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): Symmetr
   const input_from_std = math.inverse_3x3(std_from_input)
   const basis_images = math.transpose_3x3(std_from_input) // rows = std_from_input·eⱼ
   const std_group = new Map<string, Vec3>()
-  const add_std = (vec: Vec3) => {
-    const wrapped = wrap_to_unit_cell(vec)
-    const key = translation_key(wrapped)
-    if (key !== `0,0,0` && !std_group.has(key)) std_group.set(key, wrapped)
-  }
+  const add_std = (vec: Vec3) => add_translation(std_group, vec)
   for (const image of basis_images) add_std(image)
   for (const centering of centerings) add_std(math.mul_3x3_vec3(std_from_input, centering))
   // Map iteration visits entries added during the loop, so this reaches the closure
@@ -699,12 +683,8 @@ export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): Symmetr
   const info_cache = new Map<string, RotationData | null>()
   for (const [rot_key, std_mat] of std_mats) {
     const rotation = rot_key.split(`,`).map(Number)
-    const info = build_rotation_info(rotation, centerings, hexagonal)
-    const std_info = build_rotation_info(
-      math.transpose_3x3(std_mat).flat(),
-      std_centerings,
-      hexagonal,
-    )
+    const info = build_rotation_info(rotation, centerings)
+    const std_info = build_rotation_info(math.transpose_3x3(std_mat).flat(), std_centerings)
     // w_std = Q·w + (I − W_std)·q for x_std = Q·x + q
     const std_offset = math.subtract(std_origin, math.mul_3x3_vec3(std_mat, std_origin))
     info_cache.set(rot_key, info && std_info && { info, std_info, std_offset })
@@ -727,7 +707,7 @@ export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): Symmetr
       const label_key = `${rot_key}|${std_width.map((val) => Math.round(val * 1e6)).join(`,`)}`
       let label = label_cache.get(label_key)
       if (label === undefined) {
-        label = element_label(std_info, std_width)
+        label = element_label(std_info, std_width, hexagonal)
         label_cache.set(label_key, label)
       }
       const elem = classify_with_rotation_info(info, width_value, label)

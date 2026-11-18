@@ -74,6 +74,7 @@ import type {
   PanConfig,
   RefLine,
   RefLineEvent,
+  ScaleType,
 } from '#lib/plot/core/types.js'
 import { get_scale_type_name } from '#lib/plot/core/types.js'
 import { unique_id } from '#lib/plot/core/utils.js'
@@ -198,6 +199,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const has_x2 = (): boolean => opts.has_x2() || x2_derived()
   const axis_shown = (axis: FacetAxis): boolean =>
     axis === `x2` ? has_x2() : axis === `y2` ? opts.has_y2() : true
+  // Tick scheme of an axis: its own scale_type, else x's for a derived x2, else linear
+  const tick_scale_type = (axis: FacetAxis): ScaleType => {
+    const axes = opts.axes()
+    const inherited = axis === `x2` && axes.x2.derive ? axes.x.scale_type : undefined
+    return axes[axis].scale_type ?? inherited ?? `linear`
+  }
   const measured_axis_config = (axis: FacetAxis): AxisConfig =>
     opts.measured_axes?.()[axis] ?? opts.axes()[axis]
 
@@ -239,12 +246,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       const override = opts.tick_override?.(axis)
       if (override?.length) return override
       const config = opts.axes()[axis]
-      const derived = axis === `x2` && x2_derived()
-      // A derived axis ticks its own (derived-unit) domain, on x's scheme unless it names one
-      const domain = derived ? (axis_scales.x2.domain() as Vec2) : axis_ranges[axis]
+      // A derived axis ticks its own (derived-unit) domain
+      const domain =
+        axis === `x2` && x2_derived() ? (axis_scales.x2.domain() as Vec2) : axis_ranges[axis]
       if (!domain.every(Number.isFinite)) return []
-      const scale_type = config.scale_type ?? (derived ? opts.axes().x.scale_type : undefined)
-      return generate_ticks(domain, scale_type ?? `linear`, config.ticks, axis_scales[axis], {
+      return generate_ticks(domain, tick_scale_type(axis), config.ticks, axis_scales[axis], {
         default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis],
         format: config.format,
       })
@@ -653,12 +659,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const minor_ticks = $derived(
     Object.fromEntries(
       FACET_AXES.map((axis) => {
-        const config = opts.axes()[axis]
-        const derived = axis === `x2` && x2_derived()
-        const scale_type =
-          config.scale_type ?? (derived ? opts.axes().x.scale_type : undefined)
-        const is_log = scale_type !== undefined && get_scale_type_name(scale_type) === `log`
-        const show = is_log && config.minor_ticks !== false && ticks[axis].length > 0
+        const show =
+          get_scale_type_name(tick_scale_type(axis)) === `log` &&
+          opts.axes()[axis].minor_ticks !== false &&
+          ticks[axis].length > 0
         return [axis, show ? generate_log_minor_ticks(axis_domains[axis], ticks[axis]) : []]
       }),
     ) as Record<FacetAxis, number[]>,

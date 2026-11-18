@@ -36,7 +36,7 @@
     export_pane_open?: boolean
     flight_pane_open?: boolean
     structure?: AnyStructure
-    // moyo analysis of `structure`: CIF then writes the asymmetric unit (CIF (P1) every site)
+    // moyo analysis of `structure`, enabling the symmetrized CIF (asymmetric unit + operations)
     sym_data?: SymmetryDataset | null
     prediction?: StructureToolPrediction
     on_clear_prediction?: () => void

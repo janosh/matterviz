@@ -17,21 +17,11 @@ const DTYPES = {
   uint32: Uint32Array,
 } as const
 export type BinaryDtype = keyof typeof DTYPES
-export type BinaryTypedArray = InstanceType<(typeof DTYPES)[BinaryDtype]>
-export type BinaryBuffer = ArrayBuffer | ArrayBufferView
 
 export interface BinaryArray {
-  values: BinaryTypedArray
+  values: InstanceType<(typeof DTYPES)[BinaryDtype]>
   dtype: BinaryDtype
   shape: number[]
-}
-
-export interface BinaryEnvelope {
-  format: typeof BINARY_FORMAT
-  kind: string
-  arrays: Record<string, BinaryArray>
-  // remaining JSON fields of the envelope (pbc, metadata, lattice, ...)
-  fields: Record<string, unknown>
 }
 
 const is_record = (value: unknown): value is Record<string, unknown> =>
@@ -41,9 +31,6 @@ const is_record = (value: unknown): value is Record<string, unknown> =>
 // binary decoder and a broken binary one never falls through to the JSON parser
 export const is_binary_envelope = (value: unknown): boolean =>
   is_record(value) && value.format === BINARY_FORMAT
-
-// The platform byte order: typed-array views read native order and the format is little-endian
-const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1
 
 export function decode_binary_array(spec: unknown, name: string): BinaryArray {
   if (!is_record(spec)) throw new TypeError(`Binary array '${name}' must be an object`)
@@ -77,19 +64,20 @@ export function decode_binary_array(spec: unknown, name: string): BinaryArray {
       `Binary array '${name}' has ${bytes.byteLength} bytes but ${dtype} shape [${shape.join(`, `)}] needs ${expected_bytes}`,
     )
   }
-  if (!LITTLE_ENDIAN && Type.BYTES_PER_ELEMENT > 1) {
-    throw new Error(`matterviz binary arrays are little-endian; this platform is big-endian`)
-  }
-  // Zero-copy view when aligned, else one copy into a fresh (aligned) buffer
-  const aligned = bytes.byteOffset % Type.BYTES_PER_ELEMENT === 0
-  const source = aligned ? bytes : bytes.slice()
+  // Zero-copy view when aligned, else one copy into a fresh (aligned) buffer. Typed arrays read
+  // native byte order, which is little-endian on every platform browsers ship for
+  const source = bytes.byteOffset % Type.BYTES_PER_ELEMENT === 0 ? bytes : bytes.slice()
   // SharedArrayBuffer-backed views work the same; the constructors' types only name ArrayBuffer
   const values = new Type(source.buffer as ArrayBuffer, source.byteOffset, length)
   return { values, dtype: dtype as BinaryDtype, shape: [...shape] }
 }
 
-// Validate the envelope and decode every array of it
-export function decode_binary_envelope(value: unknown, kind: string): BinaryEnvelope {
+// Validate the envelope and decode every array of it. `fields` are the remaining JSON fields
+// (pbc, metadata, lattice, ...)
+export function decode_binary_envelope(
+  value: unknown,
+  kind: string,
+): { arrays: Record<string, BinaryArray>; fields: Record<string, unknown> } {
   if (!is_record(value)) throw new TypeError(`Binary ${kind} payload must be an object`)
   if (value.format !== BINARY_FORMAT) {
     throw new TypeError(
@@ -103,46 +91,34 @@ export function decode_binary_envelope(value: unknown, kind: string): BinaryEnve
   }
   if (!is_record(value.arrays))
     throw new TypeError(`Binary ${kind} payload needs an arrays map`)
-  const arrays = Object.fromEntries(
-    Object.entries(value.arrays).map(([name, spec]) => [
-      name,
-      decode_binary_array(spec, name),
-    ]),
-  )
-  const { format: _format, kind: _kind, arrays: _arrays, ...fields } = value
-  return { format: BINARY_FORMAT, kind, arrays, fields }
+  const { format: _format, kind: _kind, arrays, ...fields } = value
+  const decoded = Object.entries(arrays).map(([name, spec]) => [
+    name,
+    decode_binary_array(spec, name),
+  ])
+  return { arrays: Object.fromEntries(decoded), fields }
 }
 
-export const is_float_array = (array: BinaryArray): boolean =>
-  array.dtype === `float32` || array.dtype === `float64`
-
-// Float64 values of an array: the decoded view itself for float64 (zero-copy), else one
-// widening copy (float32 positions/grids, integer steps)
-export const to_float64 = ({ values }: BinaryArray): Float64Array =>
-  values instanceof Float64Array ? values : Float64Array.from(values)
-
-// Throws naming the array unless its shape equals `expected` (null entries match any size)
-export function assert_shape(
-  array: BinaryArray,
-  expected: readonly (number | null)[],
+// The array, after checking it exists, its shape equals `shape` (null entries match any size)
+// and its dtype is of the `dtype` class when given
+export function checked_array(
+  array: BinaryArray | undefined,
   name: string,
-): void {
-  const { shape } = array
-  const matches =
-    shape.length === expected.length &&
-    expected.every((size, idx) => size === null || size === shape[idx])
-  if (!matches) {
-    const want = expected.map((size) => size ?? `*`).join(`, `)
+  shape: readonly (number | null)[],
+  dtype?: `float` | `integer`,
+): BinaryArray {
+  if (!array) throw new TypeError(`Binary payload needs a '${name}' array`)
+  const shape_ok =
+    array.shape.length === shape.length &&
+    shape.every((size, idx) => size === null || size === array.shape[idx])
+  if (!shape_ok) {
+    const want = shape.map((size) => size ?? `*`).join(`, `)
     throw new RangeError(
-      `Binary array '${name}' must have shape [${want}], got [${shape.join(`, `)}]`,
+      `Binary array '${name}' must have shape [${want}], got [${array.shape.join(`, `)}]`,
     )
   }
-}
-
-// Index of the first non-finite value, else -1 (indexed loop: runs over millions of values)
-export function first_non_finite(values: ArrayLike<number>): number {
-  for (let idx = 0; idx < values.length; idx++) {
-    if (!Number.isFinite(values[idx])) return idx
+  if (dtype && array.dtype.startsWith(`float`) !== (dtype === `float`)) {
+    throw new TypeError(`Binary array '${name}' dtype must be ${dtype}, got ${array.dtype}`)
   }
-  return -1
+  return array
 }

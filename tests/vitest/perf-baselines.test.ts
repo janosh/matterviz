@@ -356,7 +356,7 @@ const results: { name: Case; median_ms: number; limit_ms: number }[] = []
 let reference_ms = REFERENCE_MS
 let machine_factor = 1
 
-// 5 reps of a ~1 s mount plus cleanup can exceed vitest's 5 s default on a loaded runner
+// 5 reps of a ~1 s mount plus cleanup can exceed the 10 s test timeout on a loaded runner
 describe(`perf baselines`, { timeout: 120_000 }, () => {
   beforeAll(async () => {
     reference_workload() // JIT warm-up: the first call runs unoptimized and would skew the median

@@ -19,7 +19,7 @@ import {
   get_majority_element,
 } from '#lib/structure/bonding.js'
 import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
-import { bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering.js'
+import { bond_records, bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering.js'
 import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { get_element_counts } from '#lib/structure/density.js'
@@ -751,8 +751,32 @@ describe(`unwrap_molecules`, () => {
     crystal.sites[3].properties = { charge: 0.1 }
     const bonds = periodic_bonds(crystal)
     expect(bonds).toHaveLength(8)
-    const unwrapped = unwrap_molecules(crystal, bonds)
+    const { structure: unwrapped, bonds: carried } = unwrap_molecules(crystal, bonds)
     expect(unwrapped).not.toBe(crystal)
+    // record and packed (BondFrame) bonds carry over to what a fresh search of the moved sites
+    // finds: same pairs and orders, shifts now in-cell, positions within 1e-12 A
+    const packed = get_bond_data(crystal, `pair_cutoffs`, {
+      ...cutoffs,
+      pbc: crystal.lattice.pbc,
+    })
+    const fresh = periodic_bonds(unwrapped)
+    expect(fresh.some(({ cell_shift }) => cell_shift)).toBe(false)
+    for (const carried_bonds of [carried, unwrap_molecules(crystal, packed).bonds]) {
+      const records = bond_records(carried_bonds)
+      expect(records).toHaveLength(fresh.length)
+      for (const [idx, { pos_1, pos_2, bond_length, ...rest }] of records.entries()) {
+        const {
+          pos_1: fresh_1,
+          pos_2: fresh_2,
+          bond_length: fresh_length,
+          ...fresh_rest
+        } = fresh[idx]
+        expect(rest).toEqual(fresh_rest)
+        expect(Math.abs(bond_length - fresh_length)).toBeLessThan(1e-12)
+        expect(max_abs_error(pos_1, fresh_1)).toBeLessThan(1e-12)
+        expect(max_abs_error(pos_2, fresh_2)).toBeLessThan(1e-12)
+      }
+    }
     // bond_length is the minimum-image distance; the torn bonds were ~8-10 A apart in the input
     expect(bonds.some(({ cell_shift }) => cell_shift)).toBe(true)
     for (const { site_idx_1, site_idx_2, bond_length } of bonds) {
@@ -776,8 +800,13 @@ describe(`unwrap_molecules`, () => {
         expect(centroid).toBeLessThan(1)
       }
     }
-    // the interior molecule was whole already and does not move
-    expect(unwrapped.sites.slice(5)).toEqual(crystal.sites.slice(5))
+    // the interior molecule was whole already and does not move; every molecule site is stamped
+    for (const [idx, site] of unwrapped.sites.slice(5).entries())
+      expect([site.abc, site.xyz]).toEqual([
+        crystal.sites[idx + 5].abc,
+        crystal.sites[idx + 5].xyz,
+      ])
+    expect(unwrapped.sites.every((site) => site.provenance?.whole_molecule)).toBe(true)
   })
 
   test.each([
@@ -804,7 +833,7 @@ describe(`unwrap_molecules`, () => {
       )
       const bonds = periodic_bonds(crystal)
       expect(bonds.length).toBeGreaterThan(0)
-      expect(unwrap_molecules(crystal, bonds)).toBe(crystal)
+      expect(unwrap_molecules(crystal, bonds).structure).toBe(crystal)
     },
   )
 
@@ -823,7 +852,7 @@ describe(`unwrap_molecules`, () => {
         [`C`, [0.5, 0.7, 0.06]],
       ],
     )
-    const unwrapped = unwrap_molecules(crystal, periodic_bonds(crystal))
+    const unwrapped = unwrap_molecules(crystal, periodic_bonds(crystal)).structure
     expect(unwrapped.sites.slice(0, 2)).toEqual(crystal.sites.slice(0, 2))
     expect(euclidean_dist(unwrapped.sites[2].xyz, unwrapped.sites[3].xyz)).toBeCloseTo(1, 10)
     // reassembled at c = 0.96 and 1.06 (centroid 1.01), then moved back one cell
@@ -833,8 +862,8 @@ describe(`unwrap_molecules`, () => {
 
   test(`non-crystals and bond-free crystals come back unchanged`, () => {
     const crystal = make_crystal(5, [[`C`, [0.1, 0.1, 0.1]]])
-    expect(unwrap_molecules(crystal, [])).toBe(crystal)
+    expect(unwrap_molecules(crystal, []).structure).toBe(crystal)
     const molecule = { sites: crystal.sites }
-    expect(unwrap_molecules(molecule, [])).toBe(molecule)
+    expect(unwrap_molecules(molecule, []).structure).toBe(molecule)
   })
 })

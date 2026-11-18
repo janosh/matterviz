@@ -14,7 +14,7 @@ import {
   process_hull_for_stats,
   system_fractions,
 } from '#lib/convex-hull/thermodynamics.js'
-import { compute_hull_model } from '#lib/convex-hull/model.js'
+import { compute_hull_model, to_model_composition } from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -23,7 +23,6 @@ import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../test-fixtures'
 import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
-import pymatgen_grand from './fixtures/li_co_ni_o_grand_potential_reference.json' with { type: 'json' }
 
 const make_elem = (element: string, energy = -1.0) =>
   make_phase({ [element]: 1 }, energy, { entry_id: element })
@@ -602,6 +601,9 @@ describe(`pymatgen cross-validation`, () => {
 
   // Fixed mu_O (O2 reference, -1.5 and -3 eV below it) projects Li-Co-Ni-O to a Li-Co-Ni
   // ternary of grand potentials per non-O atom; regenerate with generate_pymatgen_grand_potential.py
+  const pymatgen_grand = load_json<{
+    cases: { mu_O: number; e_above_hull: Record<string, number> }[]
+  }>(`${import.meta.dirname}/fixtures/li_co_ni_o_grand_potential_reference.json.gz`)
   test.each(pymatgen_grand.cases)(
     `Li-Co-Ni-O at mu_O = $mu_O matches pymatgen GrandPotentialPhaseDiagram`,
     ({ mu_O, e_above_hull: expected }) => {
@@ -609,29 +611,75 @@ describe(`pymatgen cross-validation`, () => {
       const model = compute_hull_model(entries, { open_elements: { O: mu_O } })
       expect(model.elements.toSorted()).toEqual([`Co`, `Li`, `Ni`])
       const real = model.entries.filter((entry) => !entry.is_synthetic)
-      const compare_ids = (id_a?: string, id_b?: string) =>
-        (id_a ?? ``).localeCompare(id_b ?? ``)
-      const ids = real.map((entry) => entry.entry_id ?? ``)
-      expect(ids.toSorted(compare_ids)).toEqual(Object.keys(expected).toSorted(compare_ids))
+      expect(real.map((entry) => entry.entry_id ?? ``).toSorted()).toEqual(
+        Object.keys(expected).toSorted(),
+      )
       const diffs = real.map((entry) =>
-        Math.abs(
-          (entry.e_above_hull ?? NaN) - expected[entry.entry_id as keyof typeof expected],
-        ),
+        Math.abs((entry.e_above_hull ?? NaN) - expected[entry.entry_id ?? ``]),
       )
       expect(Math.max(...diffs)).toBeLessThan(1e-6)
-      const stable = (hulls: [string, number][]) =>
-        hulls.flatMap(([id, dist]) => (dist < 1e-6 ? [id] : [])).toSorted(compare_ids)
       expect(
-        real
-          .filter((entry) => entry.is_stable)
-          .map((entry) => entry.entry_id)
-          .toSorted(compare_ids),
-      ).toEqual(stable(Object.entries(expected)))
+        real.flatMap((entry) => (entry.is_stable ? [entry.entry_id ?? ``] : [])).toSorted(),
+      ).toEqual(
+        Object.keys(expected)
+          .filter((id) => expected[id] < 1e-6)
+          .toSorted(),
+      )
       // names keep the full formula; open-only entries (O2) leave the system
       expect(real.find((entry) => entry.composition.O)).toBeUndefined()
       expect(real.some((entry) => entry.name === `LiCoO2`)).toBe(true)
     },
   )
+
+  // open_elements fails fast instead of drawing a hull from invalid grand potentials
+  const li_fe_o = (energy: Partial<PhaseData>, unaries = [`Fe`, `Li`, `O`]) => [
+    ...unaries.map((element) => make_elem(element, 0)),
+    { composition: { Fe: 1, Li: 1, O: 2 }, entry_id: `compound`, ...energy },
+  ]
+  const absolute = { energy: -12 }
+  test.each([
+    [li_fe_o(absolute), { open_elements: { O: NaN } }, `μ of O must be finite`],
+    [
+      li_fe_o(absolute),
+      { open_elements: { O: -3 }, components: [`Fe`, `Li`, `O`] },
+      `cannot be combined with components`,
+    ],
+    [li_fe_o(absolute, [`Li`, `O`]), { open_elements: { O: -3 } }, `reference for Fe`],
+    [li_fe_o(absolute), { open_elements: { O: -3, S: -2 } }, `open element S is in no entry`],
+    [
+      li_fe_o({ e_form_per_atom: -1 }),
+      { open_elements: { O: -3 } },
+      `needs absolute energies, entry compound`,
+    ],
+  ])(`open_elements rejects %#: %s`, (entries, options, message) => {
+    expect(() => compute_hull_model(entries, options)).toThrow(message)
+  })
+
+  // element compositions in model keys: component amounts solve A x = b with x >= 0, open
+  // elements drop out; null when the system can't make the composition
+  test.each([
+    [{ Li: 2, Co: 1, O: 2 }, { components: [`CoO`, `Li2O`] }, { CoO: 1, Li2O: 1 }],
+    [{ Li: 4, Co: 1, O: 3 }, { components: [`CoO`, `Li2O`] }, { CoO: 1, Li2O: 2 }],
+    [{ Co: 1, O: 1 }, { components: [`CoO`, `Li2O`] }, { CoO: 1 }],
+    [{ Li: 1, Co: 1 }, { components: [`CoO`, `Li2O`] }, null], // no O to pair with
+    [{ Co: 1 }, { components: [`CoO`, `Li2O`] }, null],
+    [{ Li: 2, O: 2 }, { components: [`CoO`, `Li2O`] }, null], // excess O
+    [{ Na: 1, Cl: 1 }, { components: [`CoO`, `Li2O`] }, null],
+    [{ Li: 1, Co: 1, O: 2 }, { open_elements: { O: -3 } }, { Li: 1, Co: 1 }],
+    [{ O: 2 }, { open_elements: { O: -3 } }, null],
+    [{ Li: 1, Co: 1, O: 2 }, {}, { Li: 1, Co: 1, O: 2 }],
+  ] as const)(`to_model_composition(%j, %j) = %j`, (composition, options, expected) => {
+    const model = to_model_composition(
+      composition,
+      `components` in options ? options.components : undefined,
+      `open_elements` in options ? options.open_elements : undefined,
+    )
+    expect(model === null).toBe(expected === null)
+    expect(Object.keys(model ?? {}).toSorted()).toEqual(Object.keys(expected ?? {}).toSorted())
+    for (const [key, amount] of Object.entries(expected ?? {})) {
+      expect(model?.[key as keyof typeof model]).toBeCloseTo(amount, 12)
+    }
+  })
 
   test(`single-entry mode matches batch mode`, () => {
     const batch = compute_e_above_hull(quinary, quinary)

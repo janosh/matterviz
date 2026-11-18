@@ -1,21 +1,21 @@
 // Trajectory from a `matterviz-binary-v1` envelope (kind 'trajectory'), e.g. the anywidget
 // `trajectory` trait when pymatviz ships numpy arrays as raw buffers. Positions, vectors and
-// cells stay flat typed arrays; each frame is encoded on read straight into a numeric MD frame,
-// so no per-site JS objects exist beyond frame 0's preview. Wire format: extensions/anywidget/readme.md
+// cells stay the decoded typed arrays (float32 ones are widened per frame on read); each frame
+// is encoded on read straight into a numeric MD frame, so no per-site JS objects exist beyond
+// frame 0's preview. Wire format: extensions/anywidget/readme.md
 import { element_by_symbol } from '#lib/element/data.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import {
-  assert_shape,
   type BinaryArray,
+  checked_array,
   decode_binary_envelope,
-  first_non_finite,
-  is_float_array,
-  to_float64,
 } from '#lib/io/binary-arrays.js'
 import { display_idx } from '#lib/labels.js'
 import type { Matrix3x3 } from '#lib/math.js'
+import { TIME_UNIT_TO_THZ } from '#lib/spectral/frequency-units.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
 import type { LatticeType, Pbc } from '#lib/structure/index.js'
+import { is_plain_object } from 'svelte-widgets/utils'
 import { create_numeric_md_frame, write_frame_vector } from './frame'
 import type { TrajectoryMetadata } from './index'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'
@@ -25,120 +25,119 @@ import { numeric_run } from './runs/memory'
 const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
 const RESERVED = new Set([`positions`, `numbers`, `lattice`, `steps`])
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
+const FIELDS = [`pbc`, `metadata`, `time_step`]
+const TIME_UNITS = Object.keys(TIME_UNIT_TO_THZ)
 
-const is_record = (value: unknown): value is Record<string, unknown> =>
-  typeof value === `object` && value !== null && !Array.isArray(value)
-
-// Finite float64 values of an array; `any_dtype` also admits integers (steps, scalars)
-const float_array = (array: BinaryArray, name: string, any_dtype = false): Float64Array => {
-  if (!any_dtype && !is_float_array(array)) {
-    throw new TypeError(
-      `Binary array '${name}' must be float32 or float64, got ${array.dtype}`,
-    )
-  }
-  const values = to_float64(array)
-  const bad_idx = first_non_finite(values)
-  if (bad_idx !== -1) {
-    throw new RangeError(
-      `Binary array '${name}' has non-finite value at flat index ${bad_idx}`,
-    )
+// Values of an array that must hold only finite numbers (indexed loop: millions of values)
+function finite_values({ values }: BinaryArray, name: string): BinaryArray[`values`] {
+  for (let idx = 0; idx < values.length; idx++) {
+    if (!Number.isFinite(values[idx]))
+      throw new RangeError(`Binary array '${name}' has non-finite value at flat index ${idx}`)
   }
   return values
 }
 
-const matrix_at = (values: Float64Array, offset: number): Matrix3x3 => [
+const matrix_at = (values: ArrayLike<number>, offset: number): Matrix3x3 => [
   [values[offset], values[offset + 1], values[offset + 2]],
   [values[offset + 3], values[offset + 4], values[offset + 5]],
   [values[offset + 6], values[offset + 7], values[offset + 8]],
 ]
-
-function parse_pbc(value: unknown): Pbc {
-  if (Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === `boolean`))
-    return [value[0], value[1], value[2]]
-  throw new TypeError(`Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(value)}`)
-}
 
 export function trajectory_from_binary(
   payload: unknown,
   provenance: TrajectoryProvenance = {},
 ): TrajectoryRun {
   const { arrays, fields } = decode_binary_envelope(payload, `trajectory`)
-  const { positions: positions_array, numbers: numbers_array, lattice, steps } = arrays
-  if (!positions_array) throw new TypeError(`Binary trajectory needs a 'positions' array`)
-  if (!numbers_array) throw new TypeError(`Binary trajectory needs a 'numbers' array`)
-  assert_shape(positions_array, [null, null, 3], `positions`)
+  const unknown_field = Object.keys(fields).find((key) => !FIELDS.includes(key))
+  if (unknown_field !== undefined)
+    throw new TypeError(
+      `Binary trajectory has unknown field '${unknown_field}', expected ${FIELDS.join(`, `)}`,
+    )
+  const positions_array = checked_array(
+    arrays.positions,
+    `positions`,
+    [null, null, 3],
+    `float`,
+  )
   const [n_frames, n_atoms] = positions_array.shape
   if (n_frames < 1 || n_atoms < 1) {
     throw new RangeError(
       `Binary trajectory needs at least 1 frame and 1 atom, got ${n_frames} x ${n_atoms}`,
     )
   }
-  const positions = float_array(positions_array, `positions`)
+  const positions = finite_values(positions_array, `positions`)
 
-  assert_shape(numbers_array, [n_atoms], `numbers`)
-  if (is_float_array(numbers_array))
-    throw new TypeError(`Binary array 'numbers' must have an integer dtype`)
-  const numbers = Uint8Array.from(numbers_array.values)
+  const raw_numbers = checked_array(arrays.numbers, `numbers`, [n_atoms], `integer`).values
+  const numbers = Uint8Array.from(raw_numbers)
   for (let idx = 0; idx < n_atoms; idx++) {
-    if (
-      numbers[idx] !== numbers_array.values[idx] ||
-      !element_from_atomic_number(numbers[idx])
-    )
+    if (numbers[idx] !== raw_numbers[idx] || !element_from_atomic_number(numbers[idx]))
       throw new RangeError(
-        `Binary array 'numbers' has invalid atomic number ${numbers_array.values[idx]} at atom ${display_idx(idx)}`,
+        `Binary array 'numbers' has invalid atomic number ${raw_numbers[idx]} at atom ${display_idx(idx)}`,
       )
   }
 
   // One shared [3, 3] cell or one per frame [n_frames, 3, 3]
-  let cells: Float64Array | null = null
-  let cell_stride = 0
-  if (lattice) {
-    if (lattice.shape.length === 2) assert_shape(lattice, [3, 3], `lattice`)
-    else {
-      assert_shape(lattice, [n_frames, 3, 3], `lattice`)
-      cell_stride = 9
-    }
-    cells = float_array(lattice, `lattice`)
+  const { lattice } = arrays
+  const shared_cell = lattice?.shape.length === 2
+  const cells =
+    lattice &&
+    finite_values(
+      checked_array(lattice, `lattice`, shared_cell ? [3, 3] : [n_frames, 3, 3], `float`),
+      `lattice`,
+    )
+  const cell_of = (frame_idx: number): Matrix3x3 | undefined =>
+    cells && matrix_at(cells, shared_cell ? 0 : frame_idx * 9)
+  let pbc: Pbc | undefined
+  if (fields.pbc !== undefined) {
+    if (!cells) throw new TypeError(`Binary trajectory pbc needs a lattice`)
+    const { pbc: value } = fields
+    if (
+      !Array.isArray(value) ||
+      value.length !== 3 ||
+      !value.every((v) => typeof v === `boolean`)
+    )
+      throw new TypeError(
+        `Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(value)}`,
+      )
+    pbc = [value[0], value[1], value[2]]
   }
-  if (fields.pbc !== undefined && !cells)
-    throw new TypeError(`Binary trajectory pbc needs a lattice`)
-  const pbc = cells
-    ? fields.pbc === undefined
-      ? undefined
-      : parse_pbc(fields.pbc)
-    : undefined
 
-  let step_values: Float64Array | null = null
-  if (steps) {
-    assert_shape(steps, [n_frames], `steps`)
-    step_values = float_array(steps, `steps`, true)
-  }
+  const step_values =
+    arrays.steps && finite_values(checked_array(arrays.steps, `steps`, [n_frames]), `steps`)
   const step_of = (frame_idx: number): number => step_values?.[frame_idx] ?? frame_idx
 
   // Every other array is a per-atom vec3 channel [n_frames, n_atoms, 3] (force, velocity)
   // or a per-frame scalar [n_frames] (energy, temperature)
-  const vectors: [string, Float64Array][] = []
-  const scalars: [string, Float64Array][] = []
+  const vectors: [string, BinaryArray[`values`]][] = []
+  const scalars: [string, BinaryArray[`values`]][] = []
   for (const [name, array] of Object.entries(arrays)) {
     if (RESERVED.has(name)) continue
-    if (array.shape.length === 1) {
-      assert_shape(array, [n_frames], name)
-      scalars.push([name, to_float64(array)])
-    } else {
-      assert_shape(array, [n_frames, n_atoms, 3], name)
-      vectors.push([name, float_array(array, name)])
+    if (array.shape.length === 1)
+      scalars.push([name, checked_array(array, name, [n_frames]).values])
+    else {
+      const checked = checked_array(array, name, [n_frames, n_atoms, 3], `float`)
+      vectors.push([name, finite_values(checked, name)])
     }
   }
   const vector_keys = vectors.map(([name]) => name)
 
-  if (fields.metadata !== undefined && !is_record(fields.metadata))
+  if (fields.metadata !== undefined && !is_plain_object(fields.metadata))
     throw new TypeError(`Binary trajectory metadata must be an object`)
-  const time_step = fields.time_step as TrajectoryRun[`time_step`]
-
-  const frame_metadata = (frame_idx: number): Record<string, unknown> =>
-    Object.fromEntries(scalars.map(([name, values]) => [name, values[frame_idx]]))
-  const cell_of = (frame_idx: number): Matrix3x3 | undefined =>
-    cells ? matrix_at(cells, frame_idx * cell_stride) : undefined
+  const { time_step } = fields
+  if (
+    time_step !== undefined &&
+    !(
+      is_plain_object(time_step) &&
+      Object.keys(time_step).toSorted().join(`,`) === `unit,value` &&
+      typeof time_step.value === `number` &&
+      Number.isFinite(time_step.value) &&
+      time_step.value > 0 &&
+      TIME_UNITS.some((unit) => unit === time_step.unit)
+    )
+  )
+    throw new TypeError(
+      `Binary trajectory time_step must be { value: finite > 0, unit: ${TIME_UNITS.join(` | `)} }, got ${JSON.stringify(time_step)}`,
+    )
 
   const frame_size = n_atoms * 3
   const read = (frame_idx: number) => {
@@ -149,7 +148,7 @@ export function trajectory_from_binary(
       cell_of(frame_idx),
       pbc,
       step_of(frame_idx),
-      frame_metadata(frame_idx),
+      Object.fromEntries(scalars.map(([name, values]) => [name, values[frame_idx]])),
       vector_keys,
     )
     for (const [column, [, values]] of vectors.entries())
@@ -172,7 +171,7 @@ export function trajectory_from_binary(
     }
     const cell = cell_of(frame_idx)
     if (cell) {
-      if (cell_stride || !lattice_params) lattice_params = make_lattice(cell, pbc)
+      if (!shared_cell || !lattice_params) lattice_params = make_lattice(cell, pbc)
       row.volume = lattice_params.volume
       for (const param of LATTICE_PARAMS) row[param] = lattice_params[param]
       row.density = (AMU_PER_A3_TO_G_PER_CM3 * total_mass) / lattice_params.volume
@@ -183,11 +182,11 @@ export function trajectory_from_binary(
   return numeric_run(n_frames, read, {
     provenance: {
       format: `binary`,
-      source_bytes: positions_array.values.byteLength,
+      source_bytes: positions.byteLength,
       ...provenance,
     },
     metadata: fields.metadata ?? {},
-    ...(time_step !== undefined && { time_step }),
+    time_step: time_step as TrajectoryRun[`time_step`],
     properties,
   })
 }

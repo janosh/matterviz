@@ -1122,8 +1122,7 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
       x: { label: `Photon energy (eV)`, range: [1.5, 6] },
       x2: {
         label: `Wavelength (nm)`,
-        forward: (energy) => hc / energy,
-        inverse: (nm) => hc / nm,
+        derive: { forward: (energy) => hc / energy, inverse: (nm) => hc / nm },
       },
       // two Gaussian absorption bands
       curve: (energy) =>
@@ -1135,8 +1134,10 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
       x: { label: `2θ (°)`, range: [15, 90] },
       x2: {
         label: `d (Å)`,
-        forward: (two_theta) => cu_ka / (2 * Math.sin((two_theta * Math.PI) / 360)),
-        inverse: (d_spacing) => (360 / Math.PI) * Math.asin(cu_ka / (2 * d_spacing)),
+        derive: {
+          forward: (two_theta) => cu_ka / (2 * Math.sin((two_theta * Math.PI) / 360)),
+          inverse: (d_spacing) => (360 / Math.PI) * Math.asin(cu_ka / (2 * d_spacing)),
+        },
       },
       curve: (two_theta) =>
         [28.4, 47.3, 56.1, 69.1, 76.4, 88.0].reduce(
@@ -1150,11 +1151,11 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
       x: { label: `Temperature (K)`, range: [300, 1200] },
       x2: {
         label: `1000 / T (1/K)`,
-        forward: (temp) => 1000 / temp,
-        inverse: (inv) => 1000 / inv,
+        derive: { forward: (temp) => 1000 / temp, inverse: (inv) => 1000 / inv },
       },
       curve: (temp) => 1e3 * Math.exp(-0.5 / (8.617e-5 * temp)),
       y_label: `Rate (1/s)`,
+      y_scale: `log`,
     },
   }
   let selected = $state(`Energy → wavelength`)
@@ -1175,11 +1176,8 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
 <ScatterPlot
   {series}
   x_axis={example.x}
-  x2_axis={{
-    label: example.x2.label,
-    derive: { forward: example.x2.forward, inverse: example.x2.inverse },
-  }}
-  y_axis={{ label: example.y_label, scale_type: selected.startsWith(`T`) ? `log` : `linear` }}
+  x2_axis={example.x2}
+  y_axis={{ label: example.y_label, scale_type: example.y_scale }}
   legend={null}
   style="height: 400px"
 />

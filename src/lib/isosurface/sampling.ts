@@ -2,7 +2,8 @@
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { dot, reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
+import { dot, IDENTITY_3X3, reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
+import { diagonal_scaling } from '#lib/structure/supercell.js'
 import { clamp01 } from '#lib/utils.js'
 import { lower_corner, type ScalarGrid3D, upper_corner } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
@@ -261,43 +262,48 @@ export function sanitize_display_range(range: DisplayRange, periodic: boolean): 
   }) as DisplayRange
 }
 
-interface VolumeDisplayRangeOptions {
-  display_range?: DisplayRange
-  tiling?: Vec3
-  halo?: number
-  // Supercell matrix M whose own fractional frame the window spans ([0, 1]³ plus halo)
-  frame?: Matrix3x3
-}
+// The finite window marching cubes runs on: a fractional `range` of the base cell, or of the
+// supercell `frame` M (rows in base fractions) when that is not diagonal
+export type VolumeWindow = { range: DisplayRange; frame?: Matrix3x3 }
 
-// The finite window marching cubes runs on. Periodic volumes always get an endpoint-inclusive
-// one, even for an integer supercell: an N-point periodic grid spans [0, 1) but finite marching
-// cubes reads N points as [0, 1], so [0, S] is resampled to N*S + 1 points (same spacing,
-// closed final interval). Finite volumes get one only on request and never follow tiling.
-// In a supercell `frame` the halo pads each axis by `halo` base cells along M's row, i.e.
-// halo / |M_i| supercell fractions (halo / M_ii for a diagonal M, matching tiling).
-export function resolve_volume_display_range(
+// Periodic volumes always get an endpoint-inclusive window, even for an integer supercell: an
+// N-point periodic grid spans [0, 1) but finite marching cubes reads N points as [0, 1], so
+// [0, S] is resampled to N*S + 1 points (same spacing, closed final interval). A diagonal
+// supercell is that box in base fractions (separable resampling); any other is [0, 1]³ in its
+// own frame, filling exactly its parallelepiped. The halo pads every outer face by `halo` base
+// cells along M's rows (halo / |M_i| frame fractions). An explicit display_range (base
+// fractions) wins over the supercell; finite volumes get a window only from it, never padded.
+export function resolve_volume_window(
   volume: VolumetricData,
-  { display_range, tiling = [1, 1, 1], halo = 0, frame }: VolumeDisplayRangeOptions = {},
-): DisplayRange | null {
+  {
+    display_range,
+    supercell = IDENTITY_3X3,
+    halo = 0,
+  }: { display_range?: DisplayRange; supercell?: Matrix3x3; halo?: number } = {},
+): VolumeWindow | null {
   if (!display_range && !volume.periodic) return null
-
-  const range = display_range
-    ? sanitize_display_range(display_range, volume.periodic)
-    : frame
-      ? UNIT_CELL_RANGE
-      : (tiling.map((factor) => [0, factor]) as DisplayRange)
-
-  if (!volume.periodic) return range
-  return range.map(([lower, upper], axis) => {
-    const padding = Math.max(0, halo) / (frame ? Math.hypot(...frame[axis]) : 1)
-    return [lower - padding, upper + padding]
+  const pad = Math.max(0, halo)
+  if (display_range) {
+    const range = sanitize_display_range(display_range, volume.periodic)
+    if (!volume.periodic) return { range }
+    return { range: range.map(([lower, upper]) => [lower - pad, upper + pad]) as DisplayRange }
+  }
+  const tiling = diagonal_scaling(supercell)
+  // 0 - pad: +0 (not -0) without a halo
+  if (tiling) return { range: tiling.map((factor) => [0 - pad, factor + pad]) as DisplayRange }
+  const range = supercell.map((row) => {
+    const frac_pad = pad / Math.hypot(...row)
+    return [0 - frac_pad, 1 + frac_pad]
   }) as DisplayRange
+  return { range, frame: supercell }
 }
 
 // Endpoint-inclusive sample counts per axis for a (sanitized) fractional window at the
 // source voxel density: periodic volumes have n intervals per cell, finite ones n - 1. A
-// supercell `frame` axis (row M_i in base fractions) takes max_j |M_ij|·n_j intervals, so no
-// step skips a source voxel along any base axis.
+// supercell `frame` axis (row M_i in base fractions) takes Σ_j |M_ij|·n_j intervals (its row
+// L1 norm in voxels): a step along M_i then moves at most one voxel in total over the base
+// axes, so the samples hit every source voxel. max_j |M_ij|·n_j would step diagonally for a
+// sheared M and visit only an index-|det M| sublattice of voxels.
 export const range_sample_counts = (
   volume: VolumeGrid,
   range: DisplayRange,
@@ -306,7 +312,7 @@ export const range_sample_counts = (
   const intervals = volume.dims.map((dim) => (volume.periodic ? dim : Math.max(dim - 1, 1)))
   return range.map(([lower, upper], axis) => {
     const axis_intervals = frame
-      ? Math.max(...frame[axis].map((val, col) => Math.abs(val) * intervals[col]))
+      ? frame[axis].reduce((sum, val, col) => sum + Math.abs(val) * intervals[col], 0)
       : intervals[axis]
     return Math.max(2, Math.round((upper - lower) * axis_intervals) + 1)
   }) as Vec3
@@ -477,19 +483,19 @@ export const UNIT_CELL_RANGE: DisplayRange = [
   [0, 1],
 ]
 
-// The finite grid marching cubes runs on: a VESTA-style fractional window, else the whole cell.
-// Both resample through extract_volume_range so the endpoints land exactly on the requested
-// fractions; block-averaging instead shifted an f = x_frac isosurface by 0.1 Å in a 20 Å cell.
-// A finite in-budget cell with at least 2 points per axis would be copied unchanged, so it
-// is reused as is (e.g. an already prepared grid on every isovalue change).
+// The finite grid marching cubes runs on: a resolved window (VESTA-style range or supercell),
+// else the whole cell. Both resample through extract_volume_range so the endpoints land exactly
+// on the requested fractions; block-averaging instead shifted an f = x_frac isosurface by 0.1 Å
+// in a 20 Å cell. A finite in-budget cell with at least 2 points per axis would be copied
+// unchanged, so it is reused as is (e.g. an already prepared grid on every isovalue change).
 export function prepare_geometry_grid(
   volume: VolumeGrid,
-  range: DisplayRange | null,
-  frame?: Matrix3x3,
+  window: VolumeWindow | null,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3 } {
   const { values, dims, lattice, origin, periodic } = volume
-  if (!range && !periodic && values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2))
-    return { grid: volume, lattice, origin }
-  const extracted = extract_volume_range(volume, range ?? UNIT_CELL_RANGE, undefined, frame)
+  const in_budget = values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2)
+  if (!window && !periodic && in_budget) return { grid: volume, lattice, origin }
+  const { range, frame } = window ?? { range: UNIT_CELL_RANGE }
+  const extracted = extract_volume_range(volume, range, undefined, frame)
   return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

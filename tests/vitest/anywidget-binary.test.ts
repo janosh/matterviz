@@ -4,7 +4,7 @@ import { volume_from_json } from '#lib/isosurface/types.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import { trajectory_from_binary } from '#lib/trajectory/binary.js'
 import { trajectory_from_json } from '#lib/trajectory/open.js'
-import type { NumericFrame } from '#lib/trajectory/frame.js'
+import { materialize_frame, type NumericFrame } from '#lib/trajectory/frame.js'
 import { describe, expect, test } from 'vite-plus/test'
 
 type Typed = Float32Array | Float64Array | Int32Array | Uint8Array
@@ -142,11 +142,13 @@ describe(`trajectory_from_binary`, () => {
     ])
   })
 
-  test(`float32 positions widen exactly, a shared cell and default steps apply to every frame`, async () => {
+  test(`float32 positions and vectors widen exactly, a shared cell and default steps apply to every frame`, async () => {
     const positions_f32 = Float32Array.from(positions)
+    const forces_f32 = Float32Array.from(forces)
     const cell = Float64Array.of(5, 0, 0, 0, 5, 0, 0, 0, 5)
     const arrays = {
       positions: arr(positions_f32, [n_frames, n_atoms, 3]),
+      force: arr(forces_f32, [n_frames, n_atoms, 3]),
       numbers: arr(Int32Array.of(1, 1), [n_atoms]),
       lattice: arr(cell, [3, 3]),
     }
@@ -157,6 +159,15 @@ describe(`trajectory_from_binary`, () => {
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
     const frame = run.read_frame(2) as NumericFrame
     expect(frame.structure.lattice?.pbc).toEqual([true, true, false])
+    // the decoded float32 buffers are read in place: frame 2's sites hold their exact widening
+    const sites = materialize_frame(frame).structure.sites
+    for (const [atom_idx, site] of sites.entries()) {
+      const offset = (2 * n_atoms + atom_idx) * 3
+      expect(site.xyz).toEqual(Array.from(positions_f32.subarray(offset, offset + 3)))
+      expect(site.properties.force).toEqual(
+        Array.from(forces_f32.subarray(offset, offset + 3)),
+      )
+    }
     const stream = await run.collect_positions?.()
     expect(stream?.positions).toEqual(Float64Array.from(positions_f32))
     expect(stream?.elements).toEqual([`H`, `H`])
@@ -181,11 +192,11 @@ describe(`trajectory_from_binary`, () => {
     ],
     [
       { positions: arr(Int32Array.from(positions), [n_frames, n_atoms, 3]) },
-      /'positions' must be float32 or float64, got int32/,
+      /'positions' dtype must be float, got int32/,
     ],
     [
       { numbers: arr(Float64Array.of(14, 8), [n_atoms]) },
-      /'numbers' must have an integer dtype/,
+      /'numbers' dtype must be integer, got float64/,
     ],
     [{ numbers: arr(Int32Array.of(14, 0), [n_atoms]) }, /invalid atomic number 0 at atom 2/],
     [
@@ -208,7 +219,7 @@ describe(`trajectory_from_binary`, () => {
     expect(() => trajectory_from_binary(payload)).toThrow(message)
   })
 
-  test.each([
+  test.each<[unknown, RegExp]>([
     [
       { format: `matterviz-binary-v0`, kind: `trajectory`, arrays: {} },
       /format must be 'matterviz-binary-v1'/,
@@ -224,9 +235,22 @@ describe(`trajectory_from_binary`, () => {
       /pbc must be 3 booleans/,
     ],
     [envelope(`trajectory`, traj_arrays(), { metadata: [1] }), /metadata must be an object/],
+    ...[
+      { value: -1, unit: `fs` },
+      { value: Infinity, unit: `fs` },
+      { value: `2`, unit: `fs` },
+      { value: 2, unit: `s` },
+      { value: 2 },
+      { value: 2, unit: `fs`, scale: 1 },
+      2,
+      null,
+    ].map((time_step): [unknown, RegExp] => [
+      envelope(`trajectory`, traj_arrays(), { time_step }),
+      /time_step must be \{ value: finite > 0, unit: fs \| ps \| ns \}/,
+    ]),
     [
-      envelope(`trajectory`, traj_arrays(), { time_step: { value: -1, unit: `fs` } }),
-      /time_step needs a positive value/,
+      envelope(`trajectory`, traj_arrays(), { timestep: { value: 2, unit: `fs` } }),
+      /unknown field 'timestep', expected pbc, metadata, time_step/,
     ],
   ])(`rejects malformed envelope %#`, (payload, message) => {
     expect(() => trajectory_from_binary(payload)).toThrow(message)
@@ -275,7 +299,7 @@ describe(`volume_from_binary`, () => {
     [
       { values: arr(Int32Array.from(grid), [2, 3, 4]) },
       {},
-      /must be float32 or float64, got int32/,
+      /'values' dtype must be float, got int32/,
     ],
     [{ values: arr(grid, [2, 3, 4]) }, { dims: [2, 3, 4] }, /dims from the values shape/],
     [

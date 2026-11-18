@@ -43,7 +43,9 @@ const blob_input = (
     { token: `1:1`, isovalue: 0.2 },
   ],
   range: DisplayRange | null = two_cells,
-): GeometryInput => ({ volumes: [{ ...prepare_geometry_grid(volume, range), surfaces }] })
+): GeometryInput => ({
+  volumes: [{ ...prepare_geometry_grid(volume, range && { range }), surfaces }],
+})
 
 describe(`compute_isosurface_geometries`, () => {
   test(`extracts a display window and one mesh per isovalue in the scene frame`, () => {

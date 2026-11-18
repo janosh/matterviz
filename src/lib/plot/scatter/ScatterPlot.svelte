@@ -483,7 +483,7 @@
 
   const auto_range = (
     data_extent: RunningExtent,
-    axis: typeof final_x_axis,
+    axis: typeof final_x2_axis,
     axis_px: number,
     time_scale = false,
   ): Vec2 =>
@@ -773,7 +773,7 @@
     if (!density_config) return []
     const fractions = density_level_fractions(density_config.levels)
     // Non-finite values and log-invalid ones become NaN pixels, which the grid skips
-    const to_px = (axis: FacetAxis, { scale_type }: typeof final_x_axis) => {
+    const to_px = (axis: FacetAxis, { scale_type }: typeof final_x2_axis) => {
       const { forward } = axis_transform(scale_type)
       const is_log = get_scale_type_name(scale_type) === `log`
       const slope = frame.px_per_unit[axis]

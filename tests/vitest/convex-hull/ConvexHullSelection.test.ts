@@ -355,6 +355,51 @@ describe(`convex hull replacement state`, () => {
     expect(target.querySelector(`[data-testid="probe-energy"]`)).toBeNull()
   })
 
+  // probes are element formulas: components mode solves for component amounts (Li2CoO2 =
+  // CoO + Li2O, 2 of 3 component units), open elements are dropped (LiCoO2 → LiCo on Li-Co)
+  test.each([
+    [
+      `components`,
+      { components: [`CoO`, `Li2O`] },
+      [{ CoO: 1 }, { Li2O: 1 }, { CoO: 1, Li2O: 1 }] as Record<string, number>[],
+      `Li2CoO2`,
+      `CoO-Li2O`,
+    ],
+    [
+      `open elements`,
+      { open_elements: { O: -3 } },
+      [{ Li: 1 }, { Co: 1 }, { O: 1 }, { Li: 1, Co: 1, O: 2 }] as Record<string, number>[],
+      `LiCoO2`,
+      `Co-Li`,
+    ],
+  ])(
+    `probe takes element formulas with %s`,
+    async (_label, props, compositions, formula, system) => {
+      const entries = compositions.map((composition, idx) =>
+        idx === compositions.length - 1
+          ? make_phase(composition, -3, { name: `compound` })
+          : make_phase(composition, 0),
+      )
+      const target = await mount_hull({ entries, ...props, info_pane_open: true })
+      const input = doc_query<HTMLInputElement>(`.composition-probe input`)
+      for (const [text, inside] of [
+        [formula, true],
+        [`NaCl`, false],
+      ] as const) {
+        input.value = text
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
+        await tick()
+        expect(target.querySelector(`.probe-error`)?.textContent ?? null).toBe(
+          inside ? null : `NaCl is outside the ${system} system`,
+        )
+        expect(
+          target.querySelector(`[data-testid="probe-product-0"]`)?.textContent ?? null,
+        ).toBe(inside ? `compound 100%` : null)
+      }
+    },
+  )
+
   // synthetic corners close the hull but are no data entries, so the pane counts skip them
   test(`pane counts leave out synthetic corners`, async () => {
     // precomputed E_form: an excluded unary is no reference to compute it against

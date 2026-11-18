@@ -4,7 +4,9 @@
 import type { Vec3 } from '#lib/math.js'
 import type { AnyStructure, StructureBond } from '#lib/structure/index.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import { bond_records } from '#lib/structure/bond-rendering.js'
 import { explicit_only, get_bond_data } from '#lib/structure/bonding.js'
+import * as neighbor_list from '#lib/structure/neighbor-list.js'
 import type { StructureSession } from '#lib/structure/session.svelte.js'
 import { MAX_HISTORY } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
@@ -101,6 +103,77 @@ describe(`display pipeline`, () => {
           ),
         ),
       ).toBeCloseTo(1, 10)
+    // image atoms add no lone copy of a whole molecule's atom 0.05 A inside a face (C at
+    // a = -0.005 after reassembly), while the wrapped view copies it to the far face
+    const near_face = make_crystal(10, [
+      [`C`, [0.995, 0.5, 0.5]],
+      [`H`, [0.095, 0.5, 0.5]],
+    ])
+    flush_set(host, {
+      structure: near_face,
+      supercell_scaling: `1x1x1`,
+      show_image_atoms: true,
+    })
+    expect(session.displayed_structure?.sites[0].abc[0]).toBeCloseTo(-0.005, 12)
+    expect(session.displayed_structure?.sites).toHaveLength(2)
+    flush_set(host, { keep_molecules_whole: false })
+    expect(session.displayed_structure?.sites).toHaveLength(3)
+  })
+
+  it(`keep_molecules_whole costs no extra bond search and carries the bonds over`, () => {
+    // C-H torn through the a face, O-H through the b and c faces of a 10 A cell
+    const frame = (shift: number) =>
+      make_crystal(10, [
+        [`C`, [0.97 - shift, 0.5, 0.5]],
+        [`H`, [0.07 - shift, 0.5, 0.5]],
+        [`O`, [0.3, 0.98, 0.98]],
+        [`H`, [0.3, 0.06, 0.05]],
+      ])
+    const search = vi.spyOn(neighbor_list, `neighbor_query_cutoff`)
+    const { host, session } = make_session({
+      structure: frame(0),
+      show_image_atoms: true,
+      image_atom_completion: `boundary`,
+    })
+    // searches for one new frame: the image atoms' and, keeping molecules whole, the unwrap's
+    const searches_per_frame = (shift: number): number => {
+      search.mockClear()
+      flush_set(host, { structure: frame(shift) })
+      expect(session.displayed_structure?.sites.length).toBeGreaterThanOrEqual(4) // derives the frame
+      return search.mock.calls.length
+    }
+    const searches_wrapped = searches_per_frame(0.001)
+    expect(searches_wrapped).toBeGreaterThan(0)
+    flush_set(host, { keep_molecules_whole: true })
+    expect(searches_per_frame(0.002)).toBe(searches_wrapped)
+    // the carried bonds (memo hit, no search) equal a fresh search of the unwrapped cell
+    flush_set(host, { show_image_atoms: false })
+    const unwrapped = session.displayed_structure
+    if (!unwrapped || !(`lattice` in unwrapped)) throw new Error(`no unwrapped crystal`)
+    const options = { pbc: unwrapped.lattice.pbc }
+    search.mockClear()
+    const carried = bond_records(get_bond_data(unwrapped, `electroneg_ratio`, options))
+    expect(search).not.toHaveBeenCalled()
+    const fresh_copy = { ...unwrapped, sites: unwrapped.sites.map((site) => ({ ...site })) }
+    const fresh = bond_records(get_bond_data(fresh_copy, `electroneg_ratio`, options))
+    expect(search).toHaveBeenCalled()
+    expect(fresh).toHaveLength(2)
+    expect(carried.some(({ cell_shift }) => cell_shift)).toBe(false) // both molecules whole
+    expect(carried).toHaveLength(fresh.length)
+    for (const [idx, bond] of fresh.entries()) {
+      const { pos_1, pos_2, bond_length, ...rest } = carried[idx]
+      const { pos_1: fresh_1, pos_2: fresh_2, bond_length: fresh_length, ...fresh_rest } = bond
+      expect(rest).toEqual(fresh_rest)
+      expect(Math.abs(bond_length - fresh_length)).toBeLessThan(1e-12)
+      for (const [vec, fresh_vec] of [
+        [pos_1, fresh_1],
+        [pos_2, fresh_2],
+      ] as const)
+        expect(
+          Math.max(...vec.map((val, axis) => Math.abs(val - fresh_vec[axis]))),
+        ).toBeLessThan(1e-12)
+    }
+    search.mockRestore()
   })
 
   // The host's $state deep-proxies its structure; the pipeline reads a plain copy (every site

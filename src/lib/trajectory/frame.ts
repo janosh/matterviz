@@ -319,7 +319,7 @@ export const frame_transfers = (frame: NumericFrame): ArrayBufferLike[] => [
 // `fixed_order: false` makes no identity claim, which is exactly encode_frame's output for the
 // same standard sites (text formats decode straight to it).
 export function create_numeric_md_frame(
-  positions: Float64Array,
+  positions: ArrayLike<number>,
   numbers: Uint8Array,
   lattice_matrix: Matrix3x3 | undefined,
   pbc: Pbc | undefined,

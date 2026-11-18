@@ -3,7 +3,7 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
 import {
-  cif_reduced_unavailable_reason,
+  symmetrized_cif_unavailable_reason,
   create_structure_filename,
   fractional_export_unavailable_reason,
   poscar_export_unavailable_reason,
@@ -794,7 +794,7 @@ describe(`Export functionality`, () => {
     })
   })
 
-  describe(`symmetry-reduced CIF`, () => {
+  describe(`symmetrized CIF`, () => {
     beforeAll(init_moyo_for_tests)
 
     type CaseSite = {
@@ -906,6 +906,25 @@ describe(`Export functionality`, () => {
       },
     )
 
+    it(`noisy input with a loose symprec writes symmetrized representatives`, async () => {
+      const symprec = 0.2
+      const lattice = cubic_matrix(5.64)
+      const noisy = rock_salt.map((site, idx) =>
+        idx === 0 ? { ...site, abc: [0.012, 0.006, 0] as Vec3 } : site,
+      )
+      const structure = make_crystal(lattice, noisy)
+      const sym_data = await analyze_structure_symmetry(structure, { symprec })
+      expect([sym_data.number, sym_data.operations.length]).toEqual([225, 192])
+      const parsed = parse_cif(structure_to_cif_str(structure, sym_data))
+      expect(parsed.sites).toHaveLength(structure.sites.length)
+      for (const { abc, species } of structure.sites) {
+        const distances = parsed.sites
+          .filter((site) => site.species[0].element === species[0].element)
+          .map((site) => frac_dist(math.subtract(site.abc, abc), lattice))
+        expect(Math.min(...distances)).toBeLessThan(symprec)
+      }
+    })
+
     it(`keeps labels, occupancies and oxidation states of the written sites`, async () => {
       const [, , wurtzite] = [0, 0, cases[4]]
       const structure = make_crystal(wurtzite.lattice, wurtzite.sites)
@@ -938,24 +957,32 @@ describe(`Export functionality`, () => {
         rock_salt.map((site) => ({ ...site, properties })),
       )
       const sym_data = await analyze_structure_symmetry(structure)
-      expect(cif_reduced_unavailable_reason(structure, sym_data)).toContain(reason)
+      expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toContain(reason)
       expect(() => structure_to_cif_str(structure, sym_data)).toThrow(reason)
-      // the export pane's CIF then writes P1
-      expect(STRUCT_TEXT_FORMATS.cif.to_str(structure, sym_data)).toBe(
-        structure_to_cif_str(structure),
-      )
     })
 
-    it(`export pane CIF is reduced with symmetry data, CIF (P1) always P1`, async () => {
+    it(`all-zero magmoms don't block the symmetrized CIF`, async () => {
+      const structure = make_crystal(
+        cubic_matrix(5.64),
+        rock_salt.map((site) => ({ ...site, properties: { magmom: [0, 0, 0] } })),
+      )
+      const sym_data = await analyze_structure_symmetry(structure)
+      expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toBeUndefined()
+      expect(parse_cif(structure_to_cif_str(structure, sym_data)).sites).toHaveLength(8)
+    })
+
+    it(`export pane: CIF always P1, the symmetrized CIF needs symmetry data`, async () => {
       const structure = make_crystal(cubic_matrix(5.64), rock_salt)
       const sym_data = await analyze_structure_symmetry(structure)
-      expect(STRUCT_TEXT_FORMATS.cif.to_str(structure, sym_data)).toBe(
+      const { cif, cif_symmetrized } = STRUCT_TEXT_FORMATS
+      expect(cif.to_str(structure, sym_data)).toBe(structure_to_cif_str(structure))
+      expect(cif_symmetrized.to_str(structure, sym_data)).toBe(
         structure_to_cif_str(structure, sym_data),
       )
-      expect(STRUCT_TEXT_FORMATS.cif.to_str(structure)).toBe(structure_to_cif_str(structure))
-      expect(STRUCT_TEXT_FORMATS.cif_p1.to_str(structure)).toBe(
-        structure_to_cif_str(structure),
-      )
+      expect(cif_symmetrized.to_str(structure, sym_data)).not.toBe(cif.to_str(structure))
+      const reason = `No symmetry analysis available`
+      expect(cif_symmetrized.unavailable_reason(structure, null)).toBe(reason)
+      expect(() => cif_symmetrized.to_str(structure, null)).toThrow(reason)
     })
 
     it(`rejects symmetry data of another structure`, async () => {

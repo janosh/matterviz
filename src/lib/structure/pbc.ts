@@ -14,7 +14,7 @@ import { BondFrame, bond_site_1, bond_site_2, type BondData } from './bond-rende
 import { compute_polyhedra } from './polyhedra'
 import type { Polyhedron, ResolvedPolyhedraOptions } from './polyhedra'
 import { numeric_sites } from './site'
-import type { AnyStructure, Site } from './index'
+import type { AnyStructure, BondPair, Site } from './index'
 
 export type Pbc = readonly [boolean, boolean, boolean]
 
@@ -124,8 +124,13 @@ function image_atoms(
     pbc[axis] && Math.abs(abc[axis]) < tolerances[axis]
   const near_high = (abc: Vec3, axis: number) =>
     pbc[axis] && Math.abs(abc[axis] - 1) < tolerances[axis]
-  const copy_shifts = structure.sites.map(({ abc }): readonly Shift[] => {
-    if (AXES.every((axis) => !near_low(abc, axis) && !near_high(abc, axis))) return BASE_ONLY
+  // Sites of a molecule kept whole (unwrap_molecules) get none: the copy would sit alone
+  const copy_shifts = structure.sites.map(({ abc, provenance }): readonly Shift[] => {
+    if (
+      provenance?.whole_molecule ||
+      AXES.every((axis) => !near_low(abc, axis) && !near_high(abc, axis))
+    )
+      return BASE_ONLY
     // per axis: stay, +1 off the low face, -1 off the high face
     const [shifts_a, shifts_b, shifts_c] = AXES.map((axis) => [
       0,
@@ -354,10 +359,16 @@ export function find_drawn_completion_sites(
 // reached it. A component that reaches a site again at a different translation connects to
 // its own periodic image (a chain, layer or 3D network, e.g. a MOF framework): no placement
 // makes it finite, so it stays wrapped. Finite fragments then move by whole cells so their
-// centroid (unweighted, fractional) lies in [0, 1) along each periodic axis. Sites keep their
-// order and properties; only abc and xyz change. Returns the input when nothing moves.
-export function unwrap_molecules(structure: AnyStructure, bonds: BondData): AnyStructure {
-  if (!(`lattice` in structure)) return structure
+// centroid (unweighted, fractional) lies in [0, 1) along each periodic axis, and their sites (of
+// fragments with 2+ sites) get provenance.whole_molecule, so image atoms add no lone face copy
+// of them. Sites keep their order and properties. Returns the input structure and bonds when
+// nothing changes, else the bonds carried over to the unwrapped sites (see carry_bonds), so
+// callers can seed the bond memo instead of searching the moved structure again.
+export function unwrap_molecules<Struct extends AnyStructure>(
+  structure: Struct,
+  bonds: BondPair[] | BondFrame,
+): { structure: Struct; bonds: BondPair[] | BondFrame } {
+  if (!(`lattice` in structure)) return { structure, bonds }
   const { sites, lattice } = structure
   const n_sites = sites.length
   const neighbors: { site_idx: number; shift: Vec3 }[][] = sites.map(() => [])
@@ -370,8 +381,9 @@ export function unwrap_molecules(structure: AnyStructure, bonds: BondData): AnyS
   }
   const translations = Array.from<Vec3 | undefined>({ length: n_sites })
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
-  let moved = false
+  let changed = false
   const new_sites = [...sites]
+  const totals = sites.map((): Vec3 => [0, 0, 0])
   for (let anchor = 0; anchor < n_sites; anchor++) {
     if (translations[anchor]) continue
     translations[anchor] = [0, 0, 0]
@@ -400,17 +412,66 @@ export function unwrap_molecules(structure: AnyStructure, bonds: BondData): AnyS
     const recenter = AXES.map((axis) =>
       lattice.pbc[axis] ? -Math.floor(centroid[axis]) : 0,
     ) as Vec3
+    const whole = component.length > 1
     for (const site_idx of component) {
       const total = shifted(translations[site_idx] as Vec3, recenter)
-      if (total.every((val) => val === 0)) continue
-      moved = true
+      if (!whole && total.every((val) => val === 0)) continue
+      changed = true
+      totals[site_idx] = total
       const site = sites[site_idx]
       new_sites[site_idx] = {
         ...site,
         abc: shifted(site.abc, total),
         xyz: shifted(site.xyz, frac_to_cart(total)),
+        ...(whole && { provenance: { ...site.provenance, whole_molecule: true } }),
       }
     }
   }
-  return moved ? { ...structure, sites: new_sites } : structure
+  if (!changed) return { structure, bonds }
+  const unwrapped = { ...structure, sites: new_sites }
+  return { structure: unwrapped, bonds: carry_bonds(unwrapped, bonds, totals, frac_to_cart) }
+}
+
+// Bonds of a structure whose sites moved by lattice translations `totals`: the same pairs,
+// lengths and orders, each cell_shift s becoming s + t_1 - t_2 (site 2's image at x_2 + s next
+// to site 1 is at x_2' + s' next to x_1' = x_1 + t_1), in-cell when that is zero.
+function carry_bonds(
+  structure: AnyStructure,
+  bonds: BondPair[] | BondFrame,
+  totals: Vec3[],
+  frac_to_cart: (frac: Vec3) => Vec3,
+): BondPair[] | BondFrame {
+  const { sites } = structure
+  const placement = (site_1: number, site_2: number, old_shift?: Vec3) => {
+    const shift = shifted(
+      shifted(old_shift ?? ZERO_SHIFT, totals[site_1]),
+      totals[site_2].map((val) => -val) as Vec3,
+    )
+    const in_cell = shift.every((val) => val === 0)
+    return {
+      cell_shift: in_cell ? undefined : shift,
+      pos_2: in_cell ? sites[site_2].xyz : shifted(sites[site_2].xyz, frac_to_cart(shift)),
+    }
+  }
+  if (!(bonds instanceof BondFrame)) {
+    return bonds.map(({ cell_shift: old_shift, ...bond }) => {
+      const { cell_shift, pos_2 } = placement(bond.site_idx_1, bond.site_idx_2, old_shift)
+      return {
+        ...bond,
+        pos_1: sites[bond.site_idx_1].xyz,
+        pos_2,
+        ...(cell_shift && { cell_shift }),
+      }
+    })
+  }
+  const image_rows: number[] = []
+  for (let idx = 0; idx < bonds.length; idx++) {
+    const { cell_shift, pos_2 } = placement(
+      bond_site_1(bonds, idx),
+      bond_site_2(bonds, idx),
+      bonds.cell_shift(idx),
+    )
+    if (cell_shift) image_rows.push(idx, ...pos_2, ...cell_shift)
+  }
+  return new BondFrame(structure, { ...bonds.columns, images: new Float64Array(image_rows) })
 }

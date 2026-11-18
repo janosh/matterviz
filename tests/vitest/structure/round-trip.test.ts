@@ -63,9 +63,8 @@ const xyz_site_properties = (
   ...(`selective_dynamics` in site.properties && { constraint_basis: `cartesian` }),
 })
 
-// cif_p1 is CIF without symmetry data, which these structures never pass (export.test.ts pins
-// the two equal)
-type RoundTripFormat = Exclude<StructTextFormat, `cif_p1`>
+// the symmetrized CIF needs a symmetry analysis (its round trips are in export.test.ts)
+type RoundTripFormat = Exclude<StructTextFormat, `cif_symmetrized`>
 const CAPABILITIES: Record<RoundTripFormat, Capability> = {
   json: {
     ordered_only: false,

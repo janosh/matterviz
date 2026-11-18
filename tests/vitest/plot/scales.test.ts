@@ -782,6 +782,26 @@ describe(`scales`, () => {
       expect(at_zero.ticks(5)).toEqual([])
     })
 
+    // forward must be finite and monotonic over the whole x view, not just at its ends: a pole
+    // inside it (1240 / x across 0) or a turning point gives no derived domain or ticks
+    test.each([
+      [`pole at 0`, energy_to_wavelength, [-1, 1]],
+      [`pole off-center`, energy_to_wavelength, [-1, 3]],
+      [`turning point`, { forward: (val: number) => val ** 2, inverse: Math.sqrt }, [-2, 3]],
+      [
+        `NaN inside`,
+        {
+          forward: (val: number) => (val > 1 && val < 2 ? NaN : val),
+          inverse: (val: number) => val,
+        },
+        [0, 3],
+      ],
+    ] as const)(`%s: non-monotonic forward gives no ticks`, (_name, map, domain) => {
+      const scale = derived_scale(scaleLinear().domain(domain).range([0, 600]), map)
+      expect(scale.domain().every(Number.isFinite)).toBe(false)
+      expect(scale.ticks(8)).toEqual([])
+    })
+
     test(`create_axis_scales builds a derived x2 over x, keeping x2's own range out of it`, () => {
       const axes = { x: {}, x2: { derive: inverse_temperature }, y: {}, y2: {} }
       const ranges = {
@@ -793,6 +813,20 @@ describe(`scales`, () => {
       const scales = create_axis_scales(axes, ranges, { l: 10, r: 10, t: 10, b: 10 }, 220, 100)
       expect(scales.x2.domain()).toEqual([4, 1])
       expect(scales.x2(2)).toBe(scales.x(500))
+    })
+
+    test(`create_axis_scales rejects a derived x2 over a time x axis`, () => {
+      const axes = {
+        x: { scale_type: `time` as const },
+        x2: { derive: linear_map },
+        y: {},
+        y2: {},
+      }
+      const range: Vec2 = [0, 1]
+      const ranges = { x: range, x2: range, y: range, y2: range }
+      expect(() =>
+        create_axis_scales(axes, ranges, { l: 0, r: 0, t: 0, b: 0 }, 100, 100),
+      ).toThrow(`x2_axis.derive needs a numeric x axis, got scale_type 'time'`)
     })
   })
 

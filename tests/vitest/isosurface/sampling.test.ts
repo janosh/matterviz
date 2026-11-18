@@ -4,7 +4,7 @@ import {
   compare_volume_grids,
   create_volume_sampler,
   extract_volume_range,
-  resolve_volume_display_range,
+  resolve_volume_window,
   sample_volume_at_positions,
   sanitize_display_range,
   trilinear_interpolate,
@@ -231,17 +231,31 @@ test.each([
   expect(sanitize_display_range(range, periodic)).toEqual(expected)
 })
 
-// Periodic tiling becomes an endpoint-inclusive extraction range; an explicit range
-// overrides tiling and adds the halo; finite volumes ignore tiling but crop to [0, 1]
+// A periodic diagonal supercell becomes an endpoint-inclusive base-fraction box, any other
+// supercell [0, 1]³ in its own frame (halo / |M_i| per axis); an explicit range overrides the
+// supercell and adds the halo; finite volumes ignore the supercell but crop to [0, 1]
+const diag_2_3_1: Matrix3x3 = [
+  [2, 0, 0],
+  [0, 3, 0],
+  [0, 0, 1],
+]
+const sheared: Matrix3x3 = [
+  [1, 1, 0],
+  [-1, 1, 0],
+  [0, 0, 1],
+]
+const sheared_pad = 0.1 / Math.SQRT2
 // oxfmt-ignore
 test.each([
-  [`periodic tiling`, true, { tiling: [2, 3, 1] }, [[0, 2], [0, 3], [0, 1]]],
-  [`periodic explicit range + halo`, true, { display_range: [[-0.15, 2.15], [0, 1], [0.25, 0.75]], tiling: [4, 4, 4], halo: 0.1 }, [[-0.25, 2.25], [-0.1, 1.1], [0.15, 0.85]]],
-  [`finite tiling`, false, { tiling: [3, 2, 1] }, null],
-  [`finite explicit crop`, false, { display_range: [[-1, 0.8], [0.2, 2], [0, 1]], tiling: [3, 2, 1] }, [[0, 0.8], [0.2, 1], [0, 1]]],
-] as [string, boolean, Parameters<typeof resolve_volume_display_range>[1], DisplayRange | null][])(`resolve_volume_display_range: %s`, (_label, periodic, options, expected) => {
+  [`periodic diagonal supercell`, true, { supercell: diag_2_3_1 }, { range: [[0, 2], [0, 3], [0, 1]] }],
+  [`periodic diagonal supercell + halo`, true, { supercell: diag_2_3_1, halo: 0.1 }, { range: [[-0.1, 2.1], [-0.1, 3.1], [-0.1, 1.1]] }],
+  [`periodic sheared supercell + halo`, true, { supercell: sheared, halo: 0.1 }, { range: [[-sheared_pad, 1 + sheared_pad], [-sheared_pad, 1 + sheared_pad], [-0.1, 1.1]], frame: sheared }],
+  [`periodic explicit range + halo`, true, { display_range: [[-0.15, 2.15], [0, 1], [0.25, 0.75]], supercell: sheared, halo: 0.1 }, { range: [[-0.25, 2.25], [-0.1, 1.1], [0.15, 0.85]] }],
+  [`finite supercell`, false, { supercell: diag_2_3_1 }, null],
+  [`finite explicit crop`, false, { display_range: [[-1, 0.8], [0.2, 2], [0, 1]], supercell: sheared, halo: 0.1 }, { range: [[0, 0.8], [0.2, 1], [0, 1]] }],
+] as [string, boolean, Parameters<typeof resolve_volume_window>[1], ReturnType<typeof resolve_volume_window>][])(`resolve_volume_window: %s`, (_label, periodic, options, expected) => {
   const volume = linear_volume(periodic ? 10 : 11, cubic, periodic)
-  expect(resolve_volume_display_range(volume, options)).toEqual(expected)
+  expect(resolve_volume_window(volume, options)).toEqual(expected)
 })
 
 describe(`extract_volume_range`, () => {
@@ -306,16 +320,13 @@ describe(`extract_volume_range`, () => {
       [0, 1, 0],
       [0, 0, 1],
     ]
-    const tiled = extract_volume_range(
-      volume,
-      resolve_volume_display_range(volume, { tiling: [2, 1, 1], halo }) as DisplayRange,
-    )
-    const framed = extract_volume_range(
-      volume,
-      resolve_volume_display_range(volume, { frame, halo }) as DisplayRange,
-      undefined,
-      frame,
-    )
+    const { range: tiled_range } =
+      resolve_volume_window(volume, { supercell: frame, halo }) ?? {}
+    const tiled = extract_volume_range(volume, tiled_range as DisplayRange)
+    // the same window in the frame's own fractions, forced through the general frame path
+    // oxfmt-ignore
+    const frame_range: DisplayRange = [[-halo / 2, 1 + halo / 2], [-halo, 1 + halo], [-halo, 1 + halo]]
+    const framed = extract_volume_range(volume, frame_range, undefined, frame)
     // measured bit-identical: s·M lands on the same f64 fractions as the tiled i/n samples
     for (const key of [`dims`, `values`, `lattice`, `origin`] as const)
       expect(framed[key]).toEqual(tiled[key])
@@ -331,12 +342,33 @@ describe(`extract_volume_range`, () => {
       [-1, 1, 0],
       [0, 0, 1],
     ]
-    const range = resolve_volume_display_range(volume, { frame, halo: 0.1 }) as DisplayRange
+    const { range } = resolve_volume_window(volume, { supercell: frame, halo: 0.1 }) ?? {}
+    if (!range) throw new Error(`periodic volume got no window`)
     const extracted = extract_volume_range(volume, range, undefined, frame)
     // a and b rows have |M_i| = √2, so halo 0.1 base cells is 0.1/√2 supercell fractions
     expect(range[0][0]).toBeCloseTo(-0.1 / Math.SQRT2, 14)
-    // max_j |M_ij|·8 = 8 intervals per a/b supercell length: round((1 + 0.2/√2)·8) + 1
-    expect(extracted.dims).toEqual([10, 10, 11])
+    // Σ_j |M_ij|·8 = 16 intervals per a/b supercell length: round((1 + 0.2/√2)·16) + 1
+    expect(extracted.dims).toEqual([19, 19, 11])
+    // no source voxel is skipped: every one of the 8³ is some sample's nearest voxel (the
+    // max_j |M_ij|·n_j count hit only the index-|det M| = 2 sublattice, 256 of 512)
+    const hit_voxels = new Set<string>()
+    const steps = range.map(
+      ([lower, upper], axis) => (upper - lower) / (extracted.dims[axis] - 1),
+    )
+    for (let x_idx = 0; x_idx < extracted.dims[0]; x_idx++)
+      for (let y_idx = 0; y_idx < extracted.dims[1]; y_idx++)
+        for (let z_idx = 0; z_idx < extracted.dims[2]; z_idx++) {
+          const super_frac = [x_idx, y_idx, z_idx].map(
+            (idx, axis) => range[axis][0] + idx * steps[axis],
+          )
+          const voxel = [0, 1, 2].map((col) => {
+            const base = super_frac.reduce((sum, frac, row) => sum + frac * frame[row][col], 0)
+            const idx = Math.round(base * volume.dims[col]) % volume.dims[col]
+            return idx < 0 ? idx + volume.dims[col] : idx
+          })
+          hit_voxels.add(voxel.join(`,`))
+        }
+    expect(hit_voxels.size).toBe(volume.dims[0] * volume.dims[1] * volume.dims[2])
     // every grid point holds the periodic source field at its own Cartesian position
     const sample = create_volume_sampler(volume)
     const to_cart = create_frac_to_cart(extracted.lattice)

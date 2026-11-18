@@ -6,7 +6,6 @@
   import { value_key } from '#lib/utils.js'
   import type { Matrix3x3, Vec3 } from '../math'
   import { IDENTITY_3X3 } from '../math'
-  import { diagonal_scaling } from '#lib/structure/supercell.js'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
@@ -22,10 +21,10 @@
   import type { ScalarGrid3D } from './grid'
   import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'
-  import type { DisplayRange } from './sampling'
+  import type { VolumeWindow } from './sampling'
   import {
     prepare_geometry_grid,
-    resolve_volume_display_range,
+    resolve_volume_window,
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
@@ -78,25 +77,18 @@
     return identifier
   }
 
-  // Every supercell is one window with the halo on its outer faces: a diagonal one tiles the
-  // base cell's fractions, any other is resampled in its own fractional frame (rows of M), so
-  // the surface fills exactly its parallelepiped. An explicit display range wins over both.
-  const tiling = $derived(diagonal_scaling(supercell))
-  const window_frame = (vol: VolumetricData): Matrix3x3 | undefined =>
-    vol.periodic && !settings.display_range && !tiling ? supercell : undefined
-  // Finite extraction range: always for periodic volumes (tiling and fractional bounds share
-  // endpoint semantics), only an explicit crop for finite ones
-  const effective_range = (vol: VolumetricData): DisplayRange | null =>
-    resolve_volume_display_range(vol, {
+  // Finite extraction window: always for periodic volumes (supercell + halo, or an explicit
+  // display range), only an explicit crop for finite ones
+  const effective_window = (vol: VolumetricData): VolumeWindow | null =>
+    resolve_volume_window(vol, {
       display_range: settings.display_range,
-      tiling: tiling ?? [1, 1, 1],
+      supercell,
       halo: settings.halo,
-      frame: window_frame(vol),
     })
 
   // === Prepared geometry grids ===
-  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The range
-  // and frame fully determine it (they encode tiling and halo, which finite volumes ignore).
+  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The window
+  // fully determines it (it encodes supercell and halo, which finite volumes ignore).
   type PreparedGrid = {
     key: string
     grid: ScalarGrid3D<Float64Array>
@@ -106,18 +98,17 @@
   // Keyed by volume object so removed/replaced volumes release their grids to GC
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
-  const range_key = (vol: VolumetricData): string =>
-    [effective_range(vol), window_frame(vol)].map((arr) => arr?.flat().join(`,`)).join(`|`)
+  const window_key = (vol: VolumetricData): string => JSON.stringify(effective_window(vol))
 
   // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
   // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
   const prepared_grid = (vol: VolumetricData): PreparedGrid => {
-    const key = range_key(vol)
+    const key = window_key(vol)
     const cached = prepared_cache.get(vol)
     if (cached?.key === key) return cached
     const prepared = time_stage(
       `prepare_geometry`,
-      () => ({ key, ...prepare_geometry_grid(vol, effective_range(vol), window_frame(vol)) }),
+      () => ({ key, ...prepare_geometry_grid(vol, effective_window(vol)) }),
       ({ grid }) => ({ output_points: grid.values.length }),
     )
     prepared_cache.set(vol, prepared)
@@ -207,9 +198,9 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // range_key covers halo, tiling and frame, so the geometry identity needs no other inputs
+  // window_key covers halo and supercell, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    value_key([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
+    value_key([volume_id, vol_id(volume), sign * isovalue, window_key(volume)])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
