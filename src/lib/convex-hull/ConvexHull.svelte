@@ -31,6 +31,7 @@
   import { DEFAULT_GAS_TEMP, MAGNETIC_ORDERING_CATEGORY } from './types'
   import { default_controls } from './index'
   import type { HullModel } from './model'
+  import { to_model_composition } from './model'
   import ConvexHull2D from './ConvexHull2D.svelte'
   import ConvexHullCanvas from './ConvexHullCanvas.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
@@ -39,6 +40,8 @@
   import { build_hull_overlay, current_entry, HULL_STABILITY_TOL } from './helpers'
   import type { HullProbe } from './helpers'
   import { decompose_hull_composition } from './thermodynamics'
+  import type { CompositionType } from '#lib/composition/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
 
   // One public viewer infers dimensionality; renderers only handle their plot geometry.
   type ConvexHullProps = BaseConvexHullProps &
@@ -224,13 +227,26 @@
       selected_entry && current_entry(selected_entry, hull_data.plot_entries),
     ].find((entry) => entry && (entry.e_above_hull ?? 0) > HULL_STABILITY_TOL) ?? null,
   )
-  let probe_submission = $state<{ text: string; model: string } | null>(null)
-  // Composition probe: equilibrium products of any composition (null outside the system)
+  // raw: a deep proxy would wrap the probe and break the pane's identity check
+  let probe_submission = $state.raw<{
+    text: string
+    probe: CompositionType | null
+  } | null>(null)
+  // Composition probe: equilibrium products of any composition (null outside the system). A
+  // probe keyed like the input entries goes through the open elements and components as typed
+  // formulas do; one already in model coordinates (component keys) stays as given.
   const probe = $derived.by((): HullProbe | null => {
     if (!probe_composition || hull_data.error) return null
     const { entries: model_entries, elements } = hull_data.model
-    const mixture = decompose_hull_composition(probe_composition, model_entries, elements)
-    return mixture && { composition: probe_composition, ...mixture }
+    const in_model = Object.keys(probe_composition).every((key) =>
+      elements.includes(key as ElementSymbol),
+    )
+    const composition = in_model
+      ? probe_composition
+      : to_model_composition(probe_composition, components, open_elements)
+    const mixture =
+      composition && decompose_hull_composition(composition, model_entries, elements)
+    return mixture && { composition, ...mixture }
   })
   const overlay = $derived(
     decomposition_focus || annotations || probe
@@ -549,7 +565,16 @@
     {...dom_attrs}
     error={hull_data.error}
     style="{rest.style ?? ``}; height: var(--hull-height, 500px)"
-  />
+  >
+    <!-- a T whose data lacks an open-system reference must stay changeable -->
+    {#if hull_data.has_temp_data && temperature !== undefined}
+      <TemperatureSlider
+        available_temperatures={hull_data.available_temperatures}
+        {interpolate_temperature}
+        bind:temperature
+      />
+    {/if}
+  </MissingConvexHullData>
 {/if}
 
 <style>

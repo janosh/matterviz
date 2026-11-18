@@ -6,6 +6,7 @@ import {
   find_drawn_completion_sites,
   find_image_atoms,
   get_pbc_image_sites,
+  shift_bonds_by_unwrap,
   unwrap_molecules,
   wrap_to_unit_cell,
 } from '#lib/structure/pbc.js'
@@ -800,14 +801,32 @@ describe(`unwrap_molecules`, () => {
       },
       { site_idx_1: 5, site_idx_2: 6, order: 1 },
     ]
-    const with_explicit = { ...crystal, properties: { bonds: explicit } }
+    // rows the bond reader rejects pass through untouched instead of throwing
+    const invalid = [
+      null,
+      { site_idx_1: 0, site_idx_2: 99 },
+      { site_idx_1: 0, site_idx_2: 1, cell_shift: `x` },
+    ]
+    const with_explicit = {
+      ...crystal,
+      properties: { bonds: [...explicit, ...invalid] as StructureBond[] },
+    }
     const moved_bonds = unwrap_molecules(with_explicit, bonds).structure.properties?.bonds
     expect(moved_bonds).toEqual([
       { site_idx_1: torn.site_idx_1, site_idx_2: torn.site_idx_2, order: 1 },
       explicit[1],
+      ...invalid,
     ])
     expect(moved_bonds?.[1]).toBe(explicit[1])
     expect(explicit[0].cell_shift).toBe(torn.cell_shift)
+    // bond edits stay in the wrapped input frame: on the moved sites the torn edit reads in-cell
+    // (as the bond it names is now drawn), and maps back to its saved shift; an edit between
+    // sites that moved together keeps its object, and without moved sites the array is kept
+    const displayed = shift_bonds_by_unwrap(explicit, unwrapped.sites, 1)
+    expect(displayed).toEqual(moved_bonds?.slice(0, explicit.length))
+    expect(displayed[1]).toBe(explicit[1])
+    expect(shift_bonds_by_unwrap(displayed, unwrapped.sites, -1)).toEqual(explicit)
+    expect(shift_bonds_by_unwrap(explicit, crystal.sites, 1)).toBe(explicit)
   })
 
   // 2 C 1.5 A apart along a 3 A axis bond into an infinite chain through the a face

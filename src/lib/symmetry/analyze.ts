@@ -176,7 +176,7 @@ function moyo_site_labels(sites: Site[], numbers: number[]): number[] {
     const composition = species
       .map(
         ({ element, occu, oxidation_state }) =>
-          `${element}${oxidation_state ?? ``}:${occu.toFixed(6)}`,
+          `${element}${oxidation_state ?? ``}:${occu.toFixed(8)}`, // the CIF writer's precision
       )
       .toSorted()
       .join(` `)
@@ -198,7 +198,10 @@ export async function analyze_structure_symmetry(
   if (!(`lattice` in structure)) {
     throw new Error(`Symmetry analysis requires a periodic structure with a lattice`)
   }
-  if (!symmetry_backend) await ensure_moyo_wasm_ready()
+  // Snapshot every input before the first await: a structure edited while the analysis runs
+  // must not pair the ops found for the old cell with its new lattice or species
+  const lattice = structure.lattice.matrix.map((row) => [...row]) as math.Matrix3x3
+  const site_species_keys = structure.sites.map(({ species }) => species_key(species))
   const merged = merge_split_partial_sites(structure.sites)
   const positions = merged.map(({ site }): math.Vec3 => [...site.abc])
   const numbers = merged.map(({ site, site_idx }) => site_atomic_number(site, site_idx))
@@ -210,10 +213,11 @@ export async function analyze_structure_symmetry(
   // internal B = transpose(row-basis RB), so column-major(B) == row-major(RB): supply the
   // pymatgen-style lattice.matrix (rows = lattice vectors) flattened as is
   const cell: MoyoCell = {
-    lattice: { basis: structure.lattice.matrix.flat() as MoyoCell[`lattice`][`basis`] },
+    lattice: { basis: lattice.flat() as MoyoCell[`lattice`][`basis`] },
     positions,
     numbers: labels,
   }
+  if (!symmetry_backend) await ensure_moyo_wasm_ready()
   const { symprec, algo } = { ...default_sym_settings, ...settings }
   const setting = algo === `Moyo` ? `Standard` : algo
   const backend = symmetry_backend
@@ -240,15 +244,11 @@ export async function analyze_structure_symmetry(
     ...sym_data,
     std_cell: to_numbers(sym_data.std_cell),
     prim_std_cell: to_numbers(sym_data.prim_std_cell),
-    input_cell: {
-      lattice: structure.lattice.matrix.map((row) => [...row]) as math.Matrix3x3,
-      positions,
-      numbers,
-    },
+    input_cell: { lattice, positions, numbers },
     orig_site_indices_by_input_idx: merged.map(
       ({ source_site_indices }) => source_site_indices,
     ),
-    site_species_keys: structure.sites.map(({ species }) => species_key(species)),
+    site_species_keys,
   }
 }
 

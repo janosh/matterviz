@@ -247,7 +247,10 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 // The reader's `momentum` and `mass` go back out as ASE's `momenta` and `masses`, minus the
 // `velocity` the reader derived from them (a differing explicit velocity is kept: on reimport
 // it wins).
-const ASE_COLUMN_NAMES: Record<string, string> = { momentum: `momenta`, mass: `masses` }
+const ASE_COLUMN_NAMES = new Map([
+  [`momentum`, `momenta`],
+  [`mass`, `masses`],
+])
 function numeric_site_columns(
   structure: AnyStructure,
 ): { key: string; name: string; ncols: 1 | 3 }[] {
@@ -261,7 +264,7 @@ function numeric_site_columns(
         ? typeof value === `number` && Number.isFinite(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
-    return fits ? [{ key, name: ASE_COLUMN_NAMES[key] ?? key, ncols }] : []
+    return fits ? [{ key, name: ASE_COLUMN_NAMES.get(key) ?? key, ncols }] : []
   })
   const has_momenta = columns.some(({ key }) => key === `momentum`)
   // the reader divides by the masses the file holds: recorded ones only if written
@@ -502,20 +505,17 @@ function is_standard_setting({ operations, std_linear, std_origin_shift }: Symme
   })
 }
 
-// The Cartesian-shortest lattice image of fractional offset `delta`: the rounded one or one of
-// its 26 neighbors (per-component rounding alone can pick a far image in a sheared cell)
-const UNIT_SHIFTS = [-1, 0, 1].flatMap((da) =>
-  [-1, 0, 1].flatMap((db) => [-1, 0, 1].map((dc): Vec3 => [da, db, dc])),
-)
-function nearest_image(delta: Vec3, to_cart: Matrix3x3): { frac: Vec3; dist: number } {
-  const rounded = delta.map((val) => val - Math.round(val)) as Vec3
-  let best = { frac: rounded, dist: Infinity }
-  for (const shift of UNIT_SHIFTS) {
-    const frac = math.add(rounded, shift)
-    const dist = Math.hypot(...math.mul_3x3_vec3(to_cart, frac))
-    if (dist < best.dist) best = { frac, dist }
-  }
-  return best
+// The Cartesian-shortest lattice image of fractional offset `delta` (an exact closest-lattice-
+// vector search: in a skewed cell it can lie many cells from the per-component rounded one)
+export function nearest_image(
+  delta: Vec3,
+  converters: math.LatticeConverters,
+): { frac: Vec3; dist: number } {
+  const { lattice, frac_to_cart, cart_to_frac } = converters
+  const cart = math.min_image_displacement([0, 0, 0], frac_to_cart(delta), lattice, converters)
+  // delta plus the integer shift the search applied, so it stays exact
+  const shift = math.subtract(cart_to_frac(cart), delta).map(Math.round) as Vec3
+  return { frac: math.add(delta, shift), dist: Math.hypot(...cart) }
 }
 
 // Symmetrized fractional position of orbit representative `rep_idx` (orbit `members`): the
@@ -530,17 +530,17 @@ function symmetrized_rep_abc(
   lattice: Matrix3x3,
 ): Vec3 {
   const rep = positions[rep_idx]
-  const to_cart = math.transpose_3x3(lattice)
+  const converters = math.create_lattice_converters(lattice)
   const images = operations.flatMap(({ rotation, translation }) => {
     const image = math.add(
       math.mul_3x3_vec3(math.mat3x3_from_flat_col_major(rotation), rep),
       translation,
     )
     const dists = members.map(
-      (idx) => nearest_image(math.subtract(image, positions[idx]), to_cart).dist,
+      (idx) => nearest_image(math.subtract(image, positions[idx]), converters).dist,
     )
     if (members[dists.indexOf(Math.min(...dists))] !== rep_idx) return []
-    return [math.add(rep, nearest_image(math.subtract(image, rep), to_cart).frac)]
+    return [math.add(rep, nearest_image(math.subtract(image, rep), converters).frac)]
   })
   return math.scale(math.add(...images), 1 / images.length)
 }

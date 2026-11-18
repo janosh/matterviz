@@ -177,10 +177,11 @@
     y2_range: frame.axis_domains.y2,
   })
   const title_pad = $derived(frame.effective_base_pad)
+  // axis_domains, so a derived x2's marginal bins over the domain it displays
   const get_marginal_axis = (axis: MarginalAxisBinding): MarginalAxis =>
     marginal_axis(
       frame.scales[axis],
-      frame.ranges.current[axis],
+      frame.axis_domains[axis],
       frame.axes[axis],
       marginal_tick_label[axis],
     )

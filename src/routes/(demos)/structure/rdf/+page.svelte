@@ -11,6 +11,7 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
   import { make_site } from '#lib/structure/site.js'
+  import { seeded_rng } from '#site/histogram-data.js'
   import { structure_files } from '#site/structures.js'
   import { toggle_item } from '#lib/utils.js'
   import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
@@ -75,12 +76,7 @@
   let amorphous_mode = $state<RdfMode>(`full`)
 
   const amorphous = $derived.by(() => {
-    let seed = 42 + n_atoms
-    const rand = () => {
-      seed = (seed * 1664525 + 1013904223) % 2 ** 32
-      return seed / 2 ** 32
-    }
-
+    const rand = seeded_rng(42 + n_atoms)
     const comp = { Si: 1, O: 2, Al: 0.5, Fe: 0.3 }
     const total = Object.values(comp).reduce((sum, count) => sum + count, 0)
     const sites = Object.entries(comp).flatMap(([element, frac]) =>

@@ -187,11 +187,16 @@ export function trajectory_from_binary(
   return numeric_run(n_frames, read, {
     provenance: {
       format: `binary`,
-      source_bytes: positions.byteLength,
+      // every decoded buffer, as a file's size would count it
+      source_bytes: Object.values(arrays).reduce(
+        (sum, { values }) => sum + values.byteLength,
+        0,
+      ),
       ...provenance,
     },
-    metadata: fields.metadata ?? {},
-    time_step: time_step as TrajectoryRun[`time_step`],
+    // copies: unlike the numeric buffers, the host may reuse these JSON objects
+    metadata: { ...fields.metadata },
+    time_step: time_step && { ...(time_step as NonNullable<TrajectoryRun[`time_step`]>) },
     properties,
   })
 }

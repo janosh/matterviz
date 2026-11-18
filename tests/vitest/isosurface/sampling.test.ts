@@ -1,19 +1,33 @@
 // Tests for world-coordinate volume sampling, grid compatibility checks, and
 // fractional display-range extraction
 import {
+  compute_isosurface_geometries,
+  MAX_SURFACE_TRIANGLES,
+} from '#lib/isosurface/geometry.js'
+import {
   compare_volume_grids,
   create_volume_sampler,
   extract_volume_range,
+  prepare_geometry_grid,
+  range_sample_counts,
   resolve_volume_window,
   sample_volume_at_positions,
   sanitize_display_range,
   trilinear_interpolate,
+  UNIT_CELL_RANGE,
 } from '#lib/isosurface/sampling.js'
-import type { DisplayRange } from '#lib/isosurface/sampling.js'
+import type { DisplayRange, VolumeWindow } from '#lib/isosurface/sampling.js'
 import type { VolumetricData } from '#lib/isosurface/types.js'
 import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
+import {
+  create_cart_to_frac,
+  create_frac_to_cart,
+  cross_3d,
+  det_3x3,
+  dot,
+  subtract,
+} from '#lib/math.js'
 import { diagonal_matrix } from '#lib/structure/supercell.js'
 import { describe, expect, test } from 'vite-plus/test'
 import {
@@ -309,71 +323,31 @@ describe(`extract_volume_range`, () => {
     }
   })
 
-  test(`a diagonal supercell frame reproduces the tiled window`, () => {
-    const volume = wave_volume()
-    const halo = 0.1
-    const frame = diagonal_matrix([2, 1, 1])
-    const { range: tiled_range } =
-      resolve_volume_window(volume, { supercell: frame, halo }) ?? {}
-    const tiled = extract_volume_range(volume, tiled_range as DisplayRange)
-    // the same window in the frame's own fractions, forced through the general frame path
-    // oxfmt-ignore
-    const frame_range: DisplayRange = [[-halo / 2, 1 + halo / 2], [-halo, 1 + halo], [-halo, 1 + halo]]
-    const framed = extract_volume_range(volume, frame_range, undefined, frame)
-    // measured bit-identical: s·M lands on the same f64 fractions as the tiled i/n samples
-    for (const key of [`dims`, `values`, `lattice`, `origin`] as const)
-      expect(framed[key]).toEqual(tiled[key])
-    const [framed_pos, tiled_pos] = [framed, tiled].map((grid) => surface(grid, 0.15))
-    expect(framed_pos.length).toBeGreaterThan(0)
-    expect(framed_pos).toEqual(tiled_pos)
-  })
+  // the isovalue's surface of a window as the Isosurface component extracts it
+  const window_surface = (volume: VolumetricData, window: VolumeWindow, isovalue: number) => {
+    const job = {
+      ...prepare_geometry_grid(volume, window),
+      surfaces: [{ token: ``, isovalue }],
+    }
+    return compute_isosurface_geometries({ volumes: [job] }).surfaces[0]
+  }
 
   // the window's halo of 0.1/√2 supercell fractions is checked by the resolve_volume_window table
   test(`a sheared supercell frame fills its parallelepiped plus halo with true colors`, () => {
     const volume = wave_volume()
     const frame = sheared
-    const { range } = resolve_volume_window(volume, { supercell: frame, halo: 0.1 }) ?? {}
-    if (!range) throw new Error(`periodic volume got no window`)
-    const extracted = extract_volume_range(volume, range, undefined, frame)
-    // 16 aligned intervals per a/b supercell length (8·|det|): round((1 + 0.2/√2)·16) + 1
-    expect(extracted.dims).toEqual([19, 19, 11])
-    // no source voxel is skipped: every one of the 8³ is some sample's nearest voxel (the
-    // max_j |M_ij|·n_j count hit only the index-|det M| = 2 sublattice, 256 of 512)
-    const hit_voxels = new Set<string>()
-    const steps = range.map(
-      ([lower, upper], axis) => (upper - lower) / (extracted.dims[axis] - 1),
-    )
-    for (let x_idx = 0; x_idx < extracted.dims[0]; x_idx++)
-      for (let y_idx = 0; y_idx < extracted.dims[1]; y_idx++)
-        for (let z_idx = 0; z_idx < extracted.dims[2]; z_idx++) {
-          const super_frac = [x_idx, y_idx, z_idx].map(
-            (idx, axis) => range[axis][0] + idx * steps[axis],
-          )
-          const voxel = [0, 1, 2].map((col) => {
-            const base = super_frac.reduce((sum, frac, row) => sum + frac * frame[row][col], 0)
-            const idx = Math.round(base * volume.dims[col]) % volume.dims[col]
-            return idx < 0 ? idx + volume.dims[col] : idx
-          })
-          hit_voxels.add(voxel.join(`,`))
-        }
-    expect(hit_voxels.size).toBe(volume.dims[0] * volume.dims[1] * volume.dims[2])
-    // every grid point holds the periodic source field at its own Cartesian position
-    const sample = create_volume_sampler(volume)
-    const to_cart = create_frac_to_cart(extracted.lattice)
-    const [size_x, size_y, size_z] = extracted.dims
-    for (let x_idx = 0; x_idx < size_x; x_idx++)
-      for (let y_idx = 0; y_idx < size_y; y_idx++)
-        for (let z_idx = 0; z_idx < size_z; z_idx++) {
-          const offset = to_cart([
-            x_idx / (size_x - 1),
-            y_idx / (size_y - 1),
-            z_idx / (size_z - 1),
-          ])
-          const point = offset.map((val, axis) => val + extracted.origin[axis]) as Vec3
-          expect(grid_value(extracted, x_idx, y_idx, z_idx)).toBeCloseTo(sample(point), 12)
-        }
-    const positions = surface(extracted, 0.15)
+    const window = resolve_volume_window(volume, { supercell: frame, halo: 0.1 })
+    if (!window) throw new Error(`periodic volume got no window`)
+    const { range } = window
+    // marching cubes runs on the unit cell, the 8³ source voxels themselves, tiled over the
+    // 36 of the 4 x 4 x 3 cells around the window whose bounding boxes meet it
+    const { grid, clip } = prepare_geometry_grid(volume, window)
+    expect(clip).toEqual({ frame, range, cells: expect.any(Array) })
+    expect(clip?.cells).toHaveLength(36)
+    expect(grid.values).toBe(volume.values)
+    const { positions } = window_surface(volume, window, 0.15)
     expect(positions.length).toBeGreaterThan(0)
+    const sample = create_volume_sampler(volume)
     const to_super_frac = create_cart_to_frac(dot(frame, volume.lattice))
     // Color volume not periodic with the geometry cell: a finite linear field f_a + 2f_b + 4f_c
     // over a box enclosing the supercell, which trilinear interpolation reproduces exactly
@@ -383,6 +357,7 @@ describe(`extract_volume_range`, () => {
     })
     const to_color_frac = create_cart_to_frac(color_vol.lattice)
     let min_frac_a = Infinity
+    let n_clipped = 0
     for (let idx = 0; idx < positions.length; idx += 3) {
       const vertex: Vec3 = [positions[idx], positions[idx + 1], positions[idx + 2]]
       const super_frac = to_super_frac(vertex)
@@ -391,34 +366,245 @@ describe(`extract_volume_range`, () => {
         expect(frac).toBeGreaterThanOrEqual(range[axis][0] - 1e-6)
         expect(frac).toBeLessThanOrEqual(range[axis][1] + 1e-6)
       })
+      // marching-cubes vertices hold the isovalue (f32 rounding x gradient <= ~1e-5); points
+      // the clip adds on a face lie on a triangle edge, within the mesh's chord error of it
+      const on_face = super_frac.some((frac, axis) =>
+        range[axis].some((bound) => Math.abs(frac - bound) < 1e-6),
+      )
+      if (on_face) n_clipped++
+      else expect(sample(vertex)).toBeCloseTo(0.15, 4)
       const [frac_a, frac_b, frac_c] = to_color_frac(
         vertex.map((val, axis) => val - color_vol.origin[axis]) as Vec3,
       )
       expect(colors[idx / 3]).toBeCloseTo(frac_a + 2 * frac_b + 4 * frac_c, 5)
     }
+    expect(n_clipped).toBeGreaterThan(0)
     // the halo is drawn: some vertices lie beyond the parallelepiped's a faces
     expect(min_frac_a).toBeLessThan(0)
   })
 
-  // one-voxel slab peaks that the Σ_j |M_ij|·n_j spacing stepped over (it rendered nothing).
-  // Over budget for the aligned grid, the expanded a axis shrinks and z keeps all 65 samples.
-  test.each<[Vec3, number, number, number | undefined, Vec3]>([
-    [[32, 24, 16], 0, 1, undefined, [33, 97, 17]],
-    [[64, 64, 64], 2, 16, undefined, [65, 65, 65]],
-    [[64, 64, 64], 2, 16, 274_000, [59, 65, 65]],
+  // One-voxel slab peaks that resampling stepped over: in the sheared frame, on the b = 0 face
+  // of a' = a + 2b each a step moved 2 voxels in y; with a halo, even a box window's
+  // round(width · n) + 1 samples fell off the source voxels. The slab's field depends on one base fraction alone, so its surface is planes at
+  // base fraction k + (1 +- 0.1) / n there and every vertex (clip points included) holds the
+  // isovalue. Each window face those planes cross must carry surface vertices.
+  test.each<[Vec3, number, Matrix3x3, number[]]>([
+    [
+      [32, 24, 16],
+      0,
+      [
+        [1, 1, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [0, 0.1, 0.15, 0.2, 0.25, 0.5],
+    ],
+    [
+      [8, 8, 8],
+      2,
+      [
+        [1, 1, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [0, 0.1],
+    ],
+    [
+      [8, 8, 8],
+      1,
+      [
+        [1, 2, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [0, 0.1],
+    ],
+    [[8, 8, 8], 0, diagonal_matrix([1, 1, 1]), [0.1, 0.15]],
+    [[8, 8, 8], 0, diagonal_matrix([2, 1, 1]), [0.1]],
+    [
+      [64, 64, 64],
+      2,
+      [
+        [1, 16, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [0, 0.1],
+    ],
   ])(
-    `%j grid, peak on axis %i, a' = a + %i b, budget %s`,
-    (dims, axis, shear, budget, expected) => {
+    `%j grid, peak on axis %i, frame %j: every face crossing survives`,
+    (dims, axis, frame, halos) => {
       const grid = make_grid(...dims, (...idx) => (idx[axis] === 1 ? 1 : 0))
       const volume = make_volume(grid, { lattice: cubic, periodic: true })
-      const frame = diagonal_matrix([1, 1, 1])
-      frame[0][1] = shear
-      const extracted = extract_volume_range(volume, x_window(0, 1), budget, frame)
-      expect(extracted.dims).toEqual(expected)
-      expect(extracted.data_range.max).toBe(1)
-      expect(surface(extracted, 0.9).length).toBeGreaterThan(0)
+      const sample = create_volume_sampler(volume)
+      for (const halo of halos) {
+        const window = resolve_volume_window(volume, { supercell: frame, halo })
+        if (!window) throw new Error(`periodic volume got no window`)
+        // a diagonal window is a box in base fractions
+        const window_frame = window.frame ?? diagonal_matrix([1, 1, 1])
+        const to_super_frac = create_cart_to_frac(dot(window_frame, volume.lattice))
+        const { positions } = window_surface(volume, window, 0.9)
+        expect(positions.length, `halo ${halo}`).toBeGreaterThan(0)
+        const verts = Array.from({ length: positions.length / 3 }, (_, idx): Vec3 => [
+          positions[3 * idx],
+          positions[3 * idx + 1],
+          positions[3 * idx + 2],
+        ])
+        for (const vertex of verts) expect(sample(vertex)).toBeCloseTo(0.9, 5)
+        const fracs = verts.map((vertex) => to_super_frac(vertex))
+        // base fraction of the peak axis at a window corner (s · M column `axis`)
+        const base_at = (super_frac: number[]) =>
+          super_frac.reduce((sum, frac, row) => sum + frac * window_frame[row][axis], 0)
+        for (const face_axis of [0, 1, 2])
+          for (const bound of window.range[face_axis]) {
+            const corners = [0, 1, 2, 3].map((mask) => {
+              const others = [0, 1, 2].filter((other) => other !== face_axis)
+              const corner = [0, 0, 0]
+              corner[face_axis] = bound
+              others.forEach(
+                (other, bit) => (corner[other] = window.range[other][(mask >> bit) & 1]),
+              )
+              return base_at(corner)
+            })
+            const [lo, hi] = [Math.min(...corners), Math.max(...corners)]
+            const n_pts = dims[axis]
+            const crosses = Array.from(
+              { length: Math.ceil(hi) - Math.floor(lo) + 1 },
+              (_, idx) => [0.9, 1.1].map((offset) => Math.floor(lo) + idx + offset / n_pts),
+            )
+              .flat()
+              .some((plane) => plane > lo + 1e-9 && plane < hi - 1e-9)
+            if (!crosses) continue
+            const on_face = fracs.some((frac) => Math.abs(frac[face_axis] - bound) < 1e-6)
+            expect(on_face, `halo ${halo}, face ${face_axis} = ${bound}`).toBe(true)
+          }
+      }
     },
   )
+
+  // A tiled window must be the unit-cell surface |det M| times over (halo 0): seams welded
+  // (open edges only on window faces), no cell repeated (no edge shared by 3+ triangles) or
+  // missing (area), no clip slivers (f32-coincident corners). Rows cover shears, det -1, -2
+  // and 3, a negative isovalue, an isovalue equal to grid values (coincident vertices on
+  // different edges stay apart), a box window, and the origins and cell sizes where f32
+  // positions defeated a position-hash weld.
+  const gyroid = (n_pts: number, levels = 0) =>
+    make_grid(n_pts, n_pts, n_pts, (...idx) => {
+      const val = idx.reduce((sum, coord) => sum + Math.cos((2 * Math.PI * coord) / n_pts), 0)
+      return levels ? Math.round(val * levels) / levels : val
+    })
+  // oxfmt-ignore
+  const triclinic = (scale: number): Matrix3x3 => [[scale, 0.1 * scale, 0.05 * scale], [0.3 * scale, 0.95 * scale, 0], [0.2 * scale, 0.3 * scale, 0.93 * scale]]
+  type WindowCase = [
+    string,
+    Matrix3x3,
+    number,
+    { levels?: number; lattice?: Matrix3x3; origin?: Vec3 },
+  ]
+  // oxfmt-ignore
+  const window_cases: WindowCase[] = [
+    [`shear`, [[1, 4, 0], [0, 1, 0], [0, 0, 1]], 0.37, {}],
+    [`shear, negative isovalue`, sheared, -0.37, {}],
+    [`swap, det -1`, [[0, 1, 0], [1, 0, 0], [0, 0, 1]], 0.37, {}],
+    [`det -2`, [[1, 1, 0], [1, -1, 0], [0, 0, 1]], -0.37, {}],
+    [`det 3`, [[2, 1, 0], [-1, 1, 0], [0, 0, 1]], 0.37, {}],
+    [`fcc, det 2, isovalue on grid values`, [[0, 1, 1], [1, 0, 1], [1, 1, 0]], 0.5, { levels: 2 }],
+    [`2x1x2 box, origin 5`, diagonal_matrix([2, 1, 2]), 0.37, { lattice: triclinic(10), origin: [5, 5, 5] }],
+    [`shear, 300 Å cell at origin 300`, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], 0.37, { lattice: triclinic(300), origin: [300, 300, 300] }],
+  ]
+  test.each(window_cases)(
+    `%s: the window is |det M| watertight unit-cell surfaces`,
+    (_label, frame, isovalue, { levels, lattice = cubic, origin = [0, 0, 0] }) => {
+      const volume = make_volume(gyroid(12, levels), { lattice, origin, periodic: true })
+      const window = resolve_volume_window(volume, { supercell: frame })
+      if (!window) throw new Error(`periodic volume got no window`)
+      // area and shortest triangle edge
+      const measure = ({
+        positions,
+        indices,
+      }: {
+        positions: Float32Array
+        indices: Uint32Array
+      }) => {
+        let [area, min_edge] = [0, Infinity]
+        for (let tri = 0; tri < indices.length; tri += 3) {
+          const [vert_a, vert_b, vert_c] = [0, 1, 2].map((corner): Vec3 => {
+            const start = 3 * indices[tri + corner]
+            return [positions[start], positions[start + 1], positions[start + 2]]
+          })
+          area +=
+            Math.hypot(...cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))) / 2
+          for (const [from, to] of [
+            [vert_a, vert_b],
+            [vert_b, vert_c],
+            [vert_c, vert_a],
+          ])
+            min_edge = Math.min(min_edge, Math.hypot(...subtract(to, from)))
+        }
+        return { area, min_edge }
+      }
+      // reference: finite marching cubes on the endpoint-inclusive unit cell, no tiling
+      const cell = extract_volume_range(volume, UNIT_CELL_RANGE)
+      const unit = marching_cubes(cell, isovalue, cell.lattice, {
+        periodic: false,
+        normals: false,
+        position_offset: cell.origin,
+      })
+      const mesh = window_surface(volume, window, isovalue)
+      const { area, min_edge } = measure(mesh)
+      // measured ≤ 1.4e-8 (f32 positions); a missing or repeated cell is off by 1 / |det M|
+      expect(area / measure(unit).area / Math.abs(det_3x3(frame))).toBeCloseTo(1, 6)
+      // measured ≥ 4e-4 Å; unsnapped cuts left 0 (corners equal in f32)
+      if (!levels) expect(min_edge).toBeGreaterThan(1e-5)
+      const window_frame = window.frame ?? diagonal_matrix([1, 1, 1])
+      const to_window = create_cart_to_frac(dot(window_frame, lattice))
+      // indices 2 * axis + side of the window faces a vertex lies on, -1 elsewhere
+      const faces_of = (vert: number) => {
+        const cart = [0, 1, 2].map((col) => mesh.positions[3 * vert + col] - origin[col])
+        const frac = to_window(cart as Vec3)
+        return window.range.flatMap((bounds, axis) =>
+          bounds.map((bound, side) =>
+            Math.abs(frac[axis] - bound) < 1e-6 ? 2 * axis + side : -1,
+          ),
+        )
+      }
+      const uses = new Map<string, number>()
+      for (let tri = 0; tri < mesh.indices.length; tri += 3)
+        for (const corner of [0, 1, 2]) {
+          const vert_a = mesh.indices[tri + corner]
+          const vert_b = mesh.indices[tri + ((corner + 1) % 3)]
+          const key = `${Math.min(vert_a, vert_b)},${Math.max(vert_a, vert_b)}`
+          uses.set(key, (uses.get(key) ?? 0) + 1)
+        }
+      expect(Math.max(...uses.values())).toBe(2)
+      const open_off_faces = [...uses].filter(([key, count]) => {
+        if (count !== 1) return false
+        const [faces_a, faces_b] = key.split(`,`).map((vert) => faces_of(Number(vert)))
+        return !faces_a.some((face) => face >= 0 && faces_b.includes(face))
+      })
+      expect(open_off_faces).toEqual([])
+    },
+  )
+
+  test(`a window too wide to count is rejected, not looped on`, () => {
+    // oxfmt-ignore
+    const huge: DisplayRange = [[0, 1e308], [0, 1], [0, 1]]
+    expect(() => range_sample_counts(periodic_vol(), huge)).toThrow(/needs Infinity x 11 x 11/)
+    expect(() => extract_volume_range(periodic_vol(), huge)).toThrow(RangeError)
+    expect(() => prepare_geometry_grid(periodic_vol(), { range: huge })).toThrow(
+      /covers 1e\+308 cells/,
+    )
+  })
+
+  // 1000 full-resolution copies of the 7616-triangle unit surface would be 7.6M
+  test(`a large tiled window coarsens its unit grid to the triangle budget`, () => {
+    const volume = make_volume(gyroid(32), { lattice: cubic, periodic: true })
+    const window = resolve_volume_window(volume, { supercell: diagonal_matrix([10, 10, 10]) })
+    if (!window) throw new Error(`periodic volume got no window`)
+    const n_tris = window_surface(volume, window, 0.37).indices.length / 3
+    expect(n_tris).toBeGreaterThan(MAX_SURFACE_TRIANGLES / 2)
+    expect(n_tris).toBeLessThanOrEqual(MAX_SURFACE_TRIANGLES)
+  })
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {
     const vol = { ...periodic_vol(), origin: [3, -2, 5] as Vec3 }

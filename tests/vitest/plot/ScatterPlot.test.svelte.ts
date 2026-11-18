@@ -511,6 +511,38 @@ describe(`ScatterPlot`, () => {
       expect(groups.map((group) => group.getAttribute(`opacity`))).toEqual([`1`, `0.25`])
     })
 
+    // a series on a derived x2 (10x over a log x) is the same points as its x twin, so its
+    // contours match: x2's px per unit is in the inherited log metric, not a linear one
+    test(`contours on a derived log x2 match the same points on x`, async () => {
+      const on_x = cloud(5, 5)
+      const props = {
+        x_axis: { scale_type: `log` as const, range: [1, 10] as [number, number] },
+        y_axis: { range: [0, 10] as [number, number] },
+      }
+      const contour_paths = async (series: DataSeries) => {
+        document.body.innerHTML = ``
+        const plot = await mount_sized_scatter_plot({
+          ...props,
+          series: [series],
+          x2_axis: {
+            derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
+          },
+          density_contours: { bandwidth: 10, levels: [0.5] },
+        })
+        return [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
+          path.getAttribute(`d`),
+        )
+      }
+      const x_paths = await contour_paths(on_x)
+      expect(x_paths.length).toBeGreaterThan(0)
+      const on_x2 = {
+        ...on_x,
+        x: Array.from(on_x.x, (val) => 10 * val),
+        x_axis: `x2` as const,
+      }
+      expect(await contour_paths(on_x2)).toEqual(x_paths)
+    })
+
     test(`contours ring the cluster centroid, inner levels tighter`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [cloud(5, 5)],
@@ -2699,6 +2731,101 @@ describe(`ScatterPlot`, () => {
     expect([...labels].map((el) => el.textContent)).toEqual([`10`, `100`, `1k`])
   })
 
+  // x2 labels per conversion: an inherited log scheme needs a positive derived domain (log10
+  // over log x is [-1, 2]), a pole on an end sample (1240/E at E = 0) shrinks the domain to the
+  // outermost finite samples, and a constant or an inverse that doesn't undo forward shows none
+  test.each([
+    [
+      `log10 over log x`,
+      { scale_type: `log`, range: [0.1, 100] },
+      Math.log10,
+      (val: number) => 10 ** val,
+      [`−1`, `−0.5`, `0`, `0.5`, `1`, `1.5`, `2`],
+    ],
+    [
+      `1240/E from E = 0`,
+      { range: [0, 10] },
+      (val: number) => 1240 / val,
+      (val: number) => 1240 / val,
+      [`6k`, `4k`, `2k`],
+    ],
+    [`constant`, { range: [1, 10] }, () => 3, () => 1, []],
+    [
+      `inverse not undoing forward`,
+      { range: [1, 10] },
+      (val: number) => 2 * val,
+      (val: number) => val,
+      [],
+    ],
+  ] as const)(`derived x2 labels: %s`, async (_name, x_axis, forward, inverse, expected) => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [...x_axis.range], y: [1, 2] }],
+      x_axis: { ...x_axis, range: [...x_axis.range] },
+      x2_axis: { derive: { forward, inverse } },
+    })
+    const labels = [...plot.querySelectorAll(`.x2-axis .tick text`)].map(
+      (el) => el.textContent,
+    )
+    expect(labels).toEqual(expected)
+  })
+
+  // a top marginal bound to a derived x2 bins over its displayed domain ([0, 100] here), not
+  // its own x2 range (ignored for display), which dropped the samples outside it
+  test(`top marginal on a derived x2 bins over the derived domain`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [0, 10], y: [1, 2] },
+        { x: [20, 50, 80], y: [1, 2, 3], x_axis: `x2` },
+      ],
+      x_axis: { range: [0, 10] },
+      x2_axis: {
+        range: [40, 60],
+        derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
+      },
+      marginals: { top: { type: `histogram`, axis: `x2` } },
+    })
+    expect(plot.querySelectorAll(`.marginal-top rect`)).toHaveLength(3)
+  })
+
+  // domain sampling (64 steps) misses a narrow gap where the conversion is undefined: interval
+  // majors and log minors at it are dropped, valid ticks on either side kept
+  test.each([
+    [
+      `interval majors`,
+      { range: [0, 1] },
+      { ticks: -0.49 },
+      [0.49, 0.495],
+      `.tick`,
+      [0, 0.98],
+    ],
+    [
+      `log minors`,
+      { range: [0.1, 1.1] },
+      { scale_type: `log` },
+      [0.499, 0.501],
+      `line.minor-tick`,
+      7,
+    ],
+  ] as const)(
+    `derived x2 drops %s where the conversion is undefined`,
+    async (_name, x_axis, x2_config, [gap_lo, gap_hi], selector, expected) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [...x_axis.range], y: [1, 2] }],
+        x_axis: { range: [...x_axis.range] },
+        x2_axis: {
+          ...x2_config,
+          derive: {
+            forward: (val: number) => (val >= gap_lo && val <= gap_hi ? NaN : val),
+            inverse: (val: number) => val,
+          },
+        },
+      })
+      const marks = [...plot.querySelectorAll(`.x2-axis ${selector}`)]
+      if (typeof expected === `number`) expect(marks).toHaveLength(expected)
+      else expect(marks.map((el) => Number(el.textContent))).toEqual(expected)
+    },
+  )
+
   // the x2 tick cache follows its effective tick scheme and both conversion callbacks: an explicit
   // linear x2 drops the inherited log ticks, and new callbacks in the same derive object relabel it
   test(`derived x2 ticks follow scale_type and derive callback changes`, async () => {
@@ -2716,7 +2843,7 @@ describe(`ScatterPlot`, () => {
     state.x2_axis = { ...state.x2_axis, scale_type: `linear` }
     await flush_render()
     const linear = x2_labels()
-    expect(linear).not.toEqual([`10`, `100`, `1k`])
+    expect(linear).toEqual([`200`, `400`, `600`, `800`, `1k`])
     expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(0)
     const derive = state.x2_axis.derive
     if (!derive) throw new Error(`x2_axis.derive missing`)
@@ -2728,8 +2855,7 @@ describe(`ScatterPlot`, () => {
       }),
     }
     await flush_render()
-    expect(x2_labels()).not.toEqual(linear)
-    expect(Math.max(...x2_labels().map(Number))).toBeLessThanOrEqual(200)
+    expect(x2_labels()).toEqual([`50`, `100`, `150`, `200`])
   })
 
   // a derived x2's zero line follows its displayed domain (forward image of x), not x2's range:

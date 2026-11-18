@@ -401,8 +401,9 @@ describe(`Isosurface`, () => {
     pending[0].resolve({ surfaces: [] })
     await settle()
     const jobs = compute_geometries_async.mock.calls.map(([input]) => input.volumes[0])
-    expect(jobs.map(({ lattice }) => lattice[0][0] / big_volume().lattice[0][0])).toEqual([
-      1, 1.5,
+    expect(jobs.map(({ clip }) => clip?.range[0])).toEqual([
+      [0, 1],
+      [-0.25, 1.25],
     ])
     for (const { grid } of jobs)
       expect(grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)
@@ -418,6 +419,17 @@ describe(`Isosurface`, () => {
     } finally {
       worker_gate.workers_disabled = false
     }
+  })
+
+  // the gate counts the output: a 10³ unit cell tiled over 6 x 6 x 6 cells is 216k points
+  test.each([
+    [`1 1 1`, false],
+    [`6 6 6`, true],
+  ])(`a small grid in supercell %s uses the worker: %s`, async (scaling, worker) => {
+    hold_worker_jobs()
+    mount_isosurface({ supercell: parse_supercell_matrix(scaling) })
+    await settle()
+    expect(compute_geometries_async).toHaveBeenCalledTimes(Number(worker))
   })
 
   test(`color source volume drives vertex colors and a white base color`, async () => {

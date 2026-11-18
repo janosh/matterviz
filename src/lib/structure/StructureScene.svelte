@@ -131,7 +131,7 @@
     type ResolvedPolyhedraOptions,
   } from './polyhedra'
   import { same_while_equal } from '#lib/utils.js'
-  import { find_drawn_completion_sites } from './pbc'
+  import { find_drawn_completion_sites, shift_bonds_by_unwrap } from './pbc'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
     TrajectoryLineColorMode,
@@ -610,8 +610,8 @@
     const key = bond_key_for(bond)
     const matches = (other: BondKeyTarget) => bond_key_for(other) === key
     return (
-      bond_order_overrides.find(matches)?.order ??
-      added_bonds.find(matches)?.order ??
+      shown_edits.bond_order_overrides.find(matches)?.order ??
+      shown_edits.added_bonds.find(matches)?.order ??
       bond_records(filtered_bond_pairs).find(matches)?.bond_order
     )
   }
@@ -641,18 +641,24 @@
     bond_context_menu = bond_context_target
   }
 
-  const current_bond_edit_state = () => ({
-    added_bonds,
-    removed_bonds,
-    bond_order_overrides,
+  // Bond edits are saved in the wrapped input frame the bonds binding reads, and matched and
+  // drawn in the display frame: molecules kept whole moved their sites by lattice vectors.
+  // No edits reads no sites, which would materialize a numeric frame's lazy ones.
+  const shift_edits = (bonds: StructureBond[], sign: 1 | -1) =>
+    bonds.length > 0 && structure ? shift_bonds_by_unwrap(bonds, structure.sites, sign) : bonds
+  const shown_edits = $derived({
+    added_bonds: shift_edits(added_bonds, 1),
+    removed_bonds: shift_edits(removed_bonds, 1),
+    bond_order_overrides: shift_edits(bond_order_overrides, 1),
   })
+  const current_bond_edit_state = () => shown_edits
 
   function apply_bond_edit_result(result: BondEditResult, close_menu = true) {
     if (!result.changed) return
     on_bond_edit_start?.()
-    added_bonds = result.state.added_bonds
-    removed_bonds = result.state.removed_bonds
-    bond_order_overrides = result.state.bond_order_overrides
+    added_bonds = shift_edits(result.state.added_bonds, -1)
+    removed_bonds = shift_edits(result.state.removed_bonds, -1)
+    bond_order_overrides = shift_edits(result.state.bond_order_overrides, -1)
     if (close_menu) close_bond_context_menu()
   }
 
@@ -1239,7 +1245,7 @@
   // instead of cancelling out) and reordering one turned it into an override.
   let editable_perceived_bond_pairs = $derived.by(() => {
     if (!editing_bonds) return []
-    const added_keys = new Set(added_bonds.map(rendered_bond_key_for))
+    const added_keys = new Set(shown_edits.added_bonds.map(rendered_bond_key_for))
     return bond_records(perceived_bond_pairs)
       .map((bond) => ({ ...bond, ...canonical_bond_target(bond) }))
       .filter((bond) => !added_keys.has(rendered_bond_key_for(bond)))
@@ -1259,10 +1265,10 @@
       return perceived_bond_pairs
 
     // Build set of removed bond keys for efficient lookup
-    const removed_keys = new Set(removed_bonds.map(bond_key_for))
-    const added_keys = new Set(added_bonds.map(bond_key_for))
+    const removed_keys = new Set(shown_edits.removed_bonds.map(bond_key_for))
+    const added_keys = new Set(shown_edits.added_bonds.map(bond_key_for))
     const order_overrides = new Map(
-      bond_order_overrides.map((bond) => [bond_key_for(bond), bond.order]),
+      shown_edits.bond_order_overrides.map((bond) => [bond_key_for(bond), bond.order]),
     )
 
     // Filter calculated bonds: exclude removed, replaced by manual additions, and hidden.
@@ -1300,7 +1306,7 @@
       }
       return [site_idx, ...(image_copies.get(site_idx) ?? [])].filter(is_site_visible)
     }
-    for (const added_bond of added_bonds) {
+    for (const added_bond of shown_edits.added_bonds) {
       // a caller's bond to a site this structure lacks draws nothing (no throw mid-render)
       if (![added_bond.site_idx_1, added_bond.site_idx_2].every((idx) => sites[idx])) continue
       const bond = structure_bond_to_bond_pair(structure, added_bond)
@@ -1325,7 +1331,7 @@
   let bonds_to_render = $derived.by(() => {
     let bonds = filtered_bond_pairs
     if (!applies_to_structure(effective_show_bonds, Boolean(lattice))) {
-      const added_keys = new Set(added_bonds.map(bond_key_for))
+      const added_keys = new Set(shown_edits.added_bonds.map(bond_key_for))
       bonds = bond_records(bonds).filter((bond) => added_keys.has(bond_key_for(bond)))
     }
     const centers = cutaway_centers

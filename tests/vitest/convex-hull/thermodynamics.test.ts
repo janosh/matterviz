@@ -936,6 +936,36 @@ describe(`hull decomposition`, () => {
     ])
   })
 
+  // hover probes solve on the lowest polymorph per composition (thousands of same-composition
+  // polymorphs in descending energy made Bland's rule pivot through each), built once per entries
+  test(`the probe solves on one candidate per composition, cached per entries array`, () => {
+    const elements = [`Li`, `Fe`] as const
+    let reads = 0
+    const polymorph = (composition: Record<string, number>, e_form: number) =>
+      Object.defineProperty(make_phase(composition, e_form), `e_form_per_atom`, {
+        get: () => (reads++, e_form),
+      })
+    const entries = [
+      polymorph({ Li: 1 }, 0),
+      polymorph({ Fe: 1 }, 0),
+      // Li2Fe2 is LiFe normalized: the lowest of all 2000 wins
+      ...Array.from({ length: 2000 }, (_, idx) =>
+        polymorph(idx % 2 ? { Li: 1, Fe: 1 } : { Li: 2, Fe: 2 }, -idx / 2000),
+      ),
+    ]
+    const start = performance.now()
+    const result = decompose_hull_composition({ Li: 1, Fe: 1 }, entries, elements)
+    expect(performance.now() - start).toBeLessThan(500)
+    expect(result?.decomposition).toEqual([
+      { phase: entries.at(-1), atom_fraction: expect.closeTo(1, 12) },
+    ])
+    const reads_first = reads
+    expect(
+      decompose_hull_composition({ Li: 1, Fe: 3 }, entries, elements)?.energy,
+    ).toBeCloseTo(-1999 / 2000 / 2, 12)
+    expect(reads).toBe(reads_first) // the second probe reuses the candidates
+  })
+
   test(`stable entries, excluded entries and entries outside the system`, () => {
     const elements = [`Li`, `O`] as const
     const model = compute_hull_model(

@@ -256,13 +256,24 @@ export function process_model_entries(
     ]
   })
   const projected = thermo.process_hull_entries(grand)
-  // every grand entry has an absolute energy, so each element just needs a unary reference
-  const refs = thermo.find_lowest_energy_unary_refs(projected.entries)
-  const missing = projected.elements.filter((element) => !(element in refs))
-  if (missing.length > 0) {
-    throw new Error(`open_elements needs an elemental reference for ${missing.join(`, `)}`)
-  }
+  const missing = missing_open_reference(projected.entries, projected.elements)
+  if (missing) throw new Error(missing)
   return { ...projected, is_open: true }
+}
+
+// Why grand-potential entries can't be drawn: an element without a unary reference (every grand
+// entry has an absolute energy, so that is all each element needs). Rechecked after the
+// temperature filter, which can drop a reference tabulated at other temperatures only.
+export function missing_open_reference(
+  entries: PhaseData[],
+  elements: readonly ElementSymbol[],
+  temperature?: number,
+): string | null {
+  const refs = thermo.find_lowest_energy_unary_refs(entries)
+  const missing = elements.filter((element) => !(element in refs))
+  if (missing.length === 0) return null
+  const at_temp = temperature === undefined ? `` : ` at ${temperature} K`
+  return `open_elements needs an elemental reference for ${missing.join(`, `)}${at_temp}`
 }
 
 // An element composition (e.g. a probed formula) in the model's composition keys: without

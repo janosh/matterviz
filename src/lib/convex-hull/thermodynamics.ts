@@ -728,6 +728,38 @@ export function get_hull_decomposition<Entry extends PhaseData>(
   return decompose_hull_composition(entry.composition, entries, elements)
 }
 
+type ProbeCandidate<Entry> = { vertex: Entry; fractions: number[]; energy_per_atom: number }
+// Candidates per entries array (a new model builds a new one) and element order
+const probe_candidate_cache = new WeakMap<object, Map<string, ProbeCandidate<PhaseData>[]>>()
+// The lowest finite, non-excluded E_form entry per normalized composition (first on ties): a
+// higher polymorph can't lower the hull, but each would cost the probe's LP a pivot on hover
+function probe_candidates<Entry extends PhaseData>(
+  entries: readonly Entry[],
+  elements: readonly ElementSymbol[],
+): ProbeCandidate<Entry>[] {
+  let by_elements = probe_candidate_cache.get(entries)
+  if (!by_elements) probe_candidate_cache.set(entries, (by_elements = new Map()))
+  const elements_key = elements.join(`,`)
+  const cached = by_elements.get(elements_key)
+  if (cached) return cached as ProbeCandidate<Entry>[]
+  // correctly rounded division: proportional integer compositions give equal fractions
+  const lowest = new Map<string, ProbeCandidate<Entry>>()
+  for (const vertex of entries) {
+    const energy_per_atom = vertex.e_form_per_atom
+    if (vertex.exclude_from_hull || energy_per_atom === undefined) continue
+    if (!Number.isFinite(energy_per_atom)) continue
+    const fractions = system_fractions(vertex.composition, elements)
+    if (!fractions) continue
+    const key = fractions.join(`,`)
+    const current = lowest.get(key)
+    if (!current || energy_per_atom < current.energy_per_atom)
+      lowest.set(key, { vertex, fractions, energy_per_atom })
+  }
+  const candidates = [...lowest.values()]
+  by_elements.set(elements_key, candidates)
+  return candidates
+}
+
 // Equilibrium products of ANY composition in the system: the entries (atom fractions) whose
 // mixture is the lower hull of every finite, non-excluded E_form there, and its E_form in
 // eV/atom. Cached stability is no filter: a filtered dataset's cached distances may come from a
@@ -740,17 +772,7 @@ export function decompose_hull_composition<Entry extends PhaseData>(
 ): LowestEnergyMixture<Entry> | null {
   const fractions = system_fractions(composition, elements)
   if (!fractions) return null
-  const vertices = entries.flatMap((vertex) => {
-    const energy_per_atom = vertex.e_form_per_atom
-    const vertex_fractions =
-      !vertex.exclude_from_hull &&
-      Number.isFinite(energy_per_atom) &&
-      system_fractions(vertex.composition, elements)
-    return vertex_fractions && energy_per_atom !== undefined
-      ? [{ vertex, fractions: vertex_fractions, energy_per_atom }]
-      : []
-  })
-  const mixture = lowest_energy_mixture(fractions, vertices)
+  const mixture = lowest_energy_mixture(fractions, probe_candidates(entries, elements))
   if (!mixture) return null
   const decomposition = mixture.decomposition.map(({ phase, atom_fraction }) => ({
     phase: phase.vertex,

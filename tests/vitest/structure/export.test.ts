@@ -1,11 +1,12 @@
 import type { ElementSymbol } from '#lib'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, LatticeType, Site } from '#lib/structure/index.js'
 import {
   symmetrized_cif_unavailable_reason,
   create_structure_filename,
   fractional_export_unavailable_reason,
+  nearest_image,
   poscar_export_unavailable_reason,
   xyz_export_unavailable_reason,
   structure_to_cif_str,
@@ -106,6 +107,7 @@ describe(`Export functionality`, () => {
       [`both`, { force: [1, -2, 3], selective_dynamics: [false, false, false] }],
       [`clashing magmom`, { magmom: 1.5, MAGMOM: 2 }, `'MAGMOM' clashes`],
       [`clashing Force`, { Force: [1, 2, 3] }, `'Force' clashes`],
+      [`a prototype-named column`, { constructor: 1.5 }], // no inherited alias lookups
     ] as [string, Record<string, unknown>, string?][])(
       `round-trips %s through extended XYZ`,
       (_name, properties, clash) => {
@@ -992,6 +994,21 @@ describe(`Export functionality`, () => {
       }
     })
 
+    // a skewed cell's nearest image can lie beyond the 27 unit shifts of the rounded offset
+    it(`nearest_image finds the closest lattice image of a skewed cell`, () => {
+      const lattice: Matrix3x3 = [
+        [3, 0, 0],
+        [300, 4, 0],
+        [0, 0, 5],
+      ]
+      const { frac, dist } = nearest_image(
+        [0.05, 0.05, 0],
+        math.create_lattice_converters(lattice),
+      )
+      expect(frac).toEqual([-4.95, 0.05, 0])
+      expect(dist).toBeCloseTo(0.25, 12)
+    })
+
     it(`export pane: CIF always P1, the symmetrized CIF needs symmetry data`, async () => {
       const structure = make_crystal(cubic_matrix(5.64), rock_salt)
       const sym_data = await analyze_structure_symmetry(structure)
@@ -1050,6 +1067,37 @@ describe(`Export functionality`, () => {
       expect(() => structure_to_cif_str(stretched, sym_data)).toThrow(
         `lattice differs from the analyzed one by up to 0.36`,
       )
+      // the analysis records the cell it was sent: lattice and species edits while it runs
+      // need a fresh analysis (unchanged inputs still export)
+      for (const [edit, error] of [
+        [(struct: Crystal) => (struct.lattice.matrix[2][2] = 6), `lattice differs`],
+        [(struct: Crystal) => (struct.sites[4].species[0].element = `Br`), `site 5 is Br-1:1`],
+      ] as const) {
+        const in_flight = make_crystal(cubic_matrix(5.64), rock_salt)
+        const pending = analyze_structure_symmetry(in_flight)
+        edit(in_flight)
+        expect(() => structure_to_cif_str(in_flight, sym_data)).toThrow(error)
+        const fresh_sym = await pending
+        expect(() => structure_to_cif_str(in_flight, fresh_sym)).toThrow(error)
+      }
+      // occupancies the CIF writes differently (8 decimals) are distinct orbits, not one
+      // that writes the representative's occupancy at both bcc sites
+      const occus = [0.4999996, 0.5000004]
+      const bcc = make_crystal(
+        cubic_matrix(2.87),
+        occus.map((occu, idx) => ({
+          element: `Fe`,
+          abc: [idx / 2, idx / 2, idx / 2] as Vec3,
+          occu,
+        })),
+      )
+      const bcc_sym = await analyze_structure_symmetry(bcc)
+      const bcc_sites = parse_cif(structure_to_cif_str(bcc, bcc_sym)).sites
+      expect(
+        bcc_sites
+          .map(({ species }) => species[0].occu)
+          .toSorted((occu_a, occu_b) => occu_a - occu_b),
+      ).toEqual(occus)
       // whole lattice vectors off the analyzed positions still export
       const shifted = make_crystal(cubic_matrix(5.64), [
         { ...rock_salt[0], abc: [1, 0, -1] },

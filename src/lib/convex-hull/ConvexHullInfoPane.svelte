@@ -57,9 +57,9 @@
     pane_open?: boolean
     // Composition entered in the probe field, and its decomposition (null: none or outside)
     probe_composition?: CompositionType | null
-    // The last submitted formula and the model composition it gave, kept by the hull across
-    // remounts of this pane
-    probe_submission?: { text: string; model: string } | null
+    // The last submitted formula and the probe it set (the object read back from the binding,
+    // so a host replacement is told apart by identity), kept by the hull across remounts
+    probe_submission?: { text: string; probe: CompositionType | null } | null
     probe?: HullProbe | null
     elements?: ElementSymbol[]
     // the hull's composition keys, which typed formulas are converted to before probing
@@ -115,20 +115,20 @@
     } catch (err) {
       parse_error = `Can't parse ${text}: ${to_error(err).message}`
     }
-    probe_submission = { text, model: JSON.stringify(probe_composition) }
+    probe_submission = { text, probe: probe_composition }
   }
   const submit_probe = (event: SubmitEvent) => {
     event.preventDefault()
     apply_probe(probe_text.trim())
   }
   // A new component basis or set of open elements gives the submitted formula other model
-  // coordinates: project it again. A probe the host has set since stays as given, and so does
-  // every probe when only a chemical potential changes.
+  // coordinates: project it again. A probe the host has set since (even at equal coordinates)
+  // stays as given, and so does every probe when only a chemical potential changes.
   const basis = $derived(JSON.stringify([components, Object.keys(open_elements ?? {})]))
   $effect(() => {
     void basis
     untrack(() => {
-      if (probe_submission && JSON.stringify(probe_composition) === probe_submission.model) {
+      if (probe_submission && probe_composition === probe_submission.probe) {
         apply_probe(probe_submission.text)
       }
     })

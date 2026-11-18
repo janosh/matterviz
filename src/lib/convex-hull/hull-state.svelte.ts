@@ -11,6 +11,7 @@ import {
   apply_formation_energies,
   build_hull_model,
   compute_energy_mode_info,
+  missing_open_reference,
   process_model_entries,
 } from './model'
 import type {
@@ -146,6 +147,14 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // rendered in place of the plot
   const error = $derived.by((): string | null => {
     if (normalized_source.error) return normalized_source.error
+    if (normalized_source.is_open && temp_filtered_entries !== source_entries) {
+      const missing = missing_open_reference(
+        temp_filtered_entries,
+        elements,
+        inputs.temperature(),
+      )
+      if (missing) return missing
+    }
     if (elements.length === 0 || elements.length === dim) return null
     return `Convex hulls require 2, 3 or 4 elements, found ${elements.length}: ${elements.join(`, `)}`
   })

@@ -773,7 +773,8 @@
     if (!density_config) return []
     const fractions = density_level_fractions(density_config.levels)
     // Non-finite values and log-invalid ones become NaN pixels, which the grid skips
-    const to_px = (axis: FacetAxis, { scale_type }: typeof final_x2_axis) => {
+    const to_px = (axis: FacetAxis) => {
+      const scale_type = frame.tick_scale_type(axis)
       const { forward } = axis_transform(scale_type)
       const is_log = get_scale_type_name(scale_type) === `log`
       const slope = frame.px_per_unit[axis]
@@ -782,8 +783,8 @@
     }
     return assigned_series.map((srs) => {
       if (!srs || srs.visible === false) return null
-      const x_px = srs.x_axis === `x2` ? to_px(`x2`, final_x2_axis) : to_px(`x`, final_x_axis)
-      const y_px = srs.y_axis === `y2` ? to_px(`y2`, final_y2_axis) : to_px(`y`, final_y_axis)
+      const x_px = to_px(srs.x_axis === `x2` ? `x2` : `x`)
+      const y_px = to_px(srs.y_axis === `y2` ? `y2` : `y`)
       const xs = Float64Array.from({ length: srs.x.length }, (_, idx) => x_px(srs.x[idx]))
       const ys = Float64Array.from({ length: srs.x.length }, (_, idx) => y_px(srs.y[idx]))
       return level_densities(xs, ys, fractions, { bandwidth: density_config.bandwidth })

@@ -57,6 +57,7 @@ import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-ti
 import { index_ref_lines, solve_reference_annotations } from '#lib/plot/core/reference-line.js'
 import {
   create_axis_scales,
+  derived_tick_type,
   generate_log_minor_ticks,
   generate_ticks,
   log_floor_scale,
@@ -200,11 +201,24 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const has_x2 = (): boolean => opts.has_x2() || x2_derived()
   const axis_shown = (axis: FacetAxis): boolean =>
     axis === `x2` ? has_x2() : axis === `y2` ? opts.has_y2() : true
-  // Tick scheme of an axis: its own scale_type, else x's for a derived x2, else linear
-  const tick_scale_type = (axis: FacetAxis): ScaleType => {
+  // Tick scheme an axis asks for: its own scale_type, else x's for a derived x2, else linear
+  const requested_tick_type = (axis: FacetAxis): ScaleType => {
     const axes = opts.axes()
     const inherited = axis === `x2` && axes.x2.derive ? axes.x.scale_type : undefined
     return axes[axis].scale_type ?? inherited ?? `linear`
+  }
+  // ...and the one it ticks with: a derived x2 is log only over a positive domain
+  const tick_scale_type = (axis: FacetAxis): ScaleType =>
+    axis === `x2` && x2_derived()
+      ? derived_tick_type(requested_tick_type(axis), scales.x2.domain() as Vec2)
+      : requested_tick_type(axis)
+  // Generated x2 ticks a derived axis can place: domain sampling misses a narrow gap where the
+  // conversion is undefined, so each tick's preimage must map back to a finite value
+  const placeable = (axis: FacetAxis, ticks: number[]): number[] => {
+    const derive = axis === `x2` ? opts.axes().x2.derive : undefined
+    return derive
+      ? ticks.filter((tick) => Number.isFinite(derive.forward(derive.inverse(tick))))
+      : ticks
   }
   const measured_axis_config = (axis: FacetAxis): AxisConfig =>
     opts.measured_axes?.()[axis] ?? opts.axes()[axis]
@@ -251,10 +265,17 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       const domain =
         axis === `x2` && x2_derived() ? (axis_scales.x2.domain() as Vec2) : axis_ranges[axis]
       if (!domain.every(Number.isFinite)) return []
-      return generate_ticks(domain, tick_scale_type(axis), config.ticks, axis_scales[axis], {
-        default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis],
-        format: config.format,
-      })
+      const generated = generate_ticks(
+        domain,
+        tick_scale_type(axis),
+        config.ticks,
+        axis_scales[axis],
+        {
+          default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis],
+          format: config.format,
+        },
+      )
+      return placeable(axis, generated)
     }
     const entries = FACET_AXES.map((axis) => [axis, axis_ticks(axis)])
     return Object.fromEntries(entries) as Record<FacetAxis, number[]>
@@ -607,7 +628,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     // keyed by each axis's tick scheme, so a derived x2 going from inherited log to explicit
     // linear rebuilds its scale
     const key = JSON.stringify([
-      FACET_AXES.map((axis) => [tick_scale_type(axis), current[axis]]),
+      FACET_AXES.map((axis) => [requested_tick_type(axis), current[axis]]),
       pad,
       width,
       height,
@@ -634,7 +655,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const px_per_unit = $derived.by(() => {
     const next = Object.fromEntries(
       FACET_AXES.map((axis) => {
-        const { forward } = axis_transform(opts.axes()[axis].scale_type)
+        const { forward } = axis_transform(tick_scale_type(axis))
         const [[dom_lo, dom_hi], [px_lo, px_hi]] = [
           scales[axis].domain(),
           scales[axis].range(),
@@ -643,8 +664,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       }),
     ) as Record<FacetAxis, number>
     const prev = last_px_per_unit
+    // non-finite (a derived x2's NaN domain) counts as unchanged, so it reruns nothing
     const near = (axis: FacetAxis) =>
-      prev !== undefined && Math.abs(next[axis] - prev[axis]) <= 1e-9 * Math.abs(next[axis])
+      prev !== undefined &&
+      (Math.abs(next[axis] - prev[axis]) <= 1e-9 * Math.abs(next[axis]) ||
+        (!Number.isFinite(next[axis]) && !Number.isFinite(prev[axis])))
     return FACET_AXES.every(near) && prev ? prev : (last_px_per_unit = next)
   })
   let last_ticks: Record<FacetAxis, number[]> | undefined
@@ -666,7 +690,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
           get_scale_type_name(tick_scale_type(axis)) === `log` &&
           opts.axes()[axis].minor_ticks !== false &&
           ticks[axis].length > 0
-        return [axis, show ? generate_log_minor_ticks(axis_domains[axis], ticks[axis]) : []]
+        const minor = show ? generate_log_minor_ticks(axis_domains[axis], ticks[axis]) : []
+        return [axis, placeable(axis, minor)]
       }),
     ) as Record<FacetAxis, number[]>,
   )
@@ -937,6 +962,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get px_per_unit() {
       return px_per_unit
     },
+    tick_scale_type, // the metric px_per_unit is in
     // Pixel scale of a value axis whose log floor holds bar bases and whisker lows at the
     // axis minimum instead of NaN. The floor is the scale's own (positive) domain, as the
     // view's range can reach below zero on a log axis switched to over signed data.

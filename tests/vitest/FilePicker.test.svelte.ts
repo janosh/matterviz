@@ -2,12 +2,14 @@ import FilePicker from '#lib/FilePicker.svelte'
 import type { FileInfo } from '#lib/io/index.js'
 import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-paint.js'
 import { color as d3_color } from 'd3-color'
-import { flushSync, mount, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { doc_query } from './setup'
 
 describe(`FilePicker`, () => {
+  const mount_picker = (props: ComponentProps<typeof FilePicker>) =>
+    mount(FilePicker, { target: document.body, props })
   const mock_file = (
     name: string,
     category?: `crystal` | `molecule` | `unknown`,
@@ -49,7 +51,7 @@ describe(`FilePicker`, () => {
     ],
     [`entries without a url`, [`A-B.json`, `C-D.json`].map((name) => ({ name, url: `` })), 2],
   ])(`renders %s`, (_desc, files: FileInfo[], expected_children: number) => {
-    mount(FilePicker, { target: document.body, props: { files } })
+    mount_picker({ files })
     expect(doc_query(`.file-picker`).children).toHaveLength(expected_children)
   })
 
@@ -57,7 +59,7 @@ describe(`FilePicker`, () => {
     [[`structure1.cif`, `molecule.xyz`], 2],
     [[], 0],
   ])(`marks active_files=%j with .active and aria-current`, (active_files, expected) => {
-    mount(FilePicker, { target: document.body, props: { files: mock_files, active_files } })
+    mount_picker({ files: mock_files, active_files })
     const active = file_items().filter((item) => item.classList.contains(`active`))
     expect(active).toHaveLength(expected)
     expect(
@@ -91,10 +93,7 @@ describe(`FilePicker`, () => {
         ...DEFAULT_FILE_TYPE_PAINTS,
         incar: file_type_paint(`rgb(1, 2, 3)`),
       }
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: [{ name, url: ``, type }], file_type_paints },
-      })
+      mount_picker({ files: [{ name, url: ``, type }], file_type_paints })
       expect(doc_query(`.file-item`).title).toBe(`Drag this ${expected_type} file`)
       expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
     },
@@ -110,10 +109,7 @@ describe(`FilePicker`, () => {
     [`a single category`, true, two_cifs(`crystal`), []],
     [`a single type but two categories`, true, two_cifs(`molecule`), [`crystal`, `molecule`]],
   ])(`offers only narrowing filters for %s`, (_desc, show_cats, files, expected_labels) => {
-    mount(FilePicker, {
-      target: document.body,
-      props: { files, show_category_filters: show_cats },
-    })
+    mount_picker({ files, show_category_filters: show_cats })
     const labels = [...document.querySelectorAll(`button.legend-item`)].map((btn) =>
       btn.textContent?.trim(),
     )
@@ -133,13 +129,10 @@ describe(`FilePicker`, () => {
       [`chgcar`, file_type_paint(`#4fc3f7`)],
       [`cif`, file_type_paint(`#111111`)],
     ])
-    const component = mount(FilePicker, {
-      target: document.body,
-      props: {
-        files: labeled,
-        get file_type_paints() {
-          return Object.fromEntries(paints)
-        },
+    const component = mount_picker({
+      files: labeled,
+      get file_type_paints() {
+        return Object.fromEntries(paints)
       },
     })
     flushSync()
@@ -189,13 +182,10 @@ describe(`FilePicker`, () => {
       `--file-badge`,
     ],
   ])(`recomputes contrast for %s`, async (_desc, paint, token) => {
-    const component = mount(FilePicker, {
-      target: document.body,
-      props: {
-        files: [{ name: `Si`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` }],
-        file_type_paints: { chgcar: paint },
-        style: `${token}: black`,
-      },
+    const component = mount_picker({
+      files: [{ name: `Si`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` }],
+      file_type_paints: { chgcar: paint },
+      style: `${token}: black`,
     })
     flushSync()
     const picker = doc_query(`.file-picker`)
@@ -217,7 +207,7 @@ describe(`FilePicker`, () => {
         url: `/files/${idx}`,
         label: `File ${idx}`,
       }))
-      const component = mount(FilePicker, { target: document.body, props: { files } })
+      const component = mount_picker({ files })
       flushSync()
       expect(document.querySelectorAll(`.file-type-badge`)).toHaveLength(n_files)
       const n_observers = new Set(observe_spy.mock.contexts).size
@@ -237,10 +227,7 @@ describe(`FilePicker`, () => {
   ])(
     `show_category_filters=%s lists %j in the legend as unpressed buttons`,
     (show_category_filters, expected_labels, n_dividers) => {
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: mock_files, show_category_filters },
-      })
+      mount_picker({ files: mock_files, show_category_filters })
       for (const label of expected_labels) expect(legend_text()).toContain(label)
       if (!show_category_filters) expect(legend_text()).not.toContain(`crystal`)
       const buttons = document.querySelectorAll(`button.legend-item`)
@@ -255,10 +242,7 @@ describe(`FilePicker`, () => {
   )
 
   it(`toggles category/type filters, keeps them mutually exclusive, and clears them`, () => {
-    mount(FilePicker, {
-      target: document.body,
-      props: { files: mock_files, show_category_filters: true },
-    })
+    mount_picker({ files: mock_files, show_category_filters: true })
     const click = (element: HTMLElement) => {
       element.click()
       flushSync()
@@ -288,7 +272,7 @@ describe(`FilePicker`, () => {
   // A files swap can retire the active filter's value, hiding every file with no way back
   it(`drops a filter whose value the new files no longer offer`, () => {
     const props = $state({ files: mock_files, show_category_filters: true })
-    mount(FilePicker, { target: document.body, props })
+    mount_picker(props)
     legend_btn(`XYZ`).click()
     flushSync()
     expect(file_items().map((item) => item.textContent?.trim())).toEqual([`molecule.xyz`])
@@ -302,10 +286,7 @@ describe(`FilePicker`, () => {
   it(`file rows are draggable keyboard buttons that fire on_click on click, Enter and Space`, () => {
     const on_click = vi.fn()
     const on_drag_start = vi.fn()
-    mount(FilePicker, {
-      target: document.body,
-      props: { files: mock_files.slice(0, 2), on_click, on_drag_start },
-    })
+    mount_picker({ files: mock_files.slice(0, 2), on_click, on_drag_start })
     const [first, second] = file_items()
     expect(first.getAttribute(`role`)).toBe(`button`)
     expect(first.tabIndex).toBe(0)

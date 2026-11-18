@@ -67,6 +67,20 @@ describe(`decode_binary_array`, () => {
     expect(copied.values).toEqual(values)
     // a bare ArrayBuffer works too
     expect(decode_binary_array({ ...spec, data: values.buffer }, `x`).values).toEqual(values)
+    // float32 inside a larger buffer: an aligned offset (8) is viewed in place, a misaligned
+    // one (2) copied, both holding the exact values
+    const f32 = Float32Array.of(0.1, -7, 3.25)
+    for (const offset of [8, 2]) {
+      const host = new Uint8Array(offset + f32.byteLength + 4)
+      host.set(new Uint8Array(f32.buffer), offset)
+      const view = new DataView(host.buffer, offset, f32.byteLength)
+      const decoded = decode_binary_array({ dtype: `float32`, shape: [3], data: view }, `x`)
+      expect(decoded.values).toEqual(f32)
+      if (offset === 8) {
+        expect(decoded.values.buffer).toBe(host.buffer)
+        expect(decoded.values.byteOffset).toBe(8)
+      } else expect(decoded.values.buffer).not.toBe(host.buffer)
+    }
   })
 
   test.each([
@@ -172,9 +186,21 @@ describe(`trajectory_from_binary`, () => {
       numbers: arr(Int32Array.of(1, 1), [n_atoms]),
       lattice: arr(cell, [3, 3]),
     }
-    const fields = { pbc: [true, true, false], time_step: { value: 2, unit: `fs` } }
+    const fields = {
+      pbc: [true, true, false],
+      time_step: { value: 2, unit: `fs` },
+      metadata: { source: `md` },
+    }
     const run = trajectory_from_binary(envelope(`trajectory`, arrays, fields))
-    fields.pbc[0] = false // the run keeps its own copy of the flags
+    // the run keeps its own copy of the flags, time step and metadata
+    fields.pbc[0] = false
+    fields.time_step.value = 4
+    fields.metadata.source = `edited`
+    expect(run.metadata).toEqual({ source: `md` })
+    // File Size counts every decoded buffer: 72 + 72 + 8 + 72 bytes
+    expect(run.provenance.source_bytes).toBe(
+      positions_f32.byteLength + forces_f32.byteLength + 8 + cell.byteLength,
+    )
     expect(run.properties.rows.map((row) => row.step)).toEqual([0, 1, 2])
     expect(run.properties.rows.map((row) => row.properties.volume)).toEqual([125, 125, 125])
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })

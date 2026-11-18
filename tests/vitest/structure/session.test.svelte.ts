@@ -76,7 +76,7 @@ describe(`display pipeline`, () => {
       [`C`, [0.97, 0.5, 0.5]],
       [`H`, [0.07, 0.5, 0.5]],
     ])
-    const { host, session, notices } = make_session({ structure: torn })
+    const { host, session } = make_session({ structure: torn })
     const ch_dist = () => {
       const [site_c, site_h] = session.displayed_structure?.sites ?? []
       return euclidean_dist(site_c.xyz, site_h.xyz)
@@ -91,15 +91,20 @@ describe(`display pipeline`, () => {
       expect.closeTo(0.07, 12),
     ])
     expect(host.structure?.sites[0].abc[0]).toBe(0.97) // the input stays wrapped
-    // a failing bond search keeps the wrapped structure on display and says why, once
-    flush_set(host, { bonding_options: { max_distance_ratio: NaN } })
-    expect(ch_dist()).toBeCloseTo(9, 10)
-    flush_set(host, { structure: { ...torn } })
-    expect(
-      notices.filter((msg) => msg.startsWith(`Cannot keep molecules whole: Invalid`)),
-    ).toHaveLength(1)
-    flush_set(host, { structure: torn, bonding_options: {} })
-    flush_set(host, { supercell_scaling: `2x1x1` })
+    // a drag keeps the last translations and runs no bond search per move: pulling H 4 A
+    // from C would otherwise jump C a lattice vector mid-drag; the release unwraps afresh
+    flush_set(host, { measure_mode: `edit-atoms` })
+    const search = vi.spyOn(neighbor_list, `neighbor_query_cutoff`)
+    session.dragging_atoms = true
+    session.move_sites([1], [4, 0, 0])
+    flushSync()
+    const c_abc = () => session.displayed_structure?.sites[0].abc[0]
+    expect([c_abc(), search.mock.calls.length]).toEqual([expect.closeTo(-0.03, 12), 0])
+    session.dragging_atoms = false
+    flushSync()
+    expect(c_abc()).toBe(0.97)
+    search.mockRestore()
+    flush_set(host, { structure: torn, measure_mode: `distance`, supercell_scaling: `2x1x1` })
     const sites = session.displayed_structure?.sites ?? []
     expect(sites).toHaveLength(4)
     const by_element = (elem: string) =>

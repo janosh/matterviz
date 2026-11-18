@@ -73,6 +73,8 @@ describe(`parse_supercell_scaling and parse_supercell_matrix`, () => {
     [[[1.5, 0, 0], [0, 1, 0], [0, 0, 1]], `must be integers`],
     [`1 1 0, -1 1.5 0, 0 0 1`, `Invalid supercell matrix`],
     [`1 1 0, -1 1 0, 0 0`, `Invalid supercell scaling`], // 8 numbers is no matrix
+    // det of entries past 1e5 can exceed 2^53 and round: 300001 rows gave det 900001, not 900002
+    [[[300001, 300000, 300000], [300000, 300001, 300000], [300000, 300000, 300001]], `at most 100000`],
   ] as [string | Matrix3x3, string][])(`rejects %j (%s)`, (input, message) => {
     expect(() => parse_supercell_matrix(input)).toThrow(message)
     expect(is_valid_supercell_input(JSON.stringify(input))).toBe(false)
@@ -302,6 +304,8 @@ describe(`make_supercell`, () => {
     [2, `100x100x100`, `2,000,000 sites (limit 1,000,000)`],
     [1001, [[10, 0, 1], [0, 10, 0], [0, 0, 10]], `1,001,000 sites (limit 1,000,000)`],
     [2, `50x100x100`, null], // right at the cap
+    // det 1, but enumerating its 36M-cell bounding box took 2 s: refused up front
+    [1, [[1, 3000, 3000], [0, 1, 3000], [0, 0, 1]], `bounding box of 36,036,008 cells`],
   ] as [number, string | Matrix3x3, string | null][])(`site cap on %i sites, supercell %j: %s`, (n_sites, scaling, message) => {
     const base = make_crystal(
       1,

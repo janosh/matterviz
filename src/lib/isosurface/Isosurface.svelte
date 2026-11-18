@@ -4,7 +4,7 @@
   // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
   // only remap through the LUT and never rerun marching cubes.
   import { value_key } from '#lib/utils.js'
-  import type { Matrix3x3, Vec3 } from '../math'
+  import type { Matrix3x3 } from '../math'
   import { IDENTITY_3X3 } from '../math'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
@@ -18,7 +18,6 @@
   import { compute_geometries_async } from './async-geometry.svelte'
   import type { GeometryInput, GeometryResult } from './geometry'
   import { compute_isosurface_geometries } from './geometry'
-  import type { ScalarGrid3D } from './grid'
   import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'
   import type { VolumeWindow } from './sampling'
@@ -89,12 +88,7 @@
   // === Prepared geometry grids ===
   // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The window
   // fully determines it (it encodes supercell and halo, which finite volumes ignore).
-  type PreparedGrid = {
-    key: string
-    grid: ScalarGrid3D<Float64Array>
-    lattice: Matrix3x3
-    origin: Vec3
-  }
+  type PreparedGrid = ReturnType<typeof prepare_geometry_grid> & { key: string }
   // Keyed by volume object so removed/replaced volumes release their grids to GC
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
@@ -214,12 +208,12 @@
       surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
     }))
 
-  // Large grids go to the geometry worker; small ones are cheaper on the main thread than a
-  // round trip
+  // Large outputs go to the geometry worker; small ones are cheaper on the main thread than a
+  // round trip. A periodic grid is one unit cell, tiled over its window's cells.
   const use_geometry_worker = (jobs: GeometryInput[`volumes`]): boolean =>
     typeof window !== `undefined` &&
     can_create_worker() &&
-    jobs.some(({ grid }) => grid.values.length >= 200_000)
+    jobs.some(({ grid, clip }) => grid.values.length * (clip?.cells.length ?? 1) >= 200_000)
 
   // Build geometries from one geometry result (worker or sync)
   function ingest_geometry_result(

@@ -40,4 +40,18 @@ test(`a submitted probe is projected again when the open elements change`, async
   props.open_elements = { O: -3 }
   flushSync()
   expect(props.probe_composition).toEqual({ Li: 1, Co: 1 })
+  // a host replacing the pane's probe owns it, even at the same coordinates
+  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `LiCoO2`)
+  doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
+  await tick()
+  expect(product(0)).toBe(`compound 100%`)
+  props.probe_composition = { Li: 1, Co: 1 }
+  props.open_elements = undefined
+  flushSync()
+  expect(props.probe_composition).toEqual({ Li: 1, Co: 1 })
+  // a host probe keyed like the entries is projected through the open elements, as typed ones
+  props.open_elements = { O: -3 }
+  props.probe_composition = { Li: 1, Co: 1, O: 2 }
+  flushSync()
+  expect([product(0), product(1)]).toEqual([`compound 100%`, null])
 })

@@ -173,12 +173,13 @@ const RESERVED_EXTXYZ_COLUMNS = new Set([
   ...MOVE_FLAG_COLUMNS,
 ])
 
-const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
-  velocities: `velocity`,
-  momenta: `momentum`,
-  charges: `charge`,
-  masses: `mass`,
-}
+// a Map: a plain object's inherited keys (`constructor`) would alias real columns
+const EXTXYZ_COLUMN_ALIASES = new Map([
+  [`velocities`, `velocity`],
+  [`momenta`, `momentum`],
+  [`charges`, `charge`],
+  [`masses`, `mass`],
+])
 
 function read_extxyz_column(scanner: LineScanner, column: ExtxyzColumn): unknown {
   const { offset, ncols, type } = column
@@ -364,7 +365,7 @@ function parse_xyz_atom_lines(
   const labels: (string | undefined)[] = []
   const extra_columns = Object.entries(layout ?? {})
     .filter(([name]) => !RESERVED_EXTXYZ_COLUMNS.has(name))
-    .map(([name, column]) => [EXTXYZ_COLUMN_ALIASES[name] ?? name, column] as const)
+    .map(([name, column]) => [EXTXYZ_COLUMN_ALIASES.get(name) ?? name, column] as const)
   const has_move_flags = MOVE_FLAG_COLUMNS.some((name) => layout?.[name])
   let move_flag_count = 0
 

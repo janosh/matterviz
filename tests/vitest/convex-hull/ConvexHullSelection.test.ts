@@ -468,6 +468,33 @@ describe(`convex hull replacement state`, () => {
     )
   })
 
+  // With O open, a Li reference tabulated at 300 K only can't project LiFeO at 600 K: the hull
+  // says which reference is missing there (no synthetic Li corner silently dropping LiFeO)
+  // and keeps the temperature slider to return to 300 K
+  test(`open elements: a reference missing at the selected T names it and keeps the slider`, async () => {
+    const entries = [
+      with_temps({ Li: 1 }, [300], `Li`),
+      ...[`Fe`, `O`].map((element) => with_temps({ [element]: 1 }, [300, 600], element)),
+      with_temps({ Li: 1, Fe: 1, O: 1 }, [300, 600], `LiFeO`),
+    ]
+    const state = { temperature: 600 }
+    const target = await mount_hull(
+      bind_props({ entries, open_elements: { O: -1 }, interpolate_temperature: false }, state),
+    )
+    flushSync()
+    expect(target.querySelector(`.empty-state`)?.textContent).toContain(
+      `open_elements needs an elemental reference for Li at 600 K`,
+    )
+    const temp_input = target.querySelector<HTMLInputElement>(
+      `.temperature-slider input[type="number"]`,
+    )
+    expect(state.temperature).toBe(600)
+    if (!temp_input) throw new Error(`no temperature input`)
+    temp_input.value = `300`
+    temp_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(state.temperature).toBe(300)
+  })
+
   // Without interpolation an untabulated T snaps to the nearest tabulated one, while
   // interpolation keeps any in-range T
   test.each([

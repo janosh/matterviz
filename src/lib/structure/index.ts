@@ -131,6 +131,8 @@ export type Site = {
     polyhedron_center?: boolean
     // In a bonded fragment unwrap_molecules kept whole: draws no face image copies
     whole_molecule?: boolean
+    // The lattice translation unwrap_molecules moved this site by (absent: not moved)
+    unwrap_shift?: Vec3
   }
 }
 

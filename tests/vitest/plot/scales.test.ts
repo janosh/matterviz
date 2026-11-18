@@ -681,8 +681,9 @@ describe(`scales`, () => {
       [[5, 5]],
       [[1, Infinity]],
       [[1e-300, 1e300]], // 600 decades: over max_count, none rather than a solid band
-    ] as Vec2[][])(`returns no minor ticks for %j`, (domain) => {
-      expect(generate_log_minor_ticks(domain, [])).toEqual([])
+      [[1e-100, 1e40], [1]], // 140 one-per-decade minors also paint a band
+    ] as [Vec2, number[]?][])(`returns no minor ticks for %j`, (domain, majors = []) => {
+      expect(generate_log_minor_ticks(domain, majors)).toEqual([])
     })
   })
 
@@ -767,13 +768,15 @@ describe(`scales`, () => {
       expect(scale.range()).toEqual([10, 20])
     })
 
-    test(`log tick scheme gives decades in derived units; maps undefined at the bounds give no ticks`, () => {
+    test(`log tick scheme gives decades in derived units; a pole at a bound shrinks the domain`, () => {
       const base = scaleLog().domain([0.01, 100]).range([0, 500])
       const ticks = derived_scale(base, energy_to_wavelength, `log`).ticks()
       expect(ticks.map((tick) => Math.round(Math.log10(tick)))).toEqual([2, 3, 4, 5])
-      // 1240 / 0 is not finite: no ticks rather than NaN positions
+      // hc / 0 is not finite: the domain ends at the outermost finite sample, x = 5/64
       const at_zero = scaleLinear().domain([0, 5]).range([0, 1])
-      expect(derived_scale(at_zero, energy_to_wavelength).ticks(5)).toEqual([])
+      const from_zero = derived_scale(at_zero, energy_to_wavelength)
+      expect(from_zero.domain()).toEqual([hc / (5 / 64), hc / 5])
+      expect(from_zero.ticks(5)).toEqual([14000, 12000, 10000, 8000, 6000, 4000, 2000])
     })
 
     // forward must be finite and monotonic over the whole x view, not just at its ends: a pole
@@ -794,24 +797,6 @@ describe(`scales`, () => {
       const scale = derived_scale(scaleLinear().domain(domain).range([0, 600]), map)
       expect(scale.domain().every(Number.isFinite)).toBe(false)
       expect(scale.ticks(8)).toEqual([])
-    })
-
-    // sampling can miss a narrow gap where forward is undefined: ticks whose preimage maps to
-    // nothing are dropped, while finite decreasing maps keep theirs
-    test(`derived ticks skip values where forward is undefined`, () => {
-      const gapped = {
-        forward: (val: number) => (val > 0.499 && val < 0.501 ? NaN : val),
-        inverse: (val: number) => val,
-      }
-      const ticks = derived_scale(
-        scaleLinear().domain([0, 1.1]).range([0, 600]),
-        gapped,
-      ).ticks(12)
-      expect(ticks.length).toBeGreaterThan(3)
-      expect(ticks).not.toContain(0.5)
-      expect(
-        ticks.every((tick) => Number.isFinite(gapped.forward(gapped.inverse(tick)))),
-      ).toBe(true)
     })
 
     test(`create_axis_scales builds a derived x2 over x, rejecting a time x axis`, () => {

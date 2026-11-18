@@ -2488,6 +2488,37 @@ test.each([
   expect(completion_count()).toBe(0)
 })
 
+// Invalid bonding settings are checked once, before any search: the scene's bonds and
+// polyhedra, image completion and whole molecules all bond with the strategy's defaults
+// instead of throwing mid-flush, and one notice says why until a valid value replaces them
+test(`invalid pair cutoffs keep the viewer usable with one notice until fixed`, async () => {
+  mock_gpu()
+  const bonding = (range: [number, number]) => ({
+    pair_cutoffs: { pair_cutoffs: { 'O-Ti': range } },
+  })
+  const props = $state<StructureProps>({
+    structure: make_srtio3(`corner`),
+    show_image_atoms: true,
+    image_atom_completion: `boundary`,
+    keep_molecules_whole: true,
+    scene_props: {
+      show_bonds: `always`,
+      bonding_strategy: `pair_cutoffs`,
+      bonding_options: bonding([2, 1]),
+    },
+  })
+  const analysis = await mount_settled(props)
+  const toast = () => document.querySelector(TOAST_MESSAGE)?.textContent ?? null
+  expect(toast()).toContain(`Invalid pair_cutoffs bonding option pair_cutoffs: 'O-Ti'`)
+  expect(analysis.displayed_structure?.sites.length).toBeGreaterThan(5)
+  expect(scene_stub.props?.bonding_options).toEqual({ pair_cutoffs: {} })
+  if (!props.scene_props) throw new Error(`scene_props missing`)
+  props.scene_props.bonding_options = bonding([1, 2.5])
+  await tick()
+  expect(toast()).toBeNull()
+  expect(scene_stub.props?.bonding_options).toEqual(bonding([1, 2.5]))
+})
+
 test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {
   // What StructureScene's overlays index sites with is the session's validated selection,
   // so a pick is never visible next to a displayed structure that lacks that site. Here the
