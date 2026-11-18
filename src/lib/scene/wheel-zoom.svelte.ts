@@ -109,7 +109,12 @@ export class WheelZoomGate {
       if (pointerType === `mouse`) this.active = false
     }
     root.addEventListener(`pointerleave`, on_pointerleave, { signal })
-    root.addEventListener(`pointerenter`, () => (this.#pointer_in = true), { signal })
+    // pointerenter never fires for a pointer already inside when the viewer mounts, so any
+    // move within it (and :hover at attach) also counts as entering
+    const on_pointer_in = () => (this.#pointer_in = true)
+    root.addEventListener(`pointerenter`, on_pointer_in, { signal })
+    root.addEventListener(`pointermove`, on_pointer_in, { signal })
+    if (root.matches(`:hover`)) this.#pointer_in = true
     // capture: a pane closing on Esc may stop the key before it bubbles up
     const on_keydown = ({ key }: KeyboardEvent): void => {
       if (key !== `Escape`) return

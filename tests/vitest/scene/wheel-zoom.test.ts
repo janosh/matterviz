@@ -88,6 +88,11 @@ const ACTIONS: Record<string, (viewer: Viewer) => void> = {
     root.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true })),
   enter: ({ root }) =>
     root.dispatchEvent(new PointerEvent(`pointerenter`, { pointerType: `mouse` })),
+  // a pointer already over the viewer when it mounts sends no pointerenter, only moves
+  move: ({ canvas }) =>
+    canvas.dispatchEvent(
+      new PointerEvent(`pointermove`, { bubbles: true, pointerType: `mouse` }),
+    ),
   leave: ({ root }) =>
     root.dispatchEvent(new PointerEvent(`pointerleave`, { pointerType: `mouse` })),
   'touch leave': ({ root }) =>
@@ -258,6 +263,8 @@ describe(`WheelZoomGate`, () => {
     [[], false],
     [[`enter`], true],
     [[`enter`, `leave`], false],
+    [[`move`], true],
+    [[`move`, `leave`], false],
     [[`enter`, `touch leave`], false],
     [[`mouse focus`], true],
     [[`mouse focus`, `tab within`], true],
