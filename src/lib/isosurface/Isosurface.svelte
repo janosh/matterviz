@@ -28,6 +28,7 @@
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
+  import { sync_shell_colors, transparent_shells } from './transparent-shells'
 
   let {
     volumes = [],
@@ -447,7 +448,10 @@
       const layer = layers[entry.layer_idx]
       const color_vol = color_vol_of(layer)
       if (!layer || !color_vol) {
-        if (entry.geometry.getAttribute(`color`)) entry.geometry.deleteAttribute(`color`)
+        if (entry.geometry.getAttribute(`color`)) {
+          entry.geometry.deleteAttribute(`color`)
+          sync_shell_colors(entry.geometry)
+        }
         entry.scalars = null
         entry.scalars_volume_id = null
         entry.color_key = null
@@ -503,6 +507,7 @@
       const color_key = to_key([entry.scalars_volume_id, options])
       if (color_key !== entry.color_key) {
         time_stage(`apply_colormap`, () => set_vertex_colors(entry.geometry, scalars, options))
+        sync_shell_colors(entry.geometry)
         entry.color_key = color_key
       }
       colored_keys.add(entry.key)
@@ -559,25 +564,31 @@
           />
         </T.Mesh>
       {:else}
-        <!-- Transparent surfaces render back then front faces in two passes for
-          correct blending; opaque surfaces need a single double-sided pass -->
-        {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
-          <T.Mesh
-            geometry={entry.geometry}
-            renderOrder={entry.render_order + pass_idx}
-            frustumCulled={false}
-          >
-            <T.MeshStandardMaterial
-              {color}
-              vertexColors={vertex_colored}
-              {transparent}
-              {opacity}
-              {side}
-              depthWrite={!transparent}
-              metalness={0.1}
-              roughness={0.6}
-            />
-          </T.Mesh>
+        {@const sort_lobes = transparent && layer.show_negative && layer.isovalue !== 0}
+        {@const shell_order = sort_lobes
+          ? active_entries.find((other) => other.layer_idx === entry.layer_idx)!.render_order
+          : entry.render_order}
+        <!-- A mirrored pair shares a priority. Three sorts each lobe by its own
+          bound, keeping back and front faces in creation order at equal depth. -->
+        {#each sort_lobes ? transparent_shells(entry.geometry) : [entry.geometry] as geometry (geometry)}
+          {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
+            <T.Mesh
+              {geometry}
+              renderOrder={sort_lobes ? shell_order : entry.render_order + pass_idx}
+              frustumCulled={false}
+            >
+              <T.MeshStandardMaterial
+                {color}
+                vertexColors={vertex_colored}
+                {transparent}
+                {opacity}
+                {side}
+                depthWrite={!transparent}
+                metalness={0.1}
+                roughness={0.6}
+              />
+            </T.Mesh>
+          {/each}
         {/each}
       {/if}
     {/key}

@@ -211,6 +211,20 @@ describe(`Isosurface`, () => {
   // A mirrored pair colours each lobe by the sign of the value drawn, not which lobe mirrors
   // the other; a lone surface keeps `color` even at a negative isovalue
   const [blue, red] = [`#3b82f6`, `#ef4444`]
+  test(`transparent mirrored lobes share a priority so the camera can depth-sort both signs`, async () => {
+    const volume = blob_volume(`orbital`, (x, y, z) =>
+      Math.exp(-((x - 2) ** 2 + (y - 2) ** 2 + (z - 2) ** 2)) +
+      Math.exp(-((x - 7) ** 2 + (y - 7) ** 2 + (z - 7) ** 2)) -
+      Math.exp(-((x - 2) ** 2 + (y - 7) ** 2 + (z - 7) ** 2)))
+    mount_isosurface({ volumes: [volume], settings: with_layers([layer(0.3, { show_negative: true })]) })
+    await settle()
+    const nodes = meshes()
+    expect(nodes).toHaveLength(6) // two positive lobes, one negative, back and front faces each
+    expect(new Set(nodes.map((node) => node.props.renderOrder))).toEqual(new Set([0]))
+    const centers = nodes.map((node) => geometry_of(node).boundingSphere!.center.toArray().join())
+    expect(new Set(centers).size).toBe(3)
+  })
+
   test.each([
     [0.3, true, [blue, blue, red, red]],
     [-0.3, true, [blue, blue, red, red]],
