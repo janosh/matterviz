@@ -10,7 +10,7 @@ import { BAD_ROW_CIF } from '../test-fixtures'
 import { make_bcc, make_fcc, make_hcp } from './lattices'
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
-describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
+describe(`StructureTypePlot`, () => {
   let mounted: ReturnType<typeof mount>[] = []
   afterEach(async () => {
     await Promise.all(mounted.map((component) => unmount(component)))

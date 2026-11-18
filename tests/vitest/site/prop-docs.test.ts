@@ -12,7 +12,7 @@ import { flushSync, mount } from 'svelte'
 import { globSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, test, vi } from 'vite-plus/test'
-import { doc_query } from '../setup'
+import { doc_query, library_prop_docs } from '../setup'
 
 vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/property-filter` } } }))
 
@@ -218,41 +218,39 @@ describe(`PropsTable page mapping`, () => {
 })
 
 // A page fetches only its own components' docs: the index holds one lazy loader per component
-// (no extraction needed), each per-component module that component's PropDoc[] alone
-test(
-  `virtual:prop-docs splits into a loader index and per-component modules`,
-  { timeout: 60_000 },
-  () => {
-    const { resolveId, load } = prop_docs_plugin()
-    if (typeof resolveId !== `function` || typeof load !== `function`)
-      throw new TypeError(`resolveId and load must be functions`)
-    const resolve_id = (id: string) => resolveId.call({} as never, id, undefined, {} as never)
-    // the generated module source (load returns a string for our ids, null for others)
-    const source = (id: string): string => {
-      const code = load.call({} as never, id)
-      if (typeof code !== `string`) throw new TypeError(`load(${id}) returned ${typeof code}`)
-      return code
-    }
-    expect(
-      [`virtual:prop-docs`, `virtual:prop-docs/PropertyFilter`, `virtual:other`].map(
-        resolve_id,
-      ),
-    ).toEqual([`\0virtual:prop-docs`, `\0virtual:prop-docs/PropertyFilter`, null])
-    const index = source(`\0virtual:prop-docs`)
-    expect(index).toContain(
-      `"PhononModeExplorer": () => import("virtual:prop-docs/PhononModeExplorer")`,
-    )
-    expect(index).not.toContain(`trajectory_props`) // no docs in the index itself
-    const component = source(`\0virtual:prop-docs/PropertyFilter`)
-    const { props } = JSON.parse(component.replace(/^export default /, ``)) as ComponentDoc
-    expect(props.map(({ name }) => name)).toContain(`label`)
-    expect(component.length).toBeLessThan(5000)
-    expect(() => load.call({} as never, `\0virtual:prop-docs/NoSuchThing`)).toThrow(
-      `No component named NoSuchThing`,
-    )
-    expect(load.call({} as never, `/src/other.ts`)).toBeNull()
-  },
-)
+// (no extraction needed), each per-component module that component's PropDoc[] alone. The
+// plugin serves the test server's whole-library extraction rather than repeating it.
+test(`virtual:prop-docs splits into a loader index and per-component modules`, async () => {
+  const docs = await library_prop_docs()
+  const extract = vi.fn(() => docs)
+  const { resolveId, load } = prop_docs_plugin(extract)
+  if (typeof resolveId !== `function` || typeof load !== `function`)
+    throw new TypeError(`resolveId and load must be functions`)
+  const resolve_id = (id: string) => resolveId.call({} as never, id, undefined, {} as never)
+  // the generated module source (load returns a string for our ids, null for others)
+  const source = (id: string): string => {
+    const code = load.call({} as never, id)
+    if (typeof code !== `string`) throw new TypeError(`load(${id}) returned ${typeof code}`)
+    return code
+  }
+  expect(
+    [`virtual:prop-docs`, `virtual:prop-docs/PropertyFilter`, `virtual:other`].map(resolve_id),
+  ).toEqual([`\0virtual:prop-docs`, `\0virtual:prop-docs/PropertyFilter`, null])
+  const index = source(`\0virtual:prop-docs`)
+  expect(index).toContain(
+    `"PhononModeExplorer": () => import("virtual:prop-docs/PhononModeExplorer")`,
+  )
+  expect(index).not.toContain(`trajectory_props`) // no docs in the index itself
+  const component = source(`\0virtual:prop-docs/PropertyFilter`)
+  const { props } = JSON.parse(component.replace(/^export default /, ``)) as ComponentDoc
+  expect(props.map(({ name }) => name)).toContain(`label`)
+  expect(component.length).toBeLessThan(5000)
+  expect(() => load.call({} as never, `\0virtual:prop-docs/NoSuchThing`)).toThrow(
+    `No component named NoSuchThing`,
+  )
+  expect(load.call({} as never, `/src/other.ts`)).toBeNull()
+  expect(extract).toHaveBeenCalledOnce() // one extraction serves every component
+})
 
 // Dev server: editing a component re-extracts its props instead of serving the cached table
 test.each([
@@ -282,36 +280,32 @@ test.each([
   expect(hotUpdate.call(context as never, { file, modules: [] } as never)).toBeUndefined()
 })
 
-test(
-  `PropsTable loads the page component's props when opened`,
-  { timeout: 60_000 },
-  async () => {
-    mount(PropsTable, { target: document.body })
-    const details = doc_query<HTMLDetailsElement>(`details`)
-    expect(details.querySelector(`summary`)?.textContent).toBe(`Props of PropertyFilter`)
-    expect(details.querySelector(`table`)).toBeNull() // nothing loaded while closed
-    details.open = true
-    details.dispatchEvent(new Event(`toggle`))
-    flushSync()
-    expect(details.textContent).toContain(`Loading props...`)
-    await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(13), {
-      timeout: 30_000,
-    })
-    const rows = [...details.querySelectorAll(`tbody tr`)].map((row) =>
-      [...row.children].map((cell) => cell.textContent?.replaceAll(/\s+/g, ` `).trim()),
-    )
-    // numbered in alphabetical order
-    const names = rows.map(([, prop]) => prop?.split(` `)[0] ?? ``)
-    expect(names).toEqual(names.toSorted((left, right) => left.localeCompare(right, `en`)))
-    expect(rows.map(([number]) => number)).toEqual(rows.map((_row, idx) => String(idx + 1)))
-    expect(rows.find(([, prop]) => prop?.startsWith(`label `))?.slice(1)).toEqual([
-      `label required`,
-      `string`,
-      ``,
-      `Label text (supports HTML)`,
-    ])
-  },
-)
+test(`PropsTable loads the page component's props when opened`, async () => {
+  // the server's shared extraction, so the wait below covers only PropsTable's own fetch
+  await library_prop_docs()
+  mount(PropsTable, { target: document.body })
+  const details = doc_query<HTMLDetailsElement>(`details`)
+  expect(details.querySelector(`summary`)?.textContent).toBe(`Props of PropertyFilter`)
+  expect(details.querySelector(`table`)).toBeNull() // nothing loaded while closed
+  details.open = true
+  details.dispatchEvent(new Event(`toggle`))
+  flushSync()
+  expect(details.textContent).toContain(`Loading props...`)
+  await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(13))
+  const rows = [...details.querySelectorAll(`tbody tr`)].map((row) =>
+    [...row.children].map((cell) => cell.textContent?.replaceAll(/\s+/g, ` `).trim()),
+  )
+  // numbered in alphabetical order
+  const names = rows.map(([, prop]) => prop?.split(` `)[0] ?? ``)
+  expect(names).toEqual(names.toSorted((left, right) => left.localeCompare(right, `en`)))
+  expect(rows.map(([number]) => number)).toEqual(rows.map((_row, idx) => String(idx + 1)))
+  expect(rows.find(([, prop]) => prop?.startsWith(`label `))?.slice(1)).toEqual([
+    `label required`,
+    `string`,
+    ``,
+    `Label text (supports HTML)`,
+  ])
+})
 
 test.each([
   [`label text`, `Label text`],

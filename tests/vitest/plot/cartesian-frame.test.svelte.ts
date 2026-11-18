@@ -637,7 +637,6 @@ describe(`cartesian frame`, () => {
         }
       }
     },
-    20_000,
   )
 
   // An outside legend is placed from its measured size: bottom-centred with an 8px gap, at
@@ -663,8 +662,6 @@ describe(`cartesian frame`, () => {
       expect(legend_px(wide, `left`)).toBeGreaterThan(legend_px(small, `left`))
       expect(clip_rect(repeated)).toEqual(clip_rect(wide))
     },
-    // three ScatterPlot mounts take ~1 s alone but 5 s+ under a loaded full-suite run
-    15_000,
   )
 
   // A default legend too wide to sit beside the plot (300px cells) wraps into a row below it,
@@ -694,7 +691,6 @@ describe(`cartesian frame`, () => {
       expect(gridded.className).not.toContain(`wrap`)
       expect(gridded.dataset.decorationWidth).toBe(`180`)
     },
-    15_000,
   )
 
   test.each(frame_charts)(

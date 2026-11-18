@@ -26,6 +26,9 @@ import { get_element_counts } from '#lib/structure/density.js'
 import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
 import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
 import * as site_table_module from '#lib/structure/site-table'
+// imported up front, as the file loads: the sidebar's lazy import of it (a large component
+// tree) took seconds on a busy machine, inside whichever test opened the sidebar first
+import SiteTable from '#lib/structure/SiteTable.svelte'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type {
@@ -3446,12 +3449,11 @@ const site_table_loaded = () =>
 
 // until the import resolves, the sidebar says so instead of showing a count over nothing
 test(`shows a loading status in the site sidebar until its table arrives`, async () => {
-  const real_load = site_table_module.load_site_table
-  const table_gate = Promise.withResolvers<Awaited<ReturnType<typeof real_load>>>()
+  const table_gate = Promise.withResolvers<typeof SiteTable>()
   vi.spyOn(site_table_module, `load_site_table`).mockReturnValueOnce(table_gate.promise)
   await mount_settled({ structure: with_forces, site_sidebar: true })
   expect(sidebar()?.textContent).toContain(`Loading site table`)
-  table_gate.resolve(await real_load())
+  table_gate.resolve(SiteTable)
   await site_table_loaded()
   expect(sidebar()?.textContent).not.toContain(`Loading site table`)
 })

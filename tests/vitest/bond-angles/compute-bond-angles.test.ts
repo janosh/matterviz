@@ -462,7 +462,7 @@ describe(`bond_angle_bin_sites`, () => {
 })
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
-describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
+describe(`BondAnglePlot`, () => {
   // Water, so a lattice-less molecule exercises the single-structure input shape
   const water = make_molecule([
     [`O`, [0, 0, 0]],

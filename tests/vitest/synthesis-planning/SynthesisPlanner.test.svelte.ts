@@ -40,47 +40,43 @@ const stub_clipboard = () => {
 }
 
 // First mount pays for planning plus the 3D hull's threlte setup: ~1.3 s locally but ~5 s on
-// a loaded CI runner, so the default 5 s test timeout is not enough headroom
-test(
-  `opens the system hull on demand and keeps the reaction title above its plot`,
-  { timeout: 20_000 },
-  async () => {
-    const hull_compute = vi.spyOn(hull_thermo, `compute_lower_hull_nd`)
-    const build_overlay = vi.spyOn(hull_helpers, `build_hull_overlay`)
-    onTestFinished(() => {
-      hull_compute.mockRestore()
-      build_overlay.mockRestore()
-    })
-    mount_planner({ comparison_options: { max_cell_lines: 5 } })
-    await vi.waitFor(() => expect(document.querySelector(`.system-hull`)).not.toBeNull())
-    expect(doc_query(`.cell-preview`).style.getPropertyValue(`--max-cell-lines`)).toBe(`5`)
-    expect(document.querySelector(`.system-hull > [role="application"]`)).toBeNull()
-    const details = doc_query<HTMLDetailsElement>(`.system-hull`)
-    details.open = true
-    details.dispatchEvent(new Event(`toggle`))
-    await vi.waitFor(
-      () => {
-        const hull = document.querySelector<HTMLElement>(`.system-hull > [role="application"]`)
-        expect(hull).not.toBeNull()
-        const slice = document.querySelector<HTMLElement>(`.detail-left .convex-hull-2d`)
-        expect(slice?.style.getPropertyValue(`--hull-title-top`)).toBe(`0`)
-      },
-      { timeout: 15_000 },
-    )
-    // the selected route's reaction slice is drawn on the system hull: one line between its
-    // two solid precursors
-    await vi.waitFor(() => {
-      const lines = build_overlay.mock.lastCall?.[2]?.lines ?? []
-      expect(lines.map(({ from, to }) => [from.label, to.label])).toEqual([[`BaO`, `TiO2`]])
-    })
-    const calls = hull_compute.mock.calls.length
-    expect(calls).toBeGreaterThan(0)
-    const choice = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
-    set_input(choice, `1100`)
-    await tick()
-    expect(hull_compute).toHaveBeenCalledTimes(calls)
-  },
-)
+// a loaded CI runner
+test(`opens the system hull on demand and keeps the reaction title above its plot`, async () => {
+  const hull_compute = vi.spyOn(hull_thermo, `compute_lower_hull_nd`)
+  const build_overlay = vi.spyOn(hull_helpers, `build_hull_overlay`)
+  onTestFinished(() => {
+    hull_compute.mockRestore()
+    build_overlay.mockRestore()
+  })
+  mount_planner({ comparison_options: { max_cell_lines: 5 } })
+  await vi.waitFor(() => expect(document.querySelector(`.system-hull`)).not.toBeNull())
+  expect(doc_query(`.cell-preview`).style.getPropertyValue(`--max-cell-lines`)).toBe(`5`)
+  expect(document.querySelector(`.system-hull > [role="application"]`)).toBeNull()
+  const details = doc_query<HTMLDetailsElement>(`.system-hull`)
+  details.open = true
+  details.dispatchEvent(new Event(`toggle`))
+  await vi.waitFor(
+    () => {
+      const hull = document.querySelector<HTMLElement>(`.system-hull > [role="application"]`)
+      expect(hull).not.toBeNull()
+      const slice = document.querySelector<HTMLElement>(`.detail-left .convex-hull-2d`)
+      expect(slice?.style.getPropertyValue(`--hull-title-top`)).toBe(`0`)
+    },
+    { timeout: 8000 }, // below the 10 s test timeout, so a miss reports its assertion
+  )
+  // the selected route's reaction slice is drawn on the system hull: one line between its
+  // two solid precursors
+  await vi.waitFor(() => {
+    const lines = build_overlay.mock.lastCall?.[2]?.lines ?? []
+    expect(lines.map(({ from, to }) => [from.label, to.label])).toEqual([[`BaO`, `TiO2`]])
+  })
+  const calls = hull_compute.mock.calls.length
+  expect(calls).toBeGreaterThan(0)
+  const choice = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
+  set_input(choice, `1100`)
+  await tick()
+  expect(hull_compute).toHaveBeenCalledTimes(calls)
+})
 
 test(`shows the shared empty state until entries and a target are given`, () => {
   mount_planner({ entries: [], target: `` })

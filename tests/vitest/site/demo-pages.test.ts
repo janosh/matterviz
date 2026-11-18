@@ -20,6 +20,7 @@ import TernaryPage from '#root/src/routes/(demos)/phase-diagram/ternary/+page.sv
 import IsosurfacePage from '#root/src/routes/(demos)/structure/isosurface/+page.svelte'
 import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+page.svelte'
 import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
+import { quaternary_files } from '#site/convex-hull/index.js'
 import { volumetric_files } from '#site/isosurfaces.js'
 import { all_phase_diagram_files, binary_diagrams } from '#site/phase-diagrams.js'
 import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
@@ -264,9 +265,8 @@ test(`a system switched away from cannot report its load failure`, async () => {
 })
 
 // panels' x/y series were handed to Histogram, which bins `values` and threw on undefined.
-// Mounts 4 panels per plot type: ~0.7 s locally but 3.3-4.8 s on CI runners (timed out at
-// the 5 s default), hence the explicit 15 s budget.
-test(`the facet grid renders every plot type`, { timeout: 15_000 }, () => {
+// Mounts 4 panels per plot type: ~0.7 s locally but 3.3-4.8 s on CI runners.
+test(`the facet grid renders every plot type`, () => {
   mount(FacetGridPage, { target: document.body })
   const select = doc_query<HTMLSelectElement>(`.demo-controls select`)
   expect(select.options.length).toBeGreaterThan(4)
@@ -360,10 +360,21 @@ test(`fermi surface loads write ?file= only for site fixtures`, () => {
 })
 
 // a drop onto the quaternary hull overwrote its cached system, so re-picking it showed the drop
+// The first system's fixture is stubbed: importing the real one (650 KB gzipped JSON, inflated
+// and transformed into a module) outlasted the wait on a busy machine
 test(`a file dropped on the demo hull leaves the cached system intact`, async () => {
+  const fixture = [
+    { composition: { Li: 1, O: 1 }, energy: -1 },
+    { composition: { Co: 1, Ni: 1 }, energy: -2 },
+  ]
+  const load = vi.spyOn(
+    quaternary_files,
+    `/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
+  )
+  load.mockResolvedValue({ default: fixture })
   mount(ConvexHullDemo, { target: document.body })
-  await vi.waitFor(() => expect(latest_stub().read().entries).not.toEqual([]))
-  const { entries: fixture, on_file_load } = latest_stub().read()
+  await vi.waitFor(() => expect(latest_stub().read().entries).toEqual(fixture))
+  const { on_file_load } = latest_stub().read()
   if (typeof on_file_load !== `function`) throw new TypeError(`ConvexHull got no on_file_load`)
   const dropped = [{ composition: { Li: 1 }, energy: 0 }]
   on_file_load({ entries: dropped, filename: `mine.json` })
@@ -375,6 +386,7 @@ test(`a file dropped on the demo hull leaves the cached system intact`, async ()
   expect(document.querySelector(`.file-item[aria-current]`)).toBeNull()
   click_file((name) => name.includes(`Li-Co-Ni-O`)) // re-pick the system dropped onto
   await vi.waitFor(() => expect(latest_stub().read().entries).toEqual(fixture))
+  expect(load).toHaveBeenCalledOnce() // from the cache, not loaded again
 })
 
 // the lookup of an unknown ?file= (a stale link) came back empty and left the page blank, and

@@ -388,7 +388,7 @@ describe(`compute_structure_id plumbing`, () => {
 
   // Large-N path: the grid has to hold a ~10k-site supercell without thrashing. Timing lives
   // in perf-baselines.test.ts; this only pins the result.
-  test(`a ~10k atom supercell is classified exactly`, { timeout: 30_000 }, () => {
+  test(`a ~10k atom supercell is classified exactly`, () => {
     const crystal = make_fcc([14, 14, 14]) // 4 atoms per cell
     expect(crystal.sites).toHaveLength(10976)
     const result = compute_structure_id(crystal)

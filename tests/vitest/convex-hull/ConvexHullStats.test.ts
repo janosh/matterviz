@@ -3,7 +3,13 @@ import ConvexHullInfoPane from '#lib/convex-hull/ConvexHullInfoPane.svelte'
 import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
-import { click_export, doc_query, mock_object_url, set_select } from '../setup'
+import {
+  click_export,
+  doc_query,
+  limit_math_spread,
+  mock_object_url,
+  set_select,
+} from '../setup'
 
 const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   total: 100,
@@ -398,13 +404,14 @@ describe(`ConvexHullStats`, () => {
       for (const row of rows_after) expect(rows_before.has(row)).toBe(true)
     })
 
-    // Math.max(1, ...arities) threw RangeError past ~125k entries
-    test(`dropdown options span the max arity of 200k entries without a spread overflow`, () => {
-      const binaries = Array.from({ length: 200_000 }, () => binary)
+    // Math.max(1, ...arities) threw RangeError past ~125k entries in a browser tab
+    test(`dropdown options span the max arity of entries past the spread argument limit`, () => {
+      limit_math_spread(1000)
+      const binaries = Array.from({ length: 2000 }, () => binary)
       mount_stats_table({ stable_entries: [...binaries, mock_entry()] })
       const options = get_table_filter_select(`Min N`)?.options ?? []
       expect(Array.from(options, (opt) => opt.value)).toEqual([`1`, `2`, `3`, `4`])
-    }, 15_000)
+    })
   })
 
   describe(`table export`, () => {
@@ -432,7 +439,9 @@ describe(`ConvexHullStats`, () => {
       await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
       expect((create.mock.calls[0][0] as Blob).type).toBe(mime_type)
       expect(anchor_click).toHaveBeenCalledTimes(1)
-      expect(revoke).toHaveBeenCalledTimes(1)
+      // download() revokes the URL in a setTimeout(0) after the click
+      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+      expect(revoke).toHaveBeenCalledExactlyOnceWith(`blob:test-url`)
       expect(downloaded_as).toBe(`li-fe-p-o.${ext}`)
     })
   })

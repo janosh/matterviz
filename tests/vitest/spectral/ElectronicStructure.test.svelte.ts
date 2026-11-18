@@ -331,7 +331,7 @@ test.each([800, 400])(
 
 // oxfmt-ignore
 test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, ElectronicPane[]]>([
-  [`all data`, all_data, [`structure`, `fermi`, `bands`, `dos`]],
+  // all data: in `the pane menu shows any subset, never none`
   [`all data and phonons`, { ...all_data, phonon }, [`structure`, `fermi`, `bands`, `dos`, `phonon`]],
   [`phonons only`, { phonon }, [`phonon`]],
   [`an empty phonon record`, { structure, phonon: { doses: {} } }, [`structure`]],
@@ -377,6 +377,9 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
 
 test(`the pane menu shows any subset, never none`, () => {
   const { props, root } = mount_live({ ...all_data, panes: undefined })
+  // the default panes for all data, both scenes linked
+  expect(shown_panes(root)).toEqual([`structure`, `fermi`, `bands`, `dos`])
+  expect(count(root, `.sync-rotation-toggle`)).toBe(1)
   root.querySelector<HTMLButtonElement>(`.panes-menu .view-mode-button`)?.click()
   flushSync()
   const option = (label: string) =>
@@ -1550,15 +1553,21 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
 // 40 GPa, sets how far its frame may lie off (a's gaps would make 20 off far). A one-frame b
 // has no spacing of its own, so a's median gap (2 GPa) sets it.
 const spread = [10, 50, 90]
+// one viewer per b series, stepped through a's frames
 test.each([
-  [0, spread, `b · 10 GPa`, 0, ``],
-  [5, spread, `b · 10 GPa`, 0, ``], // 30 GPa: a tie goes to the lower frame
-  [6, spread, `b · 90 GPa`, 2, ``], // 130 GPa: exactly one step off is not far
-  [7, spread, `b · 90 GPa`, 2, `no frame within 40 GPa of 140 GPa`],
-  [0, [60], `b · 60 GPa`, 0, `no frame within 2 GPa of 0 GPa`],
-])(
-  `frame %d of a is compared with b at %j: %s`,
-  (frame_idx, b_values, label, compare_idx, notice) => {
+  [
+    spread,
+    [
+      [0, `b · 10 GPa`, 0, ``],
+      [5, `b · 10 GPa`, 0, ``], // 30 GPa: a tie goes to the lower frame
+      [6, `b · 90 GPa`, 2, ``], // 130 GPa: exactly one step off is not far
+      [7, `b · 90 GPa`, 2, `no frame within 40 GPa of 140 GPa`],
+    ],
+  ],
+  [[60], [[0, `b · 60 GPa`, 0, `no frame within 2 GPa of 0 GPa`]]],
+] as [number[], [number, string, number, string][]][])(
+  `a's frames are compared with b at %j`,
+  (b_values, cases) => {
     const sweep: Sweep = {
       ...make_sweep(),
       series: [
@@ -1569,12 +1578,29 @@ test.each([
         { id: `b`, frames: b_values.map((value) => sweep_frame(value, 2)) },
       ],
     }
-    const root = mount_host({ sweep, frame_idx, compare_series: `b`, panes: ALL_PANES })
-    const [main_label, compare_label] = side_labels(root)
-    expect(main_label).toBe(`a · ${sweep.series[0].frames[frame_idx].value} GPa`)
-    expect(compare_label).toBe(notice ? `${label} ${notice}` : label)
-    expect(root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``).toBe(notice)
-    expect(viewers.trends?.compare).toEqual({ series_id: `b`, frame_idx: compare_idx })
+    const { props, root } = mount_live({
+      sweep,
+      frame_idx: cases[0][0],
+      compare_series: `b`,
+      panes: ALL_PANES,
+    })
+    for (const [frame_idx, label, compare_idx, notice] of cases) {
+      props.frame_idx = frame_idx
+      flushSync()
+      const [main_label, compare_label] = side_labels(root)
+      expect(main_label, `frame ${frame_idx}`).toBe(
+        `a · ${sweep.series[0].frames[frame_idx].value} GPa`,
+      )
+      expect(compare_label, `frame ${frame_idx}`).toBe(notice ? `${label} ${notice}` : label)
+      expect(
+        root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``,
+        `frame ${frame_idx}`,
+      ).toBe(notice)
+      expect(viewers.trends?.compare, `frame ${frame_idx}`).toEqual({
+        series_id: `b`,
+        frame_idx: compare_idx,
+      })
+    }
   },
 )
 

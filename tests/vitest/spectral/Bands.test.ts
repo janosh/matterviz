@@ -6,7 +6,7 @@ import { build_point_metadata } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { beforeAll, describe, expect, it, vi } from 'vite-plus/test'
 import {
   bind_props,
   fire,
@@ -106,6 +106,10 @@ const mount_plot = (props: Partial<ComponentProps<typeof Bands>>, width?: number
   mount_sized(Bands, props, { selector: `.scatter, .empty-state`, width })
 
 describe(`Bands component`, () => {
+  // the BZ popup lazily imports its 3D zone (three.js) on the first tick click; load it once
+  // up front so the popup tests don't race that import against their timeouts under load
+  beforeAll(() => import(`#lib/brillouin/BrillouinZonePopup.svelte`))
+
   it.each<{ name: string; props: ComponentProps<typeof Bands>; expected_line_count: number }>([
     {
       name: `single structure`,
