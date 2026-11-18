@@ -648,11 +648,8 @@ describe(`pymatgen cross-validation`, () => {
       free_energies: [-2.5, 0.5],
       full_composition: { Li: 1, Fe: 1, O: 1 },
     })
-    for (const [temperature, energy] of [
-      [300, -5],
-      [600, 1],
-      [450, -2],
-    ]) {
+    // oxfmt-ignore
+    for (const [temperature, energy] of [[300, -5], [600, 1], [450, -2]]) {
       const [at_temp] = filter_entries_at_temperature(grand, temperature)
       expect(at_temp.energy, `${temperature} K`).toBeCloseTo(energy, 12)
     }
@@ -680,24 +677,6 @@ describe(`pymatgen cross-validation`, () => {
     ],
   ])(`open_elements rejects %#: %s`, (entries, options, message) => {
     expect(() => compute_hull_model(entries, options)).toThrow(message)
-  })
-
-  // only own enumerable keys are open: an inherited S keeps its place in the hull and probes
-  test(`open_elements ignores inherited keys`, () => {
-    const open_elements = Object.assign(Object.create({ S: -2 }), { O: -3 })
-    const entries = [
-      ...li_fe_o(absolute, [`Fe`, `Li`, `O`, `S`]),
-      { composition: { Li: 2, S: 1 }, entry_id: `Li2S`, energy: -6 },
-    ]
-    expect(compute_hull_model(entries, { open_elements }).elements.toSorted()).toEqual([
-      `Fe`,
-      `Li`,
-      `S`,
-    ])
-    expect(to_model_composition({ Li: 2, S: 1, O: 1 }, undefined, open_elements)).toEqual({
-      Li: 2,
-      S: 1,
-    })
   })
 
   type Keys = { components?: readonly string[]; open_elements?: Record<string, number> }

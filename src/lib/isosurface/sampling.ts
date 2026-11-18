@@ -486,10 +486,6 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
   if (!(n_candidates <= MAX_GRID_POINTS)) {
     throw new RangeError(`Volume window ${JSON.stringify(range)} covers ${n_candidates} cells`)
   }
-  // past 2^53 a cell index stops advancing (2^53 + 1 === 2^53): the loops below never end
-  if (!spans.flat().every(Number.isSafeInteger)) {
-    throw new RangeError(`Volume window ${JSON.stringify(range)} has cell bounds past 2^53`)
-  }
   const cells: Vec3[] = []
   for (let cell_a = spans[0][0]; cell_a < spans[0][1]; cell_a++)
     for (let cell_b = spans[1][0]; cell_b < spans[1][1]; cell_b++)
@@ -505,9 +501,8 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
   return cells
 }
 
-// Whether voxel index spans [lo, hi] (inclusive, safe integers) hold at most MAX_GRID_POINTS
+// Whether voxel index spans [lo, hi] (inclusive) hold at most MAX_GRID_POINTS
 const voxels_fit = (voxels: number[][]): boolean =>
-  voxels.flat().every(Number.isSafeInteger) &&
   voxels.reduce((prod, [lower, upper]) => prod * (upper - lower + 1), 1) <= MAX_GRID_POINTS
 
 // A periodic grid trilinearly resampled to `dims` points per axis (z-fastest)

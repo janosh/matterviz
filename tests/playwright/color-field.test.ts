@@ -23,10 +23,8 @@ async function cloud_stats(page: Page, case_id: string): Promise<CloudStats> {
   try {
     return await decoded.evaluate(({ data, width, height, background }, cloud_red) => {
       let content = 0
-      const [min, max] = [
-        [width, height],
-        [0, 0],
-      ]
+      const min = [width, height]
+      const max = [0, 0]
       for (let idx = 0; idx < data.length; idx += 4) {
         const delta = [0, 1, 2].map((channel) =>
           Math.abs(data[idx + channel] - background[channel]),

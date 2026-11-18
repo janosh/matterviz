@@ -8,6 +8,11 @@ import { make_phase } from '../test-fixtures'
 
 const product = (idx: number): string | null =>
   document.querySelector(`[data-testid="probe-product-${idx}"]`)?.textContent ?? null
+const submit_probe = async (text: string) => {
+  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), text)
+  doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
+  await tick()
+}
 
 // LiCoO2 probed with O open is LiCo; without the open O it must be LiCoO2 again (the compound),
 // not the stale LiCo (Li + Co). A host-set probe is the host's to change.
@@ -25,9 +30,7 @@ test(`a submitted probe is projected again when the open elements change`, async
   const component = mount(ConvexHull, { target: document.body, props })
   onTestFinished(() => unmount(component))
   await tick()
-  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `LiCoO2`)
-  doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
-  await tick()
+  await submit_probe(`LiCoO2`)
   expect(props.probe_composition).toEqual({ Li: 1, Co: 1 })
   expect(product(0)).toBe(`compound 100%`)
   props.open_elements = { O: -2 } // a new μ alone keeps the projection
@@ -42,9 +45,7 @@ test(`a submitted probe is projected again when the open elements change`, async
   flushSync()
   expect(props.probe_composition).toEqual({ Li: 1, Co: 1 })
   // a host replacing the pane's probe owns it, even at the same coordinates
-  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `LiCoO2`)
-  doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
-  await tick()
+  await submit_probe(`LiCoO2`)
   expect(product(0)).toBe(`compound 100%`)
   props.probe_composition = { Li: 1, Co: 1 }
   props.open_elements = undefined
@@ -60,19 +61,14 @@ test(`a submitted probe is projected again when the open elements change`, async
   flushSync()
   expect([product(0), product(1)]).toEqual([`compound 100%`, null])
   // a failed submission's error belongs to it: a host probe set since replaces it
-  const probe_form = doc_query<HTMLFormElement>(`.composition-probe`)
-  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `Qq2`)
-  probe_form.requestSubmit()
-  await tick()
+  await submit_probe(`Qq2`)
   const alert = () => document.querySelector(`.probe-error`)?.textContent ?? null
   expect(alert()).toContain(`Can't parse Qq2`)
   props.probe_composition = { Li: 1, Co: 1 }
   flushSync()
   expect([alert(), product(0)]).toEqual([null, `compound 100%`])
   // the hull reprojects a submission with the info pane closed too
-  set_input(doc_query<HTMLInputElement>(`.composition-probe input`), `LiCoO2`)
-  probe_form.requestSubmit()
-  await tick()
+  await submit_probe(`LiCoO2`)
   props.enable_info_pane = false
   props.open_elements = undefined
   flushSync()

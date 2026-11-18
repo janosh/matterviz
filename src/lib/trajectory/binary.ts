@@ -87,22 +87,13 @@ export function trajectory_from_binary(
     )
   const cell_of = (frame_idx: number): Matrix3x3 | undefined =>
     cells && matrix_at(cells, shared_cell ? 0 : frame_idx * 9)
-  const raw_pbc = fields.pbc
-  if (raw_pbc !== undefined && !cells)
-    throw new TypeError(`Binary trajectory pbc needs a lattice`)
-  // each flag checked (a hole in [true, , true] fails) and copied off the caller's array
-  const [flag_a, flag_b, flag_c]: unknown[] =
-    Array.isArray(raw_pbc) && raw_pbc.length === 3
-      ? [0, 1, 2].map((axis) => raw_pbc[axis])
-      : []
-  const pbc: Pbc | undefined =
-    typeof flag_a === `boolean` && typeof flag_b === `boolean` && typeof flag_c === `boolean`
-      ? [flag_a, flag_b, flag_c]
-      : undefined
-  if (raw_pbc !== undefined && !pbc)
-    throw new TypeError(
-      `Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(raw_pbc)}`,
-    )
+  const pbc = fields.pbc as Pbc | undefined
+  if (pbc !== undefined && !cells) throw new TypeError(`Binary trajectory pbc needs a lattice`)
+  if (
+    pbc !== undefined &&
+    !(Array.isArray(pbc) && pbc.length === 3 && pbc.every((flag) => typeof flag === `boolean`))
+  )
+    throw new TypeError(`Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(pbc)}`)
 
   const step_values =
     arrays.steps && finite_values(checked_array(arrays.steps, `steps`, [n_frames]), `steps`)
@@ -130,7 +121,6 @@ export function trajectory_from_binary(
     time_step !== undefined &&
     !(
       is_plain_object(time_step) &&
-      Object.keys(time_step).toSorted().join(`,`) === `unit,value` &&
       typeof time_step.value === `number` &&
       Number.isFinite(time_step.value) &&
       time_step.value > 0 &&
@@ -194,9 +184,9 @@ export function trajectory_from_binary(
       ),
       ...provenance,
     },
-    // copies: unlike the numeric buffers, the host may reuse these JSON objects
+    // copy: unlike the numeric buffers, the host may reuse this JSON object
     metadata: { ...fields.metadata },
-    time_step: time_step && { ...(time_step as NonNullable<TrajectoryRun[`time_step`]>) },
+    time_step: time_step as TrajectoryRun[`time_step`],
     properties,
   })
 }

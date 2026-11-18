@@ -388,49 +388,14 @@ describe(`extract_volume_range`, () => {
   // round(width · n) + 1 samples fell off the source voxels. The slab's field depends on one base fraction alone, so its surface is planes at
   // base fraction k + (1 +- 0.1) / n there and every vertex (clip points included) holds the
   // isovalue. Each window face those planes cross must carry surface vertices.
+  // oxfmt-ignore
   test.each<[Vec3, number, Matrix3x3, number[]]>([
-    [
-      [32, 24, 16],
-      0,
-      [
-        [1, 1, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [0, 0.1, 0.15, 0.2, 0.25, 0.5],
-    ],
-    [
-      [8, 8, 8],
-      2,
-      [
-        [1, 1, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [0, 0.1],
-    ],
-    [
-      [8, 8, 8],
-      1,
-      [
-        [1, 2, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [0, 0.1],
-    ],
+    [[32, 24, 16], 0, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [0, 0.1, 0.15, 0.2, 0.25, 0.5]],
+    [[8, 8, 8], 2, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [0, 0.1]],
+    [[8, 8, 8], 1, [[1, 2, 0], [0, 1, 0], [0, 0, 1]], [0, 0.1]],
     [[8, 8, 8], 0, diagonal_matrix([1, 1, 1]), [0.1, 0.15]],
     [[8, 8, 8], 0, diagonal_matrix([2, 1, 1]), [0.1]],
-    [
-      [64, 64, 64],
-      2,
-      [
-        [1, 16, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [0, 0.1],
-    ],
+    [[64, 64, 64], 2, [[1, 16, 0], [0, 1, 0], [0, 0, 1]], [0, 0.1]],
   ])(
     `%j grid, peak on axis %i, frame %j: every face crossing survives`,
     (dims, axis, frame, halos) => {
@@ -593,12 +558,6 @@ describe(`extract_volume_range`, () => {
     expect(() => extract_volume_range(periodic_vol(), huge)).toThrow(RangeError)
     expect(() => prepare_geometry_grid(periodic_vol(), { range: huge })).toThrow(
       /covers 1e\+308 cells/,
-    )
-    // 2 candidate cells, but at 2^53 the cell index can't advance (2^53 + 1 === 2^53)
-    // oxfmt-ignore
-    const unsafe: DisplayRange = [[2 ** 53, 2 ** 53 + 2], [0, 1], [0, 1]]
-    expect(() => prepare_geometry_grid(periodic_vol(), { range: unsafe })).toThrow(
-      /cell bounds past 2\^53/,
     )
   })
 

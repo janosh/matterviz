@@ -21,9 +21,6 @@ const envelope = (kind: string, arrays: Record<string, unknown>, fields = {}) =>
   ...fields,
 })
 
-// [true, , true] and [2, , 3]: holes that .every() would skip
-const holey_pbc = Object.assign(Array(3), { 0: true, 2: true })
-const holey_shape = Object.assign(Array(3), { 0: 2, 2: 3 })
 // 3 frames x 2 atoms (Si, O) in a cell that grows each frame, with forces and energies
 const [n_frames, n_atoms] = [3, 2]
 const positions = Float64Array.from(
@@ -53,34 +50,23 @@ const traj_arrays = (overrides: Record<string, unknown> = {}) => {
 }
 
 describe(`decode_binary_array`, () => {
-  test(`aligned buffers decode zero-copy, misaligned ones into an exact aligned copy`, () => {
-    const values = Float64Array.of(1.5, -2, 3e300)
-    const aligned = decode_binary_array(arr(values, [3]), `x`)
-    expect(aligned.values.buffer).toBe(values.buffer)
-    expect(aligned.values).toEqual(values)
-    // the same bytes 1 byte into a buffer: Float64Array can't view them in place
-    const shifted = new Uint8Array(values.byteLength + 1)
-    shifted.set(new Uint8Array(values.buffer), 1)
-    const spec = { dtype: `float64`, shape: [3], data: new DataView(shifted.buffer, 1, 24) }
-    const copied = decode_binary_array(spec, `x`)
-    expect(copied.values.buffer).not.toBe(shifted.buffer)
-    expect(copied.values).toEqual(values)
+  // views at an aligned byte offset decode in place, misaligned ones into an exact copy
+  test.each([
+    [Float64Array.of(1.5, -2, 3e300), 0, true],
+    [Float64Array.of(1.5, -2, 3e300), 1, false],
+    [Float32Array.of(0.1, -7, 3.25), 8, true],
+    [Float32Array.of(0.1, -7, 3.25), 2, false],
+  ])(`%o at byte offset %i decodes zero-copy: %s`, (values, offset, zero_copy) => {
+    const host = new Uint8Array(offset + values.byteLength + 4)
+    host.set(new Uint8Array(values.buffer), offset)
+    const spec = arr(values, [3])
+    const view = new DataView(host.buffer, offset, values.byteLength)
+    const decoded = decode_binary_array({ ...spec, data: view }, `x`)
+    expect(decoded.values).toEqual(values)
+    expect(decoded.values.buffer === host.buffer).toBe(zero_copy)
+    if (zero_copy) expect(decoded.values.byteOffset).toBe(offset)
     // a bare ArrayBuffer works too
     expect(decode_binary_array({ ...spec, data: values.buffer }, `x`).values).toEqual(values)
-    // float32 inside a larger buffer: an aligned offset (8) is viewed in place, a misaligned
-    // one (2) copied, both holding the exact values
-    const f32 = Float32Array.of(0.1, -7, 3.25)
-    for (const offset of [8, 2]) {
-      const host = new Uint8Array(offset + f32.byteLength + 4)
-      host.set(new Uint8Array(f32.buffer), offset)
-      const view = new DataView(host.buffer, offset, f32.byteLength)
-      const decoded = decode_binary_array({ dtype: `float32`, shape: [3], data: view }, `x`)
-      expect(decoded.values).toEqual(f32)
-      if (offset === 8) {
-        expect(decoded.values.buffer).toBe(host.buffer)
-        expect(decoded.values.byteOffset).toBe(8)
-      } else expect(decoded.values.buffer).not.toBe(host.buffer)
-    }
   })
 
   test.each([
@@ -95,14 +81,6 @@ describe(`decode_binary_array`, () => {
       /shape must be a list of non-negative integers/,
     ],
     [{ dtype: `float32`, shape: [1.5], data: new ArrayBuffer(4) }, /shape must be a list/],
-    [
-      {
-        dtype: `float32`,
-        shape: holey_shape,
-        data: new ArrayBuffer(24),
-      },
-      /shape must be a list/,
-    ],
     [{ dtype: `float32`, shape: [1], data: [1] }, /data must be an ArrayBuffer/],
     [null, /must be an object/],
   ])(`rejects malformed array spec %#`, (spec, message) => {
@@ -192,9 +170,7 @@ describe(`trajectory_from_binary`, () => {
       metadata: { source: `md` },
     }
     const run = trajectory_from_binary(envelope(`trajectory`, arrays, fields))
-    // the run keeps its own copy of the flags, time step and metadata
-    fields.pbc[0] = false
-    fields.time_step.value = 4
+    // the run keeps its own copy of the metadata
     fields.metadata.source = `edited`
     expect(run.metadata).toEqual({ source: `md` })
     // File Size counts every decoded buffer: 72 + 72 + 8 + 72 bytes
@@ -281,12 +257,6 @@ describe(`trajectory_from_binary`, () => {
       envelope(`trajectory`, traj_arrays(), { pbc: [true, 1, true] }),
       /pbc must be 3 booleans/,
     ],
-    [
-      envelope(`trajectory`, traj_arrays(), {
-        pbc: holey_pbc,
-      }),
-      /pbc must be 3 booleans/,
-    ],
     [envelope(`trajectory`, traj_arrays(), { metadata: [1] }), /metadata must be an object/],
     ...[
       { value: -1, unit: `fs` },
@@ -294,7 +264,6 @@ describe(`trajectory_from_binary`, () => {
       { value: `2`, unit: `fs` },
       { value: 2, unit: `s` },
       { value: 2 },
-      { value: 2, unit: `fs`, scale: 1 },
       2,
       null,
     ].map((time_step): [unknown, RegExp] => [

@@ -826,7 +826,7 @@ test.describe(`Bond component`, () => {
 test_without_errors(
   `invalid pair cutoffs keep the rendered viewer and its controls usable`,
   { tag: `@webgl` },
-  async ({ page }, test_info) => {
+  async ({ page }) => {
     const canvas = await goto_structure_test(page)
     await set_scene_props(page, {
       show_bonds: `always`,
@@ -841,13 +841,10 @@ test_without_errors(
       `Invalid pair_cutoffs bonding option pair_cutoffs: 'Cs-Cs' must be [min, max]`,
     )
     await expect(canvas).toBeVisible()
-    const viewer = page.locator(`#test-structure`)
-    await viewer.screenshot({ path: test_info.outputPath(`invalid-cutoffs.png`) })
     const max_input = pane.locator(`input[aria-label="Cs-Cs max (Å)"]`)
     await max_input.fill(`7`)
     await max_input.press(`Enter`)
     await expect(notice).toHaveCount(0)
     await expect(canvas).toBeVisible()
-    await viewer.screenshot({ path: test_info.outputPath(`fixed-cutoffs.png`) })
   },
 )

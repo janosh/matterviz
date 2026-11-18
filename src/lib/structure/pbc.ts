@@ -3,10 +3,12 @@ import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
   get_bond_data,
+  get_explicit_bond_metadata,
   has_framework_potential,
   intern_site_elements,
   is_spectator_center,
   lattice_shift,
+  shift_bonds_for_moved_sites,
   type BondingOptions,
   type BondingStrategy,
 } from './bonding'
@@ -432,73 +434,40 @@ export function unwrap_molecules<Struct extends AnyStructure>(
     }
   }
   if (!changed) return { structure, bonds }
-  // explicit bond metadata moves with its sites, else a fresh read of it misplaces endpoints
-  const explicit = structure.properties?.bonds
+  // explicit bond metadata (the rows the bond reader keeps) moves with its sites, else a
+  // fresh read of it misplaces endpoints
+  const explicit = get_explicit_bond_metadata(structure)
   const unwrapped = {
     ...structure,
     sites: new_sites,
-    // a non-array value is no bond list (the reader ignores it), so it stays as is
-    ...(Array.isArray(explicit) && {
+    ...(explicit.length > 0 && {
       properties: {
         ...structure.properties,
-        bonds: explicit.map((bond) => {
-          // rows the bond reader rejects (get_explicit_bond_metadata) stay as they are
-          if (!is_site_bond_row(bond, n_sites)) return bond
-          const { site_idx_1, site_idx_2, cell_shift: old_shift, ...rest } = bond
-          if (AXES.every((axis) => totals[site_idx_1][axis] === totals[site_idx_2][axis]))
-            return bond
-          const cell_shift = carried_shift(old_shift, totals, site_idx_1, site_idx_2)
-          return {
-            site_idx_1,
-            site_idx_2,
-            ...rest,
-            ...(cell_shift.some(Boolean) && { cell_shift }),
-          }
-        }),
+        bonds: shift_bonds_for_moved_sites(explicit, (site_idx) => totals[site_idx]),
       },
     }),
   }
   return { structure: unwrapped, bonds: carry_bonds(unwrapped, bonds, totals, frac_to_cart) }
 }
 
-const is_site_idx = (val: unknown, n_sites: number): boolean =>
-  Number.isInteger(val) && (val as number) >= 0 && (val as number) < n_sites
-// Whether an explicit bond row has in-range site indices and an absent or integer cell_shift
-const is_site_bond_row = (bond: unknown, n_sites: number): boolean => {
-  if (typeof bond !== `object` || bond === null) return false
-  const { site_idx_1, site_idx_2, cell_shift } = bond as Record<string, unknown>
-  return (
-    is_site_idx(site_idx_1, n_sites) &&
-    is_site_idx(site_idx_2, n_sites) &&
-    (cell_shift === undefined ||
-      (Array.isArray(cell_shift) &&
-        cell_shift.length === 3 &&
-        cell_shift.every((val) => Number.isInteger(val))))
-  )
-}
-
 // Bonds addressed in the wrapped frame (the viewer's saved bond edits) on the sites
 // unwrap_molecules moved by provenance.unwrap_shift t: cell_shift s reads s + t_1 - t_2
-// (sign 1), and back to the wrapped frame with sign -1. A bond whose ends moved together keeps
+// (sign 1), and back to the wrapped frame with sign -1. A bond with neither end moved keeps
 // its object, and with no moved site the array is returned as is.
-export function shift_bonds_by_unwrap<Bond extends StructureBond>(
-  bonds: Bond[],
+export const shift_bonds_by_unwrap = (
+  bonds: StructureBond[],
   sites: readonly Site[],
   sign: 1 | -1,
-): Bond[] {
-  if (!sites.some((site) => site.provenance?.unwrap_shift)) return bonds
-  const shift_of = (site_idx: number): Shift =>
-    sites[site_idx]?.provenance?.unwrap_shift ?? ZERO_SHIFT
-  return bonds.map((bond) => {
-    const [shift_1, shift_2] = [shift_of(bond.site_idx_1), shift_of(bond.site_idx_2)]
-    if (AXES.every((axis) => shift_1[axis] === shift_2[axis])) return bond
-    const { cell_shift: old_shift, ...rest } = bond
-    const cell_shift = AXES.map(
-      (axis) => (old_shift?.[axis] ?? 0) + sign * (shift_1[axis] - shift_2[axis]),
-    ) as Vec3
-    return { ...rest, ...(cell_shift.some(Boolean) && { cell_shift }) } as Bond
-  })
-}
+): StructureBond[] =>
+  sites.some((site) => site.provenance?.unwrap_shift)
+    ? shift_bonds_for_moved_sites(
+        bonds,
+        (site_idx) =>
+          sites[site_idx]?.provenance?.unwrap_shift?.map((val) => sign * val) as
+            | Vec3
+            | undefined,
+      )
+    : bonds
 
 // Bond cell_shift s after its sites moved by lattice translations: s + t_1 - t_2
 const carried_shift = (

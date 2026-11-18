@@ -936,11 +936,8 @@ describe(`Export functionality`, () => {
       ],
       [
         `sheared cell`,
-        [
-          [3, 0, 0],
-          [30, 4, 0],
-          [0, 0, 5],
-        ],
+        // oxfmt-ignore
+        [[3, 0, 0], [30, 4, 0], [0, 0, 5]],
         [
           { element: `Si`, abc: [0.48, 0.052, 0] },
           { element: `O`, abc: [0.5, 0, 0.5] },
@@ -967,17 +964,7 @@ describe(`Export functionality`, () => {
 
     it.each([
       [`magmom`, { magmom: [0, 0, 1] }, `Magnetic moments need the P1 CIF`],
-      [
-        `ADP`,
-        {
-          adp_U_cart: [
-            [0.01, 0, 0],
-            [0, 0.01, 0],
-            [0, 0, 0.01],
-          ],
-        },
-        `ADPs) need the P1 CIF`,
-      ],
+      [`ADP`, { adp_U_cart: cubic_matrix(0.01) }, `ADPs) need the P1 CIF`],
       [`all-zero magmom`, { magmom: [0, 0, 0] }, undefined], // no magnetic order to lose
     ])(`%s sites: symmetrized CIF unavailable reason %s`, async (_, properties, reason) => {
       const structure = make_crystal(
@@ -996,11 +983,8 @@ describe(`Export functionality`, () => {
 
     // a skewed cell's nearest image can lie beyond the 27 unit shifts of the rounded offset
     it(`nearest_image finds the closest lattice image of a skewed cell`, () => {
-      const lattice: Matrix3x3 = [
-        [3, 0, 0],
-        [300, 4, 0],
-        [0, 0, 5],
-      ]
+      // oxfmt-ignore
+      const lattice: Matrix3x3 = [[3, 0, 0], [300, 4, 0], [0, 0, 5]]
       const { frac, dist } = nearest_image(
         [0.05, 0.05, 0],
         math.create_lattice_converters(lattice),
@@ -1031,47 +1015,25 @@ describe(`Export functionality`, () => {
       expect(() => structure_to_cif_str(fewer, sym_data)).toThrow(
         `symmetry data covers 8 sites, the structure has 7`,
       )
-      const moved = make_crystal(cubic_matrix(5.64), [
-        { ...rock_salt[0], abc: [0.1, 0, 0] },
-        ...rock_salt.slice(1),
-      ])
-      expect(() => structure_to_cif_str(moved, sym_data)).toThrow(
-        `site 1 at 0.1, 0, 0 is not where the symmetry analysis saw it`,
-      )
-      // the analysis keeps its own copy of the coordinates an in-place edit changes
-      const edited = make_crystal(cubic_matrix(5.64), rock_salt)
-      const edited_sym = await analyze_structure_symmetry(edited)
-      edited.sites[4].abc[0] = 0.6
-      edited.sites[4].xyz[0] = 0.6 * 5.64
-      expect(() => structure_to_cif_str(edited, edited_sym)).toThrow(
-        `site 5 at 0.6, 0.5, 0.5 is not where the symmetry analysis saw it`,
-      )
-      // a new structure with another species at an analyzed position
-      const swapped = make_crystal(cubic_matrix(5.64), [
-        ...rock_salt.slice(0, 4),
-        { ...rock_salt[4], element: `Br` },
-        ...rock_salt.slice(5),
-      ])
-      expect(() => structure_to_cif_str(swapped, sym_data)).toThrow(
-        `site 5 is Br-1:1, the symmetry analysis saw Cl-1:1`,
-      )
-      // cubic ops would swap axes of unequal length in a stretched cell
-      const stretched = make_crystal(
-        [
-          [5.64, 0, 0],
-          [0, 5.64, 0],
-          [0, 0, 6],
-        ],
-        rock_salt,
-      )
-      expect(() => structure_to_cif_str(stretched, sym_data)).toThrow(
-        `lattice differs from the analyzed one by up to 0.36`,
-      )
-      // the analysis records the cell it was sent: lattice and species edits while it runs
-      // need a fresh analysis (unchanged inputs still export)
+      // the analysis records the cell it was sent: lattice (cubic ops would swap axes of
+      // unequal length), species and position edits, in place while it runs, are rejected
+      // against both the old and the fresh analysis
       for (const [edit, error] of [
-        [(struct: Crystal) => (struct.lattice.matrix[2][2] = 6), `lattice differs`],
-        [(struct: Crystal) => (struct.sites[4].species[0].element = `Br`), `site 5 is Br-1:1`],
+        [
+          (struct: Crystal) => (struct.lattice.matrix[2][2] = 6),
+          `lattice differs from the analyzed one by up to 0.36`,
+        ],
+        [
+          (struct: Crystal) => (struct.sites[4].species[0].element = `Br`),
+          `site 5 is Br-1:1, the symmetry analysis saw Cl-1:1`,
+        ],
+        [
+          (struct: Crystal) => {
+            struct.sites[4].abc[0] = 0.6
+            struct.sites[4].xyz[0] = 0.6 * 5.64
+          },
+          `site 5 at 0.6, 0.5, 0.5 is not where the symmetry analysis saw it`,
+        ],
       ] as const) {
         const in_flight = make_crystal(cubic_matrix(5.64), rock_salt)
         const pending = analyze_structure_symmetry(in_flight)

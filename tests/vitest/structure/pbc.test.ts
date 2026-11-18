@@ -718,11 +718,8 @@ test.each([
 
 describe(`unwrap_molecules`, () => {
   // Sheared monoclinic cell, so shifts are checked through a non-orthogonal lattice
-  const lattice: Matrix3x3 = [
-    [8, 0, 0],
-    [1.5, 9, 0],
-    [0, 0, 10],
-  ]
+  // oxfmt-ignore
+  const lattice: Matrix3x3 = [[8, 0, 0], [1.5, 9, 0], [0, 0, 10]]
   const cutoffs = { pair_cutoffs: { 'C-H': [0.5, 1.3], 'C-C': [0.5, 1.7] } as const }
   const periodic_bonds = (crystal: Crystal) =>
     compute_bonds(crystal, `pair_cutoffs`, { ...cutoffs, pbc: crystal.lattice.pbc })
@@ -801,12 +798,8 @@ describe(`unwrap_molecules`, () => {
       },
       { site_idx_1: 5, site_idx_2: 6, order: 1 },
     ]
-    // rows the bond reader rejects pass through untouched instead of throwing
-    const invalid = [
-      null,
-      { site_idx_1: 0, site_idx_2: 99 },
-      { site_idx_1: 0, site_idx_2: 1, cell_shift: `x` },
-    ]
+    // rows the bond reader rejects are dropped, as a fresh read of them would
+    const invalid = [null, { site_idx_1: 0, site_idx_2: 99 }]
     const with_explicit = {
       ...crystal,
       properties: { bonds: [...explicit, ...invalid] as StructureBond[] },
@@ -815,17 +808,11 @@ describe(`unwrap_molecules`, () => {
     expect(moved_bonds).toEqual([
       { site_idx_1: torn.site_idx_1, site_idx_2: torn.site_idx_2, order: 1 },
       explicit[1],
-      ...invalid,
     ])
-    expect(moved_bonds?.[1]).toBe(explicit[1])
     expect(explicit[0].cell_shift).toBe(torn.cell_shift)
-    // a non-array bonds value (the reader ignores it) is kept as is, not mapped
-    const bonds_object = { properties: { bonds: {} as StructureBond[] } }
-    const kept = unwrap_molecules({ ...crystal, ...bonds_object }, bonds).structure
-    expect(kept.properties?.bonds).toBe(bonds_object.properties.bonds)
     // bond edits stay in the wrapped input frame: on the moved sites the torn edit reads in-cell
     // (as the bond it names is now drawn), and maps back to its saved shift; an edit between
-    // sites that moved together keeps its object, and without moved sites the array is kept
+    // unmoved sites keeps its object, and without moved sites the array is kept
     const displayed = shift_bonds_by_unwrap(explicit, unwrapped.sites, 1)
     expect(displayed).toEqual(moved_bonds?.slice(0, explicit.length))
     expect(displayed[1]).toBe(explicit[1])
@@ -834,11 +821,8 @@ describe(`unwrap_molecules`, () => {
   })
 
   // 2 C 1.5 A apart along a 3 A axis bond into an infinite chain through the a face
-  const chain_lattice: Matrix3x3 = [
-    [3, 0, 0],
-    [0, 10, 0],
-    [0, 0, 10],
-  ]
+  // oxfmt-ignore
+  const chain_lattice: Matrix3x3 = [[3, 0, 0], [0, 10, 0], [0, 0, 10]]
   const chain: [string, Vec3][] = [
     [`C`, [0.9, 0.2, 0.2]],
     [`C`, [0.4, 0.2, 0.2]],

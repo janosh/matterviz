@@ -508,18 +508,14 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   // same letters on every plane orientation (input-frame letters gave primitive diamond a/b/c/n
   // and no d). The rotated input's normals are rotated back before comparing.
   // Generic rotation (Rz(0.7)·Rx(0.4)): no Cartesian axis of the input stays put
-  const rotation = math.dot(
-    [
-      [Math.cos(0.7), -Math.sin(0.7), 0],
-      [Math.sin(0.7), Math.cos(0.7), 0],
-      [0, 0, 1],
-    ],
-    [
-      [1, 0, 0],
-      [0, Math.cos(0.4), -Math.sin(0.4)],
-      [0, Math.sin(0.4), Math.cos(0.4)],
-    ],
-  )
+  const [cos_z, sin_z, cos_x, sin_x] = [
+    Math.cos(0.7),
+    Math.sin(0.7),
+    Math.cos(0.4),
+    Math.sin(0.4),
+  ]
+  // oxfmt-ignore
+  const rotation = math.dot([[cos_z, -sin_z, 0], [sin_z, cos_z, 0], [0, 0, 1]], [[1, 0, 0], [0, cos_x, -sin_x], [0, sin_x, cos_x]])
   test.each([
     [`Fm-3m`, 225, cubic_matrix(5)],
     [`Fd-3m`, 227, cubic_matrix(5)],

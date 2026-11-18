@@ -356,21 +356,10 @@ describe(`convex hull replacement state`, () => {
 
   // probes are element formulas: components mode solves for component amounts (Li2CoO2 =
   // CoO + Li2O, 2 of 3 component units), open elements are dropped (LiCoO2 → LiCo on Li-Co)
-  test.each([
-    [
-      `components`,
-      { components: [`CoO`, `Li2O`] },
-      [{ CoO: 1 }, { Li2O: 1 }, { CoO: 1, Li2O: 1 }] as Record<string, number>[],
-      `Li2CoO2`,
-      `CoO-Li2O`,
-    ],
-    [
-      `open elements`,
-      { open_elements: { O: -3 } },
-      [{ Li: 1 }, { Co: 1 }, { O: 1 }, { Li: 1, Co: 1, O: 2 }] as Record<string, number>[],
-      `LiCoO2`,
-      `Co-Li`,
-    ],
+  // oxfmt-ignore
+  test.each<[string, object, Record<string, number>[], string, string]>([
+    [`components`, { components: [`CoO`, `Li2O`] }, [{ CoO: 1 }, { Li2O: 1 }, { CoO: 1, Li2O: 1 }], `Li2CoO2`, `CoO-Li2O`],
+    [`open elements`, { open_elements: { O: -3 } }, [{ Li: 1 }, { Co: 1 }, { O: 1 }, { Li: 1, Co: 1, O: 2 }], `LiCoO2`, `Co-Li`],
   ])(
     `probe takes element formulas with %s`,
     async (_label, props, compositions, formula, system) => {
@@ -380,10 +369,8 @@ describe(`convex hull replacement state`, () => {
           : make_phase(composition, 0),
       )
       const target = await mount_hull({ entries, ...props, info_pane_open: true })
-      for (const [text, inside] of [
-        [formula, true],
-        [`NaCl`, false],
-      ] as const) {
+      // oxfmt-ignore
+      for (const [text, inside] of [[formula, true], [`NaCl`, false]] as const) {
         await submit_probe(text)
         expect(target.querySelector(`.probe-error`)?.textContent ?? null).toBe(
           inside ? null : `NaCl is outside the ${system} system`,
