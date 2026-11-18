@@ -212,6 +212,7 @@
     performance_mode = `quality`,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     image_atom_completion = $bindable(DEFAULTS.structure.image_atom_completion),
+    keep_molecules_whole = $bindable(DEFAULTS.structure.keep_molecules_whole),
     supercell_scaling = $bindable(`1x1x1`),
     apply_supercell_scaling = true,
     cell_type = $bindable(`original`),
@@ -360,6 +361,8 @@
     show_image_atoms?: boolean
     // Which bonds crossing a cell face get their far atom drawn (see find_image_atoms)
     image_atom_completion?: ImageAtomCompletion
+    // Reassemble molecules torn across cell faces (see unwrap_molecules); networks stay wrapped
+    keep_molecules_whole?: boolean
     // Supercell as repeats along a, b and c, e.g. `2x2x2`, or a single number for all three.
     supercell_scaling?: string
     // False when `structure` is already expanded to `supercell_scaling`
@@ -502,6 +505,7 @@
     supercell_scaling: () => supercell_scaling,
     apply_supercell_scaling: () => apply_supercell_scaling,
     show_image_atoms: () => show_image_atoms,
+    keep_molecules_whole: () => keep_molecules_whole,
     // The scene's own polyhedra (absent while hidden; images exist only for crystals) and bonding.
     // Legend-hidden elements draw no polyhedra, so they complete none either.
     image_atom_options: () => {
@@ -1599,6 +1603,7 @@
                   () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
                 }
                 structure={session.mapped_normalized_structure}
+                {sym_data}
                 {wrapper}
                 {scene}
                 image_canvas={display_mode === `slice` ? slice_canvas : undefined}
@@ -1631,6 +1636,7 @@
                 trajectory_position_stream={trail_stream}
                 bind:show_image_atoms
                 bind:image_atom_completion
+                bind:keep_molecules_whole
                 bind:supercell_scaling
                 bind:background_color
                 bind:background_opacity

@@ -34,6 +34,7 @@ type StructureViewStateSource = {
   background_opacity?: unknown
   show_image_atoms?: unknown
   image_atom_completion?: unknown
+  keep_molecules_whole?: unknown
   show_trajectory_lines?: unknown
   atom_color_config?: object
   supercell_scaling?: unknown
@@ -71,8 +72,13 @@ const structure_setting_source = (
   key: StructureSettingKey,
   source: StructureViewStateSource,
 ): unknown => {
-  if ([`show_image_atoms`, `image_atom_completion`, `show_trajectory_lines`].includes(key))
-    return object_value(source, key)
+  const own_props = [
+    `show_image_atoms`,
+    `image_atom_completion`,
+    `keep_molecules_whole`,
+    `show_trajectory_lines`,
+  ]
+  if (own_props.includes(key)) return object_value(source, key)
   // atom_color_scale persists AtomColorConfig.color_scale, the other atom_color_* keys the
   // field named by their suffix (mode, scale_type, property_key)
   if (key === `atom_color_scale`) return object_value(source.atom_color_config, `color_scale`)

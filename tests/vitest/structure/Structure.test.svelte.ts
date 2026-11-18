@@ -2323,7 +2323,7 @@ test.each([`symmetry`, `lattice planes`, `thermal`])(
     await init_moyo_for_tests()
     const prim_fcc_cu = fcc_cu()
     const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
-    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
+    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data)
     expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
     const field: AtomColorField = {
       dims: [1, 1, 1],

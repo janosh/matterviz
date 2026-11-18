@@ -346,3 +346,71 @@ export function find_drawn_completion_sites(
       add_end(site_idx, vertices[vertex_idx])
   return drawn
 }
+
+// Reassemble molecules torn across cell faces by per-atom wrapping. `bonds` is the periodic
+// bond graph (get_bond_data with the lattice's pbc): a bond (i, j, cell_shift) puts j's image
+// at cell_shift next to i. Each connected component is walked breadth-first from its first
+// site, giving every site the lattice translation that places it beside the neighbour that
+// reached it. A component that reaches a site again at a different translation connects to
+// its own periodic image (a chain, layer or 3D network, e.g. a MOF framework): no placement
+// makes it finite, so it stays wrapped. Finite fragments then move by whole cells so their
+// centroid (unweighted, fractional) lies in [0, 1) along each periodic axis. Sites keep their
+// order and properties; only abc and xyz change. Returns the input when nothing moves.
+export function unwrap_molecules(structure: AnyStructure, bonds: BondData): AnyStructure {
+  if (!(`lattice` in structure)) return structure
+  const { sites, lattice } = structure
+  const n_sites = sites.length
+  const neighbors: { site_idx: number; shift: Vec3 }[][] = sites.map(() => [])
+  for (let bond_idx = 0; bond_idx < bonds.length; bond_idx++) {
+    const site_1 = bond_site_1(bonds, bond_idx)
+    const site_2 = bond_site_2(bonds, bond_idx)
+    const shift = (bond_cell_shift(bonds, bond_idx) ?? ZERO_SHIFT).map(Math.round) as Vec3
+    neighbors[site_1].push({ site_idx: site_2, shift })
+    neighbors[site_2].push({ site_idx: site_1, shift: shift.map((val) => -val) as Vec3 })
+  }
+  const translations = Array.from<Vec3 | undefined>({ length: n_sites })
+  const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
+  let moved = false
+  const new_sites = [...sites]
+  for (let anchor = 0; anchor < n_sites; anchor++) {
+    if (translations[anchor]) continue
+    translations[anchor] = [0, 0, 0]
+    const component = [anchor]
+    let periodic = false
+    // the BFS queue: for...of also visits sites pushed while it runs
+    for (const site_idx of component) {
+      const own = translations[site_idx] as Vec3
+      for (const { site_idx: other, shift } of neighbors[site_idx]) {
+        const target = shifted(own, shift)
+        const placed = translations[other]
+        if (!placed) {
+          translations[other] = target
+          component.push(other)
+        } else if (AXES.some((axis) => placed[axis] !== target[axis])) periodic = true
+      }
+    }
+    if (periodic) continue
+    const centroid = AXES.map(
+      (axis) =>
+        component.reduce(
+          (sum, idx) => sum + sites[idx].abc[axis] + (translations[idx] as Vec3)[axis],
+          0,
+        ) / component.length,
+    )
+    const recenter = AXES.map((axis) =>
+      lattice.pbc[axis] ? -Math.floor(centroid[axis]) : 0,
+    ) as Vec3
+    for (const site_idx of component) {
+      const total = shifted(translations[site_idx] as Vec3, recenter)
+      if (total.every((val) => val === 0)) continue
+      moved = true
+      const site = sites[site_idx]
+      new_sites[site_idx] = {
+        ...site,
+        abc: shifted(site.abc, total),
+        xyz: shifted(site.xyz, frac_to_cart(total)),
+      }
+    }
+  }
+  return moved ? { ...structure, sites: new_sites } : structure
+}

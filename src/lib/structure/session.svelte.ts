@@ -23,6 +23,7 @@ import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'
 import { get_property_colors } from './atom-properties'
 import type { BondingOptions, BondingStrategy } from './bonding'
 import {
+  get_bond_data,
   merge_bond_edits,
   remap_bonds_after_deletion,
   shift_bonds_for_moved_sites,
@@ -43,7 +44,7 @@ import {
   type StructureToolPrediction,
 } from './prediction'
 import { capitalize_symbol } from './parsers/shared'
-import { get_pbc_image_sites, site_token, wrap_to_unit_cell } from './pbc'
+import { get_pbc_image_sites, site_token, unwrap_molecules, wrap_to_unit_cell } from './pbc'
 import type { ImageAtomOptions } from './pbc'
 import {
   get_image_source_idx,
@@ -85,6 +86,8 @@ export interface StructureSessionInputs {
   supercell_scaling: () => string
   apply_supercell_scaling: () => boolean
   show_image_atoms: () => boolean
+  // Reassemble bonded fragments torn across cell faces (unwrap_molecules) before adding images
+  keep_molecules_whole: () => boolean
   // The renderer's own polyhedra and bonding settings, so completion adds what it draws
   image_atom_options: () => ImageAtomOptions
   cell_type: () => CellType
@@ -379,9 +382,18 @@ export class StructureSession {
   private readonly image_options = $derived.by(() =>
     this.keep_image_options(this.inputs.image_atom_options()),
   )
-  private readonly mapped_supercell = $derived.by(() =>
-    this.map_elements(this.supercell_structure),
-  )
+  // Whole molecules move by lattice vectors only: site order, count and provenance stay, so
+  // selections, measurements (minimum-image) and edits (deltas) address the same sites
+  private readonly mapped_supercell = $derived.by(() => {
+    const struct = this.map_elements(this.supercell_structure)
+    if (!this.inputs.keep_molecules_whole() || !struct || !(`lattice` in struct)) return struct
+    const { pbc } = struct.lattice
+    const options = { ...this.inputs.bonding_options(), pbc }
+    return unwrap_molecules(
+      struct,
+      get_bond_data(struct, this.inputs.bonding_strategy(), options),
+    )
+  })
   // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing.
   // Only a settings change on the same structure can, so new frames build no image_set_key.
   private last_imaged: { struct: AnyStructure; key?: string; imaged: AnyStructure } | undefined

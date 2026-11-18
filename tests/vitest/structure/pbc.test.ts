@@ -6,11 +6,13 @@ import {
   find_drawn_completion_sites,
   find_image_atoms,
   get_pbc_image_sites,
+  unwrap_molecules,
   wrap_to_unit_cell,
 } from '#lib/structure/pbc.js'
 import type { ImageAtom, ImageAtomCompletion, ImageAtomOptions } from '#lib/structure/pbc.js'
 import { DEFAULTS } from '#lib/settings.js'
 import {
+  compute_bonds,
   electroneg_ratio,
   explicit_only,
   get_bond_data,
@@ -710,4 +712,129 @@ test.each([
   expect(warn_spy).toHaveBeenCalledTimes(n_completed ? 0 : 1)
   if (!n_completed) expect(warn_spy).toHaveBeenCalledWith(`Bond cell shifts reach 100000 cells, too far to complete periodic images`)
   warn_spy.mockRestore()
+})
+
+describe(`unwrap_molecules`, () => {
+  // Sheared monoclinic cell, so shifts are checked through a non-orthogonal lattice
+  const lattice: Matrix3x3 = [
+    [8, 0, 0],
+    [1.5, 9, 0],
+    [0, 0, 10],
+  ]
+  const cutoffs = { pair_cutoffs: { 'C-H': [0.5, 1.3], 'C-C': [0.5, 1.7] } as const }
+  const periodic_bonds = (crystal: Crystal) =>
+    compute_bonds(crystal, `pair_cutoffs`, { ...cutoffs, pbc: crystal.lattice.pbc })
+  // A CH4 centred near the a/c corner, wrapped per atom so it is torn across both faces
+  const methane = (center: Vec3): [string, Vec3][] => {
+    const to_frac = math.create_cart_to_frac(lattice)
+    const center_xyz = create_frac_to_cart(lattice)(center)
+    const offsets: Vec3[] = [
+      [0.63, 0.63, 0.63],
+      [-0.63, -0.63, 0.63],
+      [-0.63, 0.63, -0.63],
+      [0.63, -0.63, -0.63],
+    ]
+    return [
+      [`C`, center],
+      ...offsets.map((offset): [string, Vec3] => [
+        `H`,
+        wrap_to_unit_cell(to_frac(math.add(center_xyz, offset))),
+      ]),
+    ]
+  }
+
+  test(`reassembles a torn molecule with minimum-image bond lengths and centroid in cell`, () => {
+    const crystal = make_crystal(lattice, [
+      ...methane([0.99, 0.5, 0.005]),
+      ...methane([0.5, 0.5, 0.5]),
+    ])
+    crystal.sites[3].properties = { charge: 0.1 }
+    const bonds = periodic_bonds(crystal)
+    expect(bonds).toHaveLength(8)
+    const unwrapped = unwrap_molecules(crystal, bonds)
+    expect(unwrapped).not.toBe(crystal)
+    // bond_length is the minimum-image distance; the torn bonds were ~8-10 A apart in the input
+    expect(bonds.some(({ cell_shift }) => cell_shift)).toBe(true)
+    for (const { site_idx_1, site_idx_2, bond_length } of bonds) {
+      const length = euclidean_dist(
+        unwrapped.sites[site_idx_1].xyz,
+        unwrapped.sites[site_idx_2].xyz,
+      )
+      expect(Math.abs(length - bond_length)).toBeLessThan(1e-10)
+    }
+    const frac_to_cart = create_frac_to_cart(lattice)
+    for (const [idx, site] of unwrapped.sites.entries()) {
+      expect(max_abs_error(site.xyz, frac_to_cart(site.abc))).toBeLessThan(1e-10)
+      expect(site.species).toEqual(crystal.sites[idx].species)
+      expect(site.properties).toEqual(crystal.sites[idx].properties)
+    }
+    for (const start of [0, 5]) {
+      const fragment = unwrapped.sites.slice(start, start + 5)
+      for (const axis of [0, 1, 2]) {
+        const centroid = fragment.reduce((sum, site) => sum + site.abc[axis], 0) / 5
+        expect(centroid).toBeGreaterThanOrEqual(0)
+        expect(centroid).toBeLessThan(1)
+      }
+    }
+    // the interior molecule was whole already and does not move
+    expect(unwrapped.sites.slice(5)).toEqual(crystal.sites.slice(5))
+  })
+
+  test.each([
+    // 2 atoms 1.5 A apart along a 3 A axis: an infinite chain through the a face
+    {
+      desc: `chain`,
+      sites: [
+        [`C`, [0.9, 0.5, 0.5]],
+        [`C`, [0.4, 0.5, 0.5]],
+      ],
+    },
+    // one atom bonded to its own image along every axis (self-loop, 3D network)
+    { desc: `network`, sites: [[`C`, [0.99, 0.99, 0.99]]], cubic: 1.5 },
+  ] as { desc: string; sites: [string, Vec3][]; cubic?: number }[])(
+    `periodic $desc stays wrapped`,
+    ({ sites, cubic }) => {
+      const crystal = make_crystal(
+        cubic ?? [
+          [3, 0, 0],
+          [0, 10, 0],
+          [0, 0, 10],
+        ],
+        sites,
+      )
+      const bonds = periodic_bonds(crystal)
+      expect(bonds.length).toBeGreaterThan(0)
+      expect(unwrap_molecules(crystal, bonds)).toBe(crystal)
+    },
+  )
+
+  test(`a molecule beside a periodic chain moves while the chain stays`, () => {
+    const crystal = make_crystal(
+      [
+        [3, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+      [
+        [`C`, [0.9, 0.2, 0.2]],
+        [`C`, [0.4, 0.2, 0.2]],
+        // C-C dimer torn across the c face, far from the chain
+        [`C`, [0.5, 0.7, 0.96]],
+        [`C`, [0.5, 0.7, 0.06]],
+      ],
+    )
+    const unwrapped = unwrap_molecules(crystal, periodic_bonds(crystal))
+    expect(unwrapped.sites.slice(0, 2)).toEqual(crystal.sites.slice(0, 2))
+    expect(euclidean_dist(unwrapped.sites[2].xyz, unwrapped.sites[3].xyz)).toBeCloseTo(1, 10)
+    // reassembled at c = 0.96 and 1.06 (centroid 1.01), then moved back one cell
+    expect(unwrapped.sites[2].abc[2]).toBeCloseTo(-0.04, 12)
+    expect(unwrapped.sites[3].abc[2]).toBeCloseTo(0.06, 12)
+  })
+
+  test(`non-crystals and bond-free crystals come back unchanged`, () => {
+    const crystal = make_crystal(5, [[`C`, [0.1, 0.1, 0.1]]])
+    expect(unwrap_molecules(crystal, [])).toBe(crystal)
+    const molecule = { sites: crystal.sites }
+    expect(unwrap_molecules(molecule, [])).toBe(molecule)
+  })
 })

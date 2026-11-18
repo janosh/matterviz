@@ -67,6 +67,42 @@ describe(`display pipeline`, () => {
     expect(session.tool_input).toBe(original_input)
   })
 
+  it(`keep_molecules_whole reassembles torn molecules in the displayed cell and supercell`, () => {
+    // C-H 1 A apart through the a face of a 10 A cell
+    const torn = make_crystal(10, [
+      [`C`, [0.97, 0.5, 0.5]],
+      [`H`, [0.07, 0.5, 0.5]],
+    ])
+    const { host, session } = make_session({ structure: torn })
+    const ch_dist = () => {
+      const [site_c, site_h] = session.displayed_structure?.sites ?? []
+      return Math.hypot(...site_c.xyz.map((coord, axis) => coord - site_h.xyz[axis]))
+    }
+    expect(ch_dist()).toBeCloseTo(9, 10)
+    flush_set(host, { keep_molecules_whole: true })
+    expect(session.displayed_structure?.sites).toHaveLength(2)
+    expect(ch_dist()).toBeCloseTo(1, 10)
+    // centroid a = 1.02 after reassembly moves back one cell: C at -0.03, H at 0.07
+    expect(session.displayed_structure?.sites.map((site) => site.abc[0])).toEqual([
+      expect.closeTo(-0.03, 12),
+      expect.closeTo(0.07, 12),
+    ])
+    expect(host.structure?.sites[0].abc[0]).toBe(0.97) // the input stays wrapped
+    flush_set(host, { supercell_scaling: `2x1x1` })
+    const sites = session.displayed_structure?.sites ?? []
+    expect(sites).toHaveLength(4)
+    const by_element = (elem: string) =>
+      sites.filter((site) => site.species[0].element === elem)
+    for (const site_c of by_element(`C`))
+      expect(
+        Math.min(
+          ...by_element(`H`).map((site_h) =>
+            Math.hypot(...site_c.xyz.map((coord, axis) => coord - site_h.xyz[axis])),
+          ),
+        ),
+      ).toBeCloseTo(1, 10)
+  })
+
   // The host's $state deep-proxies its structure; the pipeline reads a plain copy (every site
   // read through a proxy trap was most of mounting 47k atoms), plain inputs pass through as is
   it(`reads a proxied input as one plain copy and plain inputs as they are`, () => {

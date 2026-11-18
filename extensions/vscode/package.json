@@ -210,6 +210,11 @@
           "default": true,
           "description": "Show atoms on the edge of the cell that are not part of the primitive basis"
         },
+        "matterviz.structure.keep_molecules_whole": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reassemble molecules torn across cell faces by per-atom wrapping (bonded fragments drawn whole, centroid in the cell); periodic networks stay wrapped"
+        },
         "matterviz.structure.image_atom_completion": {
           "type": "string",
           "default": "polyhedra",
