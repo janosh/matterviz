@@ -68,10 +68,16 @@ describe(`StructureExportPane`, () => {
     document.body.append(wrapper_div)
   })
 
+  // `Download CIF` is also a prefix of `Download CIF (P1)`, so an exact aria-label wins
   const get_button = (title_part: string) => {
-    const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
-      btn.title?.includes(title_part),
+    const buttons = Array.from(document.querySelectorAll(`button`))
+    const exact = buttons.filter((btn) =>
+      [title_part, `${title_part} to clipboard`].includes(
+        btn.getAttribute(`aria-label`) ?? ``,
+      ),
     )
+    const matches =
+      exact.length > 0 ? exact : buttons.filter((btn) => btn.title?.includes(title_part))
     expect(matches, `buttons with title containing "${title_part}"`).toHaveLength(1)
     return matches[0]
   }
@@ -151,7 +157,8 @@ describe(`StructureExportPane`, () => {
     get_button(`${action} ${format.toUpperCase()}`).click()
     const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
     await vi.waitFor(() => {
-      expect(to_str).toHaveBeenCalledWith(simple_structure)
+      // with the viewer's symmetry analysis (none here), which CIF reduces to the asymmetric unit
+      expect(to_str).toHaveBeenCalledWith(simple_structure, null)
       if (action === `Download`)
         expect(download).toHaveBeenCalledWith(content, `Relaxed structure.${ext}`, mime)
       else expect(navigator.clipboard.writeText).toHaveBeenCalledWith(content)

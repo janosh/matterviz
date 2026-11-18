@@ -63,7 +63,10 @@ const xyz_site_properties = (
   ...(`selective_dynamics` in site.properties && { constraint_basis: `cartesian` }),
 })
 
-const CAPABILITIES: Record<StructTextFormat, Capability> = {
+// cif_p1 is CIF without symmetry data, which these structures never pass (export.test.ts pins
+// the two equal)
+type RoundTripFormat = Exclude<StructTextFormat, `cif_p1`>
+const CAPABILITIES: Record<RoundTripFormat, Capability> = {
   json: {
     ordered_only: false,
     lattice: `matrix`,
@@ -132,7 +135,7 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
 }
 
 // (fixture, format) pairs that lose information by design, with the reason
-const KNOWN_LOSSES: Record<string, Partial<Record<StructTextFormat, string>>> = {
+const KNOWN_LOSSES: Record<string, Partial<Record<RoundTripFormat, string>>> = {
   // its H and O sit 0.007 Å apart, closer than the 0.05 Å within which parse_cif merges
   // rows into one (disordered) site, as no two real atoms are that close
   'scientific-notation.poscar': { cif: `merges two atoms 0.007 Å apart` },
@@ -171,7 +174,7 @@ const fixtures: { name: string; structure: AnyStructure }[] = [
   { name: `molecule`, structure: { sites: simple_structure.sites } },
   { name: `mixed_valence`, structure: mixed_valence },
 ]
-const formats = Object.keys(STRUCT_TEXT_FORMATS) as StructTextFormat[]
+const formats = Object.keys(CAPABILITIES) as RoundTripFormat[]
 const cases = fixtures.flatMap((fixture) =>
   formats
     .filter((fmt) => !KNOWN_LOSSES[fixture.name]?.[fmt])

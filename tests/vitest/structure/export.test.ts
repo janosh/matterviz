@@ -3,6 +3,7 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
 import {
+  cif_reduced_unavailable_reason,
   create_structure_filename,
   fractional_export_unavailable_reason,
   poscar_export_unavailable_reason,
@@ -11,6 +12,7 @@ import {
   structure_to_json_str,
   structure_to_poscar_str,
   structure_to_xyz_str,
+  STRUCT_TEXT_FORMATS,
 } from '#lib/structure/export.js'
 import {
   parse_cif,
@@ -19,8 +21,16 @@ import {
   parse_xyz,
 } from '#lib/structure/parse.js'
 import { make_site as make_lib_site } from '#lib/structure/site.js'
-import { assert, describe, expect, it } from 'vite-plus/test'
-import { complex_structure, simple_structure } from '../test-fixtures'
+import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
+import { assert, beforeAll, describe, expect, it } from 'vite-plus/test'
+import {
+  complex_structure,
+  cubic_matrix,
+  fcc_primitive_matrix,
+  init_moyo_for_tests,
+  make_crystal,
+  simple_structure,
+} from '../test-fixtures'
 
 // Local factories to cut fixture boilerplate: single-species site + diagonal lattice
 const make_site = (
@@ -781,6 +791,187 @@ describe(`Export functionality`, () => {
         `H 1.00000000 2.00000000 3.00000000`,
         `O 1.00000000 1.00000000 1.00000000`,
       ])
+    })
+  })
+
+  describe(`symmetry-reduced CIF`, () => {
+    beforeAll(init_moyo_for_tests)
+
+    type CaseSite = {
+      element: string
+      abc: Vec3
+      occu?: number
+      oxidation_state?: number
+      label?: string
+    }
+    const salt_site = (element: string, oxidation_state: number) => (abc: Vec3) => ({
+      element,
+      abc,
+      oxidation_state,
+    })
+    // oxfmt-ignore
+    const rock_salt: CaseSite[] = [
+      ...([[0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]] as Vec3[]).map(salt_site(`Na`, 1)),
+      ...([[0.5, 0.5, 0.5], [0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]] as Vec3[]).map(salt_site(`Cl`, -1)),
+    ]
+    const hex_a = 3.25
+    // oxfmt-ignore
+    const hex_lattice: Matrix3x3 = [[hex_a, 0, 0], [-hex_a / 2, (hex_a * Math.sqrt(3)) / 2, 0], [0, 0, 5.2]]
+    // oxfmt-ignore
+    const monoclinic: Matrix3x3 = [[5, 0, 0], [0, 6, 0], [-1.2, 0, 6.9]]
+    // generic P2_1/c orbit: (x,y,z), (-x,y+1/2,-z+1/2), (-x,-y,-z), (x,-y+1/2,z+1/2)
+    const p21c_orbit = ([x_val, y_val, z_val]: Vec3): Vec3[] => [
+      [x_val, y_val, z_val],
+      [1 - x_val, y_val + 0.5, 0.5 - z_val],
+      [1 - x_val, 1 - y_val, 1 - z_val],
+      [x_val, 0.5 - y_val, z_val + 0.5],
+    ]
+    // n_rows: atom-site rows written (one per species of each asymmetric-unit site); hm: the
+    // H-M symbol, written only when the input is moyo's standard setting
+    // oxfmt-ignore
+    const cases: { name: string; lattice: Matrix3x3; sites: CaseSite[]; n_rows: number; hm?: string }[] = [
+      { name: `rock salt (standard setting)`, lattice: cubic_matrix(5.64), sites: rock_salt, n_rows: 2, hm: `F m -3 m` },
+      { name: `rock salt, primitive cell`, lattice: fcc_primitive_matrix(5.64), n_rows: 2,
+        sites: [{ element: `Na`, abc: [0, 0, 0] }, { element: `Cl`, abc: [0.5, 0.5, 0.5] }] },
+      { name: `rock salt, left-handed cell`, lattice: cubic_matrix(-5.64), sites: rock_salt, n_rows: 2 },
+      { name: `rock salt 2x1x1 supercell`, lattice: [[11.28, 0, 0], [0, 5.64, 0], [0, 0, 5.64]], n_rows: 2,
+        sites: rock_salt.flatMap(({ abc: [x_val, y_val, z_val], ...rest }) =>
+          [0, 0.5].map((shift) => ({ ...rest, abc: [x_val / 2 + shift, y_val, z_val] as Vec3 }))) },
+      { name: `wurtzite ZnO with labels`, lattice: hex_lattice, n_rows: 2, hm: `P 6_3 m c`,
+        sites: [
+          { element: `Zn`, abc: [1 / 3, 2 / 3, 0], label: `Zn_a` }, { element: `Zn`, abc: [2 / 3, 1 / 3, 0.5], label: `Zn_b` },
+          { element: `O`, abc: [1 / 3, 2 / 3, 0.38], label: `O_a` }, { element: `O`, abc: [2 / 3, 1 / 3, 0.88], label: `O_b` },
+        ] },
+      { name: `disordered CsCl-type (Cu/Au 1:1 + split Zn/Ga site)`, lattice: cubic_matrix(3), n_rows: 4, hm: `P m -3 m`,
+        sites: [
+          { element: `Cu`, abc: [0, 0, 0], occu: 0.5 }, { element: `Au`, abc: [0, 0, 0], occu: 0.5 },
+          { element: `Zn`, abc: [0.5, 0.5, 0.5], occu: 0.25 }, { element: `Ga`, abc: [0.5, 0.5, 0.5], occu: 0.75 },
+        ] },
+      { name: `generic P2_1/c orbit`, lattice: monoclinic, n_rows: 2, hm: `P 2_1/c`,
+        sites: [
+          ...p21c_orbit([0.11, 0.23, 0.37]).map((abc) => ({ element: `Si`, abc })),
+          ...p21c_orbit([0.31, 0.07, 0.19]).map((abc) => ({ element: `O`, abc })),
+        ] },
+    ]
+
+    // Cartesian distance of fractional offset `delta` under `lattice`, minimum image
+    const frac_dist = (delta: Vec3, lattice: Matrix3x3): number =>
+      Math.hypot(
+        ...math.mul_3x3_vec3(
+          math.transpose_3x3(lattice),
+          delta.map((val) => val - Math.round(val)) as Vec3,
+        ),
+      )
+    const species_key = (species: Site[`species`]): string =>
+      species
+        .map(
+          ({ element, occu, oxidation_state }) => `${element}${oxidation_state ?? ``}:${occu}`,
+        )
+        .toSorted()
+        .join(` `)
+
+    it.each(cases)(
+      `$name: parse_cif regenerates every site`,
+      async ({ lattice, sites, n_rows, hm }) => {
+        const structure = make_crystal(lattice, sites)
+        const sym_data = await analyze_structure_symmetry(structure)
+        const cif = structure_to_cif_str(structure, sym_data)
+        expect(cif).toContain(`_space_group_IT_number ${sym_data.number}`)
+        expect(cif).toContain(`_space_group_symop_operation_xyz`)
+        if (hm) expect(cif).toContain(`_space_group_name_H-M_alt '${hm}'`)
+        else expect(cif).not.toContain(`_H-M_alt`)
+        expect(cif.split(`_atom_site_occupancy\n`)[1].split(`\n`)).toHaveLength(n_rows)
+
+        // split-partial sites (one position, several species) come back merged into one site
+        const by_position = new Map<string, Site[`species`]>()
+        for (const { abc, species } of structure.sites) {
+          const key = abc.join(`,`)
+          by_position.set(key, [...(by_position.get(key) ?? []), ...species])
+        }
+        const parsed = parse_cif(cif)
+        expect(parsed.sites.map(({ species }) => species_key(species)).toSorted()).toEqual(
+          [...by_position.values()].map(species_key).toSorted(),
+        )
+        // the left-handed cell is written in the (-a, -b, -c) basis: fractional coords negate
+        const sign = math.det_3x3(lattice) < 0 ? -1 : 1
+        for (const [key, species] of by_position) {
+          const abc = key.split(`,`).map(Number)
+          const distances = parsed.sites
+            .filter((site) => species_key(site.species) === species_key(species))
+            .map((site) =>
+              frac_dist(site.abc.map((val, dim) => val - sign * abc[dim]) as Vec3, lattice),
+            )
+          expect(Math.min(...distances)).toBeLessThan(1e-6)
+        }
+      },
+    )
+
+    it(`keeps labels, occupancies and oxidation states of the written sites`, async () => {
+      const [, , wurtzite] = [0, 0, cases[4]]
+      const structure = make_crystal(wurtzite.lattice, wurtzite.sites)
+      const cif = structure_to_cif_str(structure, await analyze_structure_symmetry(structure))
+      expect(cif).toMatch(/^Zn_a Zn /m)
+      expect(cif).toMatch(/^O_a O /m)
+      expect(cif).not.toMatch(/^Zn_b /m)
+      const salt = make_crystal(cubic_matrix(5.64), rock_salt)
+      const salt_cif = structure_to_cif_str(salt, await analyze_structure_symmetry(salt))
+      expect(salt_cif).toContain(`_atom_type_oxidation_number`)
+      expect(salt_cif).toMatch(/^\S+ Na\+ 0\.00000000 0\.00000000 0\.00000000 1\.00000000$/m)
+    })
+
+    it.each([
+      [`magmom`, { magmom: [0, 0, 1] }, `Magnetic moments need the P1 CIF`],
+      [
+        `ADP`,
+        {
+          adp_U_cart: [
+            [0.01, 0, 0],
+            [0, 0.01, 0],
+            [0, 0, 0.01],
+          ],
+        },
+        `ADPs) need the P1 CIF`,
+      ],
+    ])(`%s sites are P1-only`, async (_, properties, reason) => {
+      const structure = make_crystal(
+        cubic_matrix(5.64),
+        rock_salt.map((site) => ({ ...site, properties })),
+      )
+      const sym_data = await analyze_structure_symmetry(structure)
+      expect(cif_reduced_unavailable_reason(structure, sym_data)).toContain(reason)
+      expect(() => structure_to_cif_str(structure, sym_data)).toThrow(reason)
+      // the export pane's CIF then writes P1
+      expect(STRUCT_TEXT_FORMATS.cif.to_str(structure, sym_data)).toBe(
+        structure_to_cif_str(structure),
+      )
+    })
+
+    it(`export pane CIF is reduced with symmetry data, CIF (P1) always P1`, async () => {
+      const structure = make_crystal(cubic_matrix(5.64), rock_salt)
+      const sym_data = await analyze_structure_symmetry(structure)
+      expect(STRUCT_TEXT_FORMATS.cif.to_str(structure, sym_data)).toBe(
+        structure_to_cif_str(structure, sym_data),
+      )
+      expect(STRUCT_TEXT_FORMATS.cif.to_str(structure)).toBe(structure_to_cif_str(structure))
+      expect(STRUCT_TEXT_FORMATS.cif_p1.to_str(structure)).toBe(
+        structure_to_cif_str(structure),
+      )
+    })
+
+    it(`rejects symmetry data of another structure`, async () => {
+      const structure = make_crystal(cubic_matrix(5.64), rock_salt)
+      const sym_data = await analyze_structure_symmetry(structure)
+      const fewer = { ...structure, sites: structure.sites.slice(1) }
+      expect(() => structure_to_cif_str(fewer, sym_data)).toThrow(
+        `symmetry data covers 8 sites, the structure has 7`,
+      )
+      const moved = make_crystal(cubic_matrix(5.64), [
+        { element: `Na`, abc: [0.1, 0, 0] },
+        ...rock_salt.slice(1),
+      ])
+      expect(() => structure_to_cif_str(moved, sym_data)).toThrow(
+        `site 1 at 0.1, 0, 0 is not where the symmetry analysis saw it`,
+      )
     })
   })
 })

@@ -9,6 +9,7 @@
   import { export_scene_as } from '#lib/scene/index.js'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import type { AnyStructure } from '#lib/structure/index.js'
+  import type { SymmetryDataset } from '#lib/symmetry/analyze.js'
   import * as exports from '#lib/structure/export.js'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -19,6 +20,7 @@
     export_pane_open = $bindable(false),
     flight_pane_open = $bindable(false),
     structure = undefined,
+    sym_data = null,
     prediction,
     on_clear_prediction,
     on_reset_prediction_surfaces,
@@ -34,6 +36,8 @@
     export_pane_open?: boolean
     flight_pane_open?: boolean
     structure?: AnyStructure
+    // moyo analysis of `structure`: CIF then writes the asymmetric unit (CIF (P1) every site)
+    sym_data?: SymmetryDataset | null
     prediction?: StructureToolPrediction
     on_clear_prediction?: () => void
     on_reset_prediction_surfaces?: () => void
@@ -109,15 +113,15 @@
       title: `Export as text`,
       items: Object.values(exports.STRUCT_TEXT_FORMATS).map(
         ({ label, hint, to_str, ext, mime, unavailable_reason }) => {
-          const disabled_reason = unavailable_reason(structure)
+          const disabled_reason = unavailable_reason(structure, sym_data)
           return {
             label,
             hint,
             disabled: Boolean(disabled_reason),
             disabled_reason,
             on_download: ({ filename, save }: FileExportContext) =>
-              structure && save(to_str(structure), `${filename}.${ext}`, mime),
-            copy_text: () => (structure ? to_str(structure) : null),
+              structure && save(to_str(structure, sym_data), `${filename}.${ext}`, mime),
+            copy_text: () => (structure ? to_str(structure, sym_data) : null),
           }
         },
       ),

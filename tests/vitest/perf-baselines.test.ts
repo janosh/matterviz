@@ -872,7 +872,16 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       ),
     )
     await measure(`symmetry elements 41472 ops`, () => {
-      expect(symmetry_elements_from_ops(operations)).toHaveLength(30_456)
+      // the input is a 6x6x6 supercell of the standardized cell: x_std = 6·x
+      const identity: MoyoOperation[`rotation`] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+      const std_linear = identity.map((val) => val / n_rep) as MoyoOperation[`rotation`]
+      const std_frame = {
+        std_linear,
+        std_origin_shift: [0, 0, 0] as Vec3,
+        std_rotation_matrix: identity,
+        std_cell: { lattice: { basis: identity } },
+      }
+      expect(symmetry_elements_from_ops({ operations, ...std_frame })).toHaveLength(30_456)
     })
   })
 
