@@ -16,6 +16,7 @@
   import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, ISO_COLORMAP_SELECT_PROPS } from './coloring'
   import type { DisplayRange } from './sampling'
+  import { apply_figure_preset, FIGURE_PRESETS, type FigurePresetId } from './figure-presets'
   import { compare_volume_grids, UNIT_CELL_RANGE } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import {
@@ -357,6 +358,21 @@
   layout="grid"
   class="isosurface-settings"
 >
+  <label>
+    <span>Figure preset</span>
+    <select
+      value={settings.figure_preset ?? ``}
+      onchange={(event) => {
+        const id = event.currentTarget.value as FigurePresetId | ``
+        settings = apply_figure_preset(settings, id || undefined)
+      }}
+    >
+      <option value="">Default</option>
+      {#each Object.entries(FIGURE_PRESETS) as [id, preset] (id)}
+        <option value={id}>{preset.name}</option>
+      {/each}
+    </select>
+  </label>
   <label
     {@attach tooltip({
       content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,

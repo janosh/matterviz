@@ -1,4 +1,6 @@
 <script lang="ts">
+  import FigureLights from '#lib/scene/FigureLights.svelte'
+  import type { FigureLighting } from '#lib/isosurface/figure-presets.js'
   import { numeric_sites, get_site, site_count } from './site'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
@@ -213,6 +215,7 @@
     fov = DEFAULTS.structure.fov,
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
+    figure,
     directional_light = DEFAULTS.structure.directional_light,
     sphere_segments = DEFAULTS.structure.sphere_segments,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
@@ -300,6 +303,7 @@
     // ignores unit_cell_idx from a supercell built outside the viewer
     to_base_site_idx?: (site: Site, site_idx: number) => number
     atom_radius?: number // scale factor for atomic radii
+    figure?: FigureLighting
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
     show_thermal_ellipsoids?: boolean // sites with CIF ADPs as true-size thermal ellipsoids
     ellipsoid_probability?: number // probability each ellipsoid encloses
@@ -1614,7 +1618,11 @@
   bind:orbit_controls
 />
 
-<SceneLights ambient={ambient_light} directional={directional_light} />
+{#if figure}
+  <FigureLights rig={figure} frame={fit_frame} />
+{:else}
+  <SceneLights ambient={ambient_light} directional={directional_light} />
+{/if}
 
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>
@@ -1637,6 +1645,7 @@
         {bond_thickness}
         {bonds_capped}
         {ambient_light}
+        {figure}
         {directional_light}
         {polyhedra}
         {polyhedra_color_mode}

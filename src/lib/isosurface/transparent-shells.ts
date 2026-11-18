@@ -32,17 +32,20 @@ export function transparent_shells(surface: BufferGeometry): BufferGeometry[] {
     group.push(indices[i], indices[i + 1], indices[i + 2])
   }
   const point = new Vector3()
-  const shells = groups.size <= 1 ? [surface] : Array.from(groups.values(), (triangles) => {
-    const shell = new BufferGeometry()
-    for (const [name, attribute] of Object.entries(surface.attributes))
-      shell.setAttribute(name, attribute)
-    shell.setIndex(new BufferAttribute(new Uint32Array(triangles), 1))
-    shell.boundingBox = new Box3()
-    for (const vertex of triangles)
-      shell.boundingBox.expandByPoint(point.fromBufferAttribute(position, vertex))
-    shell.boundingSphere = shell.boundingBox.getBoundingSphere(new Sphere())
-    return shell
-  })
+  const shells =
+    groups.size <= 1
+      ? [surface]
+      : Array.from(groups.values(), (triangles) => {
+          const shell = new BufferGeometry()
+          for (const [name, attribute] of Object.entries(surface.attributes))
+            shell.setAttribute(name, attribute)
+          shell.setIndex(new BufferAttribute(new Uint32Array(triangles), 1))
+          shell.boundingBox = new Box3()
+          for (const vertex of triangles)
+            shell.boundingBox.expandByPoint(point.fromBufferAttribute(position, vertex))
+          shell.boundingSphere = shell.boundingBox.getBoundingSphere(new Sphere())
+          return shell
+        })
   shells_by_surface.set(surface, shells)
   const dispose = () => {
     surface.removeEventListener(`dispose`, dispose)

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { FigureLighting } from '#lib/isosurface/figure-presets.js'
   import { grow_capacity } from '#lib/math.js'
   // One draw call per visual class; instanceId maps pointer events back to atoms.
   import { AtomInstances, atom_sphere_segments, type InstancedAtom } from './atom-instances'
@@ -9,6 +10,7 @@
   import { untrack } from 'svelte'
   import {
     MeshStandardNodeMaterial,
+    MeshPhysicalNodeMaterial,
     PerspectiveCamera,
     SphereGeometry,
     Vector3,
@@ -20,6 +22,7 @@
     ghost = false,
     opacity = 1,
     color_field,
+    figure,
     ...pointer_props
   }: {
     atoms: InstancedAtom[]
@@ -28,6 +31,7 @@
     ghost?: boolean
     opacity?: number
     color_field?: AtomColorField
+    figure?: FigureLighting
     // threlte interactivity handlers (onpointerenter, onclick, ...) forwarded to the mesh
     [key: string]: unknown
   } = $props()
@@ -38,7 +42,18 @@
 
   // One material shared across mesh recreations; per-atom colors come from the
   // colors buffer so the base color stays white.
-  const material = new MeshStandardNodeMaterial()
+  const material = untrack(() =>
+    figure ? new MeshPhysicalNodeMaterial() : new MeshStandardNodeMaterial(),
+  )
+  $effect(() => {
+    if (figure && material instanceof MeshPhysicalNodeMaterial) {
+      material.roughness = figure.atom_roughness ?? 0.5
+      material.metalness = figure.atom_metalness ?? 0
+      const specular = figure.atom_specular ?? 0.05
+      material.specularIntensity = figure.atom_glossy ? Math.min(1, specular / 0.04) : specular
+      invalidate()
+    }
+  })
   const placement = attribute<`vec4`>(`atomPositionRadius`, `vec4`)
   material.positionNode = positionGeometry.mul(placement.w).add(placement.xyz)
   material.normalNode = normalView.mul(placement.w.sign())

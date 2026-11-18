@@ -2,11 +2,11 @@
 // marching cubes for every requested isovalue on each volume's grid, prepared by the caller
 // (prepare_geometry_grid) so a worker receives at most MAX_GRID_POINTS values. A finite grid
 // is the window itself; a periodic one is the unit cell, tiled over the window and clipped.
-import { marching_cubes } from '#lib/marching-cubes.js'
+import { compute_vertex_normals, marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_frac_to_cart, det_3x3, inverse_3x3 } from '#lib/math.js'
+import { create_frac_to_cart, det_3x3, dot, inverse_3x3 } from '#lib/math.js'
 import { type ScalarGrid3D, scalar_grid_strides } from './grid'
-import { resample_periodic, type SurfaceClip } from './sampling'
+import { resample_periodic, trilinear_interpolate, type SurfaceClip } from './sampling'
 import { MAX_GRID_POINTS } from './types'
 
 interface GeometryVolumeJob {
@@ -14,10 +14,11 @@ interface GeometryVolumeJob {
   lattice: Matrix3x3
   origin: Vec3
   clip?: SurfaceClip
+  gradient_normals?: boolean
   surfaces: { token: string; isovalue: number }[]
 }
 
-type Mesh = { positions: Float32Array; indices: Uint32Array }
+type Mesh = { positions: Float32Array; indices: Uint32Array; normals?: Float32Array }
 // A periodic unit-cell surface: vertex base fractions, each vertex's grid edge (lower end
 // i, j, k unwrapped up to n, then its axis) and the triangles
 type UnitSurface = { fracs: Float64Array; edges: Int32Array; indices: Uint32Array }
@@ -242,6 +243,7 @@ function tiled_surface(
   lattice: Matrix3x3,
   origin: Vec3,
   clip: SurfaceClip,
+  gradient_normals: boolean,
 ): Mesh {
   // cost in unit-cell surfaces: the window's volume in cells, plus a tenth per tiled cell for
   // culling its triangles (measured ~8 ns per triangle vs ~80 ns per emitted one)
@@ -260,7 +262,47 @@ function tiled_surface(
     unit_grid = resample_periodic(grid, dims)
     unit = unit_surface(unit_grid, isovalue)
   }
-  return tile_and_clip(unit, unit_grid.dims, lattice, origin, clip)
+  const mesh = tile_and_clip(unit, unit_grid.dims, lattice, origin, clip)
+  if (gradient_normals) mesh.normals = periodic_normals(mesh, unit_grid, lattice, origin)
+  return mesh
+}
+
+// Sample the same periodic field used to extract the surface, including new vertices
+// created by clipping. For row lattice A, grad_cart = inverse(A) * grad_fractional.
+function periodic_normals(mesh: Mesh, grid: ScalarGrid3D, lattice: Matrix3x3, origin: Vec3) {
+  const inverse = inverse_3x3(lattice)
+  const to_frac = create_frac_to_cart(inverse)
+  const [dx, dy, dz] = grid.dims.map((n) => (n === 2 ? 0.5 : 1) / n)
+  const sample = (x: number, y: number, z: number) =>
+    trilinear_interpolate(grid, x, y, z, true)
+  const { positions, indices } = mesh
+  const normals = new Float32Array(positions.length)
+  let fallback: Float32Array | undefined
+  for (let i = 0; i < positions.length; i += 3) {
+    const [x, y, z] = to_frac([
+      positions[i] - origin[0],
+      positions[i + 1] - origin[1],
+      positions[i + 2] - origin[2],
+    ])
+    const grad: Vec3 = [
+      (sample(x - dx, y, z) - sample(x + dx, y, z)) / (2 * dx),
+      (sample(x, y - dy, z) - sample(x, y + dy, z)) / (2 * dy),
+      (sample(x, y, z - dz) - sample(x, y, z + dz)) / (2 * dz),
+    ]
+    const nx = dot(inverse[0], grad),
+      ny = dot(inverse[1], grad),
+      nz = dot(inverse[2], grad)
+    const length = Math.hypot(nx, ny, nz)
+    if (length > 0) {
+      normals[i] = nx / length
+      normals[i + 1] = ny / length
+      normals[i + 2] = nz / length
+    } else {
+      fallback ??= compute_vertex_normals(positions, indices)
+      normals.set(fallback.subarray(i, i + 3), i)
+    }
+  }
+  return normals
 }
 
 export interface GeometryInput {
@@ -271,6 +313,7 @@ interface GeometrySurfaceResult {
   token: string
   positions: Float32Array
   indices: Uint32Array
+  normals?: Float32Array
   marching_cubes_ms: number
 }
 
@@ -279,32 +322,39 @@ export interface GeometryResult {
 }
 
 export const compute_isosurface_geometries = (input: GeometryInput): GeometryResult => ({
-  surfaces: input.volumes.flatMap(({ grid, lattice, origin, clip, surfaces }) =>
-    surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {
-      const marching_start = performance.now()
-      const { positions, indices } = clip
-        ? tiled_surface(grid, isovalue, lattice, origin, clip)
-        : marching_cubes(grid, isovalue, lattice, {
-            periodic: false, // finite display window in scene coordinates
-            normals: false, // BufferGeometry.computeVertexNormals() on the main thread
-            position_offset: origin,
-          })
-      // Front faces must point away from the enclosed lobe for the transparent back-then-front
-      // pass and winding-derived normals; a negative lobe encloses values below the isovalue
-      if (isovalue < 0) {
-        for (let idx = 0; idx < indices.length; idx += 3)
-          indices.subarray(idx + 1, idx + 3).reverse()
-      }
-      return {
-        token,
-        positions,
-        indices,
-        marching_cubes_ms: performance.now() - marching_start,
-      }
-    }),
+  surfaces: input.volumes.flatMap(
+    ({ grid, lattice, origin, clip, surfaces, gradient_normals = false }) =>
+      surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {
+        const marching_start = performance.now()
+        const { positions, indices, normals } = clip
+          ? tiled_surface(grid, isovalue, lattice, origin, clip, gradient_normals)
+          : marching_cubes(grid, isovalue, lattice, {
+              periodic: false, // finite display window in scene coordinates
+              normals: gradient_normals,
+              position_offset: origin,
+            })
+        // Front faces must point away from the enclosed lobe for the transparent back-then-front
+        // pass and winding-derived normals; a negative lobe encloses values below the isovalue
+        if (isovalue < 0) {
+          for (let idx = 0; idx < indices.length; idx += 3)
+            indices.subarray(idx + 1, idx + 3).reverse()
+          if (normals) for (let idx = 0; idx < normals.length; idx++) normals[idx] *= -1
+        }
+        return {
+          token,
+          positions,
+          indices,
+          ...(gradient_normals && { normals }),
+          marching_cubes_ms: performance.now() - marching_start,
+        }
+      }),
   ),
 })
 
 // Buffers a worker can hand back by ownership transfer instead of copying
 export const geometry_result_transferables = (result: GeometryResult): Transferable[] =>
-  result.surfaces.flatMap((surface) => [surface.positions.buffer, surface.indices.buffer])
+  result.surfaces.flatMap(({ positions, indices, normals }) =>
+    normals
+      ? [positions.buffer, indices.buffer, normals.buffer]
+      : [positions.buffer, indices.buffer],
+  )

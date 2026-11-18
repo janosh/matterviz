@@ -100,6 +100,29 @@ const mount_layers = (
   })
 
 describe(`IsosurfaceControls`, () => {
+  test(`a named finish applies its starting opacity to visible layers and keeps their fields`, () => {
+    const original = [
+      make_layer(`0`, { color_volume_id: `1`, show_negative: true }),
+      make_layer(`1`, { visible: false, opacity: 0.2 }),
+      make_layer(`0`, { opacity: 0 }),
+    ]
+    const state = mount_layers(original)
+    const select = doc_query(`select:has(option[value="warm-key"])`, HTMLSelectElement)
+    expect(select.options).toHaveLength(7)
+    select.value = `warm-key`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(state.settings.figure_preset).toBe(`warm-key`)
+    expect(state.settings.layers).toEqual([
+      { ...original[0], opacity: 0.84 },
+      ...original.slice(1),
+    ])
+    select.value = ``
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(state.settings.figure_preset).toBeUndefined()
+    expect(state.settings.layers[0].opacity).toBe(0.84)
+  })
   test.each([
     {
       desc: `single volume`,

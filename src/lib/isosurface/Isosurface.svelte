@@ -28,7 +28,9 @@
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
+  import SurfaceMaterial from './SurfaceMaterial.svelte'
   import { sync_shell_colors, transparent_shells } from './transparent-shells'
+  import { FIGURE_PRESETS } from './figure-presets'
 
   let {
     volumes = [],
@@ -57,6 +59,10 @@
   // In-place geometry/colour updates bypass the <T> props Threlte watches, so on-demand
   // rendering needs an explicit invalidate to repaint
   const threlte = useThrelte()
+  const appearance = $derived(
+    (settings.figure_preset && FIGURE_PRESETS[settings.figure_preset]?.appearance) ??
+      settings.appearance,
+  )
 
   type ResolvedLayer = IsosurfaceLayer & { volume: VolumetricData }
   const volume_by_id = $derived(index_volumes(volumes))
@@ -121,10 +127,11 @@
   const build_geometry = (
     positions: Float32Array,
     indices: Uint32Array,
+    normals?: Float32Array,
   ): BufferGeometry | null =>
     time_stage(
       `build_geometry`,
-      () => indexed_mesh_geometry(positions, indices),
+      () => indexed_mesh_geometry(positions, indices, normals),
       (geometry) => ({ buffer_bytes: geometry ? geometry_buffer_bytes(geometry) : 0 }),
     )
 
@@ -195,7 +202,13 @@
 
   // window_key covers halo and supercell, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    value_key([volume_id, vol_id(volume), sign * isovalue, window_key(volume)])
+    value_key([
+      volume_id,
+      vol_id(volume),
+      sign * isovalue,
+      window_key(volume),
+      Boolean(appearance),
+    ])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
@@ -206,6 +219,7 @@
   const geometry_jobs = (pending: PendingSurface[]): GeometryInput[`volumes`] =>
     [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
       ...prepared_grid(vol),
+      gradient_normals: Boolean(appearance),
       surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
     }))
 
@@ -227,7 +241,11 @@
         worker,
         vertices: surface_result.positions.length / 3,
       })
-      const geometry = build_geometry(surface_result.positions, surface_result.indices)
+      const geometry = build_geometry(
+        surface_result.positions,
+        surface_result.indices,
+        surface_result.normals,
+      )
       if (geometry) geometries.set(surface_result.token, geometry)
     }
     return geometries
@@ -568,8 +586,8 @@
         {@const shell_order = sort_lobes
           ? active_entries.find((other) => other.layer_idx === entry.layer_idx)!.render_order
           : entry.render_order}
-        <!-- A mirrored pair shares a priority. Three sorts each lobe by its own
-          bound, keeping back and front faces in creation order at equal depth. -->
+        <!-- Both signs share one sort priority. Three sorts their individual bounds
+          back-to-front for the current camera, with the back-face mesh first at a tie. -->
         {#each sort_lobes ? transparent_shells(entry.geometry) : [entry.geometry] as geometry (geometry)}
           {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
             <T.Mesh
@@ -577,16 +595,27 @@
               renderOrder={sort_lobes ? shell_order : entry.render_order + pass_idx}
               frustumCulled={false}
             >
-              <T.MeshStandardMaterial
-                {color}
-                vertexColors={vertex_colored}
-                {transparent}
-                {opacity}
-                {side}
-                depthWrite={!transparent}
-                metalness={0.1}
-                roughness={0.6}
-              />
+              {#if appearance}
+                <SurfaceMaterial
+                  {appearance}
+                  {color}
+                  {opacity}
+                  {side}
+                  vertex_colors={vertex_colored}
+                  bounds={entry.geometry.boundingSphere}
+                />
+              {:else}
+                <T.MeshStandardMaterial
+                  {color}
+                  vertexColors={vertex_colored}
+                  {transparent}
+                  {opacity}
+                  {side}
+                  depthWrite={!transparent}
+                  metalness={0.1}
+                  roughness={0.6}
+                />
+              {/if}
             </T.Mesh>
           {/each}
         {/each}

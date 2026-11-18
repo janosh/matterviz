@@ -1,11 +1,16 @@
 <script lang="ts">
+  import type { FigureLighting } from '#lib/isosurface/figure-presets.js'
   import { grow_capacity } from '#lib/math.js'
   import type { BondData } from '#lib/structure/bond-rendering.js'
   import { prepare_bond_placements, BondFrame } from '#lib/structure/bond-rendering.js'
   import { T, useThrelte } from '@threlte/core'
   import { attribute, dot, mix, normalView, positionGeometry, uniform, vec3 } from 'three/tsl'
   import { BondMesh, set_bond_placement } from './bond-mesh'
-  import { CylinderGeometry, MeshBasicNodeMaterial } from 'three/webgpu'
+  import {
+    CylinderGeometry,
+    MeshBasicNodeMaterial,
+    MeshPhysicalNodeMaterial,
+  } from 'three/webgpu'
 
   let {
     bonds,
@@ -13,6 +18,7 @@
     thickness,
     ambient_light,
     directional_light,
+    figure,
     capped = true,
   }: {
     bonds: BondData
@@ -20,12 +26,15 @@
     thickness: number
     ambient_light: number
     directional_light: number
+    figure?: FigureLighting
     capped?: boolean // end discs, needed only where no opaque atom covers a bond end
   } = $props()
 
   const { invalidate } = useThrelte()
 
-  const cylinder_geometry = $derived(new CylinderGeometry(1, 1, 1, 8, 1, !capped))
+  const cylinder_geometry = $derived(
+    new CylinderGeometry(1, 1, 1, figure ? 20 : 8, 1, !capped),
+  )
   const uniform_color = $derived.by(() => {
     const color = site_colors[0]
     for (let idx = 1; idx < site_colors.length; idx++)
@@ -65,7 +74,19 @@
   const bond_material = new MeshBasicNodeMaterial()
   bond_material.colorNode = bond_color
   set_bond_placement(bond_material, radius_scale)
-  let mesh = $derived(new BondMesh(cylinder_geometry, bond_material, capacity))
+  const figure_material = new MeshPhysicalNodeMaterial()
+  figure_material.colorNode = mix(vec3(luma), gradient, 0.72).mul(0.72)
+  set_bond_placement(figure_material, radius_scale)
+  $effect(() => {
+    if (!figure) return
+    figure_material.roughness = Math.max(0.4, figure.atom_roughness ?? 0.5)
+    figure_material.metalness = figure.atom_metalness ?? 0
+    figure_material.specularIntensity = figure.atom_specular ?? 0.05
+    invalidate()
+  })
+  let mesh = $derived(
+    new BondMesh(cylinder_geometry, figure ? figure_material : bond_material, capacity),
+  )
 
   $effect(() => {
     mesh.update(placements)
@@ -96,6 +117,7 @@
     return () => current.dispose()
   })
   $effect(() => () => bond_material.dispose())
+  $effect(() => () => figure_material.dispose())
 </script>
 
 <T is={mesh} dispose={false} />

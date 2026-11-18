@@ -160,6 +160,13 @@
   color one surface by another volume's values (e.g. density by ESP), see the
   <a href="/structure/multi-volume">multi-volume demo</a>.
 </p>
+<p>
+  Open <em>Isosurface → Figure preset</em> to apply a surface finish and matching lights to the
+  surface, atoms and bonds. Each preset sets an initial opacity for visible layers. You can
+  adjust the layers individually afterward. Programmatic callers can pass
+  <code>apply_figure_preset(settings, 'translucent-shell')</code> to
+  <code>isosurface_settings</code>.
+</p>
 
 <FilePicker
   files={volumetric_files}

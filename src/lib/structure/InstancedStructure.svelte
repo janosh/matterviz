@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { FigureLighting } from '#lib/isosurface/figure-presets.js'
   // The structure's bulk geometry in a handful of draw calls regardless of site count:
   // instanced spheres for full-occupancy atoms (base and PBC images, which ghost in edit-atoms
   // mode), instanced wedges for partial occupancy, instanced bond cylinders, and coordination
@@ -45,6 +46,7 @@
     bond_thickness,
     bonds_capped,
     ambient_light,
+    figure,
     directional_light,
     polyhedra,
     polyhedra_color_mode,
@@ -66,6 +68,7 @@
     bond_thickness: number
     bonds_capped: boolean
     ambient_light: number
+    figure?: FigureLighting
     directional_light: number
     polyhedra: Polyhedron[]
     polyhedra_color_mode: PolyhedraColorMode
@@ -210,14 +213,17 @@
   {@const atoms = atom_groups[group]}
   {@const ghost = group === `image` && ghost_images}
   {#if atoms.length > 0}
-    <InstancedAtoms
-      {atoms}
-      opacity={atom_opacity}
-      color_field={atom_color_field}
-      {sphere_segments}
-      {ghost}
-      {...ghost ? {} : atom_events(atoms)}
-    />
+    {#key !!figure}
+      <InstancedAtoms
+        {atoms}
+        {figure}
+        opacity={atom_opacity}
+        color_field={atom_color_field}
+        {sphere_segments}
+        {ghost}
+        {...ghost ? {} : atom_events(atoms)}
+      />
+    {/key}
   {/if}
 {/each}
 
@@ -239,6 +245,7 @@
     thickness={bond_thickness}
     capped={bonds_capped}
     {ambient_light}
+    {figure}
     {directional_light}
   />
 {/if}

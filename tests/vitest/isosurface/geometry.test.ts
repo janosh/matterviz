@@ -188,6 +188,66 @@ describe(`compute_isosurface_geometries`, () => {
       ),
     )
   })
+
+  test.each([1, -1])(
+    `gradient normals of sign %i point out of the enclosed lobe and transfer`,
+    (sign) => {
+      const blob = blob_volume()
+      const volume = { ...blob, values: blob.values.map((value) => value * sign) }
+      const input = blob_input(volume, [{ token: 'lobe', isovalue: sign * 0.5 }], null)
+      input.volumes[0].gradient_normals = true
+      const result = compute_isosurface_geometries(input)
+      const [{ positions, normals }] = result.surfaces
+      if (!normals) throw new Error(`Missing gradient normals`)
+      expect(normals).toHaveLength(positions.length)
+      expect(geometry_result_transferables(result)).toContain(normals.buffer)
+      for (let i = 0; i < positions.length; i += 3) {
+        const radial = [positions[i] - 5, positions[i + 1] - 5, positions[i + 2] - 5] as Vec3
+        expect(dot(radial, [normals[i], normals[i + 1], normals[i + 2]])).toBeGreaterThan(0)
+      }
+    },
+  )
+
+  test.each([0.31, -0.31])(
+    `field normals at %f survive clipping a tilted left-handed cell`,
+    (isovalue) => {
+      const lattice: Matrix3x3 = [
+        [4, 0, 0],
+        [1, 3, 0],
+        [0.5, 0.3, -5],
+      ]
+      const origin: Vec3 = [0.6, -0.4, 1.1]
+      const volume = make_volume(
+        make_grid(12, 11, 10, (x) => Math.cos((2 * Math.PI * x) / 12)),
+        { lattice, origin, periodic: true },
+      )
+      const input = blob_input(
+        volume,
+        [{ token: 'plane', isovalue }],
+        [
+          [-0.2, 1.4],
+          [0.13, 0.89],
+          [0.17, 0.79],
+        ],
+      )
+      const [original] = compute_isosurface_geometries(input).surfaces
+      input.volumes[0].gradient_normals = true
+      const [{ positions, indices, normals }] = compute_isosurface_geometries(input).surfaces
+      if (!normals) throw new Error(`Missing clipped gradient normals`)
+      expect(positions).toEqual(original.positions)
+      expect(indices).toEqual(original.indices)
+      expect(positions.length).toBeGreaterThan(300)
+      // A reciprocal vector without the 2π factor; its dot product with r is fractional x.
+      const normal = cross_3d(lattice[1], lattice[2])
+      const reciprocal = normal.map((n) => n / dot(lattice[0], normal)) as Vec3
+      for (let i = 0; i < positions.length; i += 3) {
+        const r = subtract(Array.from(positions.subarray(i, i + 3)) as Vec3, origin)
+        const sign = Math.sign(isovalue * Math.sin(2 * Math.PI * dot(reciprocal, r)))
+        const n = Array.from(normals.subarray(i, i + 3)) as Vec3
+        expect((sign * dot(reciprocal, n)) / Math.hypot(...reciprocal)).toBeGreaterThan(0.9999)
+      }
+    },
+  )
 })
 
 // === Worker client wiring ===

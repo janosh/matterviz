@@ -1,6 +1,7 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import { format_num } from 'svelte-widgets/format'
 import type { ColorScale } from '#lib/plot/core/types.js'
+import type { FigurePresetId } from './figure-presets'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { zero_if_negligible } from '#lib/labels.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
@@ -184,11 +185,28 @@ export interface IsosurfaceLayer {
 export interface IsosurfaceSettings {
   layers: IsosurfaceLayer[]
   wireframe: boolean
+  appearance?: SurfaceAppearance
+  figure_preset?: FigurePresetId
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
   // VESTA-style fractional range per lattice axis for periodic volumes, e.g. [[-0.15, 2.15],
   // [-0.15, 2.15], [0, 1]] repeats surfaces and clips them exactly there. Unset follows the
   // structure's integer supercell; independent of the atom supercell and cell outline.
   display_range?: [Vec2, Vec2, Vec2]
+}
+
+export interface SurfaceAppearance {
+  material?: 'matte' | 'glossy' | 'pbr' | 'unlit'
+  roughness?: number
+  metalness?: number
+  specular?: number
+  shininess?: number
+  saturation?: number
+  outline?: number
+  outline_width?: number
+  angle_opacity?: boolean
+  inner_share?: number
+  depth_fade?: number
+  flat_shading?: boolean
 }
 
 // Categorical palette for auto-coloring isosurface layers (Tailwind-inspired)
