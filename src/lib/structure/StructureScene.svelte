@@ -1619,7 +1619,10 @@
 />
 
 {#if figure}
-  <FigureLights rig={figure} frame={fit_frame} />
+  <FigureLights
+    rig={figure}
+    frame={{ center: content_to_world(fit_frame.center), extent: fit_frame.extent }}
+  />
 {:else}
   <SceneLights ambient={ambient_light} directional={directional_light} />
 {/if}

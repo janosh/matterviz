@@ -55,6 +55,7 @@ import {
   make_volume,
 } from '../test-fixtures'
 import { scene_registry } from '#lib/io/export.js'
+import { FIGURE_PRESETS } from '#lib/isosurface/figure-presets.js'
 import { DEFAULT_ISOSURFACE_SETTINGS, type IsosurfaceSettings } from '#lib/isosurface/types.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import type { Component, ComponentProps } from 'svelte'
@@ -727,6 +728,36 @@ test(`reset target follows a manual rotation of an off-pivot molecule`, () => {
   bound.rotation = [0, Math.PI, 0]
   flushSync()
   expect(bound.get_reset_target?.()[0]).toBeCloseTo(2 * pivot - 5, 9)
+})
+
+test(`figure fog follows the displayed center during an off-pivot rotation`, () => {
+  const structure = { sites: [...carbons_at(0), make_site(`I`, [0, 0, 0], [10, 0, 0], `I`)] }
+  const figure = FIGURE_PRESETS[`high-key`].lighting
+  const bound = $state<SceneProps>({ rotation: [0, 0, 0] })
+  const { scene, camera, render_frame } = mount_structure(
+    {
+      structure,
+      figure,
+      show_atoms: false,
+      camera_position: [0, 0, 30],
+      camera_target: [0, 0, 0],
+    },
+    bound,
+  )
+  const { extent } = camera_fit.structure_fit_frame(structure, { atom_radius_scale: 0 })
+  const expect_fog_at = (center: Vec3) => {
+    render_frame()
+    const depth = -new Vector3(...center).applyMatrix4(camera.current.matrixWorldInverse).z
+    const near = depth - extent / 2
+    expect(scene.fog).toMatchObject({
+      near: expect.closeTo(near, 8),
+      far: expect.closeTo(near + extent / figure.structure_fade, 8),
+    })
+  }
+  expect_fog_at([5, 0, 0])
+  const pivot_x = get_center_of_mass(structure)?.[0] ?? NaN
+  flush_set(bound, { rotation: [0, Math.PI / 2, 0] })
+  expect_fog_at([pivot_x, 0, pivot_x - 5])
 })
 
 // The fit zoom measures content along the camera's view of it as drawn: a 20 A rod along x,
