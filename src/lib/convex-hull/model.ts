@@ -185,14 +185,15 @@ export type OpenElements = Readonly<Partial<Record<ElementSymbol, number>>>
 // without the open elements, so the hull is drawn per non-open atom on fewer axes. Entries made
 // only of open elements leave the system; closed-system E_form, hull distance and stability are
 // dropped (`is_open` forces recomputing them); names keep the full formula (LiCoO2 on Li-Co).
+// G(T) data is projected alike.
 export function process_model_entries(
   entries: readonly PhaseData[],
   components: readonly string[] | undefined,
   open_elements: OpenElements | undefined,
 ): ProcessedPhaseData & { is_open: boolean } {
   const processed = thermo.process_hull_entries(entries, components)
-  const open_map = open_elements ?? {}
-  const open = Object.entries(open_map) as [ElementSymbol, number][]
+  const open = Object.entries(open_elements ?? {}) as [ElementSymbol, number][]
+  const open_set = new Set<string>(open.map(([element]) => element))
   if (open.length === 0) return { ...processed, is_open: false }
   if (components) throw new Error(`open_elements cannot be combined with components`)
   for (const [element, chem_pot] of open) {
@@ -207,7 +208,7 @@ export function process_model_entries(
   }
   const grand = processed.entries.flatMap((entry) => {
     const composition = Object.fromEntries(
-      Object.entries(entry.composition).filter(([el]) => !(el in open_map)),
+      Object.entries(entry.composition).filter(([el]) => !open_set.has(el)),
     ) as CompositionType
     if (!(count_atoms_in_composition(composition) > 0)) return []
     if (!thermo.has_absolute_energy(entry)) {
@@ -215,10 +216,12 @@ export function process_model_entries(
         `open_elements needs absolute energies, entry ${entry.entry_id ?? JSON.stringify(entry.composition)} has none`,
       )
     }
-    const grand_energy = open.reduce(
-      (energy, [element, chem_pot]) => energy - chem_pot * (entry.composition[element] ?? 0),
-      thermo.get_energy_per_atom(entry) * count_atoms_in_composition(entry.composition),
+    const open_energy = open.reduce(
+      (energy, [element, chem_pot]) => energy + chem_pot * (entry.composition[element] ?? 0),
+      0,
     )
+    const n_atoms = count_atoms_in_composition(entry.composition)
+    const grand_energy = thermo.get_energy_per_atom(entry) * n_atoms - open_energy
     const {
       e_form_per_atom: _e_form,
       e_above_hull: _hull,
@@ -226,8 +229,7 @@ export function process_model_entries(
       energy_per_atom: _per_atom,
       correction: _correction,
       energy_adjustments: _adjustments,
-      temperatures: _temperatures,
-      free_energies: _free_energies,
+      free_energies,
       ...rest
     } = entry
     const name =
@@ -237,7 +239,21 @@ export function process_model_entries(
         plain_text: true,
         delim: ``,
       })
-    return [{ ...rest, composition, energy: grand_energy, name }]
+    // G(T) per atom projects like the energy, per non-open atom, so a temperature still applies
+    const n_closed = count_atoms_in_composition(composition)
+    const grand_free_energies = free_energies?.map(
+      (free_energy) => (free_energy * n_atoms - open_energy) / n_closed,
+    )
+    return [
+      {
+        ...rest,
+        composition,
+        full_composition: entry.composition,
+        energy: grand_energy,
+        name,
+        ...(grand_free_energies && { free_energies: grand_free_energies }),
+      },
+    ]
   })
   const projected = thermo.process_hull_entries(grand)
   // every grand entry has an absolute energy, so each element just needs a unary reference
@@ -251,23 +267,44 @@ export function process_model_entries(
 
 // An element composition (e.g. a probed formula) in the model's composition keys: without
 // the open elements, or with components the non-negative amount of each whose elements sum
-// to it (A x = b, x >= 0). Null when the system can't make it.
+// to it (A x = b, x >= 0). Null when the system can't make it. Throws for linearly dependent
+// components, which give a formula several amount vectors, each a different hull point.
 export function to_model_composition(
   composition: CompositionType,
   components: readonly string[] | undefined,
   open_elements: OpenElements | undefined,
 ): CompositionType | null {
-  const open_map = open_elements ?? {}
+  const open_set = new Set(Object.keys(open_elements ?? {}))
   let model: Record<string, number> = Object.fromEntries(
-    Object.entries(composition).filter(([el, amt]) => amt > 0 && !(el in open_map)),
+    Object.entries(composition).filter(([el, amt]) => amt > 0 && !open_set.has(el)),
   )
   if (components) {
     const component_comps = components.map((component) => parse_composition(component))
     const keys = [...new Set([model, ...component_comps].flatMap(Object.keys))]
+    const column = (comp: CompositionType) => keys.map((el) => comp[el as ElementSymbol] ?? 0)
+    // the first component that is a signed combination of those before it (x = x⁺ − x⁻)
+    for (let idx = 1; idx < components.length; idx++) {
+      const before = component_comps.slice(0, idx).map(column)
+      const { status, solution } = solve_linear_program(
+        before.flatMap(() => [0, 0]),
+        keys.map((_, row) => before.flatMap((col) => [col[row], -col[row]])),
+        column(component_comps[idx]),
+      )
+      if (status !== `optimal`) continue
+      const terms = before.flatMap((_, col_idx) => {
+        const amount = solution[2 * col_idx] - solution[2 * col_idx + 1]
+        return Math.abs(amount) > 1e-9
+          ? [`${Number(amount.toPrecision(6))} ${components[col_idx]}`]
+          : []
+      })
+      throw new Error(
+        `components ${components.join(`, `)} are linearly dependent: ${components[idx]} = ${terms.join(` + `)}`,
+      )
+    }
     const { status, solution } = solve_linear_program(
       components.map(() => 0),
-      keys.map((el) => component_comps.map((comp) => comp[el as ElementSymbol] ?? 0)),
-      keys.map((el) => model[el] ?? 0),
+      keys.map((_, row) => component_comps.map((comp) => column(comp)[row])),
+      column(model),
     )
     if (status !== `optimal`) return null
     model = Object.fromEntries(

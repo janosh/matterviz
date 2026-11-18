@@ -787,6 +787,27 @@ describe(`unwrap_molecules`, () => {
         crystal.sites[idx + 5].xyz,
       ])
     expect(unwrapped.sites.every((site) => site.provenance?.whole_molecule)).toBe(true)
+    // explicit bond metadata moves with its sites: the torn bond is now in-cell, a bond of the
+    // unmoved molecule and the input's own metadata stay as they were
+    const torn = bonds.find(({ cell_shift }) => cell_shift)
+    if (!torn?.cell_shift) throw new Error(`no torn bond`)
+    const explicit: StructureBond[] = [
+      {
+        site_idx_1: torn.site_idx_1,
+        site_idx_2: torn.site_idx_2,
+        order: 1,
+        cell_shift: torn.cell_shift,
+      },
+      { site_idx_1: 5, site_idx_2: 6, order: 1 },
+    ]
+    const with_explicit = { ...crystal, properties: { bonds: explicit } }
+    const moved_bonds = unwrap_molecules(with_explicit, bonds).structure.properties?.bonds
+    expect(moved_bonds).toEqual([
+      { site_idx_1: torn.site_idx_1, site_idx_2: torn.site_idx_2, order: 1 },
+      explicit[1],
+    ])
+    expect(moved_bonds?.[1]).toBe(explicit[1])
+    expect(explicit[0].cell_shift).toBe(torn.cell_shift)
   })
 
   // 2 C 1.5 A apart along a 3 A axis bond into an infinite chain through the a face
@@ -823,6 +844,17 @@ describe(`unwrap_molecules`, () => {
     // reassembled at c = 0.96 and 1.06 (centroid 1.01), then moved back one cell
     expect(unwrapped.sites[2].abc[2]).toBeCloseTo(-0.04, 12)
     expect(unwrapped.sites[3].abc[2]).toBeCloseTo(0.06, 12)
+    // a whole molecule reaching past the a face (C at 1.18) does not make the cell read as a
+    // scattered trajectory: an unrelated face atom keeps its face copy
+    const beside_face = make_crystal(4, [
+      [`C`, [0.79, 0.5, 0.5]],
+      [`C`, [0.18, 0.5, 0.5]],
+      [`Na`, [0, 0.5, 0.5]],
+    ])
+    const whole = unwrap_molecules(beside_face, periodic_bonds(beside_face)).structure
+    expect(whole.sites[1].abc[0]).toBeCloseTo(1.18, 12)
+    const face_copies = find_image_atoms(whole, { completion: `none` })
+    expect(face_copies.map(({ site_idx, abc }) => [site_idx, abc[0]])).toEqual([[2, 1]])
   })
 
   test(`non-crystals and bond-free crystals come back unchanged`, () => {

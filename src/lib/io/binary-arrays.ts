@@ -39,7 +39,8 @@ export function decode_binary_array(spec: unknown, name: string): BinaryArray {
   }
   if (
     !Array.isArray(shape) ||
-    !shape.every((size) => Number.isSafeInteger(size) && size >= 0)
+    // Array.from turns holes ([2, , 3]), which .every() would skip, into undefined
+    !Array.from(shape).every((size) => Number.isSafeInteger(size) && size >= 0)
   ) {
     throw new TypeError(
       `Binary array '${name}' shape must be a list of non-negative integers, got ${JSON.stringify(shape)}`,

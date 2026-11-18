@@ -372,6 +372,23 @@ describe(`analyze_selectivity`, () => {
     expect(inverse_hull_energy).toBeCloseTo(1 / 6, 12)
   })
 
+  // Li2Ti (-0.6) sits 1/15 eV/atom above Li + LiTi, so the competitor cut drops it, yet without
+  // the target it is on the hull: Li2Ti + Ti reach -0.45 at LiTi (-1), a depth of 0.55, not 1
+  test(`plan_synthesis takes the inverse hull over phases the competitor cut drops`, () => {
+    const plan = plan_synthesis({
+      entries: [
+        make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+        make_phase({ Ti: 1 }, 0, { entry_id: `Ti` }),
+        make_phase({ Li: 1, Ti: 1 }, -1, { entry_id: `LiTi` }),
+        make_phase({ Li: 2, Ti: 1 }, -0.6, { entry_id: `Li2Ti` }),
+      ],
+      target: `LiTi`,
+      precursors: { only_common: false, allow: [`Li`, `Ti`] },
+    })
+    const route = plan.routes.find(({ reaction }) => reaction.equation === `Li + Ti → LiTi`)
+    expect(route?.selectivity.inverse_hull_energy).toBeCloseTo(0.55, 12)
+  })
+
   // with no competitors selectivity_margin collapses to the target driving force, so saturating
   // it would echo the driving_force term; an empty list is perfect selectivity and scores 1
   test(`score_route: no competitors is perfect selectivity, not a driving-force echo`, () => {

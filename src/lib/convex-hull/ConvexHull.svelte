@@ -224,6 +224,7 @@
       selected_entry && current_entry(selected_entry, hull_data.plot_entries),
     ].find((entry) => entry && (entry.e_above_hull ?? 0) > HULL_STABILITY_TOL) ?? null,
   )
+  let probe_submission = $state<{ text: string; model: string } | null>(null)
   // Composition probe: equilibrium products of any composition (null outside the system)
   const probe = $derived.by((): HullProbe | null => {
     if (!probe_composition || hull_data.error) return null
@@ -353,6 +354,7 @@
       <ConvexHullInfoPane
         bind:pane_open={info_pane_open}
         bind:probe_composition
+        bind:probe_submission
         {probe}
         {components}
         {open_elements}

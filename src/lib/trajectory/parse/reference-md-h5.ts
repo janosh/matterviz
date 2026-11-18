@@ -211,9 +211,7 @@ export const parse_reference_md_h5_file = (
       ? molecule_selections(h5_file, molecule_name)
       : []
   })
-  if (selections.length === 0) {
-    throw new Error(`${FORMAT} contains no molecule replicas`)
-  }
+  if (selections.length === 0) throw new Error(`${FORMAT} contains no molecule replicas`)
   const { molecule_name, replica_idx, replica_count } = selection_from_path(
     hdf5_group_path,
     selections,
@@ -317,9 +315,7 @@ export const parse_reference_md_h5_file = (
   )
   const ensemble = string_value(attribute_value(simulation_group, [`ensemble`]))
   const volume = compute_lattice_params(lattice_matrix).volume
-  if (!(volume > 0)) {
-    throw new Error(`${FORMAT} cell volume must be positive, got ${volume}`)
-  }
+  if (!(volume > 0)) throw new Error(`${FORMAT} cell volume must be positive, got ${volume}`)
   const signal_manifest: Record<string, ObservableManifest> = {
     velocity: {
       dataset: velocity_dataset,

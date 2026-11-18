@@ -20,10 +20,15 @@ const make_moyo_cell = (
 const make_mock_sym_data = (
   std_cell: MoyoCell,
   prim_std_cell: MoyoCell,
-  input_cell: SymmetryDataset[`input_cell`] = { positions: [[0, 0, 0]], numbers: [11] },
+  input_cell: SymmetryDataset[`input_cell`] = {
+    lattice: cubic_matrix(1),
+    positions: [[0, 0, 0]],
+    numbers: [11],
+  },
 ): SymmetryDataset => ({
   input_cell,
   orig_site_indices_by_input_idx: input_cell.positions.map((_, idx) => [idx]),
+  site_species_keys: input_cell.numbers.map(() => ``),
   std_cell,
   prim_std_cell,
   // Minimal required fields for MoyoDataset

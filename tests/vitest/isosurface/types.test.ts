@@ -332,7 +332,7 @@ describe(`isovalue slider aids`, () => {
   })
 
   test(`histogram counts values (or |values| when mirrored) over the slider span`, () => {
-    const vol = make_volume_fixture([[[-0.9, -0.1, 0.1, 0.35, 0.6, 0.95, 1, Number.NaN]]])
+    const vol = make_volume_fixture([[[-0.9, -0.1, 0.1, 0.35, 0.6, 0.95, 1]]])
     expect([...isovalue_histogram(vol, [0, 1], false, 4)]).toEqual([1, 1, 1, 2])
     expect([...isovalue_histogram(vol, [0, 1], true, 4)]).toEqual([2, 1, 1, 3])
     // cached per volume and arguments

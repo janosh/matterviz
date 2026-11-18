@@ -600,22 +600,29 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
   type AxisScales = ReturnType<typeof create_axis_scales>
-  let last_scales: { key: string; derive?: AxisDerive; value: AxisScales } | undefined
+  let last_scales: { key: string; derive?: Partial<AxisDerive>; value: AxisScales } | undefined
   const scales = $derived.by(() => {
     const axes = opts.axes()
     const { current } = ranges
+    // keyed by each axis's tick scheme, so a derived x2 going from inherited log to explicit
+    // linear rebuilds its scale
     const key = JSON.stringify([
-      FACET_AXES.map((axis) => [axes[axis].scale_type ?? `linear`, current[axis]]),
+      FACET_AXES.map((axis) => [tick_scale_type(axis), current[axis]]),
       pad,
       width,
       height,
     ])
-    // derive's functions can't be keyed by JSON, so they are compared by identity
-    const { derive } = axes.x2
-    if (last_scales?.key !== key || last_scales.derive !== derive) {
+    // derive's callbacks can't be keyed by JSON, so they are compared by identity
+    const { forward, inverse } = axes.x2.derive ?? {}
+    const cached_derive = last_scales?.derive
+    if (
+      last_scales?.key !== key ||
+      cached_derive?.forward !== forward ||
+      cached_derive?.inverse !== inverse
+    ) {
       last_scales = {
         key,
-        derive,
+        derive: { forward, inverse },
         value: create_axis_scales(axes, current, pad, width, height),
       }
     }

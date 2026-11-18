@@ -945,11 +945,8 @@
   )
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
-    if (open) {
-      active_pane = pane
-    } else if (active_pane === pane) {
-      active_pane = null
-    }
+    if (open) active_pane = pane
+    else if (active_pane === pane) active_pane = null
   }
 
   // === trails ===
@@ -974,20 +971,17 @@
     const signal = getAbortSignal()
     // The stride budget throws synchronously (a single frame over budget); the async wrapper
     // turns that into a rejection so one catch covers it and the stream failures alike
-    const collect_trails = async () => {
-      const frame_stride = suggest_frame_stride(
-        owner.frame_count,
-        owner.atom_count,
-        TRAIL_POSITION_MAX_BYTES,
-      )
-      return collect_trajectory_positions(owner, {
-        frame_stride,
+    ;(async () =>
+      collect_trajectory_positions(owner, {
+        frame_stride: suggest_frame_stride(
+          owner.frame_count,
+          owner.atom_count,
+          TRAIL_POSITION_MAX_BYTES,
+        ),
         max_bytes: TRAIL_POSITION_MAX_BYTES,
         signal,
         analysis_name: `Trajectory trails`,
-      })
-    }
-    collect_trails()
+      }))()
       .then((stream) => {
         if (!signal.aborted) trail_stream = stream
       })

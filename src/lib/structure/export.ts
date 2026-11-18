@@ -15,7 +15,7 @@ import {
 import { get_element_counts } from './density'
 import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
-import { structure_json_data } from './site'
+import { species_key, structure_json_data } from './site'
 import { ADP_COMPONENTS, site_adp } from './thermal-ellipsoids'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
@@ -244,8 +244,10 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 
 // Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
 // site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data.
-// The reader's `momentum` goes back out as ASE's `momenta`, minus the `velocity` the reader
-// derived from it (a differing explicit velocity is kept: on reimport it wins).
+// The reader's `momentum` and `mass` go back out as ASE's `momenta` and `masses`, minus the
+// `velocity` the reader derived from them (a differing explicit velocity is kept: on reimport
+// it wins).
+const ASE_COLUMN_NAMES: Record<string, string> = { momentum: `momenta`, mass: `masses` }
 function numeric_site_columns(
   structure: AnyStructure,
 ): { key: string; name: string; ncols: 1 | 3 }[] {
@@ -259,7 +261,7 @@ function numeric_site_columns(
         ? typeof value === `number` && Number.isFinite(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
-    return fits ? [{ key, name: key === `momentum` ? `momenta` : key, ncols }] : []
+    return fits ? [{ key, name: ASE_COLUMN_NAMES[key] ?? key, ncols }] : []
   })
   const has_momenta = columns.some(({ key }) => key === `momentum`)
   // the reader divides by the masses the file holds: recorded ones only if written
@@ -500,32 +502,45 @@ function is_standard_setting({ operations, std_linear, std_origin_shift }: Symme
   })
 }
 
-// Symmetrized fractional position of orbit representative `rep_idx`: the average of its images
-// under the site stabilizer (ops mapping it nearest itself among its orbit), each moved by a
-// lattice vector onto it. Exactly stabilizer-fixed, so a loose-symprec analysis expands back to
-// the structure's own site count instead of a cloud of near-duplicate images.
+// The Cartesian-shortest lattice image of fractional offset `delta`: the rounded one or one of
+// its 26 neighbors (per-component rounding alone can pick a far image in a sheared cell)
+const UNIT_SHIFTS = [-1, 0, 1].flatMap((da) =>
+  [-1, 0, 1].flatMap((db) => [-1, 0, 1].map((dc): Vec3 => [da, db, dc])),
+)
+function nearest_image(delta: Vec3, to_cart: Matrix3x3): { frac: Vec3; dist: number } {
+  const rounded = delta.map((val) => val - Math.round(val)) as Vec3
+  let best = { frac: rounded, dist: Infinity }
+  for (const shift of UNIT_SHIFTS) {
+    const frac = math.add(rounded, shift)
+    const dist = Math.hypot(...math.mul_3x3_vec3(to_cart, frac))
+    if (dist < best.dist) best = { frac, dist }
+  }
+  return best
+}
+
+// Symmetrized fractional position of orbit representative `rep_idx` (orbit `members`): the
+// average of its images under the site stabilizer (ops mapping it nearest itself among its
+// orbit), each moved by a lattice vector onto it. Exactly stabilizer-fixed, so a loose-symprec
+// analysis expands back to the structure's own site count instead of a cloud of near-duplicate
+// images.
 function symmetrized_rep_abc(
-  { orbits, operations, input_cell: { positions } }: SymmetryDataset,
+  { operations, input_cell: { positions } }: SymmetryDataset,
   rep_idx: number,
+  members: number[],
   lattice: Matrix3x3,
 ): Vec3 {
   const rep = positions[rep_idx]
-  const members = orbits.flatMap((orbit, idx) => (orbit === rep_idx ? [idx] : []))
-  const min_image_dist = (delta: Vec3) =>
-    Math.hypot(
-      ...math.mul_3x3_vec3(
-        math.transpose_3x3(lattice),
-        delta.map((val) => val - Math.round(val)) as Vec3,
-      ),
-    )
+  const to_cart = math.transpose_3x3(lattice)
   const images = operations.flatMap(({ rotation, translation }) => {
     const image = math.add(
       math.mul_3x3_vec3(math.mat3x3_from_flat_col_major(rotation), rep),
       translation,
     )
-    const dists = members.map((idx) => min_image_dist(math.subtract(image, positions[idx])))
+    const dists = members.map(
+      (idx) => nearest_image(math.subtract(image, positions[idx]), to_cart).dist,
+    )
     if (members[dists.indexOf(Math.min(...dists))] !== rep_idx) return []
-    return [image.map((coord, dim) => coord - Math.round(coord - rep[dim])) as Vec3]
+    return [math.add(rep, nearest_image(math.subtract(image, rep), to_cart).frac)]
   })
   return math.scale(math.add(...images), 1 / images.length)
 }
@@ -545,10 +560,27 @@ function asymmetric_unit_sites(
       `CIF export: symmetry data covers ${n_covered} sites, the structure has ${structure.sites.length}`,
     )
   }
+  // the ops preserve distances only in the lattice they were found in
+  const lattice_shift = Math.max(
+    ...structure.lattice.matrix.flatMap((row, row_idx) =>
+      row.map((val, col) => Math.abs(val - input_cell.lattice[row_idx][col])),
+    ),
+  )
+  if (lattice_shift > 1e-6) {
+    throw new Error(
+      `CIF export: the lattice differs from the analyzed one by up to ${lattice_shift} A`,
+    )
+  }
   // each site's lattice offset from where the analysis saw it (input cell), kept on export
   const offsets = by_input.map((indices, input_idx) =>
     indices.map((idx) => {
-      const abc = get_frac_coords(structure.sites[idx], cart_to_frac, idx)
+      const site = structure.sites[idx]
+      if (species_key(site.species) !== sym_data.site_species_keys[idx]) {
+        throw new Error(
+          `CIF export: site ${display_idx(idx)} is ${species_key(site.species)}, the symmetry analysis saw ${sym_data.site_species_keys[idx]}`,
+        )
+      }
+      const abc = get_frac_coords(site, cart_to_frac, idx)
       const offset = math.subtract(abc, input_cell.positions[input_idx])
       if (offset.some((delta) => Math.abs(delta - Math.round(delta)) > 1e-6)) {
         throw new Error(
@@ -558,9 +590,15 @@ function asymmetric_unit_sites(
       return { idx, offset }
     }),
   )
+  const members = Map.groupBy(orbits.keys(), (idx) => orbits[idx])
   return offsets.flatMap((site_offsets, input_idx) => {
     if (orbits[input_idx] !== input_idx) return []
-    const sym_abc = symmetrized_rep_abc(sym_data, input_idx, structure.lattice.matrix)
+    const sym_abc = symmetrized_rep_abc(
+      sym_data,
+      input_idx,
+      members.get(input_idx) ?? [],
+      structure.lattice.matrix,
+    )
     return site_offsets.map(({ idx, offset }) => ({ idx, abc: math.add(sym_abc, offset) }))
   })
 }
@@ -678,9 +716,12 @@ export function structure_to_cif_str(
     if (!adp) return null
     const u_eq = (adp[0][0] + adp[1][1] + adp[2][2]) / 3
     // relative 1e-10: parsing Uiso·I through the lattice leaves ~1e-16 relative round-off
-    const isotropic = adp.every((row, idx) =>
-      row.every((val, col) => Math.abs(val - (idx === col ? u_eq : 0)) <= 1e-10 * u_eq),
-    )
+    // a zero tensor stays an aniso row: parse_cif reads back only a positive Uiso
+    const isotropic =
+      u_eq > 0 &&
+      adp.every((row, idx) =>
+        row.every((val, col) => Math.abs(val - (idx === col ? u_eq : 0)) <= 1e-10 * u_eq),
+      )
     return { u_eq, isotropic }
   })
   const has_u_iso = adp_info.some((info) => info?.isotropic)
@@ -854,7 +895,8 @@ export const STRUCT_TEXT_FORMATS: Record<
     hint: `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange, listing every site (space group P1)`,
   },
   cif_symmetrized: {
-    to_str: structure_to_cif_str,
+    // an omitted dataset is missing analysis (undefined would select the P1 path)
+    to_str: (structure, sym_data) => structure_to_cif_str(structure, sym_data ?? null),
     ext: `cif`,
     mime: `chemical/x-cif`,
     unavailable_reason: symmetrized_cif_unavailable_reason,

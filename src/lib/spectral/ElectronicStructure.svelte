@@ -42,7 +42,14 @@
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-  import { dot, in_range, inverse_3x3, type Matrix3x3, type Vec2 } from '#lib/math.js'
+  import {
+    array_extent,
+    dot,
+    in_range,
+    inverse_3x3,
+    type Matrix3x3,
+    type Vec2,
+  } from '#lib/math.js'
   import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
@@ -513,13 +520,7 @@
   const mode_value_extents = new WeakMap<ModeValues, Vec2 | undefined>()
   const mode_value_extent = (mode_values: ModeValues): Vec2 | undefined => {
     if (!mode_value_extents.has(mode_values)) {
-      let [lo, hi] = [Infinity, -Infinity]
-      for (const row of mode_values.values) {
-        for (const value of row) {
-          if (value < lo) lo = value
-          if (value > hi) hi = value
-        }
-      }
+      const [lo, hi] = array_extent(mode_values.values.flat())
       mode_value_extents.set(mode_values, lo <= hi ? [lo, hi] : undefined)
     }
     return mode_value_extents.get(mode_values)

@@ -195,11 +195,14 @@
     }
     return formulas
   }
-  const composition_key = (comp: Record<string, number>): string => formulas_of(comp).key
+  // an open-element hull projects LiCoO2 and LiCoO3 both to LiCo: formulas and polymorph
+  // groups read the full composition
+  const formula_comp = (entry: ModelEntry) => entry.full_composition ?? entry.composition
+  const composition_key = (entry: ModelEntry): string => formulas_of(formula_comp(entry)).key
   const polymorph_counts = $derived.by(() => {
     const counts = new Map<string, number>()
     for (const entry of all_entries) {
-      const key = composition_key(entry.composition)
+      const key = composition_key(entry)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return counts
@@ -219,8 +222,7 @@
     shown_entries.filter(
       (entry) =>
         (min_n_elements <= 1 || get_arity(entry) >= min_n_elements) &&
-        (!active_formula_filter ||
-          composition_key(entry.composition) === active_formula_filter),
+        (!active_formula_filter || composition_key(entry) === active_formula_filter),
     ),
   )
   const has_raw = $derived(table_entries.some((entry) => entry.energy_per_atom !== undefined))
@@ -241,7 +243,7 @@
   // sanitized by HeatmapTable (unsafe hrefs are dropped there).
   const table_data = $derived(
     table_entries.map((entry, idx): RowData => {
-      const formula = formulas_of(entry.composition).html
+      const formula = formulas_of(formula_comp(entry)).html
       const row: RowData = {
         '#': idx + 1,
         Formula: is_on_hull(entry) ? `<strong>${formula}</strong>` : formula,
@@ -257,8 +259,7 @@
             ? `<a href="${escape_html(href)}" target="_blank" rel="noopener">${safe_id}</a>`
             : safe_id
       }
-      if (has_polymorphs)
-        row.Poly = polymorph_counts.get(composition_key(entry.composition)) ?? 1
+      if (has_polymorphs) row.Poly = polymorph_counts.get(composition_key(entry)) ?? 1
       row[`N<sub>el</sub>`] = get_arity(entry)
       row[`N<sub>at</sub>`] = count_atoms_in_composition(entry.composition)
       if (is_highlighted(entry)) {

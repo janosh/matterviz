@@ -796,6 +796,24 @@ describe(`scales`, () => {
       expect(scale.ticks(8)).toEqual([])
     })
 
+    // sampling can miss a narrow gap where forward is undefined: ticks whose preimage maps to
+    // nothing are dropped, while finite decreasing maps keep theirs
+    test(`derived ticks skip values where forward is undefined`, () => {
+      const gapped = {
+        forward: (val: number) => (val > 0.499 && val < 0.501 ? NaN : val),
+        inverse: (val: number) => val,
+      }
+      const ticks = derived_scale(
+        scaleLinear().domain([0, 1.1]).range([0, 600]),
+        gapped,
+      ).ticks(12)
+      expect(ticks.length).toBeGreaterThan(3)
+      expect(ticks).not.toContain(0.5)
+      expect(
+        ticks.every((tick) => Number.isFinite(gapped.forward(gapped.inverse(tick)))),
+      ).toBe(true)
+    })
+
     test(`create_axis_scales builds a derived x2 over x, rejecting a time x axis`, () => {
       const unit: Vec2 = [0, 1]
       const ranges = { x: [250, 1000] as Vec2, x2: unit, y: unit, y2: unit }

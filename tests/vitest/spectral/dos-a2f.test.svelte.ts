@@ -172,6 +172,7 @@ test.each([
       color: line_style?.color,
       dash: line_style?.dash ?? `solid`,
     }))
+    for (const { curve, color } of styles) expect(color, curve).toMatch(/\S/)
     const n_unique = (keys: string[]) => new Set(keys).size
     expect(n_unique(styles.map(({ color, dash }) => `${color} ${dash}`))).toBe(n_series)
     // n_curves curves with n_curves (curve, colour) pairs: one colour each, all distinct

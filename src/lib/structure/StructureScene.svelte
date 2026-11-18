@@ -1212,9 +1212,7 @@
   // Off by default (pass-through). Manual overrides are applied downstream in
   // filtered_bond_pairs, so they still win over perceived orders.
   let perceived_bond_pairs: BondData = $derived.by(() => {
-    if (!auto_bond_order || !structure || bond_pairs.length === 0) {
-      return bond_pairs
-    }
+    if (!auto_bond_order || !structure || bond_pairs.length === 0) return bond_pairs
     const total_charge = structure.charge ?? 0
     const perceived = perceive_bond_orders(structure.sites, bond_records(bond_pairs), {
       total_charge,

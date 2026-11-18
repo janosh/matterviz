@@ -194,62 +194,52 @@ Display 3D trajectories as connected lines with markers at each data point. Each
 <script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
-  // Generate Lissajous curves - parametric 3D curves
+  // Parametric 3D curve sampled at 60 angles spanning `turns` full turns
   const n_points = 60
-
-  const curve_1 = {
-    x: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 2
-      return Math.sin(3 * angle)
-    }),
-    y: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 2
-      return Math.sin(4 * angle)
-    }),
-    z: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 2
-      return Math.sin(5 * angle)
-    }),
-    point_style: { fill: `#e74c3c`, radius: 4 },
-    line_style: { color: `#e74c3c`, width: 3 },
-    label: `Lissajous (3:4:5)`,
+  const curve = (turns, coord_fns, { color, label, radius = 4, dash }) => {
+    const angles = Array.from(
+      { length: n_points },
+      (_, idx) => (idx / n_points) * turns * 2 * Math.PI,
+    )
+    const [x, y, z] = coord_fns.map((coord_fn) => angles.map(coord_fn))
+    return {
+      x,
+      y,
+      z,
+      point_style: { fill: color, radius },
+      line_style: { color, width: 3, dash },
+      label,
+    }
   }
 
-  const curve_2 = {
-    x: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 2
-      return Math.sin(2 * angle + Math.PI / 4)
-    }),
-    y: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 2
-      return Math.sin(3 * angle)
-    }),
-    z: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 2
-      return Math.cos(2 * angle)
-    }),
-    point_style: { fill: `#3498db`, radius: 4 },
-    line_style: { color: `#3498db`, width: 3 },
-    label: `Lissajous (2:3:2)`,
-  }
-
-  // Spring/helix trajectory
-  const curve_3 = {
-    x: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 4
-      return 0.7 * Math.cos(angle)
-    }),
-    y: Array.from({ length: n_points }, (_, idx) => {
-      const angle = (idx / n_points) * Math.PI * 4
-      return 0.7 * Math.sin(angle)
-    }),
-    z: Array.from({ length: n_points }, (_, idx) => {
-      return (idx / n_points) * 2 - 1
-    }),
-    point_style: { fill: `#2ecc71`, radius: 3 },
-    line_style: { color: `#2ecc71`, width: 3, dash: `3 2` },
-    label: `Helix`,
-  }
+  const curve_1 = curve(
+    1,
+    [
+      (angle) => Math.sin(3 * angle),
+      (angle) => Math.sin(4 * angle),
+      (angle) => Math.sin(5 * angle),
+    ],
+    { color: `#e74c3c`, label: `Lissajous (3:4:5)` },
+  )
+  const curve_2 = curve(
+    1,
+    [
+      (angle) => Math.sin(2 * angle + Math.PI / 4),
+      (angle) => Math.sin(3 * angle),
+      (angle) => Math.cos(2 * angle),
+    ],
+    { color: `#3498db`, label: `Lissajous (2:3:2)` },
+  )
+  // Spring/helix trajectory rising linearly from z = -1 to 1 over two turns
+  const curve_3 = curve(
+    2,
+    [
+      (angle) => 0.7 * Math.cos(angle),
+      (angle) => 0.7 * Math.sin(angle),
+      (angle) => angle / (2 * Math.PI) - 1,
+    ],
+    { color: `#2ecc71`, label: `Helix`, radius: 3, dash: `3 2` },
+  )
 </script>
 
 <ScatterPlot3D
@@ -269,25 +259,12 @@ Points can be sized based on data values using the `size_scale` prop:
 <script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
-  // Generate random 3D data with varying sizes
+  // Random 3D data sized and colored by distance from the origin
   const n_points = 200
-  const random_data = {
-    x: Array.from({ length: n_points }, () => Math.random() * 10 - 5),
-    y: Array.from({ length: n_points }, () => Math.random() * 10 - 5),
-    z: Array.from({ length: n_points }, () => Math.random() * 10 - 5),
-    // Size based on distance from origin
-    size_values: [],
-    color_values: [],
-  }
-
-  for (let idx = 0; idx < n_points; idx++) {
-    const coord_x = random_data.x[idx]
-    const coord_y = random_data.y[idx]
-    const coord_z = random_data.z[idx]
-    const distance = Math.sqrt(coord_x * coord_x + coord_y * coord_y + coord_z * coord_z)
-    random_data.size_values.push(distance)
-    random_data.color_values.push(distance)
-  }
+  const random_coord = () => Array.from({ length: n_points }, () => Math.random() * 10 - 5)
+  const [x, y, z] = [random_coord(), random_coord(), random_coord()]
+  const distances = x.map((x_val, idx) => Math.hypot(x_val, y[idx], z[idx]))
+  const random_data = { x, y, z, size_values: distances, color_values: distances }
 </script>
 
 <ScatterPlot3D
@@ -588,28 +565,22 @@ Create complex 3D visualizations by combining reference lines, planes, and surfa
 <script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
-  // Generate points on a paraboloid z = x² + y²
-  const n_points = 60
+  // Random points on a paraboloid z = x² + y², colored by z
   const paraboloid_points = {
     x: [],
     y: [],
     z: [],
-    color_values: [],
     point_style: { radius: 4 },
     label: `z = x² + y²`,
   }
-
-  for (let idx = 0; idx < n_points; idx++) {
+  for (let idx = 0; idx < 60; idx++) {
     const theta = Math.random() * 2 * Math.PI
     const radius = Math.sqrt(Math.random()) * 1.5
-    const coord_x = radius * Math.cos(theta)
-    const coord_y = radius * Math.sin(theta)
-    const coord_z = coord_x * coord_x + coord_y * coord_y
-    paraboloid_points.x.push(coord_x)
-    paraboloid_points.y.push(coord_y)
-    paraboloid_points.z.push(coord_z)
-    paraboloid_points.color_values.push(coord_z)
+    paraboloid_points.x.push(radius * Math.cos(theta))
+    paraboloid_points.y.push(radius * Math.sin(theta))
+    paraboloid_points.z.push(radius ** 2)
   }
+  paraboloid_points.color_values = paraboloid_points.z
 
   // Surface definition
   const paraboloid_surface = {
@@ -633,31 +604,18 @@ Create complex 3D visualizations by combining reference lines, planes, and surfa
       label: `Z-axis`,
       style: { color: `#e74c3c`, width: 3 },
     },
-    // Circle at z = 1 (projected down)
-    {
+    // Square inscribed in the z = 1 circle
+    ...[
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+      [0, -1],
+    ].map(([x_val, y_val], idx, corners) => ({
       type: `segment`,
-      p1: [1, 0, 1],
-      p2: [0, 1, 1],
+      p1: [x_val, y_val, 1],
+      p2: [...corners[(idx + 1) % 4], 1],
       style: { color: `#f39c12`, width: 2, dash: `4 2` },
-    },
-    {
-      type: `segment`,
-      p1: [0, 1, 1],
-      p2: [-1, 0, 1],
-      style: { color: `#f39c12`, width: 2, dash: `4 2` },
-    },
-    {
-      type: `segment`,
-      p1: [-1, 0, 1],
-      p2: [0, -1, 1],
-      style: { color: `#f39c12`, width: 2, dash: `4 2` },
-    },
-    {
-      type: `segment`,
-      p1: [0, -1, 1],
-      p2: [1, 0, 1],
-      style: { color: `#f39c12`, width: 2, dash: `4 2` },
-    },
+    })),
   ]
 
   // Reference plane at z = 1
@@ -698,8 +656,7 @@ Define a plane by specifying three non-collinear points:
   const point_2 = [0, 1, 0]
   const point_3 = [0, 0, 1]
 
-  // Generate random points near the plane
-  const n_points = 50
+  // Random barycentric combinations of the three points, plus noise
   const plane_points = {
     x: [],
     y: [],
@@ -707,21 +664,21 @@ Define a plane by specifying three non-collinear points:
     point_style: { fill: `#3498db`, radius: 5 },
     label: `Near Plane`,
   }
-
-  for (let idx = 0; idx < n_points; idx++) {
+  for (let idx = 0; idx < 50; idx++) {
     const param_1 = Math.random()
     const param_2 = Math.random() * (1 - param_1)
-    const param_3 = 1 - param_1 - param_2
+    const weights = [param_1, param_2, 1 - param_1 - param_2]
     const noise = (Math.random() - 0.5) * 0.3
-    plane_points.x.push(
-      point_1[0] * param_1 + point_2[0] * param_2 + point_3[0] * param_3 + noise,
+    const [x_val, y_val, z_val] = [0, 1, 2].map(
+      (dim) =>
+        point_1[dim] * weights[0] +
+        point_2[dim] * weights[1] +
+        point_3[dim] * weights[2] +
+        noise,
     )
-    plane_points.y.push(
-      point_1[1] * param_1 + point_2[1] * param_2 + point_3[1] * param_3 + noise,
-    )
-    plane_points.z.push(
-      point_1[2] * param_1 + point_2[2] * param_2 + point_3[2] * param_3 + noise,
-    )
+    plane_points.x.push(x_val)
+    plane_points.y.push(y_val)
+    plane_points.z.push(z_val)
   }
 
   // Reference plane through the three points
@@ -744,27 +701,13 @@ Define a plane by specifying three non-collinear points:
 
   // Reference lines from origin to corner points
   const ref_lines = [
-    {
+    ...[point_1, point_2, point_3].map((point, idx) => ({
       type: `segment`,
       p1: [0, 0, 0],
-      p2: point_1,
-      style: { color: `#e74c3c`, width: 2 },
-      label: `To P1`,
-    },
-    {
-      type: `segment`,
-      p1: [0, 0, 0],
-      p2: point_2,
-      style: { color: `#2ecc71`, width: 2 },
-      label: `To P2`,
-    },
-    {
-      type: `segment`,
-      p1: [0, 0, 0],
-      p2: point_3,
-      style: { color: `#f39c12`, width: 2 },
-      label: `To P3`,
-    },
+      p2: point,
+      style: { color: [`#e74c3c`, `#2ecc71`, `#f39c12`][idx], width: 2 },
+      label: `To P${idx + 1}`,
+    })),
     // Triangle edges
     { type: `segment`, p1: point_1, p2: point_2, style: { color: `#3498db`, width: 3 } },
     { type: `segment`, p1: point_2, p2: point_3, style: { color: `#3498db`, width: 3 } },

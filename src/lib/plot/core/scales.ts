@@ -302,7 +302,10 @@ export function derived_scale(
     const domain = derived_domain()
     if (!domain.every(Number.isFinite)) return []
     const tick_scale = create_scale(tick_scale_type, domain, [0, 1])
-    return generate_ticks(domain, tick_scale_type, count, tick_scale)
+    // sampling can miss a narrow gap, so each tick's preimage must map back to a value
+    return generate_ticks(domain, tick_scale_type, count, tick_scale).filter((tick) =>
+      Number.isFinite(forward(inverse(tick))),
+    )
   }
   scale.copy = () => derived_scale(current, { forward, inverse }, tick_scale_type)
   return scale

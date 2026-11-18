@@ -203,13 +203,16 @@ export const LAYER_COLORS = [
   `#ec4899`, // pink
 ] as const
 
-// min/max/abs_max/mean of flat grid values in one pass (VolumetricData precomputes it)
+// min/max/abs_max/mean of flat grid values in one pass (VolumetricData precomputes it).
+// Rejects non-finite samples: an infinite max gave the default layer an infinite isovalue.
 export function grid_data_range(values: ArrayLike<number>): DataRange {
   const count = values.length
   if (count === 0) return { min: 0, max: 0, abs_max: 0, mean: 0 }
   let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
   for (let idx = 0; idx < count; idx++) {
     const val = values[idx]
+    if (!Number.isFinite(val))
+      throw new RangeError(`Volume values must be finite, got ${val} at flat index ${idx}`)
     if (val < min_val) min_val = val
     if (val > max_val) max_val = val
     sum += val

@@ -1,6 +1,7 @@
 // Trajectory from a `matterviz-binary-v1` envelope (kind 'trajectory', wire format in
 // extensions/anywidget/readme.md). Arrays stay the decoded typed arrays, each frame encoded on
 // read into a numeric MD frame, so no per-site JS objects exist beyond frame 0's preview.
+// The run borrows the payload's buffers (zero-copy), so they must stay unmodified for its life.
 import { element_by_symbol } from '#lib/element/data.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import {
@@ -14,6 +15,7 @@ import { TIME_UNIT_TO_THZ } from '#lib/spectral/frequency-units.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
 import type { LatticeType, Pbc } from '#lib/structure/index.js'
 import { is_plain_object } from 'svelte-widgets/utils'
+import { BOOKKEEPING_METADATA_KEYS } from './extract'
 import { create_numeric_md_frame, write_frame_vector } from './frame'
 import type { TrajectoryMetadata } from './index'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'
@@ -85,12 +87,22 @@ export function trajectory_from_binary(
     )
   const cell_of = (frame_idx: number): Matrix3x3 | undefined =>
     cells && matrix_at(cells, shared_cell ? 0 : frame_idx * 9)
-  const pbc = fields.pbc as Pbc | undefined
-  if (pbc !== undefined && !cells) throw new TypeError(`Binary trajectory pbc needs a lattice`)
-  const pbc_ok =
-    Array.isArray(pbc) && pbc.length === 3 && pbc.every((flag) => typeof flag === `boolean`)
-  if (pbc !== undefined && !pbc_ok)
-    throw new TypeError(`Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(pbc)}`)
+  const raw_pbc = fields.pbc
+  if (raw_pbc !== undefined && !cells)
+    throw new TypeError(`Binary trajectory pbc needs a lattice`)
+  // each flag checked (a hole in [true, , true] fails) and copied off the caller's array
+  const [flag_a, flag_b, flag_c]: unknown[] =
+    Array.isArray(raw_pbc) && raw_pbc.length === 3
+      ? [0, 1, 2].map((axis) => raw_pbc[axis])
+      : []
+  const pbc: Pbc | undefined =
+    typeof flag_a === `boolean` && typeof flag_b === `boolean` && typeof flag_c === `boolean`
+      ? [flag_a, flag_b, flag_c]
+      : undefined
+  if (raw_pbc !== undefined && !pbc)
+    throw new TypeError(
+      `Binary trajectory pbc must be 3 booleans, got ${JSON.stringify(raw_pbc)}`,
+    )
 
   const step_values =
     arrays.steps && finite_values(checked_array(arrays.steps, `steps`, [n_frames]), `steps`)
@@ -146,7 +158,8 @@ export function trajectory_from_binary(
     return frame
   }
 
-  // Plot rows as full_data_extractor would build them, without materialising sites
+  // Plot rows by full_data_extractor's precedence, without materialising sites: the real
+  // step wins over a scalar named Step, a supplied finite density over the computed one
   let total_mass = 0
   for (const number of numbers) {
     const element = element_from_atomic_number(number)
@@ -157,14 +170,16 @@ export function trajectory_from_binary(
     const step = step_of(frame_idx)
     const row: Record<string, number> = { Step: step }
     for (const [name, values] of scalars) {
-      if (Number.isFinite(values[frame_idx])) row[name] = values[frame_idx]
+      const value = values[frame_idx]
+      if (Number.isFinite(value) && name !== `Step` && !BOOKKEEPING_METADATA_KEYS.has(name))
+        row[name] = value
     }
     const cell = cell_of(frame_idx)
     if (cell) {
       if (!shared_cell || !lattice_params) lattice_params = make_lattice(cell, pbc)
       row.volume = lattice_params.volume
       for (const param of LATTICE_PARAMS) row[param] = lattice_params[param]
-      row.density = (AMU_PER_A3_TO_G_PER_CM3 * total_mass) / lattice_params.volume
+      row.density ??= (AMU_PER_A3_TO_G_PER_CM3 * total_mass) / lattice_params.volume
     }
     return { frame_number: frame_idx, step, properties: row }
   })

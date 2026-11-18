@@ -56,15 +56,16 @@ for (const method of [`showPopover`, `hidePopover`] as const) {
 
 // vi.waitFor's 1 s default (no config for it) is too short for a loaded full run; 4 s stays
 // below the 10 s test timeout so a failing wait reports its last assertion. Real-timer polls
-// every 5 ms, not 50 (parse-in-worker.test.ts: 1.1 s vs 7.1 s); fake timers keep the default
-// step since each poll advances their clock by `interval`.
+// every 10 ms, not 50 (parse-in-worker.test.ts: 1.8 s vs 7.1 s), but not faster: a failing
+// callback that formats a large diff reruns on every poll. Fake timers keep the default step
+// since each poll advances their clock by `interval`.
 const wait_for = vi.waitFor
 vi.waitFor = (callback, options = {}) =>
   wait_for(
     callback,
     typeof options === `number`
       ? options
-      : { timeout: 4000, ...(vi.isFakeTimers() ? {} : { interval: 5 }), ...options },
+      : { timeout: 4000, ...(vi.isFakeTimers() ? {} : { interval: 10 }), ...options },
   )
 
 // Suppress Three.js multiple instances warning in tests

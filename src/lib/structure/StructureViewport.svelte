@@ -469,9 +469,7 @@
   let last_reset_token: number | undefined
   $effect(() => {
     const token = reset_token
-    if (last_reset_token !== undefined && token !== last_reset_token) {
-      untrack(reset_camera)
-    }
+    if (last_reset_token !== undefined && token !== last_reset_token) untrack(reset_camera)
     last_reset_token = token
   })
 

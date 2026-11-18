@@ -519,11 +519,24 @@ describe(`ConvexHullStats`, () => {
     )
   }
 
+  // open-element entries (LiCoO2, LiCoO3 both at LiCo on an O-open hull) group and show by
+  // their full composition
   test(`Poly column counts polymorphs per reduced formula (Fe4O6 groups with Fe2O3), 1 for unique`, () => {
     const fe4o6 = mock_entry({ composition: { Fe: 4, O: 6 }, reduced_formula: `Fe4O6` })
-    mount_stats_table({ stable_entries: [...polymorph_entries, fe4o6] })
+    const open = [2, 3].map((n_oxygen) =>
+      mock_entry({
+        composition: { Li: 1, Co: 1 },
+        full_composition: { Li: 1, Co: 1, O: n_oxygen },
+      }),
+    )
+    mount_stats_table({ stable_entries: [...polymorph_entries, fe4o6, ...open] })
     expect(get_headers()).toContain(`Poly`)
-    expect(get_poly_values().toSorted()).toEqual([`1`, `3`, `3`, `3`])
+    expect(get_poly_values().toSorted()).toEqual([`1`, `1`, `1`, `3`, `3`, `3`])
+    const formula_idx = get_headers().indexOf(`Formula`)
+    const formulas = Array.from(document.querySelectorAll(`tbody tr`), (row) =>
+      row.querySelectorAll(`td`)[formula_idx]?.textContent?.trim(),
+    )
+    expect(formulas).toEqual(expect.arrayContaining([`Li Co O2`, `Li Co O3`]))
   })
 
   describe(`entry_href prop`, () => {

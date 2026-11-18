@@ -7,7 +7,7 @@ import { DEFAULTS } from '#lib/settings.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { make_site } from '#lib/structure/site.js'
+import { make_site, species_key } from '#lib/structure/site.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { is_identity } from './symmetry-elements'
 import type {
@@ -30,12 +30,15 @@ export const default_sym_settings = {
 } as const satisfies SymmetrySettings
 
 // moyo's per-site arrays (wyckoffs, orbits, site_symmetry_symbols) index the merged input
-// cell that was fed to analyze_cell, not std_cell. The dataset therefore carries that cell
-// plus the map from each of its sites back to the original structure's site indices (one
-// input site -> many originals for merged disordered sites).
+// cell that was fed to analyze_cell, not std_cell. The dataset therefore carries a snapshot of
+// that cell (lattice rows, fractional positions: later in-place edits of the structure do not
+// reach it) plus the map from each of its sites back to the original structure's site indices
+// (one input site -> many originals for merged disordered sites).
 export type SymmetryDataset = MoyoDataset & {
-  input_cell: Pick<MoyoCell, `positions` | `numbers`>
+  input_cell: Pick<MoyoCell, `positions` | `numbers`> & { lattice: math.Matrix3x3 }
   orig_site_indices_by_input_idx: number[][]
+  // species_key of each original site at analysis, so a later species swap is caught
+  site_species_keys: string[]
 }
 
 // A host that runs moyo itself (e.g. a desktop shell with moyo compiled in) instead of the
@@ -153,20 +156,28 @@ function site_atomic_number(site: Site, site_idx: number): number {
   return atomic_number
 }
 
-// moyo compares sites only by their integer labels. Fully occupied single-element sites keep
-// their atomic number; every distinct partial composition gets its own label above the element
-// range (as moyopy's MoyoAdapter does), so a Cu0.5Au0.5 site is never mapped onto a pure Cu
-// site and no symmetry beyond the disordered crystal's own is found.
+// moyo compares sites only by their integer labels. Fully occupied single-element sites with no
+// oxidation state keep their atomic number; every other distinct composition gets its own label
+// above the element range (as moyopy's MoyoAdapter does), so a Cu0.5Au0.5 site is never mapped
+// onto a pure Cu site, nor Fe2+ onto Fe3+ (like pymatgen), and no symmetry beyond the crystal's
+// own is found.
 const DISORDER_LABEL_BASE = 1000
 function moyo_site_labels(sites: Site[], numbers: number[]): number[] {
   const label_by_composition = new Map<string, number>()
   return sites.map((site, site_idx) => {
     const species = site.species.filter(({ occu }) => occu > OCCUPANCY_EPS)
-    if (species.length === 1 && Math.abs(species[0].occu - 1) <= OCCUPANCY_EPS) {
+    const [first] = species
+    if (
+      species.length === 1 &&
+      Math.abs(first.occu - 1) <= OCCUPANCY_EPS &&
+      first.oxidation_state === undefined
+    )
       return numbers[site_idx]
-    }
     const composition = species
-      .map(({ element, occu }) => `${element}:${occu.toFixed(6)}`)
+      .map(
+        ({ element, occu, oxidation_state }) =>
+          `${element}${oxidation_state ?? ``}:${occu.toFixed(6)}`,
+      )
       .toSorted()
       .join(` `)
     let label = label_by_composition.get(composition)
@@ -189,7 +200,7 @@ export async function analyze_structure_symmetry(
   }
   if (!symmetry_backend) await ensure_moyo_wasm_ready()
   const merged = merge_split_partial_sites(structure.sites)
-  const positions = merged.map(({ site }) => site.abc)
+  const positions = merged.map(({ site }): math.Vec3 => [...site.abc])
   const numbers = merged.map(({ site, site_idx }) => site_atomic_number(site, site_idx))
   const labels = moyo_site_labels(
     merged.map(({ site }) => site),
@@ -229,10 +240,15 @@ export async function analyze_structure_symmetry(
     ...sym_data,
     std_cell: to_numbers(sym_data.std_cell),
     prim_std_cell: to_numbers(sym_data.prim_std_cell),
-    input_cell: { positions, numbers },
+    input_cell: {
+      lattice: structure.lattice.matrix.map((row) => [...row]) as math.Matrix3x3,
+      positions,
+      numbers,
+    },
     orig_site_indices_by_input_idx: merged.map(
       ({ source_site_indices }) => source_site_indices,
     ),
+    site_species_keys: structure.sites.map(({ species }) => species_key(species)),
   }
 }
 

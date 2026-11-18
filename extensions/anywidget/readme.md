@@ -32,7 +32,7 @@ The `trajectory` trait and each entry of `volumetric_data` accept, besides neste
 }
 ```
 
-- **Arrays**: C-contiguous, little-endian. `dtype` is one of `float32 float64 int8 int16 int32 uint8 uint16 uint32` (cast `int64` steps to `int32` or `float64`). `data` must hold exactly `prod(shape) * itemsize` bytes. Buffers aligned to the item size are viewed in place (zero-copy); a misaligned one (whether the host's `DataView` offsets are aligned depends on how it splits the comm message) is copied once. Trajectory arrays are read in place whatever their float dtype (float32 values widen exactly as each frame is encoded); a float64 volume grid feeds matterviz unchanged, a float32 one is widened to float64 in one pass (half the wire size, one copy).
+- **Arrays**: C-contiguous, little-endian. `dtype` is one of `float32 float64 int8 int16 int32 uint8 uint16 uint32` (cast `int64` steps to `int32` or `float64`). `data` must hold exactly `prod(shape) * itemsize` bytes. Buffers aligned to the item size are viewed in place (zero-copy); a misaligned one (whether the host's `DataView` offsets are aligned depends on how it splits the comm message) is copied once. Trajectory arrays are read in place whatever their float dtype (float32 values widen exactly as each frame is encoded); a float64 volume grid feeds matterviz unchanged, a float32 one is widened to float64 in one pass (half the wire size, one copy). Decoded trajectories and volumes borrow in-place buffers, so callers must not mutate them afterwards.
 - **`kind: 'trajectory'`** arrays: `positions` `[n_frames, n_atoms, 3]` float Cartesian Å (required); `numbers` `[n_atoms]` integer atomic numbers (required, fixed atom order); `lattice` `[3, 3]` (fixed cell) or `[n_frames, 3, 3]` float, rows a, b, c (optional); `steps` `[n_frames]` (optional, default 0..n_frames-1). Any other array is a per-atom vector channel if shaped `[n_frames, n_atoms, 3]` (name it `force`, `velocity`, ... as the site property it becomes) or a per-frame scalar if shaped `[n_frames]` (`energy`, `temperature`, ...: plot rows and frame metadata); other shapes are rejected. JSON fields: `pbc` (3 booleans, needs a lattice, default all true), `metadata` (object), `time_step` (`{ value, unit }`, `value` finite and positive, `unit` one of `fs`, `ps`, `ns`); any other field is rejected. Positions, vectors and cells stay flat: each frame is encoded on read into a numeric MD frame, so no per-site JS objects are built beyond the frame-0 preview.
 - **`kind: 'volume'`** arrays: exactly one, `values` `[nx, ny, nz]` float in C order (z fastest). JSON fields as for the JSON volume: `id`, `lattice` (3x3), `origin` (Vec3), `periodic`, and optional `label`, `units`, `signed`, `source`; dims come from the `values` shape.
 
@@ -51,18 +51,24 @@ def binary_array(values: np.typing.ArrayLike, dtype: str) -> dict:
 
 
 def trajectory_payload(traj: "pymatgen.core.trajectory.Trajectory") -> dict:
-    """Binary envelope for the trajectory trait (Cartesian positions, per-frame cells)."""
-    frames = list(traj)  # Structures
+    """Binary envelope for the trajectory trait (Cartesian positions, fixed or per-frame cell).
+
+    Reads traj.coords, not list(traj): its Structures wrap sites into the cell, dropping
+    cell crossings.
+    """
+    traj.to_positions()  # in place: fractional positions, not displacements
+    lattice = np.asarray(traj.lattice)  # [3, 3] or [n_frames, 3, 3]
+    first = traj[0]
     payload = {
         "format": BINARY_FORMAT,
         "kind": "trajectory",
         "arrays": {
-            "positions": binary_array([s.cart_coords for s in frames], "float32"),
-            "numbers": binary_array(frames[0].atomic_numbers, "uint8"),
-            "lattice": binary_array([s.lattice.matrix for s in frames], "float64"),
-            "steps": binary_array(np.arange(len(frames)), "int32"),
+            "positions": binary_array(np.asarray(traj.coords) @ lattice, "float32"),
+            "numbers": binary_array(first.atomic_numbers, "uint8"),
+            "lattice": binary_array(lattice, "float64"),
+            "steps": binary_array(np.arange(len(traj)), "int32"),
         },
-        "pbc": list(frames[0].lattice.pbc),
+        "pbc": list(first.lattice.pbc),
     }
     forces = [props.get("forces") for props in traj.frame_properties or []]
     if forces and all(frame_forces is not None for frame_forces in forces):

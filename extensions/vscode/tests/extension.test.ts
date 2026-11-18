@@ -946,15 +946,29 @@ describe(`MatterViz Extension`, () => {
       expect(await run_report_bug()).toContain(`- **Remote Session**: Yes (ssh-remote)`)
     })
 
-    test(`should include active files and extension state counters in report`, async () => {
-      await start_watching(`structure.cif`)
-      await start_watching(`trajectory.traj`)
+    test(`lists watched files with their sizes (Unknown when stat fails) and state counters`, async () => {
+      const sizes: Record<string, number> = {
+        '/test/structure.cif': 1024,
+        '/test/trajectory.traj': 1024 ** 2,
+        '/test/big.cif': 1024 ** 3,
+      }
+      mock_vscode.workspace.fs.stat.mockImplementation((uri) =>
+        uri.fsPath in sizes
+          ? Promise.resolve({ size: sizes[uri.fsPath], type: 1 })
+          : Promise.reject(new Error(`File not found`)),
+      )
+      const names = [`structure.cif`, `trajectory.traj`, `big.cif`, `error-file.cif`]
+      for (const name of names) await start_watching(name)
 
       const content = await run_report_bug()
-      for (const name of [`structure.cif`, `trajectory.traj`])
-        expect(content).toContain(`**${name}**\n- **Path**: \`/test/${name}\``)
+      const expected_sizes = [`1 KiB`, `1 MiB`, `1 GiB`, `Unknown`]
+      for (const [idx, name] of names.entries()) {
+        expect(content).toContain(
+          `**${name}**\n- **Path**: \`/test/${name}\`\n- **Size**: ${expected_sizes[idx]}`,
+        )
+      }
       expect(content).toContain(`- **Has Watcher**: true`)
-      expect(content).toContain(`- **Active Watchers**: 2`)
+      expect(content).toContain(`- **Active Watchers**: 4`)
       for (const counter of [
         `Active Trajectory Runs`,
         `Auto-Render Timers`,
@@ -979,33 +993,6 @@ describe(`MatterViz Extension`, () => {
       expect(mock_env.openExternal.mock.calls[0][0].toString()).toContain(
         `https://github.com/janosh/matterviz/issues/new`,
       )
-    })
-
-    test(`should format file sizes correctly`, async () => {
-      const size_cases = [
-        { size: 1024, expected: `1 KiB` },
-        { size: 1024 * 1024, expected: `1 MiB` },
-        { size: 1024 * 1024 * 1024, expected: `1 GiB` },
-      ]
-      const file_sizes = new Map(
-        size_cases.map(({ size }) => [`/test/file_${size}.cif`, size]),
-      )
-      mock_vscode.workspace.fs.stat.mockImplementation((uri) =>
-        Promise.resolve({ size: file_sizes.get(uri.fsPath) ?? 1000, type: 1 }),
-      )
-      await Promise.all(size_cases.map(({ size }) => start_watching(`file_${size}.cif`)))
-
-      const content = await run_report_bug()
-      for (const { expected } of size_cases) expect(content).toContain(expected)
-    })
-
-    test(`should handle file stat errors gracefully`, async () => {
-      await start_watching(`error-file.cif`)
-      mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
-
-      const content = await run_report_bug()
-      expect(content).toContain(`**error-file.cif**`)
-      expect(content).toContain(`- **Size**: Unknown`)
     })
 
     test(`should handle errors during report generation`, async () => {

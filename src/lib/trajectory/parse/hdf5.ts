@@ -240,9 +240,7 @@ const discover_torch_sim_signals = (
     if (!is_hdf5_dataset(dataset) || excluded_paths.has(path)) continue
     const steps_dataset = is_hdf5_group(steps_group) ? steps_group.get(name) : null
     const known_signal = name in SIGNAL_ALIASES
-    if (!MASS_ALIASES.has(name) && !known_signal && !is_hdf5_dataset(steps_dataset)) {
-      continue
-    }
+    if (!MASS_ALIASES.has(name) && !known_signal && !is_hdf5_dataset(steps_dataset)) continue
     const shape = dataset_shape(dataset, path)
 
     if (MASS_ALIASES.has(name)) {

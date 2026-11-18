@@ -779,9 +779,7 @@ export function clip_line_to_cell(
     t_min = Math.max(t_min, Math.min(t_0, t_1))
     t_max = Math.min(t_max, Math.max(t_0, t_1))
   }
-  if (t_min >= t_max - eps || !Number.isFinite(t_min) || !Number.isFinite(t_max)) {
-    return null
-  }
+  if (t_min >= t_max - eps || !Number.isFinite(t_min) || !Number.isFinite(t_max)) return null
   const to_cart = math.create_frac_to_cart(lattice)
   const endpoint = (t_param: number): Vec3 =>
     to_cart(point.map((coord, idx) => coord + t_param * direction[idx]) as Vec3)

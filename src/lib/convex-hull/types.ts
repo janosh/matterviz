@@ -32,6 +32,8 @@ export interface PhaseData {
   e_form_per_atom?: number // Formation energy per atom from src/scripts/fetch_mp_pd_data.py
   reduced_formula?: string
   name?: string
+  // With open elements: the entry's full composition (`composition` drops the open elements)
+  full_composition?: CompositionType
 
   // Temperature-dependent free energies (replaces `energy` at selected T)
   temperatures?: readonly number[] // in Kelvin, use integers for exact matching

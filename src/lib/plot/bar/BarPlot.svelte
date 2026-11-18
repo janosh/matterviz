@@ -162,7 +162,6 @@
     CartesianPlotProps & {
       // Bar (or line) series with x categories or positions and y values
       series?: readonly BarSeries<Metadata>[]
-      // Component-specific props
       // `vertical` draws bars upward from the x axis, `horizontal` rightward from the y axis
       orientation?: Orientation
       // How series share a category: `overlay` on top of each other, `stacked` or `grouped` side by side

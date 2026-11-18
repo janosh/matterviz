@@ -384,19 +384,29 @@ export class StructureSession {
     this.keep_image_options(this.inputs.image_atom_options()),
   )
   // Whole molecules move by lattice vectors only: site order, count and provenance stay, so
-  // selections, measurements (minimum-image) and edits (deltas) address the same sites
-  private readonly mapped_supercell = $derived.by(() => {
-    const struct = this.map_elements(this.supercell_structure)
-    if (!this.inputs.keep_molecules_whole() || !struct || !(`lattice` in struct)) return struct
-    const { pbc } = struct.lattice
-    const strategy = this.inputs.bonding_strategy()
-    const options = { ...this.inputs.bonding_options(), pbc }
-    const unwrapped = unwrap_molecules(struct, get_bond_data(struct, strategy, options))
-    // the image atoms' bond search on the moved sites would find the same bonds again
-    if (unwrapped.structure !== struct)
-      cache_prepared_bonds(unwrapped.structure, strategy, options, unwrapped.bonds)
-    return unwrapped.structure
-  })
+  // selections, measurements (minimum-image) and edits (deltas) address the same sites. A
+  // failed bond search (e.g. invalid pair cutoffs) keeps the wrapped structure and says why.
+  private readonly whole_molecules = $derived.by(
+    (): { structure?: AnyStructure; error?: string } => {
+      const struct = this.map_elements(this.supercell_structure)
+      if (!this.inputs.keep_molecules_whole() || !struct || !(`lattice` in struct))
+        return { structure: struct }
+      const { pbc } = struct.lattice
+      const strategy = this.inputs.bonding_strategy()
+      const options = { ...this.inputs.bonding_options(), pbc }
+      let unwrapped
+      try {
+        unwrapped = unwrap_molecules(struct, get_bond_data(struct, strategy, options))
+      } catch (error) {
+        return { structure: struct, error: to_error(error).message }
+      }
+      // the image atoms' bond search on the moved sites would find the same bonds again
+      if (unwrapped.structure !== struct)
+        cache_prepared_bonds(unwrapped.structure, strategy, options, unwrapped.bonds)
+      return { structure: unwrapped.structure }
+    },
+  )
+  private readonly mapped_supercell = $derived(this.whole_molecules.structure)
   // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing.
   // Only a settings change on the same structure can, so new frames build no image_set_key.
   private last_imaged: { struct: AnyStructure; key?: string; imaged: AnyStructure } | undefined
@@ -596,8 +606,10 @@ export class StructureSession {
       const supercell_failed = new_error(`supercell`, this.supercell.error)
       // A failed cell transform draws the original cell: say so and reset the selector to match
       const cell_failed = new_error(`cell`, this.cell_transform.error)
+      const molecules_failed = new_error(`molecules`, this.whole_molecules.error)
       untrack(() => {
         if (supercell_failed) this.notice(`Failed to create supercell: ${supercell_failed}`)
+        if (molecules_failed) this.notice(`Cannot keep molecules whole: ${molecules_failed}`)
         if (cell_failed) {
           this.notice(cell_failed)
           inputs.set_cell_type(`original`)

@@ -9,28 +9,12 @@ Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switc
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-
-  // Simple seeded normal-ish distributions for the demo
-  const make_dist = (seed, count = 250, center = 0, spread = 1) => {
-    let state = seed
-    const next = () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-    return Array.from({ length: count }, () => {
-      const uniform_1 = Math.max(next(), 1e-9)
-      const uniform_2 = next()
-      return (
-        center +
-        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
-      )
-    })
-  }
+  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
 
   const series = [
-    { y: make_dist(1, 250, 0, 1), label: `A`, color: `#4c6ef5` },
-    { y: make_dist(2, 250, 0.4, 1.5), label: `B`, color: `#fa5252` },
-    { y: make_dist(3, 250, -0.3, 0.7), label: `C`, color: `#40c057` },
+    { y: generate_normal(250, 0, 1, seeded_rng(1)), label: `A`, color: `#4c6ef5` },
+    { y: generate_normal(250, 0.4, 1.5, seeded_rng(2)), label: `B`, color: `#fa5252` },
+    { y: generate_normal(250, -0.3, 0.7, seeded_rng(3)), label: `C`, color: `#40c057` },
   ]
 </script>
 
@@ -114,25 +98,10 @@ Quartiles use the type-7 rule `q(p) = x[(n - 1) p]` with linear interpolation be
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-
-  const make_dist = (seed, count = 300, center = 0, spread = 1) => {
-    let state = seed
-    const next = () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-    return Array.from({ length: count }, () => {
-      const uniform_1 = Math.max(next(), 1e-9)
-      const uniform_2 = next()
-      return (
-        center +
-        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
-      )
-    })
-  }
+  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
 
   // Add a few extreme values so the modes look visibly different
-  const data = [...make_dist(5, 300, 0, 1), 6, 7, -6, -7]
+  const data = [...generate_normal(300, 0, 1, seeded_rng(5)), 6, 7, -6, -7]
   const series = [
     { y: data, label: `Tukey`, color: `#4c6ef5`, whisker_mode: `tukey` },
     { y: data, label: `Min/Max`, color: `#fa5252`, whisker_mode: `minmax` },
@@ -157,27 +126,12 @@ Set `show_value_labels` to print the median (or mean, via `value_label_stat`) ab
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-
-  const make_dist = (seed, count = 300, center = 0, spread = 1) => {
-    let state = seed
-    const next = () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-    return Array.from({ length: count }, () => {
-      const uniform_1 = Math.max(next(), 1e-9)
-      const uniform_2 = next()
-      return (
-        center +
-        spread * Math.sqrt(-2 * Math.log(uniform_1)) * Math.cos(2 * Math.PI * uniform_2)
-      )
-    })
-  }
+  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
 
   const colors = [`#636EFA`, `#EF553B`, `#00CC96`, `#AB63FA`, `#FFA15A`]
   const names = [`eSEN`, `eqV2`, `SevenNet`, `DPA3`, `GRACE`]
   const series = names.map((label, idx) => ({
-    y: make_dist(idx + 1, 300, idx * 0.01, 0.04 + idx * 0.01),
+    y: generate_normal(300, idx * 0.01, 0.04 + idx * 0.01, seeded_rng(idx + 1)),
     label,
     color: colors[idx],
   }))

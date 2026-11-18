@@ -839,21 +839,23 @@ describe(`controls`, () => {
     expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
   })
 
-  // one viewer re-hidden per control: each hidden entry removes its own control, no other
+  // one viewer re-hidden per control: each hidden entry removes its own control, no other,
+  // at mount and on every update (ending on the first again, so hidden controls come back)
   test(`hidden: [control] removes that control alone`, async () => {
-    const [[first]] = HIDEABLE_CONTROLS
+    const names = HIDEABLE_CONTROLS.map(([name]) => name)
     const props = $state(
-      default_props({ data_inspector_open: false, show_controls: { hidden: [first] } }),
+      default_props({ data_inspector_open: false, show_controls: { hidden: [names[0]] } }),
     )
     const target = await mount_ticked(props)
-    const names = HIDEABLE_CONTROLS.map(([name]) => name)
-    for (const hidden of names) {
-      props.show_controls = { hidden: [hidden] }
-      await tick()
-      const shown = HIDEABLE_CONTROLS.filter(
+    const shown = () =>
+      HIDEABLE_CONTROLS.filter(
         ([, selector]) => target.querySelector(`${CONTROLS} ${selector}`) !== null,
       ).map(([name]) => name)
-      expect(shown, hidden).toEqual(names.filter((name) => name !== hidden))
+    expect(shown(), `${names[0]} at mount`).toEqual(names.slice(1))
+    for (const hidden of [...names.slice(1), names[0]]) {
+      props.show_controls = { hidden: [hidden] }
+      await tick()
+      expect(shown(), hidden).toEqual(names.filter((name) => name !== hidden))
     }
   })
 
@@ -924,6 +926,7 @@ describe(`controls`, () => {
     const target = mount_trajectory(props)
     for (const [kind, step_labels, expected, frame_count] of [
       [`count`, 3, [`1`, `5`, `10`], 11],
+      [`single frame`, 5, [], 1], // right after visible labels, so stale ones would show
       [
         `count above frames`,
         50,
@@ -932,9 +935,8 @@ describe(`controls`, () => {
       ],
       [`spacing`, -4, [`1`, `4`, `8`, `11`], 11],
       [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`], 11],
-      [`explicit with repeats, unsorted`, [10, 0, 0, 7], [`1`, `8`, `11`], 11],
+      [`explicit with repeats, unsorted`, [10, 0, 0, 4], [`1`, `5`, `11`], 11],
       [`disabled`, 0, [], 11],
-      [`single frame`, 5, [], 1],
     ] as [string, Props[`step_labels`], string[], number][]) {
       const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
       props.trajectory = make_run({ steps })

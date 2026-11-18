@@ -403,6 +403,9 @@ function decode_ase_numeric_frame(
   )
   for (const [column, [, values]] of vectors.entries())
     write_frame_vector(numeric, column, values.flat())
+  // recorded (isotope) masses stay on the sites, so an extXYZ export writes ASE's `masses`
+  // column and ASE divides the momenta by them again; standard masses stay implicit
+  if (masses) numeric.scalar_columns = { mass: Float64Array.from(masses) }
   return { numeric, numbers, pbc }
 }
 

@@ -8,6 +8,7 @@ import type {
   DisplayConfig,
   FillRegion,
   StyleOverrides,
+  UserContentProps,
 } from '#lib/plot/core/types.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
@@ -15,7 +16,7 @@ import { level_densities } from '#lib/plot/core/density-contours.js'
 import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import * as scales from '#lib/plot/core/scales.js'
-import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { rgb } from 'd3-color'
 import { scaleSequentialLog } from 'd3-scale'
@@ -2672,18 +2673,86 @@ describe(`ScatterPlot`, () => {
     },
   )
 
-  // a derived x2 without its own scale_type inherits x's log tick scheme, minor ticks included
-  test(`derived x2 over a log x axis gets log ticks and minor ticks`, async () => {
+  // a derived x2 without its own scale_type inherits x's log tick scheme, minor ticks included,
+  // and overlays get its visible domain as x2_range, not the data-less [0, 1] sentinel
+  test(`derived x2 over a log x axis gets log ticks, minor ticks and its overlay range`, async () => {
+    let overlay_ctx = (): UserContentProps | undefined => undefined
     const plot = await mount_sized_scatter_plot({
       series: [{ x: [1, 10, 100], y: [1, 2, 3] }],
       x_axis: { scale_type: `log`, range: [1, 100] },
       x2_axis: {
         derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
       },
+      children: createRawSnippet<[UserContentProps]>((get_ctx) => {
+        overlay_ctx = get_ctx
+        return { render: () => `<span></span>` }
+      }),
     })
+    const { x2_range, x2_scale_fn, x_range, x_scale_fn } = overlay_ctx() ?? {}
+    if (!x2_range || !x2_scale_fn || !x_range || !x_scale_fn)
+      throw new Error(`children snippet got no x/x2 range or scale`)
+    expect(x2_range).toEqual([10, 1000])
+    // range and scale agree: the x2 range ends land on the x range ends
+    expect(x2_range.map(x2_scale_fn)).toEqual(x_range.map(x_scale_fn))
     expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(16)
     const labels = plot.querySelectorAll(`.x2-axis .tick text`)
     expect([...labels].map((el) => el.textContent)).toEqual([`10`, `100`, `1k`])
+  })
+
+  // the x2 tick cache follows its effective tick scheme and both conversion callbacks: an explicit
+  // linear x2 drops the inherited log ticks, and new callbacks in the same derive object relabel it
+  test(`derived x2 ticks follow scale_type and derive callback changes`, async () => {
+    const state = $state<{ series: DataSeries[]; x_axis: AxisConfig; x2_axis: AxisConfig }>({
+      series: [{ x: [1, 10, 100], y: [1, 2, 3] }],
+      x_axis: { scale_type: `log`, range: [1, 100] },
+      x2_axis: {
+        derive: { forward: (val: number) => 10 * val, inverse: (val: number) => val / 10 },
+      },
+    })
+    const plot = await mount_sized_scatter_plot(bind_props({}, state))
+    const x2_labels = () =>
+      [...plot.querySelectorAll(`.x2-axis .tick text`)].map((el) => el.textContent)
+    expect(x2_labels()).toEqual([`10`, `100`, `1k`])
+    state.x2_axis = { ...state.x2_axis, scale_type: `linear` }
+    await flush_render()
+    const linear = x2_labels()
+    expect(linear).not.toEqual([`10`, `100`, `1k`])
+    expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(0)
+    const derive = state.x2_axis.derive
+    if (!derive) throw new Error(`x2_axis.derive missing`)
+    state.x2_axis = {
+      ...state.x2_axis,
+      derive: Object.assign(derive, {
+        forward: (val: number) => 2 * val,
+        inverse: (val: number) => val / 2,
+      }),
+    }
+    await flush_render()
+    expect(x2_labels()).not.toEqual(linear)
+    expect(Math.max(...x2_labels().map(Number))).toBeLessThanOrEqual(200)
+  })
+
+  // a derived x2's zero line follows its displayed domain (forward image of x), not x2's range:
+  // x in [0, 10] with x2 = x - 5 puts x2 = 0 halfway across
+  test(`derived x2 zero line uses the displayed x2 domain`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 10], y: [1, 2] }],
+      x_axis: { range: [0, 10] },
+      x2_axis: {
+        range: [1, 10],
+        derive: { forward: (val: number) => val - 5, inverse: (val: number) => val + 5 },
+      },
+      y_axis: { range: [1, 2] },
+      display: { x_zero_line: false, y_zero_line: false, x2_zero_line: true },
+    })
+    const lines = [...plot.querySelectorAll(`.zero-line`)]
+    expect(lines).toHaveLength(1)
+    const x_ticks = [...plot.querySelectorAll(`.x-axis .tick`)]
+    const tick_x = (label: string) =>
+      translate_of(x_ticks.find((el) => el.textContent?.trim() === label) ?? x_ticks[0]).x
+    const [x_lo, x_hi] = [tick_x(`0`), tick_x(`10`)]
+    expect(x_hi).toBeGreaterThan(x_lo)
+    expect(Number(lines[0].getAttribute(`x1`))).toBeCloseTo((x_lo + x_hi) / 2, 6)
   })
 
   test(`derived x2 axis shows wavelength ticks above a photon-energy x axis`, async () => {

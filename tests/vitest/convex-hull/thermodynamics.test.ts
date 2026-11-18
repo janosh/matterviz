@@ -14,7 +14,12 @@ import {
   process_hull_for_stats,
   system_fractions,
 } from '#lib/convex-hull/thermodynamics.js'
-import { compute_hull_model, to_model_composition } from '#lib/convex-hull/model.js'
+import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
+import {
+  compute_hull_model,
+  process_model_entries,
+  to_model_composition,
+} from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -618,16 +623,40 @@ describe(`pymatgen cross-validation`, () => {
         Math.abs((entry.e_above_hull ?? NaN) - expected[entry.entry_id ?? ``]),
       )
       expect(Math.max(...diffs)).toBeLessThan(1e-6)
-      const stable = real
-        .filter((entry) => entry.is_stable)
-        .map(({ entry_id }) => entry_id ?? ``)
-      const expected_stable = Object.keys(expected).filter((id) => expected[id] < 1e-6)
-      expect(stable.toSorted()).toEqual(expected_stable.toSorted())
+      for (const { entry_id, is_stable } of real) {
+        expect(is_stable, entry_id).toBe(expected[entry_id ?? ``] < 1e-6)
+      }
       // names keep the full formula; open-only entries (O2) leave the system
       expect(real.find((entry) => entry.composition.O)).toBeUndefined()
       expect(real.some((entry) => entry.name === `LiCoO2`)).toBe(true)
     },
   )
+
+  // G(T) projects like the energy, so a temperature applied after the projection still counts:
+  // LiFeO at μ_O = -1 has Φ = 3 G(T) + 1 eV over its 2 non-O atoms
+  test(`open_elements projects G(T) to grand potentials per non-open atom`, () => {
+    const lifeo = make_phase({ Li: 1, Fe: 1, O: 1 }, -2, {
+      entry_id: `LiFeO`,
+      temperatures: [300, 600],
+      free_energies: [-2, 0],
+    })
+    const refs = [`Li`, `Fe`, `O`].map((element) => make_elem(element, 0))
+    const { entries } = process_model_entries([...refs, lifeo], undefined, { O: -1 })
+    const grand = entries.filter((entry) => entry.entry_id === `LiFeO`)
+    expect(grand[0]).toMatchObject({
+      energy: -5,
+      free_energies: [-2.5, 0.5],
+      full_composition: { Li: 1, Fe: 1, O: 1 },
+    })
+    for (const [temperature, energy] of [
+      [300, -5],
+      [600, 1],
+      [450, -2],
+    ]) {
+      const [at_temp] = filter_entries_at_temperature(grand, temperature)
+      expect(at_temp.energy, `${temperature} K`).toBeCloseTo(energy, 12)
+    }
+  })
 
   // open_elements fails fast instead of drawing a hull from invalid grand potentials
   const li_fe_o = (energy: Partial<PhaseData>, unaries = [`Fe`, `Li`, `O`]) => [
@@ -653,6 +682,24 @@ describe(`pymatgen cross-validation`, () => {
     expect(() => compute_hull_model(entries, options)).toThrow(message)
   })
 
+  // only own enumerable keys are open: an inherited S keeps its place in the hull and probes
+  test(`open_elements ignores inherited keys`, () => {
+    const open_elements = Object.assign(Object.create({ S: -2 }), { O: -3 })
+    const entries = [
+      ...li_fe_o(absolute, [`Fe`, `Li`, `O`, `S`]),
+      { composition: { Li: 2, S: 1 }, entry_id: `Li2S`, energy: -6 },
+    ]
+    expect(compute_hull_model(entries, { open_elements }).elements.toSorted()).toEqual([
+      `Fe`,
+      `Li`,
+      `S`,
+    ])
+    expect(to_model_composition({ Li: 2, S: 1, O: 1 }, undefined, open_elements)).toEqual({
+      Li: 2,
+      S: 1,
+    })
+  })
+
   type Keys = { components?: readonly string[]; open_elements?: Record<string, number> }
   // element compositions in model keys: component amounts solve A x = b with x >= 0, open
   // elements drop out; null when the system can't make the composition
@@ -676,6 +723,16 @@ describe(`pymatgen cross-validation`, () => {
     }
   })
 
+  // a formula has several amount vectors over dependent components (Li4O3 = Li2O + Li2O2)
+  test.each([
+    [[`Li2O`, `Li2O2`, `Li4O3`], `Li4O3 = 1 Li2O + 1 Li2O2`],
+    [[`Li2O`, `LiO`, `Li4O2`], `Li4O2 = 2 Li2O`],
+  ])(`to_model_composition rejects dependent components %j`, (components, relation) => {
+    expect(() => to_model_composition({ Li: 6, O: 4 }, components, undefined)).toThrow(
+      `components ${components.join(`, `)} are linearly dependent: ${relation}`,
+    )
+  })
+
   test(`single-entry mode matches batch mode`, () => {
     const batch = compute_e_above_hull(quinary, quinary)
     for (const [idx, entry] of quinary.entries())
@@ -691,7 +748,8 @@ describe(`get_convex_hull_stats`, () => {
       make_phase({ Fe: 1, O: 1 }, -6.0, { e_above_hull: 0.2, e_form_per_atom: -2.0 }),
       make_phase({ Fe: 1, O: 2 }, -7.0, { e_above_hull: 0.1, e_form_per_atom: -1.5 }),
       make_phase({ Li: 1, Fe: 1, O: 2 }, -8.0, { e_above_hull: 0.3, e_form_per_atom: -1.0 }),
-      make_phase({ Li: 1, Fe: 1, P: 1, O: 1, Mn: 1 }, -8.0),
+      // a non-finite distance is unknown stability, kept out of the distance stats
+      make_phase({ Li: 1, Fe: 1, P: 1, O: 1, Mn: 1 }, -8.0, { e_above_hull: Infinity }),
     ]
     const stats = get_convex_hull_stats(entries, [`O`, `Fe`, `Li`], 3)
     expect(stats).toMatchObject({
@@ -702,7 +760,7 @@ describe(`get_convex_hull_stats`, () => {
       quaternary: 0,
       quinary_plus: 1,
       stable: 2,
-      // the quinary has no hull distance: unknown, not unstable
+      // the quinary has no finite hull distance: unknown, not unstable
       unstable: 3,
       unknown_stability: 1,
       elements: 3,
@@ -859,6 +917,23 @@ describe(`hull decomposition`, () => {
       )
       expect(mixed).toEqual(fractions(entry)?.map((val) => expect.closeTo(val, 9)))
     }
+  })
+
+  // a filtered dataset's cached distances can come from a larger reference set: the probe
+  // follows the lower hull of the entries given, not their cached stability
+  test(`the probe minimizes over every finite entry, ignoring cached stability`, () => {
+    const elements = [`Li`, `Fe`] as const
+    const entries = [
+      make_phase({ Li: 1 }, 0, { e_form_per_atom: 0, e_above_hull: 0 }),
+      make_phase({ Fe: 1 }, 0, { e_form_per_atom: 0, e_above_hull: 0 }),
+      make_phase({ Li: 1, Fe: 1 }, -1, { e_form_per_atom: -1, e_above_hull: 0.2 }),
+      make_phase({ Li: 1, Fe: 3 }, -2, { e_form_per_atom: NaN, e_above_hull: 0 }),
+    ]
+    const result = decompose_hull_composition({ Li: 1, Fe: 1 }, entries, elements)
+    expect(result?.energy).toBeCloseTo(-1, 12)
+    expect(result?.decomposition).toEqual([
+      { phase: entries[2], atom_fraction: expect.closeTo(1, 12) },
+    ])
   })
 
   test(`stable entries, excluded entries and entries outside the system`, () => {

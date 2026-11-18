@@ -68,8 +68,11 @@ export const wrap_to_unit_cell = (frac: Vec3, pbc: Pbc = [true, true, true]): Ve
 // Trajectory-like data: >10% of atoms far outside the unit cell along a periodic axis (a
 // slab may extend past its vacuum axis). Image-atom generation is skipped for such structures.
 const is_scattered_trajectory = (sites: Site[], pbc: Pbc): boolean => {
-  const atoms_outside_cell = sites.filter(({ abc }) =>
-    abc.some((coord, axis) => pbc[axis] && (coord < -0.1 || coord > 1.1)),
+  // molecules kept whole reach past faces by design (unwrap_molecules), so they don't count
+  const atoms_outside_cell = sites.filter(
+    ({ abc, provenance }) =>
+      !provenance?.whole_molecule &&
+      abc.some((coord, axis) => pbc[axis] && (coord < -0.1 || coord > 1.1)),
   )
   return atoms_outside_cell.length > sites.length * 0.1
 }
@@ -423,9 +426,43 @@ export function unwrap_molecules<Struct extends AnyStructure>(
     }
   }
   if (!changed) return { structure, bonds }
-  const unwrapped = { ...structure, sites: new_sites }
+  // explicit bond metadata moves with its sites, else a fresh read of it misplaces endpoints
+  const explicit = structure.properties?.bonds
+  const unwrapped = {
+    ...structure,
+    sites: new_sites,
+    ...(explicit && {
+      properties: {
+        ...structure.properties,
+        bonds: explicit.map((bond) => {
+          const { site_idx_1, site_idx_2, cell_shift: old_shift, ...rest } = bond
+          if (AXES.every((axis) => totals[site_idx_1][axis] === totals[site_idx_2][axis]))
+            return bond
+          const cell_shift = carried_shift(old_shift, totals, site_idx_1, site_idx_2)
+          return {
+            site_idx_1,
+            site_idx_2,
+            ...rest,
+            ...(cell_shift.some(Boolean) && { cell_shift }),
+          }
+        }),
+      },
+    }),
+  }
   return { structure: unwrapped, bonds: carry_bonds(unwrapped, bonds, totals, frac_to_cart) }
 }
+
+// Bond cell_shift s after its sites moved by lattice translations: s + t_1 - t_2
+const carried_shift = (
+  shift: Vec3 | undefined,
+  totals: Vec3[],
+  site_1: number,
+  site_2: number,
+) =>
+  shifted(
+    shifted(shift ?? ZERO_SHIFT, totals[site_1]),
+    totals[site_2].map((val) => -val) as Vec3,
+  )
 
 // Bonds of a structure whose sites moved by lattice translations `totals`: the same pairs,
 // lengths and orders, each cell_shift s becoming s + t_1 - t_2 (site 2's image at x_2 + s next
@@ -438,10 +475,7 @@ function carry_bonds(
 ): BondPair[] | BondFrame {
   const { sites } = structure
   const placement = (site_1: number, site_2: number, old_shift?: Vec3) => {
-    const shift = shifted(
-      shifted(old_shift ?? ZERO_SHIFT, totals[site_1]),
-      totals[site_2].map((val) => -val) as Vec3,
-    )
+    const shift = carried_shift(old_shift, totals, site_1, site_2)
     const in_cell = shift.every((val) => val === 0)
     return {
       cell_shift: in_cell ? undefined : shift,

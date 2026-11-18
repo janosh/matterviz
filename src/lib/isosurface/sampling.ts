@@ -2,7 +2,15 @@
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { dot, IDENTITY_3X3, reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
+import {
+  det_3x3,
+  dot,
+  gcd,
+  IDENTITY_3X3,
+  inverse_3x3,
+  reciprocal_lattice,
+  scale_lattice_matrix,
+} from '#lib/math.js'
 import { diagonal_scaling } from '#lib/structure/supercell.js'
 import { clamp01 } from '#lib/utils.js'
 import { lower_corner, type ScalarGrid3D, upper_corner } from './grid'
@@ -297,23 +305,50 @@ export function resolve_volume_window(
   return { range, frame: supercell }
 }
 
-// Endpoint-inclusive sample counts per axis for a (sanitized) fractional window at the
-// source voxel density: periodic volumes have n intervals per cell, finite ones n - 1. A
-// supercell `frame` axis M_i takes Σ_j |M_ij|·n_j intervals, so a step moves at most one voxel
-// in total and hits every source voxel (max_j |M_ij|·n_j steps diagonally for a sheared M,
-// visiting only an index-|det M| sublattice).
-export const range_sample_counts = (
+// Endpoint-inclusive sample counts per axis for a (sanitized) fractional window, at most
+// max_points in all. Periodic volumes have n intervals per cell, finite ones n - 1. For a
+// supercell `frame` M, s = base · M⁻¹ = base · adj(M) / det(M) puts every source voxel on a
+// sample when axis i takes lcm_j(n_j·|det| / gcd(adj_ji, n_j·|det|)) intervals, so the window
+// keeps each source-grid crossing. When that exceeds the budget, axis i takes Σ_j |M_ij|·n_j
+// intervals (a step moves at most one voxel in total). Over budget, the largest axis (the
+// one a shear expands) shrinks first.
+export function range_sample_counts(
   volume: VolumeGrid,
   range: DisplayRange,
   frame?: Matrix3x3,
-): Vec3 => {
+  max_points: number = MAX_GRID_POINTS,
+): Vec3 {
   const intervals = volume.dims.map((dim) => (volume.periodic ? dim : Math.max(dim - 1, 1)))
-  return range.map(([lower, upper], axis) => {
-    const axis_intervals = frame
-      ? frame[axis].reduce((sum, val, col) => sum + Math.abs(val) * intervals[col], 0)
-      : intervals[axis]
-    return Math.max(2, Math.round((upper - lower) * axis_intervals) + 1)
-  }) as Vec3
+  const counts_for = (axis_intervals: number[]): Vec3 =>
+    range.map(([lower, upper], axis) =>
+      Math.max(2, Math.round((upper - lower) * axis_intervals[axis]) + 1),
+    ) as Vec3
+  const fits = (counts: Vec3) => counts[0] * counts[1] * counts[2] <= Math.max(max_points, 8)
+  let counts = counts_for(intervals)
+  if (frame) {
+    const det = Math.round(det_3x3(frame))
+    const adjugate = inverse_3x3(frame).map((row) => row.map((val) => Math.round(val * det)))
+    const aligned = counts_for(
+      frame.map((_, axis) =>
+        intervals.reduce((lcm, count, col) => {
+          const denominator = (count * Math.abs(det)) / gcd(adjugate[col][axis], count * det)
+          return adjugate[col][axis] ? (lcm / gcd(lcm, denominator)) * denominator : lcm
+        }, 1),
+      ),
+    )
+    counts = fits(aligned)
+      ? aligned
+      : counts_for(
+          frame.map((row) =>
+            row.reduce((sum, val, col) => sum + Math.abs(val) * intervals[col], 0),
+          ),
+        )
+  }
+  while (!fits(counts)) {
+    const largest = counts.indexOf(Math.max(...counts))
+    counts[largest] = Math.max(2, Math.floor(counts[largest] * 0.9))
+  }
+  return counts
 }
 
 interface AxisInterpolation {
@@ -368,18 +403,7 @@ export function extract_volume_range(
   const [range_x, range_y, range_z] = sanitized
   const widths = sanitized.map(([lower, upper]) => upper - lower) as Vec3
 
-  // Cap to the point budget; the loop catches cbrt undershoot when the min-2 floor stops an
-  // axis from shrinking
-  let counts = range_sample_counts(volume, sanitized, frame)
-  const total = counts[0] * counts[1] * counts[2]
-  if (total > max_points) {
-    const shrink = Math.cbrt(max_points / total)
-    counts = counts.map((count) => Math.max(2, Math.floor(count * shrink))) as Vec3
-    while (counts[0] * counts[1] * counts[2] > Math.max(max_points, 8)) {
-      const largest = counts.indexOf(Math.max(...counts))
-      counts[largest] = Math.max(2, Math.floor(counts[largest] * 0.9))
-    }
-  }
+  const counts = range_sample_counts(volume, sanitized, frame, max_points)
 
   const [size_x, size_y, size_z] = counts
   const [src_nx, src_ny, src_nz] = volume.dims

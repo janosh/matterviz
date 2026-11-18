@@ -391,6 +391,9 @@ export function analyze_selectivity(
   phases: PlannerPhase[],
   target_driving_force: number,
   cache?: ThermoCache,
+  // every phase for the inverse hull when `phases` is a competitor shortlist: a phase cut as
+  // too far above the hull with the target present can be on the hull without it
+  hull_phases: PlannerPhase[] = phases,
 ): SelectivityMetrics {
   const competitors_for = (mixture: PlannerPhase[]): Competitor[] => {
     if (!cache || mixture.length !== 2) return find_competitors(mixture, target, gases, phases)
@@ -419,7 +422,7 @@ export function analyze_selectivity(
   )
   return {
     target_driving_force,
-    inverse_hull_energy: inverse_hull_energy(precursors, target, gases, phases),
+    inverse_hull_energy: inverse_hull_energy(precursors, target, gases, hull_phases),
     competitors: competitors.map((comp) =>
       to_competing_phase(precursors, gases, comp, target_driving_force),
     ),

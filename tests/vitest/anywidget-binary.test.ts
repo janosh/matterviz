@@ -21,6 +21,9 @@ const envelope = (kind: string, arrays: Record<string, unknown>, fields = {}) =>
   ...fields,
 })
 
+// [true, , true] and [2, , 3]: holes that .every() would skip
+const holey_pbc = Object.assign(Array(3), { 0: true, 2: true })
+const holey_shape = Object.assign(Array(3), { 0: 2, 2: 3 })
 // 3 frames x 2 atoms (Si, O) in a cell that grows each frame, with forces and energies
 const [n_frames, n_atoms] = [3, 2]
 const positions = Float64Array.from(
@@ -78,6 +81,14 @@ describe(`decode_binary_array`, () => {
       /shape must be a list of non-negative integers/,
     ],
     [{ dtype: `float32`, shape: [1.5], data: new ArrayBuffer(4) }, /shape must be a list/],
+    [
+      {
+        dtype: `float32`,
+        shape: holey_shape,
+        data: new ArrayBuffer(24),
+      },
+      /shape must be a list/,
+    ],
     [{ dtype: `float32`, shape: [1], data: [1] }, /data must be an ArrayBuffer/],
     [null, /must be an object/],
   ])(`rejects malformed array spec %#`, (spec, message) => {
@@ -87,8 +98,12 @@ describe(`decode_binary_array`, () => {
 
 describe(`trajectory_from_binary`, () => {
   test(`matches the JSON path frame for frame, without per-frame Site records`, () => {
+    // a supplied density wins over the computed one, a scalar named Step never replaces step
+    const density = Float64Array.of(1.5, 1.25, 1)
+    const fake_steps = Float64Array.of(7, 8, 9)
+    const scalars = { density: arr(density, [n_frames]), Step: arr(fake_steps, [n_frames]) }
     const run = trajectory_from_binary(
-      envelope(`trajectory`, traj_arrays(), { metadata: { source: `md` } }),
+      envelope(`trajectory`, traj_arrays(scalars), { metadata: { source: `md` } }),
     )
     expect([run.frame_count, run.atom_count]).toEqual([n_frames, n_atoms])
     expect(run.metadata).toEqual({ source: `md` })
@@ -107,7 +122,11 @@ describe(`trajectory_from_binary`, () => {
       })
       return {
         step: steps[frame_idx],
-        metadata: { energy: energy[frame_idx] },
+        metadata: {
+          energy: energy[frame_idx],
+          density: density[frame_idx],
+          Step: fake_steps[frame_idx],
+        },
         structure: { lattice: { matrix: cell, pbc: [true, true, true] }, sites },
       }
     })
@@ -128,6 +147,7 @@ describe(`trajectory_from_binary`, () => {
     for (const [row_idx, row] of run.properties.rows.entries()) {
       const json_row = json_run.properties.rows[row_idx]
       expect(row.step).toBe(json_row.step)
+      expect(row.properties).toMatchObject({ Step: steps[row_idx], density: density[row_idx] })
       expect(Object.keys(row.properties).toSorted()).toEqual(
         Object.keys(json_row.properties).toSorted(),
       )
@@ -154,6 +174,7 @@ describe(`trajectory_from_binary`, () => {
     }
     const fields = { pbc: [true, true, false], time_step: { value: 2, unit: `fs` } }
     const run = trajectory_from_binary(envelope(`trajectory`, arrays, fields))
+    fields.pbc[0] = false // the run keeps its own copy of the flags
     expect(run.properties.rows.map((row) => row.step)).toEqual([0, 1, 2])
     expect(run.properties.rows.map((row) => row.properties.volume)).toEqual([125, 125, 125])
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
@@ -234,6 +255,12 @@ describe(`trajectory_from_binary`, () => {
       envelope(`trajectory`, traj_arrays(), { pbc: [true, 1, true] }),
       /pbc must be 3 booleans/,
     ],
+    [
+      envelope(`trajectory`, traj_arrays(), {
+        pbc: holey_pbc,
+      }),
+      /pbc must be 3 booleans/,
+    ],
     [envelope(`trajectory`, traj_arrays(), { metadata: [1] }), /metadata must be an object/],
     ...[
       { value: -1, unit: `fs` },
@@ -297,6 +324,24 @@ describe(`volume_from_binary`, () => {
     ],
     [{ values: arr(grid, [2, 3, 4]) }, /dims from the values shape/, { dims: [2, 3, 4] }],
     [{ values: arr(grid, [2, 3, 4]) }, /needs a 3x3 lattice/, { lattice: [[1, 0, 0]] }],
+    [
+      {
+        values: arr(
+          Float64Array.from(grid, (val, idx) => (idx === 5 ? Infinity : val)),
+          [2, 3, 4],
+        ),
+      },
+      /must be finite, got Infinity at flat index 5/,
+    ],
+    [
+      {
+        values: arr(
+          Float32Array.from(grid, (val, idx) => (idx === 0 ? NaN : val)),
+          [2, 3, 4],
+        ),
+      },
+      /must be finite, got NaN at flat index 0/,
+    ],
   ])(`rejects malformed volume %#`, (arrays, message, fields = {}) => {
     expect(() =>
       volume_from_binary(envelope(`volume`, arrays, { ...geometry, ...fields })),

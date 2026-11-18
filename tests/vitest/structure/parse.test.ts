@@ -1229,6 +1229,20 @@ O2   O   0.410  0.140  0.880  1.000`
       }
     })
 
+    test(`an explicit zero ADP tensor round-trips through CIF export`, () => {
+      const loop = aniso_loop(`U`, `Fe1 0 0 0 0 0 0`)
+      const original = parse_cif(adp_cif(cif_cell(4), loop))
+      expect(original.sites[0].properties.adp_U_cart).toEqual([
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+      ])
+      const reparsed = parse_cif(structure_to_cif_str(original))
+      expect(reparsed.sites[0].properties.adp_U_cart).toEqual(
+        original.sites[0].properties.adp_U_cart,
+      )
+    })
+
     // riding hydrogens often carry `?` aniso values: that row is skipped, the rest still read
     test(`skips ADP rows with unset values`, () => {
       const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})

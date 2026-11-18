@@ -335,7 +335,7 @@ describe(`extract_volume_range`, () => {
     const { range } = resolve_volume_window(volume, { supercell: frame, halo: 0.1 }) ?? {}
     if (!range) throw new Error(`periodic volume got no window`)
     const extracted = extract_volume_range(volume, range, undefined, frame)
-    // Σ_j |M_ij|·8 = 16 intervals per a/b supercell length: round((1 + 0.2/√2)·16) + 1
+    // 16 aligned intervals per a/b supercell length (8·|det|): round((1 + 0.2/√2)·16) + 1
     expect(extracted.dims).toEqual([19, 19, 11])
     // no source voxel is skipped: every one of the 8³ is some sample's nearest voxel (the
     // max_j |M_ij|·n_j count hit only the index-|det M| = 2 sublattice, 256 of 512)
@@ -399,6 +399,26 @@ describe(`extract_volume_range`, () => {
     // the halo is drawn: some vertices lie beyond the parallelepiped's a faces
     expect(min_frac_a).toBeLessThan(0)
   })
+
+  // one-voxel slab peaks that the Σ_j |M_ij|·n_j spacing stepped over (it rendered nothing).
+  // Over budget for the aligned grid, the expanded a axis shrinks and z keeps all 65 samples.
+  test.each<[Vec3, number, number, number | undefined, Vec3]>([
+    [[32, 24, 16], 0, 1, undefined, [33, 97, 17]],
+    [[64, 64, 64], 2, 16, undefined, [65, 65, 65]],
+    [[64, 64, 64], 2, 16, 274_000, [59, 65, 65]],
+  ])(
+    `%j grid, peak on axis %i, a' = a + %i b, budget %s`,
+    (dims, axis, shear, budget, expected) => {
+      const grid = make_grid(...dims, (...idx) => (idx[axis] === 1 ? 1 : 0))
+      const volume = make_volume(grid, { lattice: cubic, periodic: true })
+      const frame = diagonal_matrix([1, 1, 1])
+      frame[0][1] = shear
+      const extracted = extract_volume_range(volume, x_window(0, 1), budget, frame)
+      expect(extracted.dims).toEqual(expected)
+      expect(extracted.data_range.max).toBe(1)
+      expect(surface(extracted, 0.9).length).toBeGreaterThan(0)
+    },
+  )
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {
     const vol = { ...periodic_vol(), origin: [3, -2, 5] as Vec3 }

@@ -4,6 +4,7 @@
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
   import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { CompositionType } from '#lib/composition/index.js'
@@ -33,6 +34,7 @@
     label_threshold,
     pane_open = $bindable(false),
     probe_composition = $bindable(null),
+    probe_submission = $bindable(null),
     probe = null,
     elements = [],
     components,
@@ -55,6 +57,9 @@
     pane_open?: boolean
     // Composition entered in the probe field, and its decomposition (null: none or outside)
     probe_composition?: CompositionType | null
+    // The last submitted formula and the model composition it gave, kept by the hull across
+    // remounts of this pane
+    probe_submission?: { text: string; model: string } | null
     probe?: HullProbe | null
     elements?: ElementSymbol[]
     // the hull's composition keys, which typed formulas are converted to before probing
@@ -99,9 +104,7 @@
   // === Composition probe ===
   let probe_text = $state(``)
   let parse_error = $state<string | null>(null)
-  const submit_probe = (event: SubmitEvent) => {
-    event.preventDefault()
-    const text = probe_text.trim()
+  const apply_probe = (text: string) => {
     parse_error = null
     try {
       const parsed = text ? parse_composition(text) : null
@@ -112,7 +115,24 @@
     } catch (err) {
       parse_error = `Can't parse ${text}: ${to_error(err).message}`
     }
+    probe_submission = { text, model: JSON.stringify(probe_composition) }
   }
+  const submit_probe = (event: SubmitEvent) => {
+    event.preventDefault()
+    apply_probe(probe_text.trim())
+  }
+  // A new component basis or set of open elements gives the submitted formula other model
+  // coordinates: project it again. A probe the host has set since stays as given, and so does
+  // every probe when only a chemical potential changes.
+  const basis = $derived(JSON.stringify([components, Object.keys(open_elements ?? {})]))
+  $effect(() => {
+    void basis
+    untrack(() => {
+      if (probe_submission && JSON.stringify(probe_composition) === probe_submission.model) {
+        apply_probe(probe_submission.text)
+      }
+    })
+  })
   // a composition set here or by the host that the hull can't decompose is outside its system
   const probe_error = $derived(
     parse_error ??

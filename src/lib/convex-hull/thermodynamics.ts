@@ -324,7 +324,7 @@ export function get_convex_hull_stats(
   const [min_e_form, max_e_form] = math.array_extent(e_forms)
   const hull_distances = processed_entries
     .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number` && val >= 0)
+    .filter((val): val is number => val !== undefined && val >= 0 && val < Infinity)
 
   return {
     total: processed_entries.length,
@@ -728,9 +728,11 @@ export function get_hull_decomposition<Entry extends PhaseData>(
   return decompose_hull_composition(entry.composition, entries, elements)
 }
 
-// Equilibrium products of ANY composition in the system: the stable entries (atom fractions)
-// whose mixture is the hull there, and its E_form in eV/atom. A stable entry's own composition
-// returns that entry alone. Null outside the system or when no stable entries reach it.
+// Equilibrium products of ANY composition in the system: the entries (atom fractions) whose
+// mixture is the lower hull of every finite, non-excluded E_form there, and its E_form in
+// eV/atom. Cached stability is no filter: a filtered dataset's cached distances may come from a
+// larger reference set than the plotted hull. A stable entry's own composition returns that
+// entry alone. Null outside the system or when no entries reach it.
 export function decompose_hull_composition<Entry extends PhaseData>(
   composition: PhaseData[`composition`],
   entries: readonly Entry[],
@@ -739,10 +741,12 @@ export function decompose_hull_composition<Entry extends PhaseData>(
   const fractions = system_fractions(composition, elements)
   if (!fractions) return null
   const vertices = entries.flatMap((vertex) => {
-    const vertex_fractions =
-      is_on_hull(vertex) && system_fractions(vertex.composition, elements)
     const energy_per_atom = vertex.e_form_per_atom
-    return vertex_fractions && typeof energy_per_atom === `number`
+    const vertex_fractions =
+      !vertex.exclude_from_hull &&
+      Number.isFinite(energy_per_atom) &&
+      system_fractions(vertex.composition, elements)
+    return vertex_fractions && energy_per_atom !== undefined
       ? [{ vertex, fractions: vertex_fractions, energy_per_atom }]
       : []
   })

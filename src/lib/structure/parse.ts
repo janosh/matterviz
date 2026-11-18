@@ -359,9 +359,10 @@ const parse_symmetry_expression = (
   for (const token of expr.match(/[+-]?[^+-]+/g) ?? []) {
     const sign = token.startsWith(`-`) ? -1 : 1
     const term = token.replace(/^[+-]/, ``)
-    const var_idx = [`x`, `y`, `z`].indexOf(term)
-    if (var_idx !== -1) {
-      coefficients[var_idx] += sign
+    // axis with an optional integer coefficient (`4y`, `2*x`), as sheared-basis ops need
+    const var_match = /^(?<coef>\d+)?\*?(?<axis>[xyz])$/.exec(term)?.groups
+    if (var_match) {
+      coefficients[`xyz`.indexOf(var_match.axis)] += sign * Number(var_match.coef ?? 1)
       continue
     }
 
