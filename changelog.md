@@ -4,6 +4,7 @@
 
 ### Migration
 
+- Binary phase-diagram JSON stores pressure as `pressure_gpa` (GPa) instead of `pressure_pa`; files with the old key are rejected [#518](https://github.com/janosh/matterviz/pull/518)
 - Analysis functions use one verb: every `calc_*` / `calculate_*` is now `compute_*` with matching `compute_*_async` (`calc_msd` → `compute_msd`, `calc_vacf` → `compute_vacf`, `calculate_rdf` → `compute_rdf`, `calc_bond_angles` → `compute_bond_angles`, `calculate_e_above_hull` → `compute_e_above_hull`, ...), `CalcRdfsAsync`/`CalcStructureIdAsync` → `Compute*Async`, and `calc-*.ts` files → `compute-*.ts` [#515](https://github.com/janosh/matterviz/pull/515)
 - 3x3 helpers: `matrix_inverse_3x3` → `inverse_3x3`, `transpose_3x3_matrix` → `transpose_3x3`, `mat3x3_vec3_multiply` → `mul_3x3_vec3`, `vec9_to_mat3x3` → `mat3x3_from_flat_row_major`, `det2` → `det_2x2`; `mat3_from_flat_col_major` moves from `matterviz/symmetry` to `matterviz/math` as `mat3x3_from_flat_col_major` [#515](https://github.com/janosh/matterviz/pull/515)
 - The root `matterviz` import no longer re-exports infrastructure (`math`, `utils`, `labels`, `constants`, `settings`, `controls`, `colors`, `theme`, `io`, `scene`, `sanitize`, `url-params`, `fft`, `lineshape`): import those from their subpaths. New subpaths `matterviz/host`, `matterviz/shortcuts` and `matterviz/workers` (`disable_workers`, `check_blob_workers`) [#515](https://github.com/janosh/matterviz/pull/515)

@@ -111,7 +111,7 @@ export function diagram_errors(value: unknown): string[] {
     return [`format is ${JSON.stringify(data.format)}, expected "${BINARY_DIAGRAM_FORMAT}"`]
   }
   const errors: string[] = []
-  const { components, temperature_range, phases, provenance } = data
+  const { components, pressure_gpa, temperature_range, phases, provenance } = data
   if (
     !Array.isArray(components) ||
     components.length !== 2 ||
@@ -119,6 +119,11 @@ export function diagram_errors(value: unknown): string[] {
     components[0] === components[1]
   ) {
     errors.push(`components must be two distinct strings, got ${JSON.stringify(components)}`)
+  }
+  if (typeof pressure_gpa !== `number` || !Number.isFinite(pressure_gpa)) {
+    errors.push(
+      `pressure_gpa must be a finite number (GPa), got ${JSON.stringify(pressure_gpa)}`,
+    )
   }
   if (
     !is_point(temperature_range) ||

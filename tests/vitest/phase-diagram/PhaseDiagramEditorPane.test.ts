@@ -22,7 +22,7 @@ test.each([`edit`, `stale edit`, `read-only`, `dangling id`])(
         ?.click()
       await tick()
     }
-    const path = renaming ? `diagram.phases[0].id` : `diagram.pressure_pa`
+    const path = renaming ? `diagram.phases[0].id` : `diagram.pressure_gpa`
     const leaf = document.querySelector(`[data-path="${path}"] .json-value`)
     if (!leaf) throw new Error(`Missing ${path} leaf`)
     leaf.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
@@ -34,9 +34,9 @@ test.each([`edit`, `stale edit`, `read-only`, `dangling id`])(
       return
     }
     if (!input) throw new Error(`Missing edit input`)
-    set_input(input, renaming ? `GAS` : `2e5`)
+    set_input(input, renaming ? `GAS` : `0.2`)
     // The source can change while a leaf editor is open.
-    if (mode === `stale edit`) Reflect.deleteProperty(data, `pressure_pa`)
+    if (mode === `stale edit`) Reflect.deleteProperty(data, `pressure_gpa`)
     input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     await tick()
     if (mode !== `edit`) {
@@ -45,8 +45,8 @@ test.each([`edit`, `stale edit`, `read-only`, `dangling id`])(
         renaming ? `regions[0] references unknown phase LIQUID` : `Cannot edit missing path`,
       )
     } else {
-      expect(on_data).toHaveBeenCalledWith({ ...data, pressure_pa: 2e5 })
-      expect(data.pressure_pa).toBe(101325)
+      expect(on_data).toHaveBeenCalledWith({ ...data, pressure_gpa: 0.2 })
+      expect(data.pressure_gpa).toBe(1.01325e-4)
       expect(on_data.mock.calls[0][0].boundaries).toBe(data.boundaries)
     }
   },

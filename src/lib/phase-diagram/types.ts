@@ -126,7 +126,7 @@ export interface DiagramProvenance {
 export interface BinaryPhaseDiagram {
   format: typeof BINARY_DIAGRAM_FORMAT
   components: [string, string]
-  pressure_pa: number
+  pressure_gpa: number // GPa
   temperature_range: Vec2 // K, the computed window
   phases: BinaryPhase[]
   regions: DiagramRegion[]

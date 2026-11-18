@@ -62,6 +62,12 @@ describe(`diagram_errors`, () => {
       { components: [`Ag`, `Ag`] },
       `components must be two distinct strings, got ["Ag","Ag"]`,
     ],
+    // the Pa key of earlier drafts of the format leaves pressure_gpa missing
+    [
+      `pa pressure`,
+      { pressure_gpa: undefined, pressure_pa: 101325 } as Partial<BinaryPhaseDiagram>,
+      `pressure_gpa must be a finite number (GPa), got undefined`,
+    ],
     [`negative temperature`, { temperature_range: [-50, 1200] }, `temperature_range must be`],
     [`missing regions`, { regions: undefined }, `regions must be an array`],
     [
