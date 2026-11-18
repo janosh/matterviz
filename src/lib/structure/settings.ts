@@ -69,6 +69,7 @@ export type StructureOptions = Pick<
     | 'performance_mode'
     | 'show_image_atoms'
     | 'image_atom_completion'
+    | 'keep_molecules_whole'
     | 'supercell_scaling'
     | 'cell_type'
     | 'hidden_elements'

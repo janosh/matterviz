@@ -12,33 +12,21 @@ Axis ranges preserve automatic endpoints: `{ range: [50, null] }` fixes the mini
 <script lang="ts">
   import { type InternalPoint, ScatterPlot } from 'matterviz'
 
-  // Basic single series data
-  const basic_data = {
+  const make_series = (label: string, id_prefix: string, y: number[], point_style) => ({
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [5, 7, 2, 8, 4, 9, 3, 6, 8, 5],
-    point_style: { fill: 'steelblue', radius: 5 },
-    label: 'Basic Data',
-    metadata: Array(10)
-      .fill(0)
-      .map((_, idx) => ({
-        id: `P${idx + 1}`,
-        series_label: 'Basic Data',
-      })),
-  }
-
-  // Multiple series data
-  const second_series = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [2, 4, 6, 3, 7, 5, 8, 4, 6, 9],
-    point_style: { fill: 'orangered', radius: 4 },
-    label: 'Second Series',
-    metadata: Array(10)
-      .fill(0)
-      .map((_, idx) => ({
-        id: `S${idx + 1}`,
-        series_label: 'Second Series',
-      })),
-  }
+    y,
+    point_style,
+    label,
+    metadata: y.map((_, idx) => ({ id: `${id_prefix}${idx + 1}`, series_label: label })),
+  })
+  const basic_data = make_series(`Basic Data`, `P`, [5, 7, 2, 8, 4, 9, 3, 6, 8, 5], {
+    fill: `steelblue`,
+    radius: 5,
+  })
+  const second_series = make_series(`Second Series`, `S`, [2, 4, 6, 3, 7, 5, 8, 4, 6, 9], {
+    fill: `orangered`,
+    radius: 4,
+  })
 
   // Currently selected display mode
   let display_mode = $state('line+points')
@@ -48,41 +36,22 @@ Axis ranges preserve automatic endpoints: `{ range: [50, null] }` fixes the mini
 
   type PointMeta = { id?: string; series_label?: string }
 
-  function on_point_click({ point }: { point: InternalPoint<PointMeta> }): void {
+  const describe = (verb: string, point: InternalPoint<PointMeta>): string => {
     const { x: coord_x, y: coord_y, metadata, series_idx, point_idx } = point
-    clicked_point_info = `Clicked: Point (${coord_x}, ${coord_y}), Series: '${
+    const series_label =
       metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)
-    }', Point Index: ${point_idx}`
-    if (metadata) {
-      clicked_point_info += `, Metadata ID: ${metadata.id}`
-    }
+    const id = metadata ? `, Metadata ID: ${metadata.id}` : ``
+    return `${verb}: Point (${coord_x}, ${coord_y}), Series: '${series_label}', Point Index: ${point_idx}${id}`
   }
-
-  function handle_point_double_click({ point }: { point: InternalPoint<PointMeta> }): void {
-    const { x: coord_x, y: coord_y, metadata, series_idx, point_idx } = point
-    double_clicked_point_info = `Double-clicked: Point (${coord_x}, ${coord_y}), Series: '${
-      metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)
-    }', Point Index: ${point_idx}`
-    if (metadata) {
-      double_clicked_point_info += `, Metadata ID: ${metadata.id}`
-    }
+  const on_point_click = ({ point }: { point: InternalPoint<PointMeta> }): void => {
+    clicked_point_info = describe(`Clicked`, point)
   }
-
-  function handle_point_hover(
-    payload: { point: InternalPoint<PointMeta> | null } | null,
-  ): void {
-    const point = payload?.point ?? null
-    if (point) {
-      const { x: coord_x, y: coord_y, metadata, series_idx, point_idx } = point
-      hovered_point_info = `Hovering: Point (${coord_x}, ${coord_y}), Series: '${
-        metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)
-      }', Point Index: ${point_idx}`
-      if (metadata) {
-        hovered_point_info += `, Metadata ID: ${metadata.id}`
-      }
-    } else {
-      hovered_point_info = 'No point hovered yet.'
-    }
+  const handle_point_double_click = ({ point }: { point: InternalPoint<PointMeta> }): void => {
+    double_clicked_point_info = describe(`Double-clicked`, point)
+  }
+  const handle_point_hover = (payload: { point: InternalPoint<PointMeta> | null } | null) => {
+    const point = payload?.point
+    hovered_point_info = point ? describe(`Hovering`, point) : `No point hovered yet.`
   }
 </script>
 
@@ -129,12 +98,11 @@ The example below combines the common controls: per-side `type`, `per_series` (o
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
+  import { box_muller, seeded_rng } from '#site/histogram-data.js'
 
-  // deterministic gaussian clusters (seeded LCG keeps the demo stable)
-  let seed = 7
-  const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-  const normal = (mean, std_dev) =>
-    mean + std_dev * Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(2 * Math.PI * rand())
+  // deterministic gaussian clusters (seeded rng keeps the demo stable)
+  const rng = seeded_rng(7)
+  const normal = (mean, std_dev) => box_muller(mean, std_dev, rng)
   const cluster = (count, mean_x, mean_y, std_dev, fill, label) => ({
     x: Array.from({ length: count }, () => normal(mean_x, std_dev)),
     y: Array.from({ length: count }, () => normal(mean_y, std_dev)),
@@ -357,101 +325,60 @@ Point styles, custom tooltips, and hover effects:
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
-  // Generate data for demonstration
-  const n_points = 10
-  const x_values = Array(n_points)
-    .fill(0)
-    .map((_, idx) => idx + 1)
+  const x_values = Array.from({ length: 10 }, (_, idx) => idx + 1)
+  // One row of points per style at height y; tooltips read the series name from metadata
+  const style_row = (y: number, label: string, point_style, point_hover) => ({
+    x: x_values,
+    y: x_values.map(() => y),
+    point_style,
+    point_hover,
+    label,
+    metadata: x_values.map(() => ({ series_name: label })),
+  })
 
-  // Create series with different point styles
   const series_with_styles = [
     // Extra large red points with thick border
-    {
-      x: x_values,
-      y: Array(n_points).fill(10),
-      point_style: {
-        fill: 'crimson',
-        radius: 12,
-        stroke: 'darkred',
-        stroke_width: 3,
-      },
-      point_hover: { scale: 1.3, stroke: 'gold', stroke_width: 4 },
-      label: 'Giant red',
-    },
-    // Medium green semi-transparent points with dramatic hover effect
-    {
-      x: x_values,
-      y: Array(n_points).fill(8),
-      point_style: {
-        fill: 'mediumseagreen',
+    style_row(
+      10,
+      `Giant red`,
+      { fill: `crimson`, radius: 12, stroke: `darkred`, stroke_width: 3 },
+      { scale: 1.3, stroke: `gold`, stroke_width: 4 },
+    ),
+    // Medium green semi-transparent points with dramatic hover effect (2.5x larger)
+    style_row(
+      8,
+      `Growing green`,
+      {
+        fill: `mediumseagreen`,
         radius: 8,
         fill_opacity: 0.6,
-        stroke: 'green',
+        stroke: `green`,
         stroke_width: 1,
       },
-      point_hover: {
-        scale: 2.5, // Much larger on hover
-        stroke: 'lime',
-        stroke_width: 2,
-      },
-      label: 'Growing green',
-    },
+      { scale: 2.5, stroke: `lime`, stroke_width: 2 },
+    ),
     // Outline-only points (hollow) with color change on hover
-    {
-      x: x_values,
-      y: Array(n_points).fill(6),
-      point_style: {
-        fill: 'purple',
-        fill_opacity: 0.4,
-        radius: 6,
-        stroke: 'indigo',
-        stroke_width: 2,
-      },
-      point_hover: {
-        scale: 1.8,
-        stroke: 'magenta', // Different color on hover
-        stroke_width: 3,
-      },
-      label: 'Color-changing hollow',
-    },
+    style_row(
+      6,
+      `Color-changing hollow`,
+      { fill: `purple`, fill_opacity: 0.4, radius: 6, stroke: `indigo`, stroke_width: 2 },
+      { scale: 1.8, stroke: `magenta`, stroke_width: 3 },
+    ),
     // Tiny points with extreme hover growth
-    {
-      x: x_values,
-      y: Array(n_points).fill(4),
-      point_style: {
-        fill: 'orange',
-        radius: 3,
-      },
-      point_hover: {
-        scale: 4, // Extreme growth on hover
-        stroke: 'red',
-        stroke_width: 2,
-      },
-      label: 'Exploding dots',
-    },
-    // Micro dots with custom glow effect
-    {
-      x: x_values,
-      y: Array(n_points).fill(2),
-      point_style: {
-        fill: 'dodgerblue',
-        radius: 1.5, // Extremely small
-        stroke: 'transparent',
-        stroke_width: 0,
-      },
-      point_hover: {
-        scale: 6, // Dramatic growth
-        stroke: 'cyan',
-        stroke_width: 8, // Creates a glow effect
-      },
-      label: 'Glowing microdots',
-    },
+    style_row(
+      4,
+      `Exploding dots`,
+      { fill: `orange`, radius: 3 },
+      { scale: 4, stroke: `red`, stroke_width: 2 },
+    ),
+    // Extremely small dots whose wide hover stroke creates a glow effect
+    style_row(
+      2,
+      `Glowing microdots`,
+      { fill: `dodgerblue`, radius: 1.5, stroke: `transparent`, stroke_width: 0 },
+      { scale: 6, stroke: `cyan`, stroke_width: 8 },
+    ),
   ]
-
-  // Tooltips read the series name from per-point metadata
-  for (const series of series_with_styles) {
-    series.metadata = Array.from({ length: n_points }, () => ({ series_name: series.label }))
-  }
 </script>
 
 <ScatterPlot
@@ -481,62 +408,33 @@ Per-point styles, sizes, and marker symbols in one series. Point size follows di
   let size_scale = $state({ radius_range: [2, 15], type: 'linear' }) // [min_radius, max_radius]
 
   const n_points = 40
-
-  let spiral_data = $state({
-    x: [],
-    y: [],
-    size_values: [],
-    point_style: [],
-    point_label: [],
-    metadata: [],
+  // Spiral of growing radius, color changing gradually and marker type cycling along it
+  const spiral = Array.from({ length: n_points }, (_, idx) => {
+    const [angle, radius] = [idx * 0.5, 1 + idx * 0.3]
+    return { angle, radius, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
   })
-
-  // Generate initial points (run once)
-  for (let idx = 0; idx < n_points; idx++) {
-    // Calculate angle and radius for spiral
-    const angle = idx * 0.5
-    const radius = 1 + idx * 0.3
-
-    // Convert to cartesian coordinates
-    const coord_x = Math.cos(angle) * radius
-    const coord_y = Math.sin(angle) * radius
-
-    spiral_data.x.push(coord_x)
-    spiral_data.y.push(coord_y)
-    spiral_data.size_values.push(radius) // Use spiral radius for sizing
-
-    // Store angle in metadata
-    spiral_data.metadata.push({ angle, radius })
-    // Change color gradually along the spiral
-    const hue = (idx / n_points) * 360
-    // Change marker type based on index
-    const symbol_type = symbol_names[idx % symbol_names.length]
-
-    // Create the point style (initial radius will be updated by effect)
-    spiral_data.point_style.push({
-      fill: `hsl(${hue}, 80%, 50%)`,
+  const spiral_data = {
+    x: spiral.map((pt) => pt.x),
+    y: spiral.map((pt) => pt.y),
+    size_values: spiral.map((pt) => pt.radius), // Use spiral radius for sizing
+    metadata: spiral.map(({ angle, radius }) => ({ angle, radius })),
+    point_style: spiral.map((_, idx) => ({
+      fill: `hsl(${(idx / n_points) * 360}, 80%, 50%)`,
       stroke: 'white',
       stroke_width: 1 + idx / 20, // Gradually thicker stroke
-      symbol_type,
-      radius: 5, // Set fixed initial radius
-    })
-    spiral_data.point_label.push({ text: `P${idx}`, offset: { x: 10 } })
+      symbol_type: symbol_names[idx % symbol_names.length],
+      radius: 5,
+    })),
   }
-
-  // Store the initially generated labels separately
-  const initial_point_labels = spiral_data.point_label
-
-  // Effect to update point styles and labels based on controls
-  $effect(() => {
-    for (const pt_label of spiral_data.point_label) {
-      pt_label.font_size = `${label_size}px`
-    }
-  })
-
-  $effect(() => {
-    if (show_labels) spiral_data.point_label = initial_point_labels
-    else spiral_data.point_label = [] // Assign empty array to hide all labels
-  })
+  let point_label = $derived(
+    show_labels
+      ? spiral.map((_, idx) => ({
+          text: `P${idx}`,
+          offset: { x: 10 },
+          font_size: `${label_size}px`,
+        }))
+      : [],
+  )
 </script>
 
 <div class="demo-controls">
@@ -569,7 +467,7 @@ Per-point styles, sizes, and marker symbols in one series. Point size follows di
 </div>
 
 <ScatterPlot
-  series={[{ ...spiral_data, markers: 'points' }]}
+  series={[{ ...spiral_data, point_label, markers: 'points' }]}
   x_axis={{ label: 'X Axis', range: [-15, 15] }}
   y_axis={{ label: 'Y Axis', range: [-15, 15] }}
   {size_scale}
@@ -592,31 +490,23 @@ Categorized data with color coding, custom tick intervals, and negative values:
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
-  // Define categories
   const categories = ['Category A', 'Category B', 'Category C', 'Category D']
-
-  // Define colors for each category
   const category_colors = ['crimson', 'royalblue', 'goldenrod', 'mediumseagreen']
 
-  // Generate sample data points with categories
-  const sample_count = 40
-  const sample_data = Array(sample_count)
-    .fill(0)
-    .map(() => {
-      const category_idx = Math.floor(Math.random() * categories.length)
-      // Generate points across positive and negative coordinate space
-      return {
-        x: Math.random() * 20 - 10, // Range from -10 to 10
-        y: Math.random() * 20 - 10, // Range from -10 to 10
-        category: categories[category_idx],
-        color: category_colors[category_idx],
-      }
-    })
+  // 40 points in random categories across positive and negative space (-10 to 10)
+  const sample_data = Array.from({ length: 40 }, () => {
+    const category_idx = Math.floor(Math.random() * categories.length)
+    return {
+      x: Math.random() * 20 - 10,
+      y: Math.random() * 20 - 10,
+      category: categories[category_idx],
+      color: category_colors[category_idx],
+    }
+  })
 
   // Group data by category to create series
   const series_data = categories.map((category, idx) => {
     const points = sample_data.filter((point) => point.category === category)
-
     return {
       x: points.map((point) => point.x),
       y: points.map((point) => point.y),
@@ -697,43 +587,24 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
-  // Generate dates for the past 30 days
-  const dates = Array(30)
-    .fill(0)
-    .map((_, idx) => {
-      const date = new Date()
-      date.setDate(date.getDate() - (30 - idx))
-      return date.getTime()
-    })
+  // Dates for the past 30 days
+  const dates = Array.from({ length: 30 }, (_, idx) => {
+    const date = new Date()
+    date.setDate(date.getDate() - (30 - idx))
+    return date.getTime()
+  })
 
-  // Random data values for multiple series
-  const values1 = Array(30)
-    .fill(0)
-    .map(() => Math.random() * 100)
-  const values2 = Array(30)
-    .fill(0)
-    .map(() => Math.random() * 70 + 30)
-
+  // Random values: Series A in [0, 100], Series B in [30, 100]
   const time_series = [
-    {
-      x: dates,
-      y: values1,
-      point_style: { fill: 'steelblue', radius: 4 },
-      label: 'Series A',
-      metadata: Array(30)
-        .fill(0)
-        .map((_, idx) => ({ series: 'Series A', day: idx })),
-    },
-    {
-      x: dates,
-      y: values2,
-      point_style: { fill: 'orangered', radius: 4 },
-      label: 'Series B',
-      metadata: Array(30)
-        .fill(0)
-        .map((_, idx) => ({ series: 'Series B', day: idx })),
-    },
-  ]
+    [`Series A`, `steelblue`, 0],
+    [`Series B`, `orangered`, 30],
+  ].map(([label, fill, min]) => ({
+    x: dates,
+    y: dates.map(() => min + Math.random() * (100 - min)),
+    point_style: { fill, radius: 4 },
+    label,
+    metadata: dates.map((_, idx) => ({ series: label, day: idx })),
+  }))
 
   // Format options
   let date_format = $state('%Y-%m-%d')
@@ -929,96 +800,41 @@ You can position labels in different directions relative to each point:
 
 ## Interactive Log-Scaled Axes
 
-Log scales for data spanning many orders of magnitude. Use the checkboxes to switch X and Y between linear and log; power laws become straight lines on a log-log plot.
+Log scales for data spanning many orders of magnitude. Use the checkboxes to switch X and Y between linear and log; power laws become straight lines on a log-log plot. Log axes draw unlabeled minor ticks at 2-9 × each decade (thinned over many decades); set `minor_ticks: false` on an axis to hide them.
 
 ```svelte example
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
-  import { symbol_names } from 'matterviz/labels'
   import * as math from 'matterviz/math'
 
-  const n_points = 50
+  // y clamped to a small positive value so log scales never see 0, also sizing the points
+  const make_series = (label, fill, x_vals, y_fn) => {
+    const y = x_vals.map((x_val) => Math.max(y_fn(x_val), math.LOG_EPS))
+    const metadata = x_vals.map(() => ({ series: label }))
+    return { x: x_vals, y, size_values: y, point_style: { fill }, label, metadata }
+  }
+  const linspace = (count, start, stop) =>
+    Array.from({ length: count }, (_, idx) => start + (idx / (count - 1)) * (stop - start))
+  // x from 0.1 to 1000 in quarter-decade steps
+  const quarter_decades = linspace(17, -1, 3).map((exp) => 10 ** exp)
 
-  // Series 1: Exponential Decay
-  const decay_data = {
-    x: [],
-    y: [],
-    size_values: [],
-    point_style: { fill: 'coral' },
-    label: 'Exponential Decay',
-    metadata: [],
-  }
-  for (let idx = 0; idx < n_points; idx++) {
-    const x_val = 0.1 + (idx / (n_points - 1)) * 10 // x from 0.1 to 10.1
-    const y_val = 10000 * Math.exp(-0.5 * x_val)
-    decay_data.x.push(x_val)
-    // Ensure y is not exactly 0 for log scale, clamp to a small positive value
-    const safe_y_val = Math.max(y_val, math.LOG_EPS)
-    decay_data.y.push(safe_y_val)
-    decay_data.size_values.push(safe_y_val)
-    decay_data.metadata.push({ series: 'Exponential Decay' })
-  }
-
-  // Series 2: Logarithmic Sine Wave
-  const log_sine_data = {
-    x: [],
-    y: [],
-    size_values: [],
-    point_style: { fill: 'deepskyblue' },
-    label: 'Log Sine Wave',
-    metadata: [],
-  }
-  for (let idx = 0; idx < n_points * 2; idx++) {
-    // More points for smoother curve
-    const x_val = Math.pow(10, -1 + (idx / (n_points * 2 - 1)) * 4) // x from 0.1 to 1000 log-spaced
-    const y_val = 500 + 400 * Math.sin(Math.log10(x_val) * 5)
-    log_sine_data.x.push(x_val)
-    const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp potential near-zero y
-    log_sine_data.y.push(safe_y_val)
-    log_sine_data.size_values.push(safe_y_val)
-    log_sine_data.metadata.push({ series: 'Log Sine Wave' })
-  }
-
-  // Series 4: Power Law (y = x^2)
-  const power_law_data = {
-    x: [],
-    y: [],
-    size_values: [],
-    point_style: { fill: 'mediumseagreen' },
-    label: 'y = x^2',
-    metadata: [],
-  }
-  for (let idx = -1; idx <= 3; idx += 0.25) {
-    const x_val = Math.pow(10, idx)
-    const y_val = Math.pow(x_val, 2) // y = x^2
-    power_law_data.x.push(x_val)
-    const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp y
-    power_law_data.y.push(safe_y_val)
-    power_law_data.size_values.push(safe_y_val)
-    power_law_data.metadata.push({ series: 'y = x^2' })
-  }
-
-  // Series 5: Inverse Power Law (y = x^0.5)
-  const inverse_power_data = {
-    x: [],
-    y: [],
-    size_values: [],
-    point_style: { fill: 'purple' },
-    label: 'y = x^0.5',
-    metadata: [],
-  }
-  for (let idx = -1; idx <= 3; idx += 0.25) {
-    const x_val = Math.pow(10, idx)
-    const y_val = Math.pow(x_val, 0.5) // y = √x
-    inverse_power_data.x.push(x_val)
-    const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp y
-    inverse_power_data.y.push(safe_y_val)
-    inverse_power_data.size_values.push(safe_y_val)
-    inverse_power_data.metadata.push({ series: 'y = x^0.5' })
-  }
-
-  // Combine all series
-  const all_series = [decay_data, log_sine_data, power_law_data, inverse_power_data]
+  const all_series = [
+    make_series(
+      `Exponential Decay`,
+      `coral`,
+      linspace(50, 0.1, 10.1),
+      (x_val) => 10000 * Math.exp(-0.5 * x_val),
+    ),
+    // log-spaced x from 0.1 to 1000, more points for a smoother curve
+    make_series(
+      `Log Sine Wave`,
+      `deepskyblue`,
+      linspace(100, -1, 3).map((exp) => 10 ** exp),
+      (x_val) => 500 + 400 * Math.sin(Math.log10(x_val) * 5),
+    ),
+    make_series(`y = x^2`, `mediumseagreen`, quarter_decades, (x_val) => x_val ** 2),
+    make_series(`y = x^0.5`, `purple`, quarter_decades, (x_val) => x_val ** 0.5),
+  ]
 
   // State for controlling scale types
   let x_is_log = $state(false)
@@ -1107,6 +923,72 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
 </ScatterPlot>
 ```
 
+## Derived Secondary Axis
+
+`x2_axis.derive = { forward, inverse }` labels the top axis with a function of the bottom one, no extra series needed. Ticks are nice values of the derived quantity, placed where `inverse` maps them, so decreasing maps like photon energy to wavelength work too. Pick a pair below.
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  const hc = 1239.84198 // eV nm
+  const cu_ka = 1.5406 // Å
+  const examples = {
+    'Energy → wavelength': {
+      x: { label: `Photon energy (eV)`, range: [1.5, 6] },
+      x2: {
+        label: `Wavelength (nm)`,
+        derive: { forward: (energy) => hc / energy, inverse: (nm) => hc / nm },
+      },
+      // two Gaussian absorption bands
+      curve: (energy) =>
+        Math.exp(-(((energy - 2.4) / 0.25) ** 2)) +
+        0.6 * Math.exp(-(((energy - 4.6) / 0.4) ** 2)),
+      y_label: `Absorbance`,
+    },
+    '2θ → d-spacing (Cu Kα)': {
+      x: { label: `2θ (°)`, range: [15, 90] },
+      x2: {
+        label: `d (Å)`,
+        derive: {
+          forward: (two_theta) => cu_ka / (2 * Math.sin((two_theta * Math.PI) / 360)),
+          inverse: (d_spacing) => (360 / Math.PI) * Math.asin(cu_ka / (2 * d_spacing)),
+        },
+      },
+      curve: (two_theta) =>
+        [28.4, 47.3, 56.1, 69.1, 76.4, 88.0].reduce(
+          (sum, peak, idx) =>
+            sum + Math.exp(-(((two_theta - peak) / 0.3) ** 2)) / (1 + idx / 2),
+          0,
+        ),
+      y_label: `Intensity`,
+    },
+  }
+  let selected = $state(`Energy → wavelength`)
+  const example = $derived(examples[selected])
+  const series = $derived.by(() => {
+    const [lo, hi] = example.x.range
+    const x = Array.from({ length: 300 }, (_, idx) => lo + ((hi - lo) * idx) / 299)
+    return [{ x, y: x.map(example.curve), markers: `line`, label: example.y_label }]
+  })
+</script>
+
+<select bind:value={selected}>
+  {#each Object.keys(examples) as name (name)}
+    <option value={name}>{name}</option>
+  {/each}
+</select>
+
+<ScatterPlot
+  {series}
+  x_axis={example.x}
+  x2_axis={example.x2}
+  y_axis={{ label: example.y_label }}
+  legend={null}
+  style="height: 400px"
+/>
+```
+
 ## Arcsinh Scale: Handling Negative Values and Wide Ranges
 
 Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-range axes.
@@ -1114,47 +996,38 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
 ```svelte example
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
+  import { seeded_rng } from '#site/histogram-data.js'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
-  let x_scale_type = $state(`arcsinh`)
-  let y_scale_type = $state(`arcsinh`)
-  let color_scale_type = $state(`arcsinh`)
+  // scale type per dimension, each with the log warning shown when its data has values <= 0
+  const dims = $state(
+    [
+      { key: `x`, legend: `X Axis`, effect: `Points with x ≤ 0 will not render` },
+      { key: `y`, legend: `Y Axis`, effect: `Points with y ≤ 0 will not render` },
+      {
+        key: `color_values`,
+        legend: `Color`,
+        effect: `Color mapping may fail for those points`,
+      },
+    ].map((dim) => ({ ...dim, type: `arcsinh` })),
+  )
   let arcsinh_threshold = $state(10)
 
-  // Seeded random for reproducibility
-  function seeded_random(seed: number): () => number {
-    let state = seed
-    return () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-  }
-
-  // Generate formation energy-like data: clusters at different magnitudes
-  const rng = seeded_random(42)
-  const n_points = 80
-
-  // Generate data with interesting structure across wide range
-  const x_vals = []
-  const y_vals = []
-  const color_vals = []
+  // Formation energy-like data: clusters at different orders of magnitude (1, 10, 100, 1000)
+  const rng = seeded_rng(42)
+  const values = { x: [], y: [], color_values: [] }
   const metadata = []
-
-  for (let idx = 0; idx < n_points; idx++) {
-    // Create clusters at different orders of magnitude
-    const magnitude = Math.pow(10, Math.floor(rng() * 4)) // 1, 10, 100, 1000
+  for (let idx = 0; idx < 80; idx++) {
+    const magnitude = 10 ** Math.floor(rng() * 4)
     const sign_x = rng() > 0.5 ? 1 : -1
     const sign_y = rng() > 0.5 ? 1 : -1
-
-    // Add some points near zero for linear region demo
+    // some points near zero for the linear region
     const near_zero = rng() < 0.2
     const coord_x = near_zero ? (rng() - 0.5) * 20 : sign_x * magnitude * (0.5 + rng() * 0.5)
     const coord_y = near_zero ? (rng() - 0.5) * 20 : sign_y * magnitude * (0.3 + rng() * 0.7)
-    const color = (coord_x * coord_y) / 1000 // Correlation between x, y creates gradient
-
-    x_vals.push(coord_x)
-    y_vals.push(coord_y)
-    color_vals.push(color)
+    values.x.push(coord_x)
+    values.y.push(coord_y)
+    values.color_values.push((coord_x * coord_y) / 1000) // x-y correlation creates a gradient
     metadata.push({
       idx,
       quadrant: `${sign_x > 0 ? `+` : `-`}X, ${sign_y > 0 ? `+` : `-`}Y`,
@@ -1162,76 +1035,28 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
     })
   }
 
-  const series_data = {
-    x: x_vals,
-    y: y_vals,
-    color_values: color_vals,
-    point_style: {
-      radius: 6,
-      // neutral gray outline (visible on both light/dark bg) so the diverging scheme's
-      // near-white midpoint markers don't vanish against the background
-      stroke: `gray`,
-      stroke_width: 1,
-      fill_opacity: 0.85,
-    },
-    metadata,
-  }
-
-  // Data compatibility checks for log scale warnings
-  const x_has_non_positive = x_vals.some((val) => val <= 0)
-  const y_has_non_positive = y_vals.some((val) => val <= 0)
-  const color_has_non_positive = color_vals.some((val) => val <= 0)
-
-  // Build scale configs with threshold
-  let x_scale = $derived(
-    x_scale_type === `arcsinh`
-      ? { type: `arcsinh`, threshold: arcsinh_threshold }
-      : x_scale_type,
-  )
-  let y_scale = $derived(
-    y_scale_type === `arcsinh`
-      ? { type: `arcsinh`, threshold: arcsinh_threshold }
-      : y_scale_type,
-  )
-  let color_scale = $derived(
-    color_scale_type === `arcsinh`
-      ? { type: `arcsinh`, threshold: arcsinh_threshold, scheme: `interpolateRdBu` }
-      : { type: color_scale_type, scheme: `interpolateRdBu` },
-  )
+  // neutral gray outline (visible on both light/dark bg) so the diverging scheme's
+  // near-white midpoint markers don't vanish against the background
+  const point_style = { radius: 6, stroke: `gray`, stroke_width: 1, fill_opacity: 0.85 }
+  const scale_of = (type: string) =>
+    type === `arcsinh` ? { type, threshold: arcsinh_threshold } : type
+  let [x_type, y_type, color_type] = $derived(dims.map((dim) => dim.type))
 </script>
 
 <div class="demo-controls">
-  <fieldset>
-    <legend>X Axis Scale</legend>
-    {#each scale_types as scale (scale)}
-      <label>
-        <input type="radio" bind:group={x_scale_type} value={scale} />
-        {scale}
-      </label>
-    {/each}
-  </fieldset>
+  {#each dims as dim (dim.key)}
+    <fieldset>
+      <legend>{dim.legend} Scale</legend>
+      {#each scale_types as scale (scale)}
+        <label>
+          <input type="radio" bind:group={dim.type} value={scale} />
+          {scale}
+        </label>
+      {/each}
+    </fieldset>
+  {/each}
 
-  <fieldset>
-    <legend>Y Axis Scale</legend>
-    {#each scale_types as scale (scale)}
-      <label>
-        <input type="radio" bind:group={y_scale_type} value={scale} />
-        {scale}
-      </label>
-    {/each}
-  </fieldset>
-
-  <fieldset>
-    <legend>Color Scale</legend>
-    {#each scale_types as scale (scale)}
-      <label>
-        <input type="radio" bind:group={color_scale_type} value={scale} />
-        {scale}
-      </label>
-    {/each}
-  </fieldset>
-
-  {#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh` || color_scale_type === `arcsinh`}
+  {#if dims.some((dim) => dim.type === `arcsinh`)}
     <label>
       Arcsinh Threshold: {arcsinh_threshold}
       <input
@@ -1250,26 +1075,13 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   {/if}
 </div>
 
-{#if x_scale_type === `log` && x_has_non_positive}
-  <p class="warn">
-    ⚠️ <strong>X-axis log scale invalid:</strong> Data contains negative/zero values. Points
-    with x ≤ 0 will not render.
-  </p>
-{/if}
-
-{#if y_scale_type === `log` && y_has_non_positive}
-  <p class="warn">
-    ⚠️ <strong>Y-axis log scale invalid:</strong> Data contains negative/zero values. Points
-    with y ≤ 0 will not render.
-  </p>
-{/if}
-
-{#if color_scale_type === `log` && color_has_non_positive}
-  <p class="warn">
-    ⚠️ <strong>Color log scale invalid:</strong> Data contains negative/zero values. Color
-    mapping may fail for those points.
-  </p>
-{/if}
+{#each dims as { key, legend, type, effect } (key)}
+  {#if type === `log` && values[key].some((val) => val <= 0)}
+    <p class="warn">
+      ⚠️ <strong>{legend} log scale invalid:</strong> Data contains negative/zero values. {effect}.
+    </p>
+  {/if}
+{/each}
 
 <p style="opacity: 0.8">
   <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes. Switch to
@@ -1277,10 +1089,10 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
 </p>
 
 <ScatterPlot
-  series={[{ ...series_data, markers: `points` }]}
-  x_axis={{ label: `X Axis (${x_scale_type})`, scale_type: x_scale }}
-  y_axis={{ label: `Y Axis (${y_scale_type})`, scale_type: y_scale }}
-  {color_scale}
+  series={[{ ...values, point_style, metadata, markers: `points` }]}
+  x_axis={{ label: `X Axis (${x_type})`, scale_type: scale_of(x_type) }}
+  y_axis={{ label: `Y Axis (${y_type})`, scale_type: scale_of(y_type) }}
+  color_scale={{ type: scale_of(color_type), scheme: `interpolateRdBu` }}
   color_bar={{ title: `X × Y / 1000` }}
   style="height: 450px"
 >
@@ -1327,15 +1139,11 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
 
   // Create three data series with different styling
   const series_data = categories.map((category, cat_idx) => {
-    const points = 10
     const symbol = symbol_names[cat_idx % symbol_names.length]
+    const x = Array.from({ length: 10 }, (_, idx) => idx + 1)
     return {
-      x: Array(points)
-        .fill(0)
-        .map((_, idx) => idx + 1),
-      y: Array(points)
-        .fill(0)
-        .map(() => 3 + cat_idx * 3 + Math.random() * 2),
+      x,
+      y: x.map(() => 3 + cat_idx * 3 + Math.random() * 2),
       point_style: {
         fill: category_colors[cat_idx],
         radius: 6 - cat_idx,
@@ -1344,14 +1152,12 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
         symbol_type: symbol,
         symbol_size: 40 + cat_idx * 5,
       },
-      metadata: Array(points)
-        .fill(0)
-        .map((_, idx) => ({
-          category,
-          color: category_colors[cat_idx],
-          symbol,
-          idx,
-        })),
+      metadata: x.map((_, idx) => ({
+        category,
+        color: category_colors[cat_idx],
+        symbol,
+        idx,
+      })),
       label: category,
     }
   })
@@ -1359,11 +1165,7 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
   let display_mode = $state('line+points')
 
   // Toggle series visibility
-  let visible_series = $state({
-    [categories[0]]: true,
-    [categories[1]]: true,
-    [categories[2]]: true,
-  })
+  let visible_series = $state(Object.fromEntries(categories.map((name) => [name, true])))
 
   // Controls for random data points
   let ticks = $state({ x: -5, y: -5 })
@@ -1379,39 +1181,33 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     series_data.filter((_, idx) => visible_series[categories[idx]]),
   )
 
-  // Generate random data points across positive and negative space for multiple series
-  const series_count = 3
-  const random_series = $derived.by(() => {
-    const output = []
-    for (let s_idx = 0; s_idx < series_count; s_idx++) {
-      const sample_count = 20 + Math.floor(Math.random() * 20) // Varying number of points
-      output.push({
-        x: Array(sample_count)
-          .fill(0)
-          .map(() => Math.random() * 20 - 10),
-        y: Array(sample_count)
-          .fill(0)
-          .map(() => Math.random() * 20 - 10),
-        point_style: {
-          fill: category_colors[s_idx % category_colors.length], // Use category colors
-          radius: 4 + s_idx, // Slightly different sizes
-          stroke: 'black',
-          stroke_width: 0.5,
-          symbol_type: symbol_names[(s_idx + 3) % symbol_names.length],
-        },
-        point_hover: {
-          scale: 1.5 + s_idx * 0.5, // Different hover scales
-          fill: 'orange',
-          stroke: 'white',
-          stroke_width: 2,
-        },
-        label: `Random Series ${s_idx + 1}`, // Add labels for legend
-        metadata: Array(sample_count)
-          .fill(0)
-          .map((_, p_idx) => ({ series: `Series ${s_idx + 1}`, point: p_idx })),
-      })
+  // Random points across positive and negative space, one series per category color
+  const random_coords = (count: number) =>
+    Array.from({ length: count }, () => Math.random() * 20 - 10)
+  const random_series = category_colors.map((fill, s_idx) => {
+    const sample_count = 20 + Math.floor(Math.random() * 20) // Varying number of points
+    return {
+      x: random_coords(sample_count),
+      y: random_coords(sample_count),
+      point_style: {
+        fill,
+        radius: 4 + s_idx, // Slightly different sizes
+        stroke: 'black',
+        stroke_width: 0.5,
+        symbol_type: symbol_names[(s_idx + 3) % symbol_names.length],
+      },
+      point_hover: {
+        scale: 1.5 + s_idx * 0.5, // Different hover scales
+        fill: 'orange',
+        stroke: 'white',
+        stroke_width: 2,
+      },
+      label: `Random Series ${s_idx + 1}`,
+      metadata: Array.from({ length: sample_count }, (_, p_idx) => ({
+        series: `Series ${s_idx + 1}`,
+        point: p_idx,
+      })),
     }
-    return output
   })
 </script>
 
@@ -1539,72 +1335,35 @@ The color bar picks the corner with the least data density (top-left, top-right,
     bottom_right: 10,
   })
 
-  // Function to generate points within a specific quadrant
-  const make_quadrant_points = (count, x_range, y_range) => {
-    const points = []
-    for (let idx = 0; idx < count; idx++) {
-      const x_val = x_range[0] + Math.random() * (x_range[1] - x_range[0])
-      const y_val = y_range[0] + Math.random() * (y_range[1] - y_range[0])
-      // Assign a color value (e.g. based on distance from origin)
-      const color_val =
-        Math.sqrt(
-          Math.pow(x_range[0] + (x_range[1] - x_range[0]) / 2, 2) +
-            Math.pow(y_range[0] + (y_range[1] - y_range[0]) / 2, 2),
-        ) *
-        Math.random() *
-        2 // Add some variation
-
-      points.push({
-        x: x_val,
-        y: y_val,
-        color_value: color_val,
-        label: color_val.toFixed(1),
-      })
-    }
-    return points
+  // Lower-left corner of each quadrant in the 100 x 100 plot
+  const quadrants = {
+    bottom_left: [0, 0],
+    bottom_right: [50, 0],
+    top_left: [0, 50],
+    top_right: [50, 50],
   }
 
   // Reactive generation of plot data based on densities
   let plot_series = $derived.by(() => {
-    const plot_width = 100
-    const plot_height = 100
-    const center_x = plot_width / 2
-    const center_y = plot_height / 2
-
-    const tl_points = make_quadrant_points(density.bottom_left, [0, center_x], [0, center_y])
-    const tr_points = make_quadrant_points(
-      density.bottom_right,
-      [center_x, plot_width],
-      [0, center_y],
+    const points = Object.entries(quadrants).flatMap(([quadrant, [x0, y0]]) =>
+      Array.from({ length: density[quadrant] }, () => ({
+        x: x0 + Math.random() * 50,
+        y: y0 + Math.random() * 50,
+        // quadrant center's distance from the origin, with some variation
+        color_value: Math.hypot(x0 + 25, y0 + 25) * Math.random() * 2,
+      })),
     )
-    const bl_points = make_quadrant_points(
-      density.top_left,
-      [0, center_x],
-      [center_y, plot_height],
-    )
-    const br_points = make_quadrant_points(
-      density.top_right,
-      [center_x, plot_width],
-      [center_y, plot_height],
-    )
-
-    const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points]
-
     return [
       {
-        x: all_points.map((point) => point.x),
-        y: all_points.map((point) => point.y),
-        color_values: all_points.map((point) => point.color_value),
-        point_label: all_points.map((point) => ({
-          text: point.label,
+        x: points.map((point) => point.x),
+        y: points.map((point) => point.y),
+        color_values: points.map((point) => point.color_value),
+        point_label: points.map((point) => ({
+          text: point.color_value.toFixed(1),
           auto_placement: true, // repel labels off each other and their markers
           font_size: '12px',
         })),
-        point_style: {
-          radius: 5,
-          stroke: 'white',
-          stroke_width: 0.5,
-        },
+        point_style: { radius: 5, stroke: 'white', stroke_width: 0.5 },
       },
     ]
   })
@@ -1656,84 +1415,49 @@ When points cluster tightly, manual labels overlap. Set `auto_placement: true` o
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
-  // Function to generate a dense cluster of points
-  const generate_cluster = (center_x, center_y, count, radius, label_prefix, font_size) => {
-    const points = {
-      x: [],
-      y: [],
-      point_style: [],
-      point_label: [],
-    }
-    for (let idx = 0; idx < count; idx++) {
-      const angle = Math.random() * 2 * Math.PI
-      const dist = Math.random() * radius
-      points.x.push(center_x + Math.cos(angle) * dist)
-      points.y.push(center_y + Math.sin(angle) * dist)
-      points.point_style.push({ fill: 'rebeccapurple', radius: 8 })
-      points.point_label.push({
-        text: `${label_prefix}${idx + 1}`,
-        auto_placement: true,
-        font_size: font_size,
-      })
-    }
-    return points
-  }
-
-  // Function to generate isolated markers (well-spaced)
-  const generate_isolated = (positions, label_prefix, font_size) => {
-    const points = {
-      x: [],
-      y: [],
-      point_style: [],
-      point_label: [],
-    }
-    for (let idx = 0; idx < positions.length; idx++) {
-      const [pixel_x, pixel_y] = positions[idx]
-      points.x.push(pixel_x)
-      points.y.push(pixel_y)
-      points.point_style.push({ fill: 'darkorange', radius: 10 })
-      points.point_label.push({
-        text: `${label_prefix}${idx + 1}`,
-        auto_placement: true,
-        font_size: font_size,
-      })
-    }
-    return points
-  }
-
-  // Dense clusters (test collision avoidance)
-  const cluster1 = generate_cluster(25, 75, 10, 6, 'Dense-', '13px')
-  const cluster2 = generate_cluster(75, 25, 8, 5, 'Packed-', '11px')
-
-  // Isolated markers (test marker avoidance and boundary constraints)
-  const isolated = generate_isolated(
-    [
-      [10, 10],
-      [90, 90],
-      [10, 90],
-      [90, 10],
-      [50, 50],
-    ],
-    'Solo-',
-    '16px',
-  )
-
-  // Combine all points
-  const combined_series = {
-    x: [...cluster1.x, ...cluster2.x, ...isolated.x],
-    y: [...cluster1.y, ...cluster2.y, ...isolated.y],
-    point_style: [...cluster1.point_style, ...cluster2.point_style, ...isolated.point_style],
-    point_label: [...cluster1.point_label, ...cluster2.point_label, ...isolated.point_label],
-  }
+  // Labelled points sharing one style, e.g. a dense cluster or isolated markers
+  const make_points = (coords, point_style, prefix, font_size) =>
+    coords.map(([x, y], idx) => ({
+      x,
+      y,
+      point_style,
+      text: `${prefix}${idx + 1}`,
+      font_size,
+    }))
+  const cluster = (center_x, center_y, count, radius) =>
+    Array.from({ length: count }, () => {
+      const [angle, dist] = [Math.random() * 2 * Math.PI, Math.random() * radius]
+      return [center_x + Math.cos(angle) * dist, center_y + Math.sin(angle) * dist]
+    })
+  const purple = { fill: 'rebeccapurple', radius: 8 }
+  const points = [
+    // Dense clusters (test collision avoidance)
+    ...make_points(cluster(25, 75, 10, 6), purple, 'Dense-', '13px'),
+    ...make_points(cluster(75, 25, 8, 5), purple, 'Packed-', '11px'),
+    // Isolated markers (test marker avoidance and boundary constraints)
+    ...make_points(
+      [
+        [10, 10],
+        [90, 90],
+        [10, 90],
+        [90, 10],
+        [50, 50],
+      ],
+      { fill: 'darkorange', radius: 10 },
+      'Solo-',
+      '16px',
+    ),
+  ]
 
   let auto_place_enabled = $state(true)
-
-  // Derive the series data reactively
   const series_data = $derived([
     {
-      ...combined_series,
-      point_label: combined_series.point_label.map((lbl) => ({
-        ...lbl,
+      x: points.map((pt) => pt.x),
+      y: points.map((pt) => pt.y),
+      point_style: points.map((pt) => pt.point_style),
+      point_label: points.map(({ text, font_size }) => ({
+        text,
+        font_size,
         auto_placement: auto_place_enabled,
       })),
     },
@@ -1857,27 +1581,14 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
 <script lang="ts">
   import { ColorScaleSelect, ScatterPlot } from 'matterviz'
 
-  // Generate data where color value relates to y-value
-  const n_points = 50
+  // 50 points from 5 to 95 on both axes, colored by index (1..99)
+  const idx_range = Array.from({ length: 50 }, (_, idx) => idx)
   const vertical_color_data = {
-    x: Array(n_points)
-      .fill(0)
-      .map((_, idx) => (idx / n_points) * 90 + 5), // Range 5 to 95
-    y: Array(n_points)
-      .fill(0)
-      .map(() => Math.random() * 90 + 5), // Range 5 to 95
-    // Color value based on the y-coordinate
-    color_values: Array(n_points)
-      .fill(0)
-      .map((_, idx) => idx * 2 + 1), // 1..99
-    point_style: {
-      radius: 6,
-      stroke: `black`,
-      stroke_width: 0.5,
-    },
-    metadata: Array(n_points)
-      .fill(0)
-      .map((_, idx) => ({ value: idx * 2 })),
+    x: idx_range.map((idx) => (idx / 50) * 90 + 5),
+    y: idx_range.map(() => Math.random() * 90 + 5),
+    color_values: idx_range.map((idx) => idx * 2 + 1),
+    point_style: { radius: 6, stroke: `black`, stroke_width: 0.5 },
+    metadata: idx_range.map((idx) => ({ value: idx * 2 })),
   }
 
   // Right padding makes space for the external color bar; the other sides fit the axes,
@@ -2769,6 +2480,13 @@ Reference lines support interactive features including hover styling, click hand
 
   let clicked_info = $state(`Click on a reference line`)
   let hovered_info = $state(`Hover over a line`)
+  const show_click = (event) => {
+    const metadata = JSON.stringify(event.metadata)
+    clicked_info = `Clicked: ${event.label} (id: ${event.line_id}), metadata: ${metadata}`
+  }
+  const on_hover = (event) => {
+    hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
+  }
 
   const ref_lines = [
     {
@@ -2780,14 +2498,8 @@ Reference lines support interactive features including hover styling, click hand
       hover_style: { color: `#c0392b`, width: 4 },
       annotation: { text: `Min = 3`, position: `start`, side: `below` },
       metadata: { description: `Minimum acceptable value`, severity: `warning` },
-      on_click: (event) => {
-        clicked_info = `Clicked: ${event.label} (id: ${event.line_id}), metadata: ${JSON.stringify(
-          event.metadata,
-        )}`
-      },
-      on_hover: (event) => {
-        hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
-      },
+      on_click: show_click,
+      on_hover,
     },
     {
       type: `horizontal`,
@@ -2798,14 +2510,8 @@ Reference lines support interactive features including hover styling, click hand
       hover_style: { color: `#27ae60`, width: 4 },
       annotation: { text: `Max = 7`, position: `start`, side: `above` },
       metadata: { description: `Maximum acceptable value`, severity: `info` },
-      on_click: (event) => {
-        clicked_info = `Clicked: ${event.label} (id: ${event.line_id}), metadata: ${JSON.stringify(
-          event.metadata,
-        )}`
-      },
-      on_hover: (event) => {
-        hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
-      },
+      on_click: show_click,
+      on_hover,
     },
     {
       type: `vertical`,
@@ -2818,9 +2524,7 @@ Reference lines support interactive features including hover styling, click hand
       on_click: (event) => {
         clicked_info = `Clicked: ${event.label} at x=${event.type === 'vertical' ? 5 : 'N/A'}`
       },
-      on_hover: (event) => {
-        hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
-      },
+      on_hover,
     },
   ]
 </script>
@@ -2981,15 +2685,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { ScatterPlot, create_axis_loader, type AxisKey } from 'matterviz'
-
-  // Seeded random for reproducible data
-  function seeded_random(seed: number): () => number {
-    let state = seed
-    return () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-  }
+  import { seeded_rng } from '#site/histogram-data.js'
 
   type MaterialData = {
     density: number
@@ -3002,12 +2698,8 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 
   // Generate realistic materials data with correlations
   function generate_property_data(n_points: number, base_seed: number) {
-    const rng = seeded_random(base_seed)
-    const data: Record<string, MaterialData[]> = {
-      metals: [],
-      ceramics: [],
-      polymers: [],
-    }
+    const rng = seeded_rng(base_seed)
+    const data: Record<string, MaterialData[]> = { metals: [], ceramics: [], polymers: [] }
 
     for (let idx = 0; idx < n_points; idx++) {
       // Metals: high density, low bandgap, high conductivity
@@ -3065,35 +2757,19 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
   }
 
   // Series colors
-  const colors = {
-    metals: `#e74c3c`,
-    ceramics: `#3498db`,
-    polymers: `#2ecc71`,
-  }
+  const colors = { metals: `#e74c3c`, ceramics: `#3498db`, polymers: `#2ecc71` }
 
   type PropKey = keyof typeof properties
 
-  // Build series from data
-  function build_series(x_prop: PropKey, y_prop: PropKey) {
-    const series_list: Array<{
-      x: number[]
-      y: number[]
-      label: string
-      point_style: { fill: string; radius: number; fill_opacity: number }
-      markers: string
-    }> = []
-    for (const [material, color] of Object.entries(colors)) {
-      const mat_data = all_data[material]
-      series_list.push({
-        x: mat_data.map((row) => row[x_prop]),
-        y: mat_data.map((row) => row[y_prop]),
-        label: material.charAt(0).toUpperCase() + material.slice(1),
-        point_style: { fill: color, radius: 4, fill_opacity: 0.7 },
-        markers: `points`,
-      })
-    }
-    return series_list
-  }
+  // One series per material class
+  const build_series = (x_prop: PropKey, y_prop: PropKey) =>
+    Object.entries(colors).map(([material, color]) => ({
+      x: all_data[material].map((row) => row[x_prop]),
+      y: all_data[material].map((row) => row[y_prop]),
+      label: material.charAt(0).toUpperCase() + material.slice(1),
+      point_style: { fill: color, radius: 4, fill_opacity: 0.7 },
+      markers: `points`,
+    }))
 
   // Initial state
   let x_key = $state<PropKey>(`density`)
@@ -3233,15 +2909,7 @@ Axis changes simulate delayed loading. Color property and palette changes use th
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { ScatterPlot, create_axis_loader } from 'matterviz'
-
-  // Seeded random for reproducible data
-  function seeded_random(seed: number): () => number {
-    let state = seed
-    return () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-  }
+  import { seeded_rng } from '#site/histogram-data.js'
 
   type DataPoint = {
     density: number
@@ -3254,7 +2922,7 @@ Axis changes simulate delayed loading. Color property and palette changes use th
 
   // Generate correlated materials data
   function generate_data(n_points: number, base_seed: number): DataPoint[] {
-    const rng = seeded_random(base_seed)
+    const rng = seeded_rng(base_seed)
     const data: DataPoint[] = []
 
     for (let idx = 0; idx < n_points; idx++) {
@@ -3271,8 +2939,7 @@ Axis changes simulate delayed loading. Color property and palette changes use th
     return data
   }
 
-  const n_points = 150
-  const all_data = generate_data(n_points, 12345)
+  const all_data = generate_data(150, 12345)
 
   // Property definitions with HTML sub/superscripts
   const properties = {
@@ -3281,10 +2948,7 @@ Axis changes simulate delayed loading. Color property and palette changes use th
     formation_energy: { label: `Formation Energy E<sub>form</sub>`, unit: `eV/atom` },
     bandgap: { label: `Band Gap E<sub>gap</sub>`, unit: `eV` },
     bulk_modulus: { label: `Bulk Modulus K`, unit: `GPa` },
-    thermal_cond: {
-      label: `Thermal Cond. κ`,
-      unit: `W·m<sup>−1</sup>·K<sup>−1</sup>`,
-    },
+    thermal_cond: { label: `Thermal Cond. κ`, unit: `W·m<sup>−1</sup>·K<sup>−1</sup>` },
   }
 
   // One committed palette drives both the chart's mapping and the ColorBar selection.
@@ -3300,47 +2964,30 @@ Axis changes simulate delayed loading. Color property and palette changes use th
     label: key[0].toUpperCase() + key.slice(1),
   }))
 
-  // Build series with color values
-  function build_series(x_key, y_key, color_key) {
-    const color_vals = all_data.map((row) => row[color_key])
-    return [
-      {
-        x: all_data.map((row) => row[x_key]),
-        y: all_data.map((row) => row[y_key]),
-        color_values: color_vals,
-        point_style: {
-          radius: 5,
-          fill_opacity: 0.8,
-          stroke: `white`,
-          stroke_width: 0.5,
-        },
-        markers: `points`,
-        metadata: all_data.map((row, idx) => ({
-          idx,
-          ...Object.fromEntries(Object.keys(properties).map((key) => [key, row[key]])),
-        })),
-      },
-    ]
-  }
+  const metadata = all_data.map((row, idx) => ({ idx, ...row }))
+  const column = (key) => all_data.map((row) => row[key])
+  const point_style = { radius: 5, fill_opacity: 0.8, stroke: `white`, stroke_width: 0.5 }
 
   // State
   let x_key = $state(`density`)
   let y_key = $state(`formation_energy`)
   let color_key = $state(`bandgap`)
   let color_scale_key = $state(`viridis`)
-  let series = $derived(build_series(x_key, y_key, color_key))
+  let series = $derived([
+    {
+      x: column(x_key),
+      y: column(y_key),
+      color_values: column(color_key),
+      point_style,
+      markers: `points`,
+      metadata,
+    },
+  ])
   let axis_switches = $state(0)
   let color_switches = $state(0)
 
-  // Axis options (for x/y axis dropdowns)
-  const axis_options = Object.entries(properties).map(([key, prop]) => ({
-    key,
-    label: prop.label,
-    unit: prop.unit,
-  }))
-
-  // Property options for ColorBar (same structure)
-  const color_property_options = axis_options
+  // Options for the x/y axis dropdowns and the ColorBar property dropdown
+  const axis_options = Object.entries(properties).map(([key, prop]) => ({ key, ...prop }))
 
   // Load outside the chart; cancelled requests cannot publish stale data
   async function axis_data_loader(axis, property_key, _signal) {
@@ -3359,16 +3006,10 @@ Axis changes simulate delayed loading. Color property and palette changes use th
     if (axis === `y`) y_key = property_key
   }
 
-  // All properties are already loaded; publish the new color property directly.
+  // All properties are already loaded; publish the new color property directly
   function on_property_change(property_key) {
     color_switches++
     color_key = property_key
-    // series is $derived from color_key, so it auto-updates
-  }
-
-  // Handle color scale change (no data loading needed, just update scheme)
-  function on_color_scale_change(key) {
-    color_scale_key = key
   }
 </script>
 
@@ -3399,12 +3040,12 @@ Axis changes simulate delayed loading. Color property and palette changes use th
   color_scale={{ scheme: color_scales[color_scale_key] }}
   color_bar={{
     title: `${properties[color_key].label} (${properties[color_key].unit})`,
-    property_options: color_property_options,
+    property_options: axis_options,
     selected_property_key: color_key,
     on_property_change,
     color_scale_options,
     selected_color_scale_key: color_scale_key,
-    on_color_scale_change,
+    on_color_scale_change: (key) => (color_scale_key = key),
   }}
   style="height: 450px"
   legend={null}

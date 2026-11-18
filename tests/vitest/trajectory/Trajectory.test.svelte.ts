@@ -519,6 +519,10 @@ describe(`controls`, () => {
     // the info button hides while the inspector's Info tab shows the same cards
     const props = $state(default_props({ data_inspector_open: false }))
     const target = await mount_ticked(props)
+    // a closed inspector: no sidebar, the info button back, the analysis button not lit
+    expect(target.querySelector(`.analysis-button`)?.classList.contains(`active`)).toBe(false)
+    expect(target.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
+    expect(query(target, `.viewer-row`).classList.contains(`docked-sidebar-row`)).toBe(false)
     for (const [hidden, selector] of HIDEABLE_CONTROLS) {
       expect(target.querySelector(`${CONTROLS} ${selector}`), hidden).not.toBeNull()
     }
@@ -543,7 +547,7 @@ describe(`controls`, () => {
     [`default props`, {}, true, false, true],
     [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true, false],
     [`no controls`, { show_controls: `never` as const }, false, false, null],
-    [`data_inspector_open=false`, { data_inspector_open: false }, false, true, false],
+    // data_inspector_open=false: in `every hideable control renders by default`
   ])(
     `with %s the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
     (_name, overrides, shown, info_button, analysis_active) => {
@@ -835,9 +839,24 @@ describe(`controls`, () => {
     expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
   })
 
-  test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
-    const target = await mount_ticked(default_props({ show_controls: { hidden: [hidden] } }))
-    expect(target.querySelector(`${CONTROLS} ${selector}`)).toBeNull()
+  // one viewer re-hidden per control: each hidden entry removes its own control, no other,
+  // at mount and on every update (ending on the first again, so hidden controls come back)
+  test(`hidden: [control] removes that control alone`, async () => {
+    const names = HIDEABLE_CONTROLS.map(([name]) => name)
+    const props = $state(
+      default_props({ data_inspector_open: false, show_controls: { hidden: [names[0]] } }),
+    )
+    const target = await mount_ticked(props)
+    const shown = () =>
+      HIDEABLE_CONTROLS.filter(
+        ([, selector]) => target.querySelector(`${CONTROLS} ${selector}`) !== null,
+      ).map(([name]) => name)
+    expect(shown(), `${names[0]} at mount`).toEqual(names.slice(1))
+    for (const hidden of [...names.slice(1), names[0]]) {
+      props.show_controls = { hidden: [hidden] }
+      await tick()
+      expect(shown(), hidden).toEqual(names.filter((name) => name !== hidden))
+    }
   })
 
   test(`hidden analysis entries leave the menu; hiding all removes the menu`, async () => {
@@ -901,29 +920,40 @@ describe(`controls`, () => {
   })
 
   // Labels number frames from 1 like the step input: frame 1, then round numbers up to N.
-  // Explicit arrays are 0-based indices.
-  test.each([
-    [`count`, 3, [`1`, `5`, `10`], 11],
-    [`count above frames`, 50, [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`], 11],
-    [`spacing`, -4, [`1`, `4`, `8`, `11`], 11],
-    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`], 11],
-    [`explicit with repeats, unsorted`, [10, 0, 0, 7], [`1`, `8`, `11`], 11],
-    [`disabled`, 0, [], 11],
-    [`single frame`, 5, [], 1],
-  ])(`step_labels %s`, (_kind, step_labels, expected, frame_count) => {
-    const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
-    const target = mount_trajectory(
-      default_props({ trajectory: make_run({ steps }), step_labels }),
-    )
-    const labels = [...target.querySelectorAll(`.step-label`)].map((element) =>
-      element.textContent?.trim(),
-    )
-    expect(labels).toEqual(expected)
-    // Ticks sit at the frame's fraction of the slider (1.5% inset, 98% span)
-    const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
-      (element) => element.style.left,
-    )
-    expect(ticks).toEqual(expected.map((label) => `${1.5 + ((Number(label) - 1) / 10) * 98}%`))
+  // Explicit arrays are 0-based indices. One viewer, its run and step_labels swapped per case.
+  test(`step_labels`, () => {
+    const props = $state(default_props())
+    const target = mount_trajectory(props)
+    for (const [kind, step_labels, expected, frame_count] of [
+      [`count`, 3, [`1`, `5`, `10`], 11],
+      [`single frame`, 5, [], 1], // right after visible labels, so stale ones would show
+      [
+        `count above frames`,
+        50,
+        [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`],
+        11,
+      ],
+      [`spacing`, -4, [`1`, `4`, `8`, `11`], 11],
+      [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`], 11],
+      [`explicit with repeats, unsorted`, [10, 0, 0, 4], [`1`, `5`, `11`], 11],
+      [`disabled`, 0, [], 11],
+    ] as [string, Props[`step_labels`], string[], number][]) {
+      const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
+      props.trajectory = make_run({ steps })
+      props.step_labels = step_labels
+      flushSync()
+      const labels = [...target.querySelectorAll(`.step-label`)].map((element) =>
+        element.textContent?.trim(),
+      )
+      expect(labels, kind).toEqual(expected)
+      // Ticks sit at the frame's fraction of the slider (1.5% inset, 98% span)
+      const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
+        (element) => element.style.left,
+      )
+      expect(ticks, kind).toEqual(
+        expected.map((label) => `${1.5 + ((Number(label) - 1) / 10) * 98}%`),
+      )
+    }
   })
 })
 
@@ -1559,35 +1589,41 @@ describe(`events`, () => {
     expect([props.display_mode, sibling_props.display_mode]).toEqual([`structure`, `structure+plot`])
   })
 
-  test.each([
-    { name: `Ctrl`, init: { ctrlKey: true } },
-    { name: `Meta`, init: { metaKey: true } },
-    { name: `Alt`, init: { altKey: true } },
-    { name: `autorepeat`, init: { repeat: true } },
-    { name: `composition`, init: { isComposing: true } },
-    { name: `input`, tag: `input` },
-    { name: `textarea`, tag: `textarea` },
-    { name: `select`, tag: `select` },
-    { name: `editable text`, tag: `div` },
-  ])(`view shortcut ignores $name`, async ({ init, tag }) => {
+  // one viewer for every case: an ignored key leaves nothing behind for the next
+  test(`view shortcut ignores modified, repeated, composing and editable-target keys`, async () => {
     const changed = vi.fn()
     const props = $state(default_props({ on_display_mode_change: changed }))
     const viewer = query(mount_trajectory(props), `.trajectory`)
-    const target = tag ? document.createElement(tag) : viewer
-    if (tag) {
-      if (tag === `div`) target.contentEditable = `true`
-      viewer.append(target)
+    const cases: { name: string; init?: KeyboardEventInit; tag?: string }[] = [
+      { name: `Ctrl`, init: { ctrlKey: true } },
+      { name: `Meta`, init: { metaKey: true } },
+      { name: `Alt`, init: { altKey: true } },
+      { name: `autorepeat`, init: { repeat: true } },
+      { name: `composition`, init: { isComposing: true } },
+      { name: `input`, tag: `input` },
+      { name: `textarea`, tag: `textarea` },
+      { name: `select`, tag: `select` },
+      { name: `editable text`, tag: `div` },
+    ]
+    for (const { name, init, tag } of cases) {
+      const target = tag ? document.createElement(tag) : viewer
+      if (tag) {
+        if (tag === `div`) target.contentEditable = `true`
+        viewer.append(target)
+      }
+      target.focus()
+      const event = keydown(`v`, { cancelable: true, ...init })
+      target.dispatchEvent(event)
+      await tick()
+      expect(props.display_mode, name).toBe(`structure+plot`)
+      expect(changed, name).not.toHaveBeenCalled()
+      expect(event.defaultPrevented, name).toBe(false)
+      expect(
+        viewer.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`style`),
+        name,
+      ).not.toContain(`transition: none`)
+      if (tag) target.remove()
     }
-    target.focus()
-    const event = keydown(`v`, { cancelable: true, ...init })
-    target.dispatchEvent(event)
-    await tick()
-    expect(props.display_mode).toBe(`structure+plot`)
-    expect(changed).not.toHaveBeenCalled()
-    expect(event.defaultPrevented).toBe(false)
-    expect(
-      viewer.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`style`),
-    ).not.toContain(`transition: none`)
   })
 
   const payload = (step_idx: number, step: number) => ({

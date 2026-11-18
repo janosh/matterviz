@@ -357,6 +357,10 @@ export const SETTINGS_CONFIG = define_settings({
       value: true,
       description: `Show atoms on the edge of the cell that are not part of the primitive basis`,
     },
+    keep_molecules_whole: {
+      value: false,
+      description: `Reassemble molecules torn across cell faces by per-atom wrapping (bonded fragments drawn whole, centroid in the cell); periodic networks stay wrapped`,
+    },
     image_atom_completion: {
       value: `polyhedra`,
       description: `Which atoms beyond the cell faces to draw: the corners of polyhedra crossing a face, those plus every bond partner of atoms on the faces, or none`,
@@ -1276,6 +1280,7 @@ export const build_structure_props_from_settings = (defaults: DefaultSettings) =
     background_opacity: defaults.background_opacity,
     show_image_atoms: structure.show_image_atoms,
     image_atom_completion: structure.image_atom_completion,
+    keep_molecules_whole: structure.keep_molecules_whole,
     show_trajectory_lines: structure.show_trajectory_lines,
   }
 }

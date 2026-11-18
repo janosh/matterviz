@@ -1,10 +1,6 @@
-// Per-point uncertainty drawn as capped bars.
-//
-// `ErrorBand` already covers uncertainty as a filled ribbon, but a ribbon interpolates
-// between its points, which is a claim scattered data does not support: a parity plot
-// of predicted vs reference values has an error per point and no curve joining them.
-// Bars state the uncertainty pointwise instead, and unlike the band they also work in
-// x - measurement error is rarely confined to one axis.
+// Per-point uncertainty drawn as capped bars. Unlike `ErrorBand`'s ribbon, which interpolates
+// between points (a claim scattered data like a parity plot does not support), bars state the
+// uncertainty pointwise and also work in x: measurement error is rarely confined to one axis.
 
 import type { Vec2 } from '#lib/math.js'
 import type { RunningExtent } from '#lib/plot/core/scales.js'
@@ -72,11 +68,9 @@ export function error_getter(
   }
 }
 
-// assert_aligned_lengths entries for the per-point arrays an ErrorValues carries, labelled
-// `name` for a symmetric array and `name.upper`/`name.lower` per asymmetric side: none for a
-// scalar or absent error. Both sides are reported because they are indexed independently - a
-// `lower` one entry short of `upper` would otherwise pass the alignment check and read as zero
-// for the missing point, silently mislabeling that point's uncertainty.
+// assert_aligned_lengths entries for an ErrorValues' per-point arrays: `name` for a symmetric
+// array, `name.upper`/`name.lower` per asymmetric side (indexed independently, so a short side
+// would pass unchecked and silently read as zero), none for a scalar or absent error.
 export function error_lengths(
   error: ErrorValues | undefined | null,
   name: string,

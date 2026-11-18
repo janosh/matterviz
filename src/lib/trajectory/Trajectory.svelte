@@ -945,12 +945,11 @@
   )
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
-    if (open) {
-      active_pane = pane
-    } else if (active_pane === pane) {
-      active_pane = null
-    }
+    if (open) active_pane = pane
+    else if (active_pane === pane) active_pane = null
   }
+  // setter half of a `bind:pane_open={getter, setter}` pair
+  const pane_setter = (pane: TrajectoryPane) => (open: boolean) => set_pane_open(pane, open)
 
   // === trails ===
   let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
@@ -974,20 +973,17 @@
     const signal = getAbortSignal()
     // The stride budget throws synchronously (a single frame over budget); the async wrapper
     // turns that into a rejection so one catch covers it and the stream failures alike
-    const collect_trails = async () => {
-      const frame_stride = suggest_frame_stride(
-        owner.frame_count,
-        owner.atom_count,
-        TRAIL_POSITION_MAX_BYTES,
-      )
-      return collect_trajectory_positions(owner, {
-        frame_stride,
+    ;(async () =>
+      collect_trajectory_positions(owner, {
+        frame_stride: suggest_frame_stride(
+          owner.frame_count,
+          owner.atom_count,
+          TRAIL_POSITION_MAX_BYTES,
+        ),
         max_bytes: TRAIL_POSITION_MAX_BYTES,
         signal,
         analysis_name: `Trajectory trails`,
-      })
-    }
-    collect_trails()
+      }))()
       .then((stream) => {
         if (!signal.aborted) trail_stream = stream
       })
@@ -1607,9 +1603,7 @@
               {current_step_idx}
               property_rows={session.property_rows}
               properties_complete={session.properties_complete}
-              bind:pane_open={
-                () => active_pane === `info`, (open) => set_pane_open(`info`, open)
-              }
+              bind:pane_open={() => active_pane === `info`, pane_setter(`info`)}
               {pane_props}
               shortcut_scopes={[
                 `viewer`,
@@ -1620,12 +1614,8 @@
           {/if}
           {#if controls_config.visible(`export-pane`)}
             <TrajectoryExportPane
-              bind:export_pane_open={
-                () => active_pane === `export`, (open) => set_pane_open(`export`, open)
-              }
-              bind:flight_pane_open={
-                () => active_pane === `flight`, (open) => set_pane_open(`flight`, open)
-              }
+              bind:export_pane_open={() => active_pane === `export`, pane_setter(`export`)}
+              bind:flight_pane_open={() => active_pane === `flight`, pane_setter(`flight`)}
               run={trajectory}
               {wrapper}
               {current_step_idx}
@@ -1683,9 +1673,7 @@
                 {#each analysis_panes as [pane, AnalysisPane, props] (pane)}
                   <AnalysisPane
                     {...props}
-                    bind:pane_open={
-                      () => active_pane === pane, (open) => set_pane_open(pane, open)
-                    }
+                    bind:pane_open={() => active_pane === pane, pane_setter(pane)}
                   />
                 {/each}
                 <!-- Outside the loop: its playhead follows every frame, and a new props object
@@ -1699,8 +1687,7 @@
                       hover ? scene_site_indices(hover.atom_indices, current_frame) : [],
                     )}
                   bind:pane_open={
-                    () => active_pane === `structure-id`,
-                    (open) => set_pane_open(`structure-id`, open)
+                    () => active_pane === `structure-id`, pane_setter(`structure-id`)
                   }
                 />
                 <TrajectoryHotspotPane
@@ -1717,9 +1704,7 @@
                   bind:metric={hotspot_metric}
                   bind:min_atoms={hotspot_min_atoms}
                   bind:threshold={hotspot_threshold}
-                  bind:pane_open={
-                    () => active_pane === `hotspots`, (open) => set_pane_open(`hotspots`, open)
-                  }
+                  bind:pane_open={() => active_pane === `hotspots`, pane_setter(`hotspots`)}
                   pane_props={{
                     style: `--pane-max-height: var(--traj-pane-max-height); --pane-width: min(42em, calc(100vw - 3em))`,
                   }}
@@ -1911,9 +1896,7 @@
         <TrajectorySpectroscopyPane
           inline
           run={trajectory}
-          bind:pane_open={
-            () => active_pane === `spectroscopy`, (open) => set_pane_open(`spectroscopy`, open)
-          }
+          bind:pane_open={() => active_pane === `spectroscopy`, pane_setter(`spectroscopy`)}
         />
 
         {#if show_plot && !spectroscopy_open}

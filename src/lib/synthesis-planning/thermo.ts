@@ -297,17 +297,30 @@ function pairwise_interface(
   }
 }
 
-// Depth of the target below the open-system hull of every other phase reachable from the
-// precursors, at the target's composition (eV/atom). Gas exchange with the reservoir is free.
+// Depth of the target below the open-system hull of every other solid in its chemical space
+// (plus the precursors), at the target's composition (eV/atom). Gas exchange with the reservoir
+// is free. Chen et al. (doi:10.1038/s44160-024-00502-y) measure it against the neighboring
+// stable phases in composition space: restricting the hull to phases the precursors can form
+// on their own overstates the depth when an unreachable mixture lies lower.
 function inverse_hull_energy(
   precursors: PlannerPhase[],
   target: PlannerPhase,
   gases: PlannerPhase[],
-  competitor_phases: PlannerPhase[],
+  phases: PlannerPhase[],
 ): number {
+  // Only solids within the target's elements plus the open ones can enter its balance
+  const allowed = target.fractions.map(
+    (fraction, el_idx) => fraction > 0 || gases.some((gas) => gas.fractions[el_idx] > 0),
+  )
+  const solids = [
+    ...new Set([...precursors, ...phases].filter((phase) => !phase.is_gas)),
+  ].filter(
+    (phase) =>
+      phase.id !== target.id &&
+      phase.fractions.every((fraction, el_idx) => fraction === 0 || allowed[el_idx]),
+  )
   // target + consumed gas → solids + released gas. Solids and released gas are products and enter
   // the element balance with the same sign; consumed gas sits on the reactant side.
-  const solids = [...precursors, ...competitor_phases]
   const columns = [
     ...solids.map(fu_counts),
     ...gases.map(fu_counts),
@@ -378,6 +391,9 @@ export function analyze_selectivity(
   phases: PlannerPhase[],
   target_driving_force: number,
   cache?: ThermoCache,
+  // every phase for the inverse hull when `phases` is a competitor shortlist: a phase cut as
+  // too far above the hull with the target present can be on the hull without it
+  hull_phases: PlannerPhase[] = phases,
 ): SelectivityMetrics {
   const competitors_for = (mixture: PlannerPhase[]): Competitor[] => {
     if (!cache || mixture.length !== 2) return find_competitors(mixture, target, gases, phases)
@@ -406,12 +422,7 @@ export function analyze_selectivity(
   )
   return {
     target_driving_force,
-    inverse_hull_energy: inverse_hull_energy(
-      precursors,
-      target,
-      gases,
-      competitors.map((comp) => comp.phase),
-    ),
+    inverse_hull_energy: inverse_hull_energy(precursors, target, gases, hull_phases),
     competitors: competitors.map((comp) =>
       to_competing_phase(precursors, gases, comp, target_driving_force),
     ),

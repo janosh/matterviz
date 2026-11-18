@@ -13,6 +13,7 @@ import {
   validate_log_range,
 } from '#lib/plot/core/interactions.js'
 import type {
+  AxisDerive,
   ColorScale,
   ColorScaleConfig,
   ScaleType,
@@ -100,6 +101,7 @@ export interface ArcsinhScale {
   range(range: Vec2): ArcsinhScale
   invert(value: number): number
   ticks(count?: number): number[]
+  copy(): ArcsinhScale
 }
 
 export type PlotScaleFn =
@@ -155,6 +157,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 
   scale.ticks = (count = 10): number[] =>
     generate_arcsinh_ticks(current_domain[0], current_domain[1], threshold, count)
+
+  scale.copy = () => scale_arcsinh(threshold).domain(current_domain).range(current_range)
 
   return scale
 }
@@ -255,9 +259,104 @@ export function create_scale(
   return scaleLinear().domain(domain).range(output_range)
 }
 
+const DERIVE_SAMPLES = 64
+// Scale of an axis showing a function of another (x2_axis.derive): derived values sit where
+// `base` puts their inverse; the domain is the forward image of base's (descending for a
+// decreasing map). forward is sampled at DERIVE_SAMPLES pixel steps of base's view: a pole on
+// an end sample (1240/E at E = 0) shrinks the domain to the outermost finite samples, while a
+// non-finite interior sample, a map that is not strictly monotonic (constant included) or an
+// inverse that doesn't undo forward gives a NaN domain: the axis shows no ticks, not misplaced
+// ones. A log tick scheme over a domain that isn't strictly positive ticks linearly.
+export function derived_scale(
+  base: ScaleContinuousNumeric<number, number> | ArcsinhScale,
+  { forward, inverse }: AxisDerive,
+  tick_scale_type: ScaleType = `linear`,
+): ArcsinhScale {
+  // d3's linear/log scales fit the ArcsinhScale surface used here (call, domain, range, invert)
+  let current = base.copy() as ArcsinhScale
+  const scale = ((value: number): number => current(inverse(value))) as ArcsinhScale
+  const derived_domain = (): Vec2 => {
+    const [lo, hi] = current.domain()
+    const [px_lo, px_hi] = current.range()
+    const bases = [
+      lo,
+      ...Array.from({ length: DERIVE_SAMPLES - 1 }, (_, idx) =>
+        current.invert(px_lo + ((idx + 1) / DERIVE_SAMPLES) * (px_hi - px_lo)),
+      ),
+      hi,
+    ]
+    const first = Number(!Number.isFinite(forward(lo)))
+    const last = bases.length - 1 - Number(!Number.isFinite(forward(hi)))
+    const kept = bases.slice(first, last + 1)
+    const values = kept.map(forward)
+    const steps = values.slice(1).map((value, idx) => value - values[idx])
+    const tol = 1e-9 * Math.max(Math.abs(lo), Math.abs(hi))
+    const valid =
+      values.every(Number.isFinite) &&
+      (steps.every((step) => step > 0) || steps.every((step) => step < 0)) &&
+      kept.every((value, idx) => Math.abs(inverse(values[idx]) - value) <= tol)
+    return valid ? [values[0], values[values.length - 1]] : [NaN, NaN]
+  }
+  scale.domain = function (domain?: Vec2): Vec2 | ArcsinhScale {
+    if (domain === undefined) return derived_domain()
+    current = current.copy().domain([inverse(domain[0]), inverse(domain[1])])
+    return scale
+  } as ArcsinhScale[`domain`]
+  scale.range = function (output_range?: Vec2): Vec2 | ArcsinhScale {
+    if (output_range === undefined) return current.range()
+    current = current.copy().range(output_range)
+    return scale
+  } as ArcsinhScale[`range`]
+  scale.invert = (pixel: number): number => forward(current.invert(pixel))
+  scale.ticks = (count = 10): number[] => {
+    const domain = derived_domain()
+    if (!domain.every(Number.isFinite)) return []
+    const tick_type = derived_tick_type(tick_scale_type, domain)
+    return generate_ticks(domain, tick_type, count, create_scale(tick_type, domain, [0, 1]))
+  }
+  scale.copy = () => derived_scale(current, { forward, inverse }, tick_scale_type)
+  return scale
+}
+
+// A derived axis's tick scheme over `domain`: log needs it strictly positive, else linear
+export const derived_tick_type = (tick_scale_type: ScaleType, domain: Vec2): ScaleType =>
+  get_scale_type_name(tick_scale_type) === `log` && !(Math.min(...domain) > 0)
+    ? `linear`
+    : tick_scale_type
+
+// Minor ticks of a log axis: 2..9 x each decade (2 and 5 past 4 decades, none past 8) plus every
+// power of ten strided majors skip, minus the majors. Over `max_count` (40 at one per decade) gives none, not a band.
+export function generate_log_minor_ticks(
+  domain: Vec2,
+  major_ticks: readonly number[],
+  max_count = 150,
+): number[] {
+  const [min, max] = range_bounds(domain)
+  if (!(min > 0) || !Number.isFinite(max) || !(max > min)) return []
+  const n_decades = Math.log10(max / min)
+  const mantissas =
+    n_decades <= 4 ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : n_decades <= 8 ? [1, 2, 5] : [1]
+  // one tick per decade past 8 decades: over 40 of those already reads as a band
+  const cap = mantissas.length === 1 ? Math.min(max_count, 40) : max_count
+  const [min_power, max_power] = [Math.floor(Math.log10(min)), Math.ceil(Math.log10(max))]
+  if (max_power - min_power > cap) return []
+  const is_major = (tick: number): boolean =>
+    major_ticks.some((major) => Math.abs(major - tick) <= 1e-9 * tick)
+  const ticks: number[] = []
+  for (let power = min_power; power <= max_power; power++) {
+    for (const mantissa of mantissas) {
+      // dividing by an exact power of ten keeps 3e-1 at 0.3 rather than 3 * 0.1 = 0.30000000000000004
+      const tick = power < 0 ? mantissa / 10 ** -power : mantissa * 10 ** power
+      if (tick >= min && tick <= max && !is_major(tick)) ticks.push(tick)
+    }
+  }
+  return ticks.length > cap ? [] : ticks
+}
+
 // Build the four axis scales for a 2D plot in one call: x/x2 share the horizontal pixel span,
-// y/y2 the inverted vertical one. Shared by cartesian-frame and BarPlot/BoxPlot/Histogram.
-export function create_axis_scales<A extends { scale_type?: ScaleType }>(
+// y/y2 the inverted vertical one; an x2 with `derive` is a derived_scale over x. Shared by
+// cartesian-frame and BarPlot/BoxPlot/Histogram.
+export function create_axis_scales<A extends { scale_type?: ScaleType; derive?: AxisDerive }>(
   axes: { x: A; x2: A; y: A; y2: A },
   ranges: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 },
   pad: { l: number; r: number; t: number; b: number },
@@ -268,9 +367,16 @@ export function create_axis_scales<A extends { scale_type?: ScaleType }>(
   const y_px: Vec2 = [height - pad.b, pad.t]
   const scale = (axis: A, domain: Vec2, pixel_x: Vec2) =>
     create_scale(axis.scale_type ?? `linear`, domain, pixel_x)
+  const x_scale = scale(axes.x, ranges.x, x_px)
+  const { derive } = axes.x2
+  if (derive && get_scale_type_name(axes.x.scale_type) === `time`) {
+    throw new Error(`x2_axis.derive needs a numeric x axis, got scale_type 'time'`)
+  }
   return {
-    x: scale(axes.x, ranges.x, x_px),
-    x2: scale(axes.x2, ranges.x2, x_px),
+    x: x_scale,
+    x2: derive
+      ? derived_scale(x_scale, derive, axes.x2.scale_type ?? axes.x.scale_type)
+      : scale(axes.x2, ranges.x2, x_px),
     y: scale(axes.y, ranges.y, y_px),
     y2: scale(axes.y2, ranges.y2, y_px),
   }

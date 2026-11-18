@@ -67,9 +67,7 @@
   let top_ex_structure = $state<AnyStructure>()
   let top_ex_tiling = $state(`1x1x1`)
   const sym_elements = $derived(
-    show_sym_elements && top_ex_sym_data
-      ? symmetry_elements_from_ops(top_ex_sym_data.operations ?? [])
-      : [],
+    show_sym_elements && top_ex_sym_data ? symmetry_elements_from_ops(top_ex_sym_data) : [],
   )
 
   const sym_supercell = $derived(parse_supercell_matrix(top_ex_tiling))

@@ -159,9 +159,7 @@
             onkeydown={(event: KeyboardEvent) => {
               if (event.defaultPrevented || event.isComposing) return
               if (event.key === `Enter`) {
-                if (session.change_element(change_element_value)) {
-                  change_element_value = ``
-                }
+                if (session.change_element(change_element_value)) change_element_value = ``
               } else if (event.key === `Escape`) session.change_element_mode = false
               event.stopPropagation()
             }}

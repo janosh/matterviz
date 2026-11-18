@@ -688,7 +688,7 @@ export function parse_phase_diagram_svg(svg_string: string): BinaryPhaseDiagram 
   return {
     format: BINARY_DIAGRAM_FORMAT,
     components,
-    pressure_pa: 101325,
+    pressure_gpa: 1.01325e-4,
     temperature_range: y_scale.domain,
     phases,
     regions,

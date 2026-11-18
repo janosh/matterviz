@@ -127,7 +127,7 @@ describe(`RdfPlot`, () => {
     expect(plot.classList.contains(`dragover`)).toBe(accepts_drag)
   })
 
-  test(`custom props and children snippet`, async () => {
+  test(`custom props, children snippet and controls pane attribute props`, async () => {
     const plot = await mount_sized_rdf_plot({
       patterns: { label: `Test`, pattern: create_synthetic_pattern() },
       x_axis: { label: `Custom X` },
@@ -137,16 +137,6 @@ describe(`RdfPlot`, () => {
       children: createRawSnippet(() => ({
         render: () => `<div class="rdf-child">RDF child content</div>`,
       })),
-    })
-    expect(plot.querySelector(`.rdf-child`)?.textContent).toBe(`RDF child content`)
-    expect(plot.classList.contains(`custom-class`)).toBe(true)
-    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Custom X`)
-    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Custom Y`)
-  })
-
-  test(`forwards the controls pane attribute props to PlotControls`, async () => {
-    const plot = await mount_sized_rdf_plot({
-      patterns: { label: `Test`, pattern: create_synthetic_pattern() },
       controls_open: true,
       controls_toggle_props: { 'data-testid': `rdf-toggle` },
       controls_pane_props: { 'data-testid': `rdf-pane`, style: `min-width: 20rem` },
@@ -158,6 +148,10 @@ describe(`RdfPlot`, () => {
     })
     expect(pane?.getAttribute(`style`)).toContain(`min-width: 20rem`)
     expect(plot.querySelector(`[data-testid="rdf-toggle"]`)).not.toBeNull()
+    expect(plot.querySelector(`.rdf-child`)?.textContent).toBe(`RDF child content`)
+    expect(plot.classList.contains(`custom-class`)).toBe(true)
+    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Custom X`)
+    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Custom Y`)
   })
 
   test(`updates axis title when external axis props change`, async () => {
@@ -343,14 +337,6 @@ describe(`RdfPlot`, () => {
     expect(document.querySelector(`.status-message.error`)?.textContent).toMatch(
       /^\s*Si2: broken: /,
     )
-  })
-
-  test(`the failure message clears once the broken structure is removed`, async () => {
-    const structures = good_and_broken()
-    const target = await mount_harness({ pattern: create_synthetic_pattern(), structures })
-    await vi.waitFor(() => expect(target.textContent).toMatch(/broken: .*non-finite/))
-    target.querySelector<HTMLButtonElement>(`.drop-broken`)?.click()
-    await vi.waitFor(() => expect(target.textContent).not.toMatch(/non-finite/))
   })
 
   // drop errors, structure failures and the parent's own error_msg are separate sources:

@@ -20,7 +20,7 @@ import * as math from '#lib/math.js'
 import { clip_frac_plane_to_cell } from '#lib/structure/lattice-planes.js'
 import { whole_tile_counts } from '#lib/structure/supercell.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
+import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 // All element kinds in display order (axes, planes, then point elements), followed by both
 // the controls legend and symmetry_elements_from_ops.
@@ -39,8 +39,8 @@ export type SymmetryElement = {
   // Rotation order of the (proper part of the) operation: 2, 3, 4 or 6 for axes and
   // rotoinversions, 2 for mirror/glide planes, 1 for inversion centers
   order: number
-  // ITA-style symbol: "2", "2_1", "3_2", "m", "a"/"b"/"c"/"n"/"d"/"g" (glides, see
-  // glide_letter), "-1", "-4"
+  // ITA symbol, read in the standardized frame: "2", "2_1", "3_2", "m", "a"/"b"/"c"/"n"/"d"/"e"/"g"
+  // (glides, see ita_glide_letter), "-1", "-4"
   label: string
   // Fractional direction: rotation/screw/rotoinversion axis, or mirror/glide plane
   // normal. Reduced integer vector with canonical sign. Null for inversion centers.
@@ -184,8 +184,6 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
 
 const is_integer = (val: number): boolean => Math.abs(val - Math.round(val)) < ELEM_TOL
 
-const is_zero_vec = (vec: Vec3): boolean => vec.every((val) => Math.abs(val) < ELEM_TOL)
-
 // Components of (x, y, z) past ELEM_TOL
 const n_nonzero = (x_val: number, y_val: number, z_val: number): number =>
   Number(Math.abs(x_val) > ELEM_TOL) +
@@ -256,25 +254,65 @@ function reduce_glide(
   return [best_x, best_y, best_z]
 }
 
-// Glide letter from the reduced glide vector: a/b/c (half along one cell axis),
-// n (half along a face/body diagonal), d (quarter of one: the diamond vectors 1/4(±a ± b),
-// 1/4(±a ± b ± c)), g otherwise. A quarter mixed with a half is no diamond glide: Fm-3m's
-// planes normal to ⟨110⟩ glide by (-1/4, 1/4, 1/2), which ITA lists as g, and only groups
-// like Fd-3m or I4_1/amd have d-glides.
-function glide_letter(glide_vec: Vec3): string {
-  const doubled = glide_vec.map((val) => val * 2)
-  const is_int = (vals: number[]) =>
-    vals.every((val) => Math.abs(val - Math.round(val)) < 1e-4)
-  if (is_int(doubled)) {
-    const nonzero = doubled.map((val) => Math.round(val)).filter((val) => val !== 0)
-    if (nonzero.length === 1)
-      return [`a`, `b`, `c`][doubled.findIndex((val) => Math.round(val) !== 0)]
-    return `n`
-  }
+// ITA type of one glide vector t (fractional, standardized conventional frame) of a plane:
+// a/b/c half a basis vector; n half a face diagonal of an axis-normal plane (one spanned by two
+// basis vectors, i.e. a plane-equation covector with one nonzero entry) or half the body
+// diagonal; d a quarter of those; `diag` half a face diagonal in a diagonal plane, e.g.
+// (a+b)/2 normal to [1-10], which is g alone but pairs with c/2 into e (I-centred cells);
+// g anything else. `m` for the null vector. Hexagonal frames name only c: their 3-folds map the
+// diagonal vectors above onto unnamed ones, so a letter would differ between equivalent planes.
+function glide_type(glide_vec: Vec3, axis_plane: boolean, hexagonal: boolean): string {
   const quarters = glide_vec.map((val) => val * 4)
-  // 2·v is not integer here, so some quarter is odd; d needs every nonzero one to be
-  const is_zero_or_odd = (val: number) => Math.round(val) === 0 || Math.round(val) % 2 !== 0
-  return is_int(quarters) && quarters.every(is_zero_or_odd) ? `d` : `g`
+  if (!quarters.every(is_integer)) return `g`
+  const abs_quarters = quarters.map((val) => Math.abs(Math.round(val)))
+  const n_half = abs_quarters.filter((val) => val === 2).length
+  const n_quarter = abs_quarters.filter((val) => val === 1).length
+  if (n_half + n_quarter === 0) return `m`
+  if (hexagonal) return n_quarter === 0 && n_half === 1 && abs_quarters[2] === 2 ? `c` : `g`
+  if (n_quarter === 0) {
+    if (n_half === 1) return [`a`, `b`, `c`][abs_quarters.indexOf(2)]
+    return n_half === 3 || axis_plane ? `n` : `diag`
+  }
+  return n_half === 0 && n_quarter === (axis_plane ? 2 : 3) ? `d` : `g`
+}
+
+// ITA letter of the mirror/glide (W, w) from its whole glide class w_i + (Λ ∩ plane), read in a
+// standardized conventional frame (info built there): m if the class holds the null vector, e
+// (double glide) if it holds two of a, b, c, n (or a diagonal (a±b)/2 next to c/2), else the
+// single a/b/c/n, then d, else g. Classifying the whole class, not one reduced representative,
+// makes the letter independent of the representative and the input cell.
+function ita_glide_letter(
+  { normal_eq, plane_basis, plane_offsets }: RotationInfo & { kind: `mirror` },
+  w_intrinsic: Vec3,
+  hexagonal: boolean,
+): string {
+  const axis_plane = normal_eq.filter((val) => val !== 0).length === 1
+  const [first, second] = plane_basis
+  const gram = [math.dot(first, first), math.dot(first, second), math.dot(second, second)]
+  const det = gram[0] * gram[2] - gram[1] ** 2
+  const types = new Set<string>()
+  // Class members with every component in [-1/2, 1/2] (all named glide vectors are)
+  for (const offset of plane_offsets) {
+    const target = math.subtract(w_intrinsic, offset)
+    const [proj_1, proj_2] = [math.dot(target, first), math.dot(target, second)]
+    const coef_1 = Math.round((gram[2] * proj_1 - gram[1] * proj_2) / det)
+    const coef_2 = Math.round((gram[0] * proj_2 - gram[1] * proj_1) / det)
+    for (let mult_1 = coef_1 - 2; mult_1 <= coef_1 + 2; mult_1++) {
+      for (let mult_2 = coef_2 - 2; mult_2 <= coef_2 + 2; mult_2++) {
+        const cand = math.subtract(
+          target,
+          math.add(math.scale(first, mult_1), math.scale(second, mult_2)),
+        )
+        if (cand.every((val) => Math.abs(val) <= 0.5 + ELEM_TOL))
+          types.add(glide_type(cand, axis_plane, hexagonal))
+      }
+    }
+  }
+  if (types.has(`m`)) return `m`
+  const singles = [...types].filter((type) => type !== `d` && type !== `g`)
+  if (singles.length > 1) return `e`
+  if (singles.length === 1) return singles[0] === `diag` ? `g` : singles[0]
+  return types.has(`d`) ? `d` : `g`
 }
 
 // All translation-independent data derived from a rotation matrix W (plus centerings), one
@@ -409,110 +447,265 @@ function element_locus_key(point: Vec3, info: RotationInfo): string {
   return `line|${axis_key}|${covector_coord(first)},${covector_coord(second)}`
 }
 
-// Classify the operation (info.mat, w) given precomputed rotation-dependent data
-function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): SymmetryElement {
+// Screw part λ of a proper operation, w_i = λ·axis, reduced modulo the lattice period along
+// the axis (0 for plain rotations)
+function screw_lambda(info: RotationInfo & { kind: `proper` }, w_intrinsic: Vec3): number {
+  const { dual, period } = info
+  const lambda_raw = math.dot(dual, w_intrinsic)
+  const lambda = lambda_raw - period * Math.floor(lambda_raw / period + ELEM_TOL)
+  return lambda > ELEM_TOL ? lambda : 0
+}
+
+// ITA symbol of the operation (info.mat, w), read in the frame info was built in: "2", "4_2",
+// "-4", "-1", or a plane letter (see ita_glide_letter; `hexagonal` describes that frame)
+function element_label(info: RotationInfo, width_value: Vec3, hexagonal: boolean): string {
+  const { kind, order } = info
+  if (kind === `inversion`) return `-1`
+  if (kind === `rotoinversion`) return `-${order}`
+  const w_intrinsic = math.mul_3x3_vec3(info.proj, width_value)
+  if (kind === `mirror`) return ita_glide_letter(info, w_intrinsic, hexagonal)
+  const lambda = screw_lambda(info, w_intrinsic)
+  if (lambda === 0) return `${order}`
+  // ITA's N_p advances p/N of the period per +2π/N turn about +axis (3⁻ with 2/3 c is 3_1). In a
+  // left-handed cell the labels mirror, like moyo's space-group number (P3_1 reads P3_2).
+  const turn_part = Math.round((order * lambda) / info.period) % order
+  return `${order}_${info.negative_sense ? (order - turn_part) % order : turn_part}`
+}
+
+// Geometry of the operation (info.mat, w) given precomputed rotation-dependent data, under the
+// ITA `label` (from element_label, possibly evaluated in another frame of the same group)
+function classify_with_rotation_info(
+  info: RotationInfo,
+  width_value: Vec3,
+  label: string,
+): SymmetryElement {
   const { mat, proj, mat_order, order } = info
   const w_intrinsic = math.mul_3x3_vec3(proj, width_value)
   const w_loc = math.subtract(width_value, w_intrinsic)
   const point = wrap_to_unit_cell(fixed_point(mat, w_loc, mat_order))
   const locus = element_locus_key(point, info)
-  const base = { order, point, locus, plane_normal: null, translation: null }
+  const base = { order, point, locus, label, plane_normal: null, translation: null }
 
-  if (info.kind === `inversion`) return { ...base, kind: `inversion`, label: `-1`, axis: null }
+  if (info.kind === `inversion`) return { ...base, kind: `inversion`, axis: null }
   const { kind, axis } = info
 
   if (kind === `proper`) {
-    // Screw component: w_i = λ·axis, so λ = dual·w_i, reduced modulo the lattice period
-    const { dual, period, negative_sense } = info
-    const lambda_raw = math.dot(dual, w_intrinsic)
-    let lambda = lambda_raw - period * Math.floor(lambda_raw / period + ELEM_TOL)
-    if (Math.abs(lambda) < ELEM_TOL) lambda = 0
-    const is_screw = lambda > ELEM_TOL
-    // ITA's N_p advances p/N of the period per +2π/N turn about +axis (3⁻ with 2/3 c is 3_1). In a
-    // left-handed cell the labels mirror, like moyo's space-group number (P3_1 reads P3_2).
-    const turn_part = Math.round((order * lambda) / period) % order
-    const screw_part = negative_sense ? (order - turn_part) % order : turn_part
+    const is_screw = label.includes(`_`)
     return {
       ...base,
       kind: is_screw ? `screw` : `rotation`,
-      label: is_screw ? `${order}_${screw_part}` : `${order}`,
       axis,
-      translation: is_screw ? math.scale(axis, lambda) : null,
+      translation: is_screw ? math.scale(axis, screw_lambda(info, w_intrinsic)) : null,
     }
   }
 
   if (kind === `mirror`) {
-    const glide_vec = reduce_glide(w_intrinsic, info.plane_basis, info.plane_offsets)
-    const is_glide = !is_zero_vec(glide_vec)
+    const is_glide = label !== `m`
     return {
       ...base,
       kind: is_glide ? `glide` : `mirror`,
-      label: is_glide ? glide_letter(glide_vec) : `m`,
       axis,
       plane_normal: info.normal_eq,
-      translation: is_glide ? glide_vec : null,
+      translation: is_glide
+        ? reduce_glide(w_intrinsic, info.plane_basis, info.plane_offsets)
+        : null,
     }
   }
 
   // Rotoinversion −3/−4/−6 (no intrinsic translation: P = 0, so w_i = 0)
-  return { ...base, kind, label: `-${order}`, axis }
+  return { ...base, kind, axis }
 }
 
 // Classify a single operation (rotation as flat column-major 9-array, translation
-// vector, both fractional). Returns null for the identity and pure (centering)
-// translations, which define no geometric element. For non-primitive (centered) cells,
-// pass the centering vectors so intrinsic screw/glide translations are reduced modulo
+// vector, both fractional) in a standardized (ITA conventional) frame. Returns null for the
+// identity and pure (centering) translations, which define no geometric element. For centered
+// cells, pass the centering vectors so intrinsic screw/glide translations are reduced modulo
 // the TRUE lattice — e.g. along a ⟨111⟩ axis of a body-centered cell the lattice period
 // is (1/2)(1,1,1), and a C-centering-composed mirror is still a mirror, not an n-glide.
+// `hexagonal`: hexagonal axes (trigonal and hexagonal groups), see glide_type.
 export function classify_symmetry_op(
   rotation: readonly number[],
   translation: readonly number[],
   centerings: readonly Vec3[] = [],
+  hexagonal = false,
 ): SymmetryElement | null {
   const info = build_rotation_info(rotation, centerings)
-  return info ? classify_with_rotation_info(info, translation as Vec3) : null
+  if (!info) return null
+  const width_value = translation as Vec3
+  return classify_with_rotation_info(
+    info,
+    width_value,
+    element_label(info, width_value, hexagonal),
+  )
+}
+
+// Add vec mod ℤ³ to a set of distinct nonzero translations, keyed snapped to 1e-6 so
+// 1 - 1e-9 and 0 coincide
+const add_translation = (group: Map<string, Vec3>, vec: Vec3): void => {
+  const wrapped = wrap_to_unit_cell(vec)
+  const key = wrapped.map((val) => Math.round(val * 1e6) % 1_000_000).join(`,`)
+  if (key !== `0,0,0` && !group.has(key)) group.set(key, wrapped)
+}
+
+// Whether `score` is lexicographically larger than `other` beyond 1e-6
+const lex_greater = (score: number[], other: number[]): boolean => {
+  const idx = score.findIndex((val, jdx) => Math.abs(val - other[jdx]) > 1e-6)
+  return idx !== -1 && score[idx] > other[idx]
+}
+
+// The operations (input frame) and moyo's standardized conventional cell relative to the input
+export type SymmetryFrameData = Pick<
+  MoyoDataset,
+  `operations` | `std_linear` | `std_origin_shift` | `std_rotation_matrix`
+> & { std_cell: Pick<MoyoCell, `lattice`> }
+
+// The frame labels are read in, x_std = std_from_input·x + std_origin: moyo's standardized frame
+// (std_from_input = std_linear⁻¹, std_origin = −std_from_input·std_origin_shift) moved by the
+// group operation (M, m), x' = M·x_std + m, that puts a, b, c closest to Cartesian x, y, z
+// (lexicographically largest unit basis vectors). Every (M, m) maps the operations onto
+// themselves, so each choice is a standard setting, but moyo picks one by the input cell: for a
+// cubic crystal it may make the input's c its a, relabelling a/b/c glides. The Cartesian rule
+// gives the conventional cell, primitive cell and permuted axes of one crystal the same labels.
+function label_frame({
+  operations,
+  std_linear,
+  std_origin_shift,
+  std_cell,
+  std_rotation_matrix,
+}: SymmetryFrameData): { std_from_input: Matrix3x3; std_origin: Vec3 } {
+  const input_from_std = math.mat3x3_from_flat_col_major(std_linear)
+  const std_from_input = math.inverse_3x3(input_from_std)
+  const std_origin = math.scale(
+    math.mul_3x3_vec3(std_from_input, [...std_origin_shift] as Vec3),
+    -1,
+  )
+  // Cartesian rows of the standardized basis in the input's orientation: moyo's refined cell
+  // rotated back
+  const std_basis = math.dot(
+    math.mat3x3_from_flat_row_major([...std_cell.lattice.basis]),
+    math.mat3x3_from_flat_col_major(std_rotation_matrix),
+  )
+  const unit_rows = (mat: Matrix3x3) =>
+    math
+      .dot(math.transpose_3x3(math.inverse_3x3(mat)), std_basis)
+      .flatMap((row) => math.scale(row, 1 / Math.hypot(...row)))
+  // the identity (moyo's own frame) is a group element even when not listed
+  let best = {
+    score: unit_rows(math.IDENTITY_3X3),
+    mat: math.IDENTITY_3X3,
+    shift: [0, 0, 0] as Vec3,
+  }
+  const visited = new Set<string>()
+  for (const { rotation, translation } of operations) {
+    const rot_key = rotation.join(`,`)
+    if (visited.has(rot_key)) continue
+    visited.add(rot_key)
+    const input_mat = math.mat3x3_from_flat_col_major(rotation)
+    const mat = mat_round(math.dot(math.dot(std_from_input, input_mat), input_from_std))
+    if (Math.round(math.det_3x3(mat)) !== 1) continue // keep the handedness (screw senses)
+    const score = unit_rows(mat)
+    if (!lex_greater(score, best.score)) continue
+    // m = w_std of the operation: std_from_input·w + (I − M)·std_origin
+    const shift = math.add(
+      math.mul_3x3_vec3(std_from_input, translation),
+      math.subtract(std_origin, math.mul_3x3_vec3(mat, std_origin)),
+    )
+    best = { score, mat, shift }
+  }
+  return {
+    std_from_input: math.dot(best.mat, std_from_input),
+    std_origin: math.add(math.mul_3x3_vec3(best.mat, std_origin), best.shift),
+  }
 }
 
 // Distinct symmetry elements (modulo lattice translations) of space-group operations. Each
 // operation is classified, then re-anchored with lattice offsets t ∈ ℤ³ to enumerate the
 // in-cell instances of its family (e.g. P-1's 8 inversion centers at half-lattice points).
 // Elements sharing a locus but not a symbol (a 2-fold inside a 4-fold) stay separate entries.
-export function symmetry_elements_from_ops(
-  operations: MoyoDataset[`operations`],
-): SymmetryElement[] {
+// Geometry is computed in the operations' (input) frame; labels in the standardized
+// conventional frame where the ITA letters are defined (see label_frame), so a primitive,
+// conventional or axis-permuted input of one crystal labels alike.
+export function symmetry_elements_from_ops(sym_data: SymmetryFrameData): SymmetryElement[] {
+  const { operations } = sym_data
   // Centering vectors are the pure-translation operations (identity rotation, w ∉ ℤ³).
   // They define the true lattice for screw/glide reduction in centered cells.
   // Deduplicated since supercell inputs repeat sublattice translations.
-  const centering_keys = new Set<string>()
-  const centerings: Vec3[] = []
-  for (const { rotation, translation } of operations) {
-    if (!is_identity(mat_round(math.mat3x3_from_flat_col_major(rotation)))) continue
-    const wrapped = wrap_to_unit_cell(translation)
-    if (is_zero_vec(wrapped)) continue
-    const key = wrapped.map((val) => val.toFixed(6)).join(`,`)
-    if (centering_keys.has(key)) continue
-    centering_keys.add(key)
-    centerings.push(wrapped)
-  }
+  const centering_group = new Map<string, Vec3>()
+  for (const { rotation, translation } of operations)
+    if (is_identity(mat_round(math.mat3x3_from_flat_col_major(rotation))))
+      add_translation(centering_group, translation)
+  const centerings = [...centering_group.values()]
 
-  // Cache rotation-dependent analysis: supercell inputs can have thousands of ops but
-  // share at most 48 distinct rotation matrices
-  const info_cache = new Map<string, RotationInfo | null>()
+  // The standardized frame's centerings: the input lattice (basis vectors and centerings) seen
+  // from the conventional cell mod ℤ³, closed under addition (a primitive input's basis vectors
+  // generate the F centering)
+  const { std_from_input, std_origin } = label_frame(sym_data)
+  const input_from_std = math.inverse_3x3(std_from_input)
+  const basis_images = math.transpose_3x3(std_from_input) // rows = std_from_input·eⱼ
+  const std_group = new Map<string, Vec3>()
+  const add_std = (vec: Vec3) => add_translation(std_group, vec)
+  for (const image of basis_images) add_std(image)
+  for (const centering of centerings) add_std(math.mul_3x3_vec3(std_from_input, centering))
+  // Map iteration visits entries added during the loop, so this reaches the closure
+  for (const vec of std_group.values())
+    for (const image of basis_images) add_std(math.add(vec, image))
+  const std_centerings = [...std_group.values()]
+
+  // Rotation-dependent analysis in both frames per distinct rotation (null: identity), with
+  // W_std = Q·W·Q⁻¹ for Q = std_from_input (supercell inputs repeat at most 48 distinct W
+  // across thousands of ops)
+  type RotationData = { info: RotationInfo; std_info: RotationInfo; std_offset: Vec3 }
+  const info_cache = new Map<string, RotationData | null>()
+  const std_mats: Matrix3x3[] = []
+  for (const { rotation } of operations) {
+    const rot_key = rotation.join(`,`)
+    if (info_cache.has(rot_key)) continue
+    const mat = math.mat3x3_from_flat_col_major(rotation)
+    const raw_std_mat = math.dot(math.dot(std_from_input, mat), input_from_std)
+    if (!raw_std_mat.flat().every(is_integer)) {
+      throw new Error(
+        `Rotation ${rot_key} is not integral in the standardized frame (std_linear ${sym_data.std_linear.join(`,`)})`,
+      )
+    }
+    const std_mat = mat_round(raw_std_mat)
+    std_mats.push(std_mat)
+    const info = build_rotation_info(rotation, centerings)
+    const std_info = build_rotation_info(math.transpose_3x3(std_mat).flat(), std_centerings)
+    // w_std = Q·w + (I − W_std)·q for x_std = Q·x + q
+    const std_offset = math.subtract(std_origin, math.mul_3x3_vec3(std_mat, std_origin))
+    info_cache.set(rot_key, info && std_info && { info, std_info, std_offset })
+  }
+  // Hexagonal axes: a proper 3- or 6-fold (trace 0 or 2) fixing c
+  const hexagonal = std_mats.some(
+    (mat) =>
+      Math.round(math.det_3x3(mat)) === 1 &&
+      [0, 2].includes(trace(mat)) &&
+      mat[0][2] === 0 &&
+      mat[1][2] === 0 &&
+      mat[2][2] === 1,
+  )
+  const label_cache = new Map<string, string>()
   const seen = new Map<string, SymmetryElement>()
   for (const { rotation, translation } of operations) {
     const rot_key = rotation.join(`,`)
-    let info = info_cache.get(rot_key)
-    if (info === undefined) {
-      info = build_rotation_info(rotation, centerings)
-      info_cache.set(rot_key, info)
-    }
-    if (info === null) continue // identity / pure translation
+    const data = info_cache.get(rot_key)
+    if (!data) continue // identity / pure translation
+    const { info, std_info, std_offset } = data
     // Family members are the offsets modulo (I − W)ℤ³ and lattice vectors along the element, a
     // finite group: closing under +eⱼ visits each, where a fixed t ∈ {0,1}³ misses sheared ones
     const [w_x, w_y, w_z] = translation
     const shifts: Vec3[] = [[0, 0, 0]]
     for (const [s_x, s_y, s_z] of shifts) {
-      const elem = classify_with_rotation_info(info, [w_x + s_x, w_y + s_y, w_z + s_z])
+      const width_value: Vec3 = [w_x + s_x, w_y + s_y, w_z + s_z]
+      const std_width = math.add(math.mul_3x3_vec3(std_from_input, width_value), std_offset)
+      // Not mod ℤ³: a lattice translation moves the element, and a moved plane can change letter
+      const label_key = `${rot_key}|${std_width.map((val) => Math.round(val * 1e6)).join(`,`)}`
+      let label = label_cache.get(label_key)
+      if (label === undefined) {
+        label = element_label(std_info, std_width, hexagonal)
+        label_cache.set(label_key, label)
+      }
+      const elem = classify_with_rotation_info(info, width_value, label)
       // A rotoinversion fixes a center, not every point along its axis line.
       const center = elem.kind === `rotoinversion` ? elem.point.map(locus_coord).join(`,`) : ``
       const key = `${elem.kind}|${elem.label}|${elem.locus}|${center}`
@@ -586,9 +779,7 @@ export function clip_line_to_cell(
     t_min = Math.max(t_min, Math.min(t_0, t_1))
     t_max = Math.min(t_max, Math.max(t_0, t_1))
   }
-  if (t_min >= t_max - eps || !Number.isFinite(t_min) || !Number.isFinite(t_max)) {
-    return null
-  }
+  if (t_min >= t_max - eps || !Number.isFinite(t_min) || !Number.isFinite(t_max)) return null
   const to_cart = math.create_frac_to_cart(lattice)
   const endpoint = (t_param: number): Vec3 =>
     to_cart(point.map((coord, idx) => coord + t_param * direction[idx]) as Vec3)

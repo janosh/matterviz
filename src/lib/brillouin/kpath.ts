@@ -93,6 +93,27 @@ const mclc1_2_points = (
   }
 }
 
+// The H, M, N, X, Y and Z points of MCLC3 to MCLC5, from their ζ, η, μ and δ
+const mclc3_5_points = (
+  zeta: number,
+  eta: number,
+  mu: number,
+  delta: number,
+): Record<string, Vec3> => ({
+  H: [zeta, zeta, eta],
+  'H₁': [1 - zeta, -zeta, 1 - eta],
+  'H₂': [-zeta, -zeta, 1 - eta],
+  M: [0.5, 0, 0.5],
+  N: [0.5, 0, 0],
+  'N₁': [0, -0.5, 0],
+  X: [0.5, -0.5, 0],
+  Y: [mu, mu, delta],
+  'Y₁': [1 - mu, -mu, -delta],
+  'Y₂': [-mu, -mu, -delta],
+  'Y₃': [mu, mu - 1, delta],
+  Z: [0, 0, 0.5],
+})
+
 // MCLC3 and MCLC4 share their points
 const mclc3_4_points = ({ a_len, b_len, c_len, alpha }: ScCell): Record<string, Vec3> => {
   const [cos_alpha, sin_alpha] = [Math.cos(alpha), Math.sin(alpha)]
@@ -106,19 +127,8 @@ const mclc3_4_points = ({ a_len, b_len, c_len, alpha }: ScCell): Record<string, 
     F: [1 - phi, 1 - phi, 1 - psi],
     'F₁': [phi, phi - 1, psi],
     'F₂': [1 - phi, -phi, 1 - psi],
-    H: [zeta, zeta, eta],
-    'H₁': [1 - zeta, -zeta, 1 - eta],
-    'H₂': [-zeta, -zeta, 1 - eta],
     I: [0.5, -0.5, 0.5],
-    M: [0.5, 0, 0.5],
-    N: [0.5, 0, 0],
-    'N₁': [0, -0.5, 0],
-    X: [0.5, -0.5, 0],
-    Y: [mu, mu, delta],
-    'Y₁': [1 - mu, -mu, -delta],
-    'Y₂': [-mu, -mu, -delta],
-    'Y₃': [mu, mu - 1, delta],
-    Z: [0, 0, 0.5],
+    ...mclc3_5_points(zeta, eta, mu, delta),
   }
 }
 
@@ -357,21 +367,10 @@ const SC_TABLES = {
         F: [nu, nu, omega],
         'F₁': [1 - nu, 1 - nu, 1 - omega],
         'F₂': [nu, nu - 1, omega],
-        H: [zeta, zeta, eta],
-        'H₁': [1 - zeta, -zeta, 1 - eta],
-        'H₂': [-zeta, -zeta, 1 - eta],
         I: [rho, 1 - rho, 0.5],
         'I₁': [1 - rho, rho - 1, 0.5],
         L: [0.5, 0.5, 0.5],
-        M: [0.5, 0, 0.5],
-        N: [0.5, 0, 0],
-        'N₁': [0, -0.5, 0],
-        X: [0.5, -0.5, 0],
-        Y: [mu, mu, delta],
-        'Y₁': [1 - mu, -mu, -delta],
-        'Y₂': [-mu, -mu, -delta],
-        'Y₃': [mu, mu - 1, delta],
-        Z: [0, 0, 0.5],
+        ...mclc3_5_points(zeta, eta, mu, delta),
       },
       path: `Γ-Y-F-L-I|I₁-Z-H-F₁|H₁-Y₁-X-Γ-N|M-Γ`,
     }

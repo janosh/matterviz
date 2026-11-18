@@ -32,6 +32,8 @@ export interface PhaseData {
   e_form_per_atom?: number // Formation energy per atom from src/scripts/fetch_mp_pd_data.py
   reduced_formula?: string
   name?: string
+  // With open elements: the entry's full composition (`composition` drops the open elements)
+  full_composition?: CompositionType
 
   // Temperature-dependent free energies (replaces `energy` at selected T)
   temperatures?: readonly number[] // in Kelvin, use integers for exact matching
@@ -175,6 +177,8 @@ export interface PhaseStats {
   quinary_plus: number
   stable: number
   unstable: number
+  // Entries with no stability flag and no finite e_above_hull (neither stable nor unstable)
+  unknown_stability: number
   // Formation energy distribution (eV/atom), null when no entry has a formation energy
   e_form_range: { min: number; max: number; avg: number } | null
   hull_distance: { max: number; avg: number }

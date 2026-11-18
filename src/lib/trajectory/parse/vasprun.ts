@@ -80,9 +80,7 @@ const parse_atominfo = (
   const atominfo = tag_body(content, `atominfo`)
   if (!atominfo) throw new Error(`vasprun.xml has no complete <atominfo> block`)
   const atoms = array_rows(atominfo.body, `atoms`)
-  if (!atoms || atoms.length === 0) {
-    throw new Error(`vasprun.xml <atominfo> lists no atoms`)
-  }
+  if (!atoms || atoms.length === 0) throw new Error(`vasprun.xml <atominfo> lists no atoms`)
   const elements = atoms.map(([symbol]) => {
     if (!is_elem_symbol(symbol)) {
       throw new Error(`Unknown element symbol in vasprun.xml <atominfo>: "${symbol}"`)

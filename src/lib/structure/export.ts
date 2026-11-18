@@ -6,6 +6,7 @@ import { get_electro_neg_formula } from '#lib/composition/format.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import type { SymmetryDataset } from '#lib/symmetry/analyze.js'
 import {
   has_lattice_matrix,
   has_usable_lattice,
@@ -14,7 +15,7 @@ import {
 import { get_element_counts } from './density'
 import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
-import { structure_json_data } from './site'
+import { species_key, structure_json_data } from './site'
 import { ADP_COMPONENTS, site_adp } from './thermal-ellipsoids'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
@@ -243,8 +244,13 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 
 // Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
 // site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data.
-// The reader's `momentum` goes back out as ASE's `momenta`, minus the `velocity` the reader
-// derived from it (a differing explicit velocity is kept: on reimport it wins).
+// The reader's `momentum` and `mass` go back out as ASE's `momenta` and `masses`, minus the
+// `velocity` the reader derived from them (a differing explicit velocity is kept: on reimport
+// it wins).
+const ASE_COLUMN_NAMES = new Map([
+  [`momentum`, `momenta`],
+  [`mass`, `masses`],
+])
 function numeric_site_columns(
   structure: AnyStructure,
 ): { key: string; name: string; ncols: 1 | 3 }[] {
@@ -258,7 +264,7 @@ function numeric_site_columns(
         ? typeof value === `number` && Number.isFinite(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
-    return fits ? [{ key, name: key === `momentum` ? `momenta` : key, ncols }] : []
+    return fits ? [{ key, name: ASE_COLUMN_NAMES.get(key) ?? key, ncols }] : []
   })
   const has_momenta = columns.some(({ key }) => key === `momentum`)
   // the reader divides by the masses the file holds: recorded ones only if written
@@ -421,12 +427,212 @@ function require_lattice(structure: AnyStructure | undefined, format: string): C
   return structure
 }
 
-export function structure_to_cif_str(input?: AnyStructure): string {
+// Why a structure can't be written as a symmetrized CIF. Moments and ADPs are P1-only:
+// moyo's space group ignores magnetic order (an AFM cell's moments would be overwritten by their
+// images), and ADPs would need checking against each site symmetry.
+export const symmetrized_cif_unavailable_reason = (
+  structure?: AnyStructure,
+  sym_data?: SymmetryDataset | null,
+): string | undefined => {
+  if (!sym_data) return `No symmetry analysis available`
+  if (
+    structure?.sites.some(
+      ({ properties }) =>
+        math.is_finite_vec3(properties?.magmom) &&
+        properties.magmom.some((comp) => comp !== 0),
+    )
+  )
+    return `Magnetic moments need the P1 CIF (the space group ignores magnetic order)`
+  if (structure?.sites.some((site) => site_adp(site)))
+    return `Displacement parameters (ADPs) need the P1 CIF`
+  return fractional_export_unavailable_reason(structure)
+}
+
+// Translation component as the shortest fraction within 1e-6 (`1/2`, `5/6`), else 8 decimals
+function format_symop_shift(shift: number): string {
+  for (let denominator = 1; denominator <= 1000; denominator++) {
+    const numerator = Math.round(shift * denominator)
+    if (Math.abs(shift - numerator / denominator) < 1e-6)
+      return denominator === 1 ? `${numerator}` : `${numerator}/${denominator}`
+  }
+  return shift.toFixed(8)
+}
+
+// moyo operation (column-major W, w) as a CIF xyz triplet (`-y+1/2, x-y, z`). shift_sign −1 for
+// the (-a, -b, -c) basis a left-handed lattice is written in: x' = −x keeps W and negates w.
+function format_symop(rotation: readonly number[], translation: Vec3, shift_sign: number) {
+  const mat = math.mat3x3_from_flat_col_major(rotation)
+  return mat
+    .map((row, dim) => {
+      const terms = row.flatMap((coef, col) => {
+        const value = Math.round(coef)
+        if (value === 0) return []
+        const magnitude = Math.abs(value) === 1 ? `` : Math.abs(value)
+        return [`${value < 0 ? `-` : `+`}${magnitude}${`xyz`[col]}`]
+      })
+      const shift = wrap_frac_coord(shift_sign * translation[dim])
+      if (Math.abs(shift) > 1e-6 && Math.abs(shift - 1) > 1e-6)
+        terms.push(`+${format_symop_shift(shift)}`)
+      return terms.join(``).replace(/^\+/, ``)
+    })
+    .join(`, `)
+}
+
+// Whether the operations are moyo's standard setting, so the H-M symbol names exactly the listed
+// ops: same cell volume, and the input -> standardized map x_std = L⁻¹·(x − s) takes the op set
+// onto itself (moyo may permute a cubic cell's axes even when the input is standard)
+function is_standard_setting({ operations, std_linear, std_origin_shift }: SymmetryDataset) {
+  const input_from_std = math.mat3x3_from_flat_col_major(std_linear)
+  if (Math.abs(Math.abs(math.det_3x3(input_from_std)) - 1) > 1e-6) return false
+  const std_from_input = math.inverse_3x3(input_from_std)
+  const origin = math.scale(
+    math.mul_3x3_vec3(std_from_input, [...std_origin_shift] as Vec3),
+    -1,
+  )
+  const snap = (val: number) => Math.round(wrap_frac_coord(val) * 1e6) % 1e6
+  const op_key = (mat: Matrix3x3, shift: Vec3) =>
+    `${mat.flat().map(Math.round).join(`,`)}|${shift.map(snap).join(`,`)}`
+  const ops = operations.map(({ rotation, translation }) => ({
+    mat: math.mat3x3_from_flat_col_major(rotation),
+    shift: translation,
+  }))
+  const keys = new Set(ops.map(({ mat, shift }) => op_key(mat, shift)))
+  return ops.every(({ mat, shift }) => {
+    const std_mat = math.dot(math.dot(std_from_input, mat), input_from_std)
+    const std_origin_part = math.subtract(origin, math.mul_3x3_vec3(std_mat, origin))
+    const std_shift = math.add(math.mul_3x3_vec3(std_from_input, shift), std_origin_part)
+    return keys.has(op_key(std_mat, std_shift))
+  })
+}
+
+// The Cartesian-shortest lattice image of fractional offset `delta` (an exact closest-lattice-
+// vector search: in a skewed cell it can lie many cells from the per-component rounded one)
+export function nearest_image(
+  delta: Vec3,
+  converters: math.LatticeConverters,
+): { frac: Vec3; dist: number } {
+  const { lattice, frac_to_cart, cart_to_frac } = converters
+  const cart = math.min_image_displacement([0, 0, 0], frac_to_cart(delta), lattice, converters)
+  // delta plus the integer shift the search applied, so it stays exact
+  const shift = math.subtract(cart_to_frac(cart), delta).map(Math.round) as Vec3
+  return { frac: math.add(delta, shift), dist: Math.hypot(...cart) }
+}
+
+// Symmetrized fractional position of orbit representative `rep_idx` (orbit `members`): the
+// average of its images under the site stabilizer (ops mapping it nearest itself among its
+// orbit), each moved by a lattice vector onto it. Exactly stabilizer-fixed, so a loose-symprec
+// analysis expands back to the structure's own site count instead of a cloud of near-duplicate
+// images.
+function symmetrized_rep_abc(
+  { operations, input_cell: { positions } }: SymmetryDataset,
+  rep_idx: number,
+  members: number[],
+  lattice: Matrix3x3,
+): Vec3 {
+  const rep = positions[rep_idx]
+  const converters = math.create_lattice_converters(lattice)
+  const images = operations.flatMap(({ rotation, translation }) => {
+    const image = math.add(
+      math.mul_3x3_vec3(math.mat3x3_from_flat_col_major(rotation), rep),
+      translation,
+    )
+    const dists = members.map(
+      (idx) => nearest_image(math.subtract(image, positions[idx]), converters).dist,
+    )
+    if (members[dists.indexOf(Math.min(...dists))] !== rep_idx) return []
+    return [math.add(rep, nearest_image(math.subtract(image, rep), converters).frac)]
+  })
+  return math.scale(math.add(...images), 1 / images.length)
+}
+
+// Original site indices of moyo's asymmetric unit (its `orbits` representatives, with
+// split-partial sites merged in) with symmetrized fractional coords. Throws when sym_data was
+// computed for another structure: its ops would expand different sites to nonsense.
+function asymmetric_unit_sites(
+  structure: Crystal,
+  sym_data: SymmetryDataset,
+): { idx: number; abc: number[] }[] {
+  const { orbits, orig_site_indices_by_input_idx: by_input, input_cell } = sym_data
+  const cart_to_frac = lazy_cart_to_frac(structure.lattice.matrix)
+  const n_covered = by_input.reduce((sum, indices) => sum + indices.length, 0)
+  if (n_covered !== structure.sites.length || orbits.length !== by_input.length) {
+    throw new Error(
+      `CIF export: symmetry data covers ${n_covered} sites, the structure has ${structure.sites.length}`,
+    )
+  }
+  // the ops preserve distances only in the lattice they were found in
+  const lattice_shift = Math.max(
+    ...structure.lattice.matrix.flatMap((row, row_idx) =>
+      row.map((val, col) => Math.abs(val - input_cell.lattice[row_idx][col])),
+    ),
+  )
+  if (lattice_shift > 1e-6) {
+    throw new Error(
+      `CIF export: the lattice differs from the analyzed one by up to ${lattice_shift} A`,
+    )
+  }
+  // each site's lattice offset from where the analysis saw it (input cell), kept on export
+  const offsets = by_input.map((indices, input_idx) =>
+    indices.map((idx) => {
+      const site = structure.sites[idx]
+      if (species_key(site.species) !== sym_data.site_species_keys[idx]) {
+        throw new Error(
+          `CIF export: site ${display_idx(idx)} is ${species_key(site.species)}, the symmetry analysis saw ${sym_data.site_species_keys[idx]}`,
+        )
+      }
+      const abc = get_frac_coords(site, cart_to_frac, idx)
+      const offset = math.subtract(abc, input_cell.positions[input_idx])
+      if (offset.some((delta) => Math.abs(delta - Math.round(delta)) > 1e-6)) {
+        throw new Error(
+          `CIF export: site ${display_idx(idx)} at ${abc.join(`, `)} is not where the symmetry analysis saw it`,
+        )
+      }
+      return { idx, offset }
+    }),
+  )
+  const members = Map.groupBy(orbits.keys(), (idx) => orbits[idx])
+  return offsets.flatMap((site_offsets, input_idx) => {
+    if (orbits[input_idx] !== input_idx) return []
+    const sym_abc = symmetrized_rep_abc(
+      sym_data,
+      input_idx,
+      members.get(input_idx) ?? [],
+      structure.lattice.matrix,
+    )
+    return site_offsets.map(({ idx, offset }) => ({ idx, abc: math.add(sym_abc, offset) }))
+  })
+}
+
+// CIF of a crystal: P1 with every site, or given sym_data (null throws: analysis missing) the
+// asymmetric unit plus the space group's operations, from which parse_cif and pymatgen
+// regenerate every site. Written in the input setting, so the file keeps the user's exact cell
+// and coordinates (moyo's standardized cell is rotated, refined and re-originated). The H-M
+// symbol only appears when that setting is moyo's standard one (else it would name unlisted
+// ops); the IT number is setting-independent. Images get parse_cif's `_k` label suffixes.
+export function structure_to_cif_str(
+  input?: AnyStructure,
+  sym_data?: SymmetryDataset | null,
+): string {
   const structure = require_lattice(input, `CIF`)
-  const reason = fractional_export_unavailable_reason(structure)
+  const reason =
+    sym_data === undefined
+      ? fractional_export_unavailable_reason(structure)
+      : symmetrized_cif_unavailable_reason(structure, sym_data)
   if (reason) throw new Error(`CIF export: ${reason}`)
   const { lattice } = structure
   const params = math.compute_lattice_params(lattice.matrix)
+  // CIF stores only cell parameters, which readers rebuild as a right-handed cell, so a
+  // left-handed lattice (det < 0) would come back mirrored. Its sites are written against
+  // the right-handed basis (-a, -b, -c) with the same parameters instead: negated, wrapped
+  // fractional coords keep every Cartesian position and the structure's handedness.
+  const left_handed = math.det_3x3(lattice.matrix) < 0
+  const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
+  const written = sym_data
+    ? asymmetric_unit_sites(structure, sym_data)
+    : structure.sites.map((site, idx) => ({
+        idx,
+        abc: get_frac_coords(site, cart_to_frac, idx),
+      }))
   // The data block header is required by the CIF spec (and pymatgen)
   const lines = [
     `# CIF file generated by MatterViz`,
@@ -440,7 +646,11 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     `_cell_angle_gamma ${params.gamma.toFixed(6)}`,
   ]
 
-  if (`symmetry` in structure && is_plain_object(structure.symmetry)) {
+  if (sym_data) {
+    if (!left_handed && is_standard_setting(sym_data))
+      lines.push(`_space_group_name_H-M_alt '${sym_data.hm_symbol}'`)
+    lines.push(`_space_group_IT_number ${sym_data.number}`)
+  } else if (`symmetry` in structure && is_plain_object(structure.symmetry)) {
     const { space_group_number, space_group_symbol } = structure.symmetry
     if (typeof space_group_symbol === `string` && space_group_symbol) {
       // Quote H-M symbols: their spaces (e.g. 'F m -3 m') would break CIF tokenization
@@ -463,7 +673,7 @@ export function structure_to_cif_str(input?: AnyStructure): string {
   // _atom_type loop pymatgen's CifParser decorates from is written only when every species is
   // decorated (like its CifWriter): it strips the loop keys' charges (a plain Fe next to Fe3+
   // would read back as Fe3+) and makes every species an ion
-  const all_species = structure.sites.flatMap((site) => site.species)
+  const all_species = written.flatMap(({ idx }) => structure.sites[idx].species)
   const decorated =
     all_species.length > 0 && all_species.every((spec) => spec.oxidation_state !== undefined)
   if (decorated) {
@@ -474,13 +684,21 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     for (const row of new Set(symbols)) lines.push(`  ${row}`)
   }
 
+  const shift_sign = left_handed ? -1 : 1
   lines.push(
     ``,
-    // Explicit identity-only symmetry-ops loop (like pymatgen's CifWriter): sites are the
-    // full P1 list, so without it parsers would re-apply the H-M ops and multiply sites
+    // P1: an explicit identity-only symmetry-ops loop (like pymatgen's CifWriter), since the
+    // sites are the full list and parsers would otherwise re-apply the H-M ops
     `loop_`,
-    `_symmetry_equiv_pos_as_xyz`,
-    `  'x, y, z'`,
+    ...(sym_data
+      ? [
+          `_space_group_symop_operation_xyz`,
+          ...sym_data.operations.map(
+            ({ rotation, translation }) =>
+              `  '${format_symop(rotation, translation, shift_sign)}'`,
+          ),
+        ]
+      : [`_symmetry_equiv_pos_as_xyz`, `  'x, y, z'`]),
     ``,
     `loop_`,
     `_atom_site_label`,
@@ -490,13 +708,25 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     `_atom_site_fract_z`,
     `_atom_site_occupancy`,
   )
+  // An isotropic U = u·I (a CIF Uiso row reads back as one) is written as _U_iso_or_equiv
+  // with adp_type Uiso, not as aniso rows; anisotropic sites list U_eq = tr(U)/3 as Uani.
+  // Columns only appear when some site is isotropic, so other exports stay unchanged.
+  const adp_info = structure.sites.map((site) => {
+    const adp = site_adp(site)
+    if (!adp) return null
+    const u_eq = (adp[0][0] + adp[1][1] + adp[2][2]) / 3
+    // relative 1e-10: parsing Uiso·I through the lattice leaves ~1e-16 relative round-off
+    // a zero tensor stays an aniso row: parse_cif reads back only a positive Uiso
+    const isotropic =
+      u_eq > 0 &&
+      adp.every((row, idx) =>
+        row.every((val, col) => Math.abs(val - (idx === col ? u_eq : 0)) <= 1e-10 * u_eq),
+      )
+    return { u_eq, isotropic }
+  })
+  const has_u_iso = adp_info.some((info) => info?.isotropic)
+  if (has_u_iso) lines.push(`_atom_site_U_iso_or_equiv`, `_atom_site_adp_type`)
 
-  const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
-  // CIF stores only cell parameters, which readers rebuild as a right-handed cell, so a
-  // left-handed lattice (det < 0) would come back mirrored. Its sites are written against
-  // the right-handed basis (-a, -b, -c) with the same parameters instead: negated, wrapped
-  // fractional coords keep every Cartesian position and the structure's handedness.
-  const left_handed = math.det_3x3(lattice.matrix) < 0
   // One row per species entry so disordered (multi-species) sites keep every component with
   // its own occupancy. Labels must be unique: a species row's `${site_label}_${spec_idx}`
   // takes the next free `_k` suffix when a site label already uses it.
@@ -504,8 +734,9 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     structure.sites.map((site, idx) => site.label || `${site.species[0].element}${idx + 1}`),
   )
   const taken = new Set(site_labels)
-  for (const [idx, site] of structure.sites.entries()) {
-    const coords_str = get_frac_coords(site, cart_to_frac, idx)
+  for (const { idx, abc } of written) {
+    const site = structure.sites[idx]
+    const coords_str = abc
       .map((coord) => (left_handed ? wrap_frac_coord(-coord) : coord).toFixed(8))
       .join(` `)
     // parse_cif names a merged site after its first row, so that row keeps the site label
@@ -516,7 +747,10 @@ export function structure_to_cif_str(input?: AnyStructure): string {
         ? claim_free_label(`${site_label}_${spec_idx}`, taken)
         : site_label
       const occu = (species.occu ?? 1).toFixed(8)
-      lines.push(`${cif_token(label)} ${symbol} ${coords_str} ${occu}`)
+      const info = adp_info[idx]
+      const adp_type = info?.isotropic ? `Uiso` : `Uani`
+      const adp_cols = has_u_iso ? ` ${info ? `${info.u_eq} ${adp_type}` : `. .`}` : ``
+      lines.push(`${cif_token(label)} ${symbol} ${coords_str} ${occu}${adp_cols}`)
     }
   }
 
@@ -524,9 +758,13 @@ export function structure_to_cif_str(input?: AnyStructure): string {
   // reads: lattice-basis components f = cart_to_frac(m), and U_ij = ê*_i · U ê*_j with ê*_i
   // the unit reciprocal vectors (U* = N⁻¹ A⁻¹ U A⁻ᵀ N⁻¹, A⁻¹'s rows being a*, b*, c*). The
   // (-a, -b, -c) basis of a left-handed lattice negates f and keeps U.
-  const site_loop = (tags: string[], values_of: (site: Site) => number[] | null) => {
-    const rows = structure.sites.flatMap((site, idx) => {
-      const values = values_of(site)
+  const site_loop = (
+    tags: string[],
+    values_of: (site: Site, idx: number) => number[] | null,
+  ) => {
+    // written sites only: a symmetrized CIF's rows must name its own labels
+    const rows = written.flatMap(({ idx }) => {
+      const values = values_of(structure.sites[idx], idx)
       return values ? [`${cif_token(site_labels[idx])} ${values.join(` `)}`] : []
     })
     if (rows.length > 0) lines.push(``, `loop_`, ...tags, ...rows)
@@ -542,9 +780,9 @@ export function structure_to_cif_str(input?: AnyStructure): string {
   )
   site_loop(
     [`_atom_site_aniso_label`, ...ADP_COMPONENTS.map((ij) => `_atom_site_aniso_U_${ij}`)],
-    (site) => {
+    (site, idx) => {
       const adp = site_adp(site)
-      if (!adp) return null
+      if (!adp || adp_info[idx]?.isotropic) return null
       // only when needed: a singular lattice can still write its sites' abc
       const units = math
         .reciprocal_lattice(lattice.matrix)
@@ -615,7 +853,22 @@ export function structure_to_json_str(structure?: AnyStructure): string {
 
 // Text export formats: serializer, file extension, MIME type, why a structure can't be written
 // (shown as the export pane's disabled reason; the serializer throws it) and a pane label/hint
-export const STRUCT_TEXT_FORMATS = {
+type StructTextFormatSpec = {
+  // sym_data: the viewer's symmetry analysis of `structure` (read by the symmetrized CIF only)
+  to_str: (structure?: AnyStructure, sym_data?: SymmetryDataset | null) => string
+  ext: string
+  mime: string
+  unavailable_reason: (
+    structure?: AnyStructure,
+    sym_data?: SymmetryDataset | null,
+  ) => string | undefined
+  label: string
+  hint: string
+}
+export const STRUCT_TEXT_FORMATS: Record<
+  `json` | `xyz` | `cif` | `cif_symmetrized` | `poscar`,
+  StructTextFormatSpec
+> = {
   json: {
     to_str: structure_to_json_str,
     ext: `json`,
@@ -634,12 +887,21 @@ export const STRUCT_TEXT_FORMATS = {
     hint: `<a href="https://wiki.fysik.dtu.dk/ase" target="_blank">ASE</a> extended XYZ format - human-readable atomic coordinates used by the Atomic Simulation Environment`,
   },
   cif: {
-    to_str: structure_to_cif_str,
+    to_str: (structure?: AnyStructure) => structure_to_cif_str(structure),
     ext: `cif`,
     mime: `chemical/x-cif`,
     unavailable_reason: fractional_export_unavailable_reason,
     label: `CIF`,
-    hint: `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange`,
+    hint: `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange, listing every site (space group P1)`,
+  },
+  cif_symmetrized: {
+    // an omitted dataset is missing analysis (undefined would select the P1 path)
+    to_str: (structure, sym_data) => structure_to_cif_str(structure, sym_data ?? null),
+    ext: `cif`,
+    mime: `chemical/x-cif`,
+    unavailable_reason: symmetrized_cif_unavailable_reason,
+    label: `Symmetrized CIF`,
+    hint: `CIF of the symmetry-distinct sites plus the space-group operations that regenerate the rest`,
   },
   poscar: {
     to_str: structure_to_poscar_str,
@@ -649,6 +911,6 @@ export const STRUCT_TEXT_FORMATS = {
     label: `POSCAR`,
     hint: `<a href="https://vasp.at" target="_blank">VASP</a> POSCAR format - input geometry file for the Vienna Ab initio Simulation Package`,
   },
-} as const
+}
 
 export type StructTextFormat = keyof typeof STRUCT_TEXT_FORMATS

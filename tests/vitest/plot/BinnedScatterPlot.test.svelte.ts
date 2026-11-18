@@ -1254,7 +1254,7 @@ describe(`BinnedScatterPlot`, () => {
     await mount_plot({ series: [{ x: coord_x, y: coord_y }], ...density_mode_with_colorbar() })
     expect(render_mode()).toBe(`density`)
     expect(doc_query(`.colorbar .label`).textContent).toBe(`Density (1,000,000 points)`)
-  }, 10_000)
+  })
 })
 
 // A forced `.2~g` format would bypass format_tick_values' duplicate-avoidance, so a tight window

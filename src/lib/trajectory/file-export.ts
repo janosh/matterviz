@@ -144,9 +144,7 @@ async function* iter_export_frames(
     const completed = frame_idx - start_frame + 1
     on_progress?.(completed, total)
     signal?.throwIfAborted()
-    if (completed < total && completed % YIELD_EVERY_FRAMES === 0) {
-      await yield_turn()
-    }
+    if (completed < total && completed % YIELD_EVERY_FRAMES === 0) await yield_turn()
   }
 }
 

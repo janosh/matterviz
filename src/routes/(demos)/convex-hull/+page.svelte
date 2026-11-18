@@ -307,6 +307,18 @@
     make_gas_phase({ Fe: 0.4, Ni: 0.2, O: 0.4 }, -0.72, 58),
     make_gas_phase({ Fe: 0.2, Ni: 0.4, O: 0.4 }, -0.68, 56),
   ]
+
+  // [system, entries, style]: binaries get a fixed height, higher orders the default
+  const binary_height = `height: 500px`
+  const temp_demos = [
+    [`Li-Fe`, temp_binary_entries, binary_height],
+    [`Li-Fe-O`, temp_ternary_entries, undefined],
+    [`Li-Fe-Ni-O`, temp_quaternary_entries, undefined],
+  ] as const
+  const gas_demos = [
+    [`Fe-O`, gas_demo_fe_o_entries, binary_height],
+    [`Fe-Ni-O`, gas_demo_ternary_entries, undefined],
+  ] as const
 </script>
 
 <svelte:head>
@@ -517,22 +529,11 @@
     <h2 id="temperature-dependent-free-energies">Temperature-Dependent Free Energies</h2>
     {@render feature_list(temp_features)}
     <div class="hull-grid three-col temp-grid">
-      <LazyDemo label="Li-Fe with G(T)">
-        <ConvexHull
-          entries={temp_binary_entries}
-          controls={{ title: `Li-Fe with G(T)` }}
-          style="height: 500px"
-        />
-      </LazyDemo>
-      <LazyDemo label="Li-Fe-O with G(T)">
-        <ConvexHull entries={temp_ternary_entries} controls={{ title: `Li-Fe-O with G(T)` }} />
-      </LazyDemo>
-      <LazyDemo label="Li-Fe-Ni-O with G(T)">
-        <ConvexHull
-          entries={temp_quaternary_entries}
-          controls={{ title: `Li-Fe-Ni-O with G(T)` }}
-        />
-      </LazyDemo>
+      {#each temp_demos as [system, entries, style] (system)}
+        <LazyDemo label="{system} with G(T)">
+          <ConvexHull {entries} controls={{ title: `${system} with G(T)` }} {style} />
+        </LazyDemo>
+      {/each}
     </div>
   </section>
 
@@ -548,23 +549,17 @@
       </select>
     </div>
     <div class="hull-grid gas-grid">
-      <LazyDemo label="Fe-O gas atmosphere">
-        <ConvexHull
-          entries={gas_demo_fe_o_entries}
-          controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
-          gas_config={gas_demo_config}
-          bind:gas_pressures={gas_demo_pressures}
-          style="height: 500px"
-        />
-      </LazyDemo>
-      <LazyDemo label="Fe-Ni-O gas atmosphere">
-        <ConvexHull
-          entries={gas_demo_ternary_entries}
-          controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
-          gas_config={gas_demo_config}
-          bind:gas_pressures={gas_demo_pressures}
-        />
-      </LazyDemo>
+      {#each gas_demos as [system, entries, style] (system)}
+        <LazyDemo label="{system} gas atmosphere">
+          <ConvexHull
+            {entries}
+            controls={{ title: `${system} with ${selected_demo_gas} Pressure` }}
+            gas_config={gas_demo_config}
+            bind:gas_pressures={gas_demo_pressures}
+            {style}
+          />
+        </LazyDemo>
+      {/each}
     </div>
   </section>
 

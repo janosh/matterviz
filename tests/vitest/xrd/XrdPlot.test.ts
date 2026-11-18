@@ -245,19 +245,6 @@ describe(`XrdPlot`, () => {
     expect(labels).toEqual([0, 1].map(() => [`110`, `200`]))
   })
 
-  test(`children prop`, () => {
-    mount(XrdPlot, {
-      target: document.body,
-      props: {
-        patterns: pattern,
-        children: createRawSnippet(() => ({
-          render: () => `<div class="custom-xrd-child">Custom XRD overlay</div>`,
-        })),
-      },
-    })
-    expect(document.querySelector(`.custom-xrd-child`)?.textContent).toBe(`Custom XRD overlay`)
-  })
-
   // Regression: the overbar must go on every digit of a multi-digit negative index
   // (-10 → 1̄0̄), not just the last one (10̄), which is what a naive prefix would produce.
   test(`overbar notation on multi-digit negative indices`, async () => {
@@ -589,8 +576,15 @@ describe(`XrdPlot`, () => {
     expect(profile_paths(target)).toHaveLength(0)
   })
 
-  test(`dragover class toggles correctly`, async () => {
-    const target = await mount_xrd({ patterns: pattern, allow_file_drop: true })
+  test(`children snippet renders and the dragover class toggles`, async () => {
+    const target = await mount_xrd({
+      patterns: pattern,
+      allow_file_drop: true,
+      children: createRawSnippet(() => ({
+        render: () => `<div class="custom-xrd-child">Custom XRD overlay</div>`,
+      })),
+    })
+    expect(query(target, `.custom-xrd-child`).textContent).toBe(`Custom XRD overlay`)
 
     const bar_plot = query(target, `.bar-plot`)
     expect(bar_plot.classList.contains(`dragover`)).toBe(false)

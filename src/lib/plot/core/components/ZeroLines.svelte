@@ -16,11 +16,11 @@
   // zero. A log axis has no zero to draw, and a time axis's zero is the epoch rather than an
   // origin worth marking.
   const zero_lines = $derived.by(() => {
-    const { axes, scales } = frame
-    const ranges = frame.ranges.current
+    // displayed domains: a derived x2 spans the forward image of x, not its own range
+    const { axes, scales, axis_domains } = frame
     const lines: ReturnType<typeof plot_area_line>[] = []
     for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
-      const [lower, upper] = ranges[axis]
+      const [lower, upper] = axis_domains[axis]
       const scale_type = axes[axis].scale_type
       if (
         !display[`${axis}_zero_line`] ||
@@ -28,6 +28,8 @@
         (axis === `y2` && !frame.has_y2) ||
         get_scale_type_name(scale_type) === `log` ||
         is_time_scale(scale_type) ||
+        !Number.isFinite(lower) ||
+        !Number.isFinite(upper) ||
         Math.min(lower, upper) > 0 ||
         Math.max(lower, upper) < 0
       )

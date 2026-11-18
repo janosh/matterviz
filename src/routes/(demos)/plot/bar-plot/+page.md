@@ -998,6 +998,14 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
   const predicted_mean = 4.92
 
   let series = $derived(comparison_mode ? comparison_data : efficiency_data)
+  // Performance tier threshold, annotated with its percentage at the right end
+  const tier = (y, label, color, dash, side) => ({
+    type: `horizontal`,
+    y,
+    label,
+    style: { color, width: 2, dash },
+    annotation: { text: `${label} (${y}%)`, position: `end`, side },
+  })
 
   let ref_lines = $derived(
     comparison_mode
@@ -1034,27 +1042,9 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
           },
         ]
       : [
-          {
-            type: `horizontal`,
-            y: 90,
-            label: `Excellent`,
-            style: { color: `#2ecc71`, width: 2 },
-            annotation: { text: `Excellent (90%)`, position: `end`, side: `above` },
-          },
-          {
-            type: `horizontal`,
-            y: 80,
-            label: `Good`,
-            style: { color: `#f39c12`, width: 2, dash: `6 3` },
-            annotation: { text: `Good (80%)`, position: `end`, side: `above` },
-          },
-          {
-            type: `horizontal`,
-            y: 70,
-            label: `Minimum`,
-            style: { color: `#e74c3c`, width: 2, dash: `4 4` },
-            annotation: { text: `Minimum (70%)`, position: `end`, side: `below` },
-          },
+          tier(90, `Excellent`, `#2ecc71`, undefined, `above`),
+          tier(80, `Good`, `#f39c12`, `6 3`, `above`),
+          tier(70, `Minimum`, `#e74c3c`, `4 4`, `below`),
         ],
   )
 </script>
@@ -1239,19 +1229,11 @@ Click the group label to toggle visibility of all series in that group, or click
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { BarPlot, create_axis_loader } from 'matterviz'
-
-  // Seeded random for reproducible data
-  function seeded_random(seed) {
-    let state = seed
-    return () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-  }
+  import { seeded_rng } from '#site/histogram-data.js'
 
   // Generate 50 materials with 7 properties each
   const n_materials = 50
-  const rng = seeded_random(123)
+  const rng = seeded_rng(123)
 
   const crystal_systems = [`Cubic`, `Tetragonal`, `Orthorhombic`, `Hexagonal`, `Monoclinic`]
   const system_colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`, `#9b59b6`]
@@ -1290,8 +1272,8 @@ Click the group label to toggle visibility of all series in that group, or click
   }
 
   // Build series grouped by crystal system
-  function build_series(prop_key) {
-    return crystal_systems.map((system, sys_idx) => {
+  const build_series = (prop_key) =>
+    crystal_systems.map((system, sys_idx) => {
       const system_materials = materials.filter((material) => material.system === system)
       return {
         x: system_materials.map((material) => material.id),
@@ -1301,7 +1283,6 @@ Click the group label to toggle visibility of all series in that group, or click
         labels: system_materials.map((material) => material.name),
       }
     })
-  }
 
   // State
   let y_key = $state(`band_gap`)
@@ -1335,11 +1316,7 @@ Click the group label to toggle visibility of all series in that group, or click
 
   // Stats
   let avg_load_time = $derived(
-    load_times.length > 0
-      ? Math.round(
-          load_times.reduce((sum, load_time) => sum + load_time, 0) / load_times.length,
-        )
-      : 0,
+    Math.round(load_times.reduce((sum, time) => sum + time, 0) / (load_times.length || 1)),
   )
 </script>
 

@@ -7,7 +7,8 @@
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import CameraSection from '#lib/scene/CameraSection.svelte'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { html_to_text, make_change_detector } from 'svelte-widgets/utils'
   import { parse_num_token } from '#lib/utils.js'
@@ -331,9 +332,7 @@
       <label>
         <span>Style</span>
         <select bind:value={representation}>
-          <option value="solid">Solid</option>
-          <option value="wireframe">Wireframe</option>
-          <option value="transparent">Transparent</option>
+          {@render enum_options(SETTINGS_CONFIG.fermi.representation)}
         </select>
       </label>
       <label>
@@ -386,9 +385,7 @@
         <label>
           <span>Axis</span>
           <select bind:value={clip_axis}>
-            <option value="x">X</option>
-            <option value="y">Y</option>
-            <option value="z">Z</option>
+            {@render enum_options(SETTINGS_CONFIG.fermi.clip_axis)}
           </select>
         </label>
         <label>

@@ -190,6 +190,7 @@ it.each([
         gas_pressures: () => ({}),
         energy_source_mode: () => `on-the-fly`,
         components: () => undefined,
+        open_elements: () => undefined,
         max_hull_dist_show_phases: () => max_hull_dist,
         show_stable: () => true,
         show_unstable: () => true,

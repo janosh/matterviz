@@ -687,9 +687,7 @@ function create_lammps_reader(
       warn(
         `Skipping ${non_finite.count} LAMMPS frame(s) with non-finite coordinates, the first ${non_finite.first}`,
       )
-    if (steps.length === 0) {
-      throw new Error(`No valid frames found in LAMMPS trajectory`)
-    }
+    if (steps.length === 0) throw new Error(`No valid frames found in LAMMPS trajectory`)
     warn_guesses()
     if (steps.length > 1 && identity_uses_ids === false) {
       warn(

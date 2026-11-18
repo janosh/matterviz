@@ -14,9 +14,12 @@ import {
   scheme_name,
   to_color_scale_config,
   with_scheme,
+  create_axis_scales,
   create_scale,
+  derived_scale,
   empty_extent,
   generate_arcsinh_ticks,
+  generate_log_minor_ticks,
   generate_log_ticks,
   generate_ticks,
   create_size_scale,
@@ -633,6 +636,183 @@ describe(`scales`, () => {
         expect(result.every((tick) => tick >= value && tick <= value * 1.1)).toBe(true)
       },
     )
+  })
+
+  describe(`generate_log_minor_ticks`, () => {
+    // oxfmt-ignore
+    test.each([
+      // one decade: 2..9 between the majors 1 and 10
+      { min: 1, max: 10, majors: [1, 10], expected: [2, 3, 4, 5, 6, 7, 8, 9] },
+      // partial decades are clipped to the domain
+      { min: 0.25, max: 3, majors: [1], expected: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 2, 3] },
+      // tiny values: exact decimal mantissas, not 3 * 1e-13 dust
+      { min: 1e-13, max: 1e-12, majors: [1e-13, 1e-12], expected: [2e-13, 3e-13, 4e-13, 5e-13, 6e-13, 7e-13, 8e-13, 9e-13] },
+      // huge values
+      { min: 1e20, max: 1e21, majors: [1e20, 1e21], expected: [2e20, 3e20, 4e20, 5e20, 6e20, 7e20, 8e20, 9e20] },
+      // 5 to 8 decades thin to 2 and 5
+      { min: 1, max: 1e6, majors: generate_log_ticks(1, 1e6), expected: [2, 5, 20, 50, 200, 500, 2e3, 5e3, 2e4, 5e4, 2e5, 5e5] },
+      // past 8 decades only the powers of ten the (here unstrided) majors skip: none
+      { min: 1e-6, max: 1e6, majors: generate_log_ticks(1e-6, 1e6), expected: [] },
+    ])(`[$min, $max]`, ({ min, max, majors, expected }) => {
+      const result = generate_log_minor_ticks([min, max], majors)
+      expect(result).toHaveLength(expected.length)
+      result.forEach((tick, idx) =>
+        expect(Math.abs(tick - expected[idx])).toBeLessThanOrEqual(4 * Number.EPSILON * expected[idx]),
+      )
+      // exact decimals where the mantissa is exact
+      if (min === 1e-13) expect(result[1]).toBe(3e-13)
+    })
+
+    test(`fills powers of ten skipped by strided majors and never repeats a major`, () => {
+      const majors = generate_log_ticks(1e-12, 1, 5) // [1e-12, 1e-9, 1e-6, 1e-3, 1]
+      const minors = generate_log_minor_ticks([1e-12, 1], majors)
+      expect(minors.map((tick) => Math.round(Math.log10(tick)))).toEqual([
+        -11, -10, -8, -7, -5, -4, -2, -1,
+      ])
+      // descending domains work the same
+      expect(generate_log_minor_ticks([10, 1], [1, 10])).toEqual([2, 3, 4, 5, 6, 7, 8, 9])
+      // 1-2-5 majors are excluded from the minors
+      expect(generate_log_minor_ticks([1, 10], [1, 2, 5, 10])).toEqual([3, 4, 6, 7, 8, 9])
+    })
+
+    test.each([
+      [[0, 10]],
+      [[-1, 10]],
+      [[5, 5]],
+      [[1, Infinity]],
+      [[1e-300, 1e300]], // 600 decades: over max_count, none rather than a solid band
+      [[1e-100, 1e40], [1]], // 140 one-per-decade minors also paint a band
+    ] as [Vec2, number[]?][])(`returns no minor ticks for %j`, (domain, majors = []) => {
+      expect(generate_log_minor_ticks(domain, majors)).toEqual([])
+    })
+  })
+
+  describe(`derived_scale`, () => {
+    const hc = 1239.84198 // eV nm
+    const energy_to_wavelength = {
+      forward: (energy: number) => hc / energy,
+      inverse: (nm: number) => hc / nm,
+    }
+    const two_theta_to_d = {
+      // Cu K-alpha: d = lambda / (2 sin theta)
+      forward: (two_theta: number) => 1.5406 / (2 * Math.sin((two_theta * Math.PI) / 360)),
+      inverse: (d_spacing: number) => (360 / Math.PI) * Math.asin(1.5406 / (2 * d_spacing)),
+    }
+    const inverse_temperature = {
+      forward: (temp: number) => 1000 / temp,
+      inverse: (inv: number) => 1000 / inv,
+    }
+    const linear_map = {
+      forward: (val: number) => 3 * val + 2,
+      inverse: (val: number) => (val - 2) / 3,
+    }
+    // a nice number: mantissa 1, 2, 2.5 or 5 times a power of ten (d3's linear tick steps
+    // give multiples of those; check the tick is an integer multiple of a 1-2-5 step)
+    const is_nice_multiple = (ticks: number[]) => {
+      // descending derived domains (decreasing maps) tick in descending order
+      const step = Math.abs(ticks[1] - ticks[0])
+      const mantissa = step / 10 ** Math.floor(Math.log10(step))
+      const nice_step = [1, 2, 2.5, 5, 10].some((nice) => Math.abs(mantissa - nice) < 1e-9)
+      return (
+        nice_step &&
+        ticks.every((tick) => Math.abs(tick / step - Math.round(tick / step)) < 1e-6)
+      )
+    }
+    // oxfmt-ignore
+    test.each([
+      { name: `energy -> wavelength`, map: energy_to_wavelength, domain: [1.5, 6] as Vec2, decreasing: true },
+      { name: `2theta -> d-spacing`, map: two_theta_to_d, domain: [10, 90] as Vec2, decreasing: true },
+      { name: `T -> 1000/T`, map: inverse_temperature, domain: [300, 1200] as Vec2, decreasing: true },
+      { name: `linear increasing`, map: linear_map, domain: [-4, 7] as Vec2, decreasing: false },
+    ])(`$name: nice derived ticks placed via inverse`, ({ map, domain, decreasing }) => {
+      const base = scaleLinear().domain(domain).range([50, 650])
+      const scale = derived_scale(base, map)
+      const [lo, hi] = scale.domain()
+      expect([lo, hi]).toEqual([map.forward(domain[0]), map.forward(domain[1])])
+      expect(lo > hi).toBe(decreasing)
+      const ticks = scale.ticks(8)
+      expect(ticks.length).toBeGreaterThanOrEqual(3)
+      expect(is_nice_multiple(ticks)).toBe(true)
+      for (const tick of ticks) {
+        // inside the derived domain, round-tripping within 1e-12 relative
+        expect(tick).toBeGreaterThanOrEqual(Math.min(lo, hi))
+        expect(tick).toBeLessThanOrEqual(Math.max(lo, hi))
+        const base_value = map.inverse(tick)
+        // relative to the tick, or to the domain span for a tick at 0
+        const scale_ref = Math.max(Math.abs(tick), Math.abs(hi - lo))
+        expect(Math.abs(map.forward(base_value) - tick)).toBeLessThanOrEqual(1e-12 * scale_ref)
+        // positioned where the base scale puts its preimage, and the pixel inverts back
+        expect(scale(tick)).toBe(base(base_value))
+        const pixel = scale(tick)
+        expect(Math.abs(scale.invert(pixel) - tick)).toBeLessThanOrEqual(1e-12 * scale_ref)
+      }
+      // a decreasing map runs its derived ticks right to left
+      const pixels = ticks.toSorted((left, right) => left - right).map(scale)
+      const ascending = pixels.every((px, idx) => idx === 0 || px > pixels[idx - 1])
+      expect(ascending).toBe(!decreasing)
+      // the base is copied: later changes to it don't move the derived axis
+      base.domain([0, 1])
+      expect(scale.domain()).toEqual([lo, hi])
+    })
+
+    test(`domain/range setters and copy act on the base preimage`, () => {
+      const base = scaleLinear().domain([1, 2]).range([0, 100])
+      const scale = derived_scale(base, energy_to_wavelength)
+      scale.domain([800, 400])
+      expect(scale.domain().map((nm) => Math.round(nm))).toEqual([800, 400])
+      scale.range([10, 20])
+      expect(scale.range()).toEqual([10, 20])
+      expect(scale(800)).toBeCloseTo(10, 12)
+      const copy = scale.copy()
+      copy.range([0, 1])
+      expect(scale.range()).toEqual([10, 20])
+    })
+
+    test(`log tick scheme gives decades in derived units; a pole at a bound shrinks the domain`, () => {
+      const base = scaleLog().domain([0.01, 100]).range([0, 500])
+      const ticks = derived_scale(base, energy_to_wavelength, `log`).ticks()
+      expect(ticks.map((tick) => Math.round(Math.log10(tick)))).toEqual([2, 3, 4, 5])
+      // hc / 0 is not finite: the domain ends at the outermost finite sample, x = 5/64
+      const at_zero = scaleLinear().domain([0, 5]).range([0, 1])
+      const from_zero = derived_scale(at_zero, energy_to_wavelength)
+      expect(from_zero.domain()).toEqual([hc / (5 / 64), hc / 5])
+      expect(from_zero.ticks(5)).toEqual([14000, 12000, 10000, 8000, 6000, 4000, 2000])
+    })
+
+    // forward must be finite and monotonic over the whole x view, not just at its ends: a pole
+    // inside it (1240 / x across 0) or a turning point gives no derived domain or ticks
+    test.each([
+      [`pole at 0`, energy_to_wavelength, [-1, 1]],
+      [`pole off-center`, energy_to_wavelength, [-1, 3]],
+      [`turning point`, { forward: (val: number) => val ** 2, inverse: Math.sqrt }, [-2, 3]],
+      [
+        `NaN inside`,
+        {
+          forward: (val: number) => (val > 1 && val < 2 ? NaN : val),
+          inverse: (val: number) => val,
+        },
+        [0, 3],
+      ],
+    ] as const)(`%s: non-monotonic forward gives no ticks`, (_name, map, domain) => {
+      const scale = derived_scale(scaleLinear().domain(domain).range([0, 600]), map)
+      expect(scale.domain().every(Number.isFinite)).toBe(false)
+      expect(scale.ticks(8)).toEqual([])
+    })
+
+    test(`create_axis_scales builds a derived x2 over x, rejecting a time x axis`, () => {
+      const unit: Vec2 = [0, 1]
+      const ranges = { x: [250, 1000] as Vec2, x2: unit, y: unit, y2: unit }
+      const pad = { l: 10, r: 10, t: 10, b: 10 }
+      const axes = { x: {}, x2: { derive: inverse_temperature }, y: {}, y2: {} }
+      // x2's own range plays no part in the derived scale
+      const scales = create_axis_scales(axes, ranges, pad, 220, 100)
+      expect(scales.x2.domain()).toEqual([4, 1])
+      expect(scales.x2(2)).toBe(scales.x(500))
+      const time_axes = { ...axes, x: { scale_type: `time` as const } }
+      expect(() => create_axis_scales(time_axes, ranges, pad, 100, 100)).toThrow(
+        `x2_axis.derive needs a numeric x axis, got scale_type 'time'`,
+      )
+    })
   })
 
   describe(`generate_ticks`, () => {

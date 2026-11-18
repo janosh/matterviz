@@ -18,11 +18,9 @@
 
   // --- Synthetic Data Generators ---
 
-  // Generate smooth baseline data
   const generate_smooth = (length: number, amplitude = 10, frequency = 0.2): number[] =>
     Array.from({ length }, (_, idx) => amplitude * Math.sin(idx * frequency) + amplitude)
 
-  // Add random noise
   const add_noise = (data: number[], noise_level: number): number[] =>
     data.map((val) => val + (Math.random() - 0.5) * noise_level * 2)
 
@@ -93,29 +91,24 @@
   let outlier_magnitude = $state(25)
   let regenerate_counter = $state(0)
 
-  // Derived: cleaning config from controls
-  // Using $derived ensures Svelte tracks all state dependencies properly
-  let cleaning_config = $derived.by((): CleaningConfig => {
-    const config: CleaningConfig = {
-      invalid_values: invalid_mode,
-      oscillation_threshold,
-      window_size,
-      truncation_mode,
-      in_place: false,
-    }
-
-    if (apply_smoothing) {
-      config.smooth =
-        smoothing_type === `savgol`
-          ? { type: `savgol`, window: smoothing_window, polynomial_order: 2 }
-          : { type: `moving_avg`, window: smoothing_window }
-    }
-
-    if (apply_bounds) {
-      config.bounds = { min: bounds_min, max: bounds_max, mode: bounds_mode }
-    }
-
-    return config
+  // Cleaning config from the controls
+  let cleaning_config = $derived<CleaningConfig>({
+    invalid_values: invalid_mode,
+    oscillation_threshold,
+    window_size,
+    truncation_mode,
+    in_place: false,
+    ...(apply_smoothing
+      ? {
+          smooth:
+            smoothing_type === `savgol`
+              ? { type: `savgol`, window: smoothing_window, polynomial_order: 2 }
+              : { type: `moving_avg`, window: smoothing_window },
+        }
+      : {}),
+    ...(apply_bounds
+      ? { bounds: { min: bounds_min, max: bounds_max, mode: bounds_mode } }
+      : {}),
   })
 
   // Derived: raw data - regenerates when counter, type, or generation params change
@@ -152,20 +145,8 @@
 
   // Interpolated value at an index: the average of its nearest valid neighbors
   function interpolate_at_index(values: number[], idx: number, fallback: number): number {
-    let prev = fallback,
-      next = fallback
-    for (let jdx = idx - 1; jdx >= 0; jdx--) {
-      if (Number.isFinite(values[jdx])) {
-        prev = values[jdx]
-        break
-      }
-    }
-    for (let jdx = idx + 1; jdx < values.length; jdx++) {
-      if (Number.isFinite(values[jdx])) {
-        next = values[jdx]
-        break
-      }
-    }
+    const prev = values.slice(0, idx).findLast(Number.isFinite) ?? fallback
+    const next = values.slice(idx + 1).find(Number.isFinite) ?? fallback
     return (prev + next) / 2
   }
 
@@ -345,31 +326,20 @@
       }),
     )
 
+  // JS literal of a config value: quoted strings, nested objects inline
+  const to_js = (val: unknown): string =>
+    typeof val === `string`
+      ? `'${val}'`
+      : typeof val === `object` && val
+        ? `{ ${Object.entries(val)
+            .map(([key, sub]) => `${key}: ${to_js(sub)}`)
+            .join(`, `)} }`
+        : String(val)
+
   let live_code = $derived.by(() => {
-    const config_lines = [
-      `  invalid_values: '${invalid_mode}',`,
-      `  oscillation_threshold: ${oscillation_threshold},`,
-      `  window_size: ${window_size},`,
-      `  truncation_mode: '${truncation_mode}',`,
-    ]
-
-    if (apply_bounds) {
-      config_lines.push(
-        `  bounds: { min: ${bounds_min}, max: ${bounds_max}, mode: '${bounds_mode}' },`,
-      )
-    }
-
-    if (apply_smoothing) {
-      const window_prop = `window: ${smoothing_window}`
-      config_lines.push(
-        smoothing_type === `savgol`
-          ? `  smooth: { type: 'savgol', ${window_prop}, polynomial_order: 2 },`
-          : `  smooth: { type: 'moving_avg', ${window_prop} },`,
-      )
-    }
-
-    config_lines.push(`  in_place: false,`)
-
+    const config_lines = Object.entries(cleaning_config).map(
+      ([key, val]) => `  ${key}: ${to_js(val)},`,
+    )
     const x_preview = raw_data.x.slice(0, 5).join(`, `)
     const y_preview = raw_data.y
       .slice(0, 5)

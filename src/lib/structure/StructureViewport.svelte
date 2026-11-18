@@ -41,6 +41,8 @@
     | `defer_expensive_geometry`
     | `sphere_segments`
     | `slice_polygon`
+    | `bonding_options`
+    | `bonding_strategy`
 
   // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
   // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
@@ -469,9 +471,7 @@
   let last_reset_token: number | undefined
   $effect(() => {
     const token = reset_token
-    if (last_reset_token !== undefined && token !== last_reset_token) {
-      untrack(reset_camera)
-    }
+    if (last_reset_token !== undefined && token !== last_reset_token) untrack(reset_camera)
     last_reset_token = token
   })
 
@@ -537,6 +537,8 @@
         defer_expensive_geometry={scene_input(`defer_expensive_geometry`)}
         sphere_segments={scene_input(`sphere_segments`)}
         slice_polygon={scene_input(`slice_polygon`)}
+        bonding_options={scene_input(`bonding_options`)}
+        bonding_strategy={scene_input(`bonding_strategy`)}
         auto_rotate={in_grid ? 0 : scene_props.auto_rotate}
         symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
         lattice_planes={session.shows_input_frame ? scene_props.lattice_planes : []}

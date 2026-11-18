@@ -127,7 +127,6 @@
     CartesianPlotProps & {
       // Distributions to bin, each a list of sample `values` with optional weights, label and color
       series: readonly HistogramSeries[]
-      // Component-specific props
       // Number of equal-width bins over the x domain (geometric on a log axis)
       bins?: number
       // Bar height scaling: raw `count`, `probability` per bin or `density` (bars integrate to 1)

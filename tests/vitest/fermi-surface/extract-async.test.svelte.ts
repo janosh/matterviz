@@ -150,23 +150,18 @@ test(`warmth follows the grids the worker holds, and an evicted grid is sent aga
   expect(warm(grids[0], [1, 1.5])).toEqual([false, true])
 })
 
-// The fresh module graph it imports takes seconds on shared CI runners
-test(
-  `extracts on the main thread where workers are disabled`,
-  { timeout: 20_000 },
-  async () => {
-    const main_thread_module = await import_without_workers(
-      () => import(`#lib/fermi-surface/extract-async.js`),
-    )
-    const grid = load_cu()
-    const options = { mu: -2.5, interpolation_factor: 0, wigner_seitz: true }
-    const is_warm = (factor: number) => main_thread_module.fermi_extraction_warm(grid, factor)
-    expect(is_warm(0)).toBe(false)
-    const result = await main_thread_module.extract_fermi_surface_async(grid, options)
-    expect(result).toEqual(extract_fermi_surface(grid, options))
-    expect(result.isosurfaces.length).toBeGreaterThan(0)
-    expect(stub.posted).toHaveLength(0)
-    // the upsampled grid stays with the grid object here, so another mu needs no spinner
-    expect([is_warm(0), is_warm(3)]).toEqual([true, false])
-  },
-)
+test(`extracts on the main thread where workers are disabled`, async () => {
+  const main_thread_module = await import_without_workers(
+    () => import(`#lib/fermi-surface/extract-async.js`),
+  )
+  const grid = load_cu()
+  const options = { mu: -2.5, interpolation_factor: 0, wigner_seitz: true }
+  const is_warm = (factor: number) => main_thread_module.fermi_extraction_warm(grid, factor)
+  expect(is_warm(0)).toBe(false)
+  const result = await main_thread_module.extract_fermi_surface_async(grid, options)
+  expect(result).toEqual(extract_fermi_surface(grid, options))
+  expect(result.isosurfaces.length).toBeGreaterThan(0)
+  expect(stub.posted).toHaveLength(0)
+  // the upsampled grid stays with the grid object here, so another mu needs no spinner
+  expect([is_warm(0), is_warm(3)]).toEqual([true, false])
+})

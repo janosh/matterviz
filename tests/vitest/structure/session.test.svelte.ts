@@ -1,10 +1,12 @@
 // Headless StructureSession: the display pipeline (supercell, image atoms, element map),
 // selection validated against what is displayed, invalidation on topology/transform/mode
 // changes, edit-atoms operations with undo/redo, the edit-bonds layer and pane bookkeeping.
-import type { Vec3 } from '#lib/math.js'
+import { euclidean_dist, type Vec2, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, StructureBond } from '#lib/structure/index.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import { bond_records } from '#lib/structure/bond-rendering.js'
 import { explicit_only, get_bond_data } from '#lib/structure/bonding.js'
+import * as neighbor_list from '#lib/structure/neighbor-list.js'
 import type { StructureSession } from '#lib/structure/session.svelte.js'
 import { MAX_HISTORY } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
@@ -20,6 +22,7 @@ import {
   make_rocksalt,
   make_srtio3,
 } from '../test-fixtures'
+import { expect_same_bonds } from './geometry-fixtures'
 import { crystal, flush_set, make_session, type SessionHost } from './session-harness.svelte'
 
 // Rendered explicit bond lengths (Å, cell_shift included) to 1e-9 Å: a wrong shift is Å off
@@ -65,6 +68,134 @@ describe(`display pipeline`, () => {
     session.element_mapping = undefined
     flushSync()
     expect(session.tool_input).toBe(original_input)
+  })
+
+  it(`keep_molecules_whole reassembles torn molecules in the displayed cell and supercell`, () => {
+    // C-H 1 A apart through the a face of a 10 A cell
+    const torn = make_crystal(10, [
+      [`C`, [0.97, 0.5, 0.5]],
+      [`H`, [0.07, 0.5, 0.5]],
+    ])
+    const { host, session } = make_session({ structure: torn })
+    const ch_dist = () => {
+      const [site_c, site_h] = session.displayed_structure?.sites ?? []
+      return euclidean_dist(site_c.xyz, site_h.xyz)
+    }
+    expect(ch_dist()).toBeCloseTo(9, 10)
+    flush_set(host, { keep_molecules_whole: true })
+    expect(session.displayed_structure?.sites).toHaveLength(2)
+    expect(ch_dist()).toBeCloseTo(1, 10)
+    // centroid a = 1.02 after reassembly moves back one cell: C at -0.03, H at 0.07
+    expect(session.displayed_structure?.sites.map((site) => site.abc[0])).toEqual([
+      expect.closeTo(-0.03, 12),
+      expect.closeTo(0.07, 12),
+    ])
+    expect(host.structure?.sites[0].abc[0]).toBe(0.97) // the input stays wrapped
+    // a drag keeps the last translations and runs no bond search per move: pulling H 4 A
+    // from C would otherwise jump C a lattice vector mid-drag; the release unwraps afresh
+    flush_set(host, { measure_mode: `edit-atoms` })
+    const search = vi.spyOn(neighbor_list, `neighbor_query_cutoff`)
+    session.dragging_atoms = true
+    const c_abc = () => session.displayed_structure?.sites[0].abc[0]
+    // C (wrapped 0.97, shown -0.03) dragged +0.5 A wraps to 0.02 in the input: shown at 0.02
+    session.move_sites([0], [0.5, 0, 0])
+    flushSync()
+    expect(c_abc()).toBeCloseTo(0.02, 12)
+    session.move_sites([0], [-0.5, 0, 0])
+    session.move_sites([1], [4, 0, 0])
+    flushSync()
+    expect([c_abc(), search.mock.calls.length]).toEqual([expect.closeTo(-0.03, 12), 0])
+    session.dragging_atoms = false
+    flushSync()
+    expect(c_abc()).toBe(0.97)
+    search.mockRestore()
+    flush_set(host, { structure: torn, measure_mode: `distance`, supercell_scaling: `2x1x1` })
+    const sites = session.displayed_structure?.sites ?? []
+    expect(sites).toHaveLength(4)
+    const by_element = (elem: string) =>
+      sites.filter((site) => site.species[0].element === elem)
+    for (const site_c of by_element(`C`)) {
+      const dists = by_element(`H`).map((site_h) => euclidean_dist(site_c.xyz, site_h.xyz))
+      expect(Math.min(...dists)).toBeCloseTo(1, 10)
+    }
+    // image atoms add no lone copy of a whole molecule's atom 0.05 A inside a face (C at
+    // a = -0.005 after reassembly), while the wrapped view copies it to the far face
+    const near_face = make_crystal(10, [
+      [`C`, [0.995, 0.5, 0.5]],
+      [`H`, [0.095, 0.5, 0.5]],
+    ])
+    flush_set(host, {
+      structure: near_face,
+      supercell_scaling: `1x1x1`,
+      show_image_atoms: true,
+    })
+    expect(session.displayed_structure?.sites[0].abc[0]).toBeCloseTo(-0.005, 12)
+    expect(session.displayed_structure?.sites).toHaveLength(2)
+    flush_set(host, { keep_molecules_whole: false })
+    expect(session.displayed_structure?.sites).toHaveLength(3)
+  })
+
+  // valid options can still fail the search (a cutoff 100 cells long overflows the image
+  // cloud): the wrapped structure shows, one notice says why, a new structure or option retries
+  it(`keep_molecules_whole falls back to the wrapped cell when the bond search throws`, () => {
+    const options = $state({ value: { pair_cutoffs: { 'C-C': [0.5, 100] as Vec2 } } })
+    const { host, session, notices } = make_session(
+      { structure: make_crystal(1, [[`C`, [0.5, 0.5, 0.5]]]), keep_molecules_whole: true },
+      { bonding_strategy: () => `pair_cutoffs`, bonding_options: () => options.value },
+    )
+    expect(session.displayed_structure?.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+    flush_set(host, { structure: make_crystal(1, [[`C`, [0.5, 0.5, 0.5]]]) })
+    const failed = () =>
+      notices.filter((msg) => msg.startsWith(`Cannot keep molecules whole:`))
+    expect(failed()).toHaveLength(1)
+    expect(failed()[0]).toContain(`4000000 positions`)
+    options.value = { pair_cutoffs: { 'C-C': [0.5, 0.9] } }
+    flushSync()
+    expect(session.displayed_structure?.sites).toHaveLength(1)
+    expect(failed()).toHaveLength(1)
+  })
+
+  it(`keep_molecules_whole costs no extra bond search and carries the bonds over`, () => {
+    // C-H torn through the a face, O-H through the b and c faces of a 10 A cell
+    const frame = (shift: number) =>
+      make_crystal(10, [
+        [`C`, [0.97 - shift, 0.5, 0.5]],
+        [`H`, [0.07 - shift, 0.5, 0.5]],
+        [`O`, [0.3, 0.98, 0.98]],
+        [`H`, [0.3, 0.06, 0.05]],
+      ])
+    const search = vi.spyOn(neighbor_list, `neighbor_query_cutoff`)
+    const { host, session } = make_session({
+      structure: frame(0),
+      show_image_atoms: true,
+      image_atom_completion: `boundary`,
+    })
+    // searches for one new frame: the image atoms' and, keeping molecules whole, the unwrap's
+    const searches_per_frame = (shift: number): number => {
+      search.mockClear()
+      flush_set(host, { structure: frame(shift) })
+      expect(session.displayed_structure?.sites.length).toBeGreaterThanOrEqual(4) // derives the frame
+      return search.mock.calls.length
+    }
+    const searches_wrapped = searches_per_frame(0.001)
+    expect(searches_wrapped).toBeGreaterThan(0)
+    flush_set(host, { keep_molecules_whole: true })
+    expect(searches_per_frame(0.002)).toBe(searches_wrapped)
+    // the carried bonds (memo hit, no search) equal a fresh search of the unwrapped cell
+    flush_set(host, { show_image_atoms: false })
+    const unwrapped = session.displayed_structure
+    if (!unwrapped || !(`lattice` in unwrapped)) throw new Error(`no unwrapped crystal`)
+    const options = { pbc: unwrapped.lattice.pbc }
+    search.mockClear()
+    const carried = get_bond_data(unwrapped, `electroneg_ratio`, options)
+    expect(search).not.toHaveBeenCalled()
+    const fresh_copy = { ...unwrapped, sites: unwrapped.sites.map((site) => ({ ...site })) }
+    const fresh = bond_records(get_bond_data(fresh_copy, `electroneg_ratio`, options))
+    expect(search).toHaveBeenCalled()
+    expect(fresh).toHaveLength(2)
+    expect(bond_records(carried).some(({ cell_shift }) => cell_shift)).toBe(false) // both whole
+    expect_same_bonds(carried, fresh)
+    search.mockRestore()
   })
 
   // The host's $state deep-proxies its structure; the pipeline reads a plain copy (every site

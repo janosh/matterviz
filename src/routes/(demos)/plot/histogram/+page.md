@@ -22,22 +22,16 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
     label: `Normal Distribution (N=${format_num(sample_size, `~s`)}, μ=50, σ=15)`,
   })
 
+  const describe = ({ value, count, property }: HistogramHandlerProps): string =>
+    `${property} - Value: ${value.toFixed(1)}, Count: ${count}, Percentage: ${format_num(
+      count / sample_size,
+      `.2~%`,
+    )}`
   function handle_bar_hover(data: HistogramHandlerProps | null): void {
-    if (data) {
-      const { value, count, property } = data
-      hover_info = `Hovering: ${property} - Value: ${value.toFixed(
-        1,
-      )}, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
-    } else {
-      hover_info = 'Hover over a bar to see details'
-    }
+    hover_info = data ? `Hovering: ${describe(data)}` : 'Hover over a bar to see details'
   }
-
   function handle_bar_click(data: HistogramHandlerProps): void {
-    const { value, count, property } = data
-    click_info = `Clicked: ${property} - Value: ${value.toFixed(
-      1,
-    )}, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
+    click_info = `Clicked: ${describe(data)}`
   }
 </script>
 
@@ -436,48 +430,23 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     x_axis.format = selected === `discrete` ? `.1f` : `.0f`
   })
 
+  const dist = (data, label, color) => ({ data, label, color })
   let distributions = $derived({
-    bimodal: {
-      data: utils.generate_bimodal(1500),
-      label: `Bimodal Distribution`,
-      color: `#e74c3c`,
-    },
-    skewed: {
-      data: utils.generate_skewed(1200),
-      label: `Right-Skewed Distribution`,
-      color: `#3498db`,
-    },
-    discrete: {
-      data: utils.generate_discrete(1000),
-      label: `Survey Responses (1-10)`,
-      color: `#2ecc71`,
-    },
-    age: {
-      data: utils.generate_age_distribution(2000),
-      label: `Age Distribution`,
-      color: `#9b59b6`,
-    },
-    mixture: {
-      data: utils.generate_mixture(1800),
-      label: `Complex Mixture`,
-      color: `#f39c12`,
-    },
+    bimodal: dist(utils.generate_bimodal(1500), `Bimodal Distribution`, `#e74c3c`),
+    skewed: dist(utils.generate_skewed(1200), `Right-Skewed Distribution`, `#3498db`),
+    discrete: dist(utils.generate_discrete(1000), `Survey Responses (1-10)`, `#2ecc71`),
+    age: dist(utils.generate_age_distribution(2000), `Age Distribution`, `#9b59b6`),
+    mixture: dist(utils.generate_mixture(1800), `Complex Mixture`, `#f39c12`),
   })
 
   let current = $derived(distributions[selected])
   let series_data = $derived(
     mode === `single`
-      ? [
-          {
-            values: current.data,
-            label: current.label,
-            color: current.color,
-          },
-        ]
-      : Object.entries(distributions).map(([key, dist]) => ({
-          values: dist.data,
-          label: dist.label,
-          color: dist.color,
+      ? [{ values: current.data, label: current.label, color: current.color }]
+      : Object.entries(distributions).map(([key, { data, label, color }]) => ({
+          values: data,
+          label,
+          color,
           visible: key === selected,
         })),
   )
@@ -928,47 +897,23 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   import { type HistogramSeries, Histogram, create_axis_loader, type AxisKey } from 'matterviz'
   import { box_muller, seeded_rng } from '#site/histogram-data.js'
 
-  type DistType =
-    | `normal`
-    | `exponential`
-    | `bimodal`
-    | `uniform`
-    | `log-normal`
-    | `heavy-tail`
-    | `skewed`
-    | `multimodal`
+  // One sample of each distribution, drawn from a seeded uniform rng and normal()
+  const samplers = {
+    normal: ({ normal }) => normal() * 1.5 - 2,
+    exponential: ({ rng }) => -Math.log(rng()) * 2,
+    bimodal: ({ rng, normal }) => (rng() < 0.4 ? normal() * 0.8 - 3 : normal() * 1.2 + 2),
+    uniform: ({ rng }) => rng() * 10 - 2,
+    'log-normal': ({ normal }) => Math.exp(normal() * 0.8),
+    'heavy-tail': ({ rng, normal }) => normal() / (rng() + 0.1),
+    skewed: ({ rng }) => rng() ** 3 * 15 - 2,
+    multimodal: ({ rng, normal }) => normal() * 0.5 + Math.floor(rng() * 4) * 3 - 4,
+  }
+  type DistType = keyof typeof samplers
 
-  // Generate various distributions
   function generate_distribution(type: DistType, count: number, seed: number): number[] {
     const rng = seeded_rng(seed)
     const normal = () => box_muller(0, 1, rng)
-    const data: number[] = []
-
-    for (let idx = 0; idx < count; idx++) {
-      let val: number
-      if (type === `normal`) {
-        val = normal() * 1.5 - 2
-      } else if (type === `exponential`) {
-        val = -Math.log(rng()) * 2
-      } else if (type === `bimodal`) {
-        val = rng() < 0.4 ? normal() * 0.8 - 3 : normal() * 1.2 + 2
-      } else if (type === `uniform`) {
-        val = rng() * 10 - 2
-      } else if (type === `log-normal`) {
-        val = Math.exp(normal() * 0.8)
-      } else if (type === `heavy-tail`) {
-        val = normal() / (rng() + 0.1)
-      } else if (type === `skewed`) {
-        const param_u = rng()
-        val = Math.pow(param_u, 3) * 15 - 2
-      } else {
-        // multimodal
-        const mode = Math.floor(rng() * 4)
-        val = normal() * 0.5 + mode * 3 - 4
-      }
-      data.push(val)
-    }
-    return data
+    return Array.from({ length: count }, () => samplers[type]({ rng, normal }))
   }
 
   const n_points = 3000 // Per series
@@ -978,54 +923,14 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`]
 
   const property_configs = {
-    formation_energy: {
-      type: `normal`,
-      label: `Formation Energy`,
-      unit: `eV/atom`,
-      bins: 50,
-    },
-    band_gap: {
-      type: `exponential`,
-      label: `Band Gap`,
-      unit: `eV`,
-      bins: 40,
-    },
-    volume: {
-      type: `bimodal`,
-      label: `Volume`,
-      unit: `Å³/atom`,
-      bins: 45,
-    },
-    density: {
-      type: `log-normal`,
-      label: `Density`,
-      unit: `g/cm³`,
-      bins: 50,
-    },
-    bulk_modulus: {
-      type: `heavy-tail`,
-      label: `Bulk Modulus`,
-      unit: `GPa`,
-      bins: 60,
-    },
-    thermal_cond: {
-      type: `skewed`,
-      label: `Thermal Conductivity`,
-      unit: `W/m·K`,
-      bins: 45,
-    },
-    melting_point: {
-      type: `uniform`,
-      label: `Melting Point`,
-      unit: `K`,
-      bins: 40,
-    },
-    hardness: {
-      type: `multimodal`,
-      label: `Hardness`,
-      unit: `GPa`,
-      bins: 55,
-    },
+    formation_energy: { type: `normal`, label: `Formation Energy`, unit: `eV/atom`, bins: 50 },
+    band_gap: { type: `exponential`, label: `Band Gap`, unit: `eV`, bins: 40 },
+    volume: { type: `bimodal`, label: `Volume`, unit: `Å³/atom`, bins: 45 },
+    density: { type: `log-normal`, label: `Density`, unit: `g/cm³`, bins: 50 },
+    bulk_modulus: { type: `heavy-tail`, label: `Bulk Modulus`, unit: `GPa`, bins: 60 },
+    thermal_cond: { type: `skewed`, label: `Thermal Conductivity`, unit: `W/m·K`, bins: 45 },
+    melting_point: { type: `uniform`, label: `Melting Point`, unit: `K`, bins: 40 },
+    hardness: { type: `multimodal`, label: `Hardness`, unit: `GPa`, bins: 55 },
   }
 
   // Generate data for all combinations
@@ -1044,13 +949,12 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   type PropKey = keyof typeof property_configs
 
   // Build series for a property
-  function build_series(prop_key: PropKey): HistogramSeries[] {
-    return material_classes.map((name, idx) => ({
+  const build_series = (prop_key: PropKey): HistogramSeries[] =>
+    material_classes.map((name, idx) => ({
       values: all_data[prop_key][idx],
       label: name,
       color: colors[idx],
     }))
-  }
 
   // State
   let current_prop = $state<PropKey>(`formation_energy`)
@@ -1089,9 +993,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   }))
 
   let avg_load = $derived(
-    load_times.length > 0
-      ? Math.round(load_times.reduce((sum, val) => sum + val, 0) / load_times.length)
-      : 0,
+    Math.round(load_times.reduce((sum, val) => sum + val, 0) / (load_times.length || 1)),
   )
 
   let total_points = $derived(n_points * material_classes.length)

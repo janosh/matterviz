@@ -19,10 +19,15 @@ export const compute_geometries_async = create_worker_client<
   // by field (typed arrays read back raw through the proxy, so the value buffers are not
   // copied here — structured clone copies them once)
   build_payload: (input) => ({
-    volumes: input.volumes.map(({ grid, lattice, origin, surfaces }) => ({
+    volumes: input.volumes.map(({ grid, lattice, origin, clip, surfaces }) => ({
       grid: { values: grid.values, dims: [...grid.dims], order: grid.order },
       lattice: lattice.map((row) => [...row]),
       origin: [...origin],
+      clip: clip && {
+        frame: clip.frame.map((row) => [...row]),
+        range: clip.range.map((bounds) => [...bounds]),
+        cells: clip.cells.map((cell) => [...cell]),
+      },
       surfaces: surfaces.map(({ token, isovalue }) => ({ token, isovalue })),
     })),
   }),

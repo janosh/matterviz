@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import { trajectory_frame_to_extxyz_str } from '#lib/trajectory/file-export.js'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
@@ -2359,6 +2360,25 @@ describe(`ASE`, () => {
     })
     expect(batch?.masses).toEqual(Float64Array.of(1.008, 1.008))
     expect(batch?.velocities?.[0]).toBe((4 / 1.008) * FS_IN_ASE_TIME)
+    // frames keep the raw momenta next to the derived velocity, so an extXYZ export writes
+    // ASE's own momenta column (minus the velocity reimport derives from it)
+    const [, frame] = await frames_of(await open(make_ase_md_buffer(2, false), `md.traj`))
+    expect(frame.structure.sites[0].properties).toMatchObject({
+      momentum: [4, 0, 0],
+      velocity: [(4 / 1.008) * FS_IN_ASE_TIME, 0, 0],
+    })
+    const exported = trajectory_frame_to_extxyz_str(frame)
+    expect(exported).toContain(`Properties=species:S:1:pos:R:3:momenta:R:3 `)
+    expect(exported.split(`\n`)[2].split(/\s+/).slice(-3).map(Number)).toEqual([4, 0, 0])
+    // recorded masses go out as ASE's `masses`, so the momenta reimport to the same velocity
+    const [, recorded] = await frames_of(await open(make_ase_md_buffer(2), `md.traj`))
+    const [site] = recorded.structure.sites
+    expect(site.properties).toMatchObject({ mass: 2, velocity: [2 * FS_IN_ASE_TIME, 0, 0] })
+    const with_masses = trajectory_frame_to_extxyz_str(recorded)
+    expect(with_masses).toMatch(/:masses:R:1[: ]/)
+    expect(with_masses).not.toContain(`velocity:R:3`)
+    const [reparsed] = parse_xyz_trajectory(with_masses, create_warning_collector()).frames
+    expect(reparsed.structure.sites[0].properties?.velocity).toEqual(site.properties?.velocity)
   })
   // Result keys lose their ULM trailing dot; malformed ndarray descriptors are skipped
   // without dropping the scalar results next to them

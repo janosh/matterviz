@@ -202,10 +202,9 @@
 
         if (up) draw(up, `up`, color)
         if (down) {
-          // Overlay gets its own shade and dash; mirror negates the densities instead
-          const overlay = effective_spin_mode === `overlay`
-          const down_color = overlay ? plot_color(dos_idx * 2 + 1) : color
-          draw(down, `down`, down_color, overlay ? `4,2` : undefined)
+          // Overlay keeps the DOS's colour and dashes spin-down (a shade of its own would be
+          // the next DOS's colour); mirror negates the densities instead
+          draw(down, `down`, color, effective_spin_mode === `overlay` ? `4,2` : undefined)
         }
       }
       for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {

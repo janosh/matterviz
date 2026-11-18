@@ -1,16 +1,19 @@
 import type { ElementSymbol } from '#lib'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, LatticeType, Site } from '#lib/structure/index.js'
 import {
+  symmetrized_cif_unavailable_reason,
   create_structure_filename,
   fractional_export_unavailable_reason,
+  nearest_image,
   poscar_export_unavailable_reason,
   xyz_export_unavailable_reason,
   structure_to_cif_str,
   structure_to_json_str,
   structure_to_poscar_str,
   structure_to_xyz_str,
+  STRUCT_TEXT_FORMATS,
 } from '#lib/structure/export.js'
 import {
   parse_cif,
@@ -18,9 +21,17 @@ import {
   parse_structure_file,
   parse_xyz,
 } from '#lib/structure/parse.js'
-import { make_site as make_lib_site } from '#lib/structure/site.js'
-import { assert, describe, expect, it } from 'vite-plus/test'
-import { complex_structure, simple_structure } from '../test-fixtures'
+import { make_site as make_lib_site, species_key } from '#lib/structure/site.js'
+import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
+import { assert, beforeAll, describe, expect, it } from 'vite-plus/test'
+import {
+  complex_structure,
+  cubic_matrix,
+  fcc_primitive_matrix,
+  init_moyo_for_tests,
+  make_crystal,
+  simple_structure,
+} from '../test-fixtures'
 
 // Local factories to cut fixture boilerplate: single-species site + diagonal lattice
 const make_site = (
@@ -96,6 +107,7 @@ describe(`Export functionality`, () => {
       [`both`, { force: [1, -2, 3], selective_dynamics: [false, false, false] }],
       [`clashing magmom`, { magmom: 1.5, MAGMOM: 2 }, `'MAGMOM' clashes`],
       [`clashing Force`, { Force: [1, 2, 3] }, `'Force' clashes`],
+      [`a prototype-named column`, { constructor: 1.5 }], // no inherited alias lookups
     ] as [string, Record<string, unknown>, string?][])(
       `round-trips %s through extended XYZ`,
       (_name, properties, clash) => {
@@ -781,6 +793,284 @@ describe(`Export functionality`, () => {
         `H 1.00000000 2.00000000 3.00000000`,
         `O 1.00000000 1.00000000 1.00000000`,
       ])
+    })
+  })
+
+  describe(`symmetrized CIF`, () => {
+    beforeAll(init_moyo_for_tests)
+
+    type CaseSite = {
+      element: string
+      abc: Vec3
+      occu?: number
+      oxidation_state?: number
+      label?: string
+    }
+    const salt_site = (element: string, oxidation_state: number) => (abc: Vec3) => ({
+      element,
+      abc,
+      oxidation_state,
+    })
+    // oxfmt-ignore
+    const rock_salt: CaseSite[] = [
+      ...([[0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]] as Vec3[]).map(salt_site(`Na`, 1)),
+      ...([[0.5, 0.5, 0.5], [0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]] as Vec3[]).map(salt_site(`Cl`, -1)),
+    ]
+    const hex_a = 3.25
+    // oxfmt-ignore
+    const hex_lattice: Matrix3x3 = [[hex_a, 0, 0], [-hex_a / 2, (hex_a * Math.sqrt(3)) / 2, 0], [0, 0, 5.2]]
+    // oxfmt-ignore
+    const monoclinic: Matrix3x3 = [[5, 0, 0], [0, 6, 0], [-1.2, 0, 6.9]]
+    // generic P2_1/c orbit: (x,y,z), (-x,y+1/2,-z+1/2), (-x,-y,-z), (x,-y+1/2,z+1/2)
+    const p21c_orbit = ([x_val, y_val, z_val]: Vec3): Vec3[] => [
+      [x_val, y_val, z_val],
+      [1 - x_val, y_val + 0.5, 0.5 - z_val],
+      [1 - x_val, 1 - y_val, 1 - z_val],
+      [x_val, 0.5 - y_val, z_val + 0.5],
+    ]
+    // generic P m m m orbit (±x, ±y, ±z) in the sheared basis b' = b + 2a, where x' = x - 2y
+    // and the a mirror reads -x-4y,y,z
+    const sheared_pmmm_orbit = (abc: Vec3): Vec3[] =>
+      Array.from({ length: 8 }, (_, bits) => {
+        const [x_val, y_val, z_val] = abc.map((val, dim) =>
+          (bits >> dim) & 1 ? 1 - val : val,
+        )
+        return [x_val - 2 * y_val, y_val, z_val]
+      })
+    // n_rows: atom-site rows written (one per species of each asymmetric-unit site); hm: the
+    // H-M symbol, written only when the input is moyo's standard setting; rows/absent: lines the
+    // CIF must (not) contain (labels, oxidation states of the written sites)
+    // oxfmt-ignore
+    const cases: { name: string; lattice: Matrix3x3; sites: CaseSite[]; n_rows: number; hm?: string; rows?: RegExp[]; absent?: RegExp[] }[] = [
+      { name: `rock salt (standard setting)`, lattice: cubic_matrix(5.64), sites: rock_salt, n_rows: 2, hm: `F m -3 m`,
+        rows: [/^_atom_type_oxidation_number$/m, /^\S+ Na\+ 0\.00000000 0\.00000000 0\.00000000 1\.00000000$/m] },
+      { name: `rock salt, primitive cell`, lattice: fcc_primitive_matrix(5.64), n_rows: 2,
+        sites: [{ element: `Na`, abc: [0, 0, 0] }, { element: `Cl`, abc: [0.5, 0.5, 0.5] }] },
+      { name: `rock salt, left-handed cell`, lattice: cubic_matrix(-5.64), sites: rock_salt, n_rows: 2 },
+      { name: `rock salt 2x1x1 supercell`, lattice: [[11.28, 0, 0], [0, 5.64, 0], [0, 0, 5.64]], n_rows: 2,
+        sites: rock_salt.flatMap(({ abc: [x_val, y_val, z_val], ...rest }) =>
+          [0, 0.5].map((shift) => ({ ...rest, abc: [x_val / 2 + shift, y_val, z_val] as Vec3 }))) },
+      { name: `wurtzite ZnO with labels`, lattice: hex_lattice, n_rows: 2, hm: `P 6_3 m c`,
+        rows: [/^Zn_a Zn /m, /^O_a O /m], absent: [/^Zn_b /m],
+        sites: [
+          { element: `Zn`, abc: [1 / 3, 2 / 3, 0], label: `Zn_a` }, { element: `Zn`, abc: [2 / 3, 1 / 3, 0.5], label: `Zn_b` },
+          { element: `O`, abc: [1 / 3, 2 / 3, 0.38], label: `O_a` }, { element: `O`, abc: [2 / 3, 1 / 3, 0.88], label: `O_b` },
+        ] },
+      { name: `disordered CsCl-type (Cu/Au 1:1 + split Zn/Ga site)`, lattice: cubic_matrix(3), n_rows: 4, hm: `P m -3 m`,
+        sites: [
+          { element: `Cu`, abc: [0, 0, 0], occu: 0.5 }, { element: `Au`, abc: [0, 0, 0], occu: 0.5 },
+          { element: `Zn`, abc: [0.5, 0.5, 0.5], occu: 0.25 }, { element: `Ga`, abc: [0.5, 0.5, 0.5], occu: 0.75 },
+        ] },
+      { name: `Fe2+ corner and Fe3+ body center stay distinct`, lattice: cubic_matrix(3), n_rows: 2, hm: `P m -3 m`,
+        sites: [{ element: `Fe`, abc: [0, 0, 0], oxidation_state: 2 }, { element: `Fe`, abc: [0.5, 0.5, 0.5], oxidation_state: 3 }] },
+      { name: `generic P2_1/c orbit`, lattice: monoclinic, n_rows: 2, hm: `P 2_1/c`,
+        sites: [
+          ...p21c_orbit([0.11, 0.23, 0.37]).map((abc) => ({ element: `Si`, abc })),
+          ...p21c_orbit([0.31, 0.07, 0.19]).map((abc) => ({ element: `O`, abc })),
+        ] },
+      { name: `P m m m in a sheared basis (integer symop coefficients)`, lattice: [[3, 0, 0], [6, 4, 0], [0, 0, 5]], n_rows: 2,
+        rows: [/^  '-x-4y, y, z'$/m],
+        sites: [
+          { element: `Si`, abc: [0, 0, 0] },
+          ...sheared_pmmm_orbit([0.11, 0.23, 0.37]).map((abc) => ({ element: `O`, abc })),
+        ] },
+    ]
+
+    // Cartesian distance of fractional offset `delta` under `lattice`, minimum image
+    const frac_dist = (delta: Vec3, lattice: Matrix3x3): number =>
+      Math.hypot(
+        ...math.mul_3x3_vec3(
+          math.transpose_3x3(lattice),
+          delta.map((val) => val - Math.round(val)) as Vec3,
+        ),
+      )
+
+    it.each(cases)(
+      `$name: parse_cif regenerates every site`,
+      async ({ lattice, sites, n_rows, hm, rows = [], absent = [] }) => {
+        const structure = make_crystal(lattice, sites)
+        const sym_data = await analyze_structure_symmetry(structure)
+        const cif = structure_to_cif_str(structure, sym_data)
+        expect(cif).toContain(`_space_group_IT_number ${sym_data.number}`)
+        expect(cif).toContain(`_space_group_symop_operation_xyz`)
+        if (hm) expect(cif).toContain(`_space_group_name_H-M_alt '${hm}'`)
+        else expect(cif).not.toContain(`_H-M_alt`)
+        expect(cif.split(`_atom_site_occupancy\n`)[1].split(`\n`)).toHaveLength(n_rows)
+        for (const row of rows) expect(cif).toMatch(row)
+        for (const row of absent) expect(cif).not.toMatch(row)
+
+        // split-partial sites (one position, several species) come back merged into one site
+        const by_position = new Map<string, Site[`species`]>()
+        for (const { abc, species } of structure.sites) {
+          const key = abc.join(`,`)
+          by_position.set(key, [...(by_position.get(key) ?? []), ...species])
+        }
+        const parsed = parse_cif(cif)
+        expect(parsed.sites.map(({ species }) => species_key(species)).toSorted()).toEqual(
+          [...by_position.values()].map(species_key).toSorted(),
+        )
+        // the left-handed cell is written in the (-a, -b, -c) basis: fractional coords negate
+        const sign = math.det_3x3(lattice) < 0 ? -1 : 1
+        for (const [key, species] of by_position) {
+          const abc = key.split(`,`).map(Number)
+          const distances = parsed.sites
+            .filter((site) => species_key(site.species) === species_key(species))
+            .map((site) =>
+              frac_dist(site.abc.map((val, dim) => val - sign * abc[dim]) as Vec3, lattice),
+            )
+          expect(Math.min(...distances)).toBeLessThan(1e-6)
+        }
+      },
+    )
+
+    // in the sheared cell, the origin moyo picks leaves Si 0.1 A off its inversion center:
+    // its image is 0.2 A away, but a per-component rounded lattice shift picks one a period off
+    it.each<[string, Matrix3x3, CaseSite[], [number, number], number?]>([
+      [
+        `rock salt`,
+        cubic_matrix(5.64),
+        rock_salt.map((site, idx) =>
+          idx === 0 ? { ...site, abc: [0.012, 0.006, 0] as Vec3 } : site,
+        ),
+        [225, 192],
+      ],
+      [
+        `sheared cell`,
+        // oxfmt-ignore
+        [[3, 0, 0], [30, 4, 0], [0, 0, 5]],
+        [
+          { element: `Si`, abc: [0.48, 0.052, 0] },
+          { element: `O`, abc: [0.5, 0, 0.5] },
+        ],
+        [47, 8],
+        0.3,
+      ],
+    ])(
+      `noisy %s with a loose symprec writes symmetrized representatives`,
+      async (_, lattice, sites, [number, n_ops], symprec = 0.2) => {
+        const structure = make_crystal(lattice, sites)
+        const sym_data = await analyze_structure_symmetry(structure, { symprec })
+        expect([sym_data.number, sym_data.operations.length]).toEqual([number, n_ops])
+        const parsed = parse_cif(structure_to_cif_str(structure, sym_data))
+        expect(parsed.sites).toHaveLength(structure.sites.length)
+        for (const { abc, species } of structure.sites) {
+          const distances = parsed.sites
+            .filter((site) => site.species[0].element === species[0].element)
+            .map((site) => frac_dist(math.subtract(site.abc, abc), lattice))
+          expect(Math.min(...distances)).toBeLessThan(symprec)
+        }
+      },
+    )
+
+    it.each([
+      [`magmom`, { magmom: [0, 0, 1] }, `Magnetic moments need the P1 CIF`],
+      [`ADP`, { adp_U_cart: cubic_matrix(0.01) }, `ADPs) need the P1 CIF`],
+      [`all-zero magmom`, { magmom: [0, 0, 0] }, undefined], // no magnetic order to lose
+    ])(`%s sites: symmetrized CIF unavailable reason %s`, async (_, properties, reason) => {
+      const structure = make_crystal(
+        cubic_matrix(5.64),
+        rock_salt.map((site) => ({ ...site, properties })),
+      )
+      const sym_data = await analyze_structure_symmetry(structure)
+      if (reason) {
+        expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toContain(reason)
+        expect(() => structure_to_cif_str(structure, sym_data)).toThrow(reason)
+      } else {
+        expect(symmetrized_cif_unavailable_reason(structure, sym_data)).toBeUndefined()
+        expect(parse_cif(structure_to_cif_str(structure, sym_data)).sites).toHaveLength(8)
+      }
+    })
+
+    // a skewed cell's nearest image can lie beyond the 27 unit shifts of the rounded offset
+    it(`nearest_image finds the closest lattice image of a skewed cell`, () => {
+      // oxfmt-ignore
+      const lattice: Matrix3x3 = [[3, 0, 0], [300, 4, 0], [0, 0, 5]]
+      const { frac, dist } = nearest_image(
+        [0.05, 0.05, 0],
+        math.create_lattice_converters(lattice),
+      )
+      expect(frac).toEqual([-4.95, 0.05, 0])
+      expect(dist).toBeCloseTo(0.25, 12)
+    })
+
+    it(`export pane: CIF always P1, the symmetrized CIF needs symmetry data`, async () => {
+      const structure = make_crystal(cubic_matrix(5.64), rock_salt)
+      const sym_data = await analyze_structure_symmetry(structure)
+      const { cif, cif_symmetrized } = STRUCT_TEXT_FORMATS
+      expect(cif.to_str(structure, sym_data)).toBe(structure_to_cif_str(structure))
+      expect(cif_symmetrized.to_str(structure, sym_data)).toBe(
+        structure_to_cif_str(structure, sym_data),
+      )
+      expect(cif_symmetrized.to_str(structure, sym_data)).not.toBe(cif.to_str(structure))
+      const reason = `No symmetry analysis available`
+      expect(cif_symmetrized.unavailable_reason(structure, null)).toBe(reason)
+      expect(() => cif_symmetrized.to_str(structure, null)).toThrow(reason)
+      expect(() => cif_symmetrized.to_str(structure)).toThrow(reason)
+    })
+
+    it(`rejects symmetry data of another structure`, async () => {
+      const structure = make_crystal(cubic_matrix(5.64), rock_salt)
+      const sym_data = await analyze_structure_symmetry(structure)
+      const fewer = { ...structure, sites: structure.sites.slice(1) }
+      expect(() => structure_to_cif_str(fewer, sym_data)).toThrow(
+        `symmetry data covers 8 sites, the structure has 7`,
+      )
+      // the analysis records the cell it was sent: lattice (cubic ops would swap axes of
+      // unequal length), species and position edits, in place while it runs, are rejected
+      // against both the old and the fresh analysis
+      for (const [edit, error] of [
+        [
+          (struct: Crystal) => (struct.lattice.matrix[2][2] = 6),
+          `lattice differs from the analyzed one by up to 0.36`,
+        ],
+        [
+          (struct: Crystal) => (struct.sites[4].species[0].element = `Br`),
+          `site 5 is Br-1:1, the symmetry analysis saw Cl-1:1`,
+        ],
+        [
+          (struct: Crystal) => {
+            struct.sites[4].abc[0] = 0.6
+            struct.sites[4].xyz[0] = 0.6 * 5.64
+          },
+          `site 5 at 0.6, 0.5, 0.5 is not where the symmetry analysis saw it`,
+        ],
+      ] as const) {
+        const in_flight = make_crystal(cubic_matrix(5.64), rock_salt)
+        const pending = analyze_structure_symmetry(in_flight)
+        edit(in_flight)
+        expect(() => structure_to_cif_str(in_flight, sym_data)).toThrow(error)
+        const fresh_sym = await pending
+        expect(() => structure_to_cif_str(in_flight, fresh_sym)).toThrow(error)
+      }
+      // occupancies the CIF writes differently (8 decimals) are distinct orbits, not one
+      // that writes the representative's occupancy at both bcc sites, also next to full
+      // occupancy (0.999999991 writes 0.99999999)
+      for (const occus of [
+        [0.4999996, 0.5000004],
+        [0.999999991, 1],
+      ]) {
+        const bcc = make_crystal(
+          cubic_matrix(2.87),
+          occus.map((occu, idx) => ({
+            element: `Fe`,
+            abc: [idx / 2, idx / 2, idx / 2] as Vec3,
+            occu,
+          })),
+        )
+        const bcc_sym = await analyze_structure_symmetry(bcc)
+        const bcc_sites = parse_cif(structure_to_cif_str(bcc, bcc_sym)).sites
+        expect(
+          bcc_sites
+            .map(({ species }) => species[0].occu)
+            .toSorted((occu_a, occu_b) => occu_a - occu_b),
+        ).toEqual(occus.map((occu) => Number(occu.toFixed(8))))
+      }
+      // whole lattice vectors off the analyzed positions still export
+      const shifted = make_crystal(cubic_matrix(5.64), [
+        { ...rock_salt[0], abc: [1, 0, -1] },
+        ...rock_salt.slice(1),
+      ])
+      expect(parse_cif(structure_to_cif_str(shifted, sym_data)).sites).toHaveLength(8)
     })
   })
 })

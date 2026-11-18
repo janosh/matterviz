@@ -14,99 +14,35 @@ For large tables (thousands of rows), hold `data` in `$state.raw` rather than `$
 <script lang="ts">
   import { HeatmapTable } from 'matterviz'
 
-  const data = [
-    [
-      `Fe₂O₃`,
-      0.0,
-      2.2,
-      -8.5,
-      `2026-06-21`,
-      `2026-06-22T09:30:00Z`,
-      Date.parse(`2026-06-23T14:15:00Z`),
-      new Date(`2026-06-23T08:00:00Z`),
-    ],
-    [
-      `TiO₂`,
-      0.0,
-      3.2,
-      -9.8,
-      `2026-06-20`,
-      `2026-06-22T10:05:00Z`,
-      Date.parse(`2026-06-23T16:45:00Z`),
-      new Date(`2026-06-23T08:45:00Z`),
-    ],
-    [
-      `ZnO`,
-      0.02,
-      3.4,
-      -3.6,
-      `2026-06-19`,
-      `2026-06-22T11:20:00Z`,
-      Date.parse(`2026-06-24T08:30:00Z`),
-      new Date(`2026-06-24T09:15:00Z`),
-    ],
-    [
-      `Cu₂O`,
-      0.05,
-      2.1,
-      -1.7,
-      `2026-06-18`,
-      `2026-06-22T13:10:00Z`,
-      Date.parse(`2026-06-24T12:00:00Z`),
-      new Date(`2026-06-24T10:30:00Z`),
-    ],
-    [
-      `SiO₂`,
-      0.0,
-      8.9,
-      -9.1,
-      `2026-06-17`,
-      `2026-06-22T14:25:00Z`,
-      Date.parse(`2026-06-24T15:40:00Z`),
-      new Date(`2026-06-24T11:20:00Z`),
-    ],
-    [
-      `Al₂O₃`,
-      0.0,
-      8.8,
-      -17.4,
-      `2026-06-16`,
-      `2026-06-22T15:50:00Z`,
-      Date.parse(`2026-06-25T09:10:00Z`),
-      new Date(`2026-06-25T13:05:00Z`),
-    ],
-    [
-      `MgO`,
-      0.0,
-      7.8,
-      -6.2,
-      `2026-06-15`,
-      `2026-06-22T17:35:00Z`,
-      Date.parse(`2026-06-25T11:25:00Z`),
-      new Date(`2026-06-25T14:35:00Z`),
-    ],
-    [
-      `CaTiO₃`,
-      0.03,
-      3.5,
-      -16.1,
-      `2026-06-14`,
-      `2026-06-22T18:45:00Z`,
-      Date.parse(`2026-06-25T18:05:00Z`),
-      new Date(`2026-06-25T16:10:00Z`),
-    ],
-  ].map(
-    ([vector_1, vector_2, vector_3, vector_4, vector_5, vector_6, vector_7, vector_8]) => ({
-      Formula: vector_1,
-      'E<sub>above hull</sub>': vector_2,
-      'E<sub>gap</sub>': vector_3,
-      'E<sub>form</sub>': vector_4,
-      'Created Date': vector_5,
-      'Calculated At': vector_6,
-      'Last Updated': vector_7,
-      'Synthesis Time': vector_8,
-    }),
-  )
+  // formula, E above hull, E gap, E form, then 4 timestamps (ISO date, ISO date-time, and the
+  // last two parsed below into a millisecond number and a Date object)
+  const rows = `
+    Fe₂O₃ 0.0 2.2 -8.5 2026-06-21 2026-06-22T09:30:00Z 2026-06-23T14:15:00Z 2026-06-23T08:00:00Z
+    TiO₂ 0.0 3.2 -9.8 2026-06-20 2026-06-22T10:05:00Z 2026-06-23T16:45:00Z 2026-06-23T08:45:00Z
+    ZnO 0.02 3.4 -3.6 2026-06-19 2026-06-22T11:20:00Z 2026-06-24T08:30:00Z 2026-06-24T09:15:00Z
+    Cu₂O 0.05 2.1 -1.7 2026-06-18 2026-06-22T13:10:00Z 2026-06-24T12:00:00Z 2026-06-24T10:30:00Z
+    SiO₂ 0.0 8.9 -9.1 2026-06-17 2026-06-22T14:25:00Z 2026-06-24T15:40:00Z 2026-06-24T11:20:00Z
+    Al₂O₃ 0.0 8.8 -17.4 2026-06-16 2026-06-22T15:50:00Z 2026-06-25T09:10:00Z 2026-06-25T13:05:00Z
+    MgO 0.0 7.8 -6.2 2026-06-15 2026-06-22T17:35:00Z 2026-06-25T11:25:00Z 2026-06-25T14:35:00Z
+    CaTiO₃ 0.03 3.5 -16.1 2026-06-14 2026-06-22T18:45:00Z 2026-06-25T18:05:00Z 2026-06-25T16:10:00Z`
+  const data = rows
+    .trim()
+    .split(`\n`)
+    .map((line) => {
+      const [formula, e_hull, e_gap, e_form, created, calculated, updated, synthesized] = line
+        .trim()
+        .split(` `)
+      return {
+        Formula: formula,
+        'E<sub>above hull</sub>': Number(e_hull),
+        'E<sub>gap</sub>': Number(e_gap),
+        'E<sub>form</sub>': Number(e_form),
+        'Created Date': created,
+        'Calculated At': calculated,
+        'Last Updated': Date.parse(updated),
+        'Synthesis Time': new Date(synthesized),
+      }
+    })
 
   // oxfmt-ignore
   const columns = [
@@ -690,22 +626,9 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
   import { HeatmapTable } from 'matterviz'
 
   const color_scales = [
-    `interpolateViridis`,
-    `interpolatePlasma`,
-    `interpolateInferno`,
-    `interpolateMagma`,
-    `interpolateCividis`,
-    `interpolateCool`,
-    `interpolateWarm`,
-    `interpolateRdYlBu`,
-    `interpolateRdYlGn`,
-    `interpolateSpectral`,
-    `interpolatePurples`,
-    `interpolateBlues`,
-    `interpolateGreens`,
-    `interpolateOranges`,
-    `interpolateReds`,
-  ]
+    ...`Viridis Plasma Inferno Magma Cividis Cool Warm RdYlBu RdYlGn Spectral`.split(` `),
+    ...`Purples Blues Greens Oranges Reds`.split(` `),
+  ].map((name) => `interpolate${name}`)
 
   let selected_scale = $state(`interpolateViridis`)
   let better = $state(`higher`)

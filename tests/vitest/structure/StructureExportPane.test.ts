@@ -151,7 +151,8 @@ describe(`StructureExportPane`, () => {
     get_button(`${action} ${format.toUpperCase()}`).click()
     const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
     await vi.waitFor(() => {
-      expect(to_str).toHaveBeenCalledWith(simple_structure)
+      // with the viewer's symmetry analysis (none here), read by the symmetrized CIF only
+      expect(to_str).toHaveBeenCalledWith(simple_structure, null)
       if (action === `Download`)
         expect(download).toHaveBeenCalledWith(content, `Relaxed structure.${ext}`, mime)
       else expect(navigator.clipboard.writeText).toHaveBeenCalledWith(content)

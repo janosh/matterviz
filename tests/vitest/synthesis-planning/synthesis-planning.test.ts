@@ -352,6 +352,43 @@ describe(`analyze_selectivity`, () => {
     expect(selectivity.selectivity_margin).toBeCloseTo(-0.3, 12)
   })
 
+  // Chen et al. (Nat. Synth. 2024) define the inverse hull energy against the neighboring stable
+  // phases in composition space, not only those the precursors can form: LiTiO2 needs a
+  // reduction Li2O + TiO2 can't do alone, yet LiTiO2 + Li2O/2 + O/2 (-15.8 eV) undercuts
+  // Li2O + TiO2 (-15 eV) at Li2TiO3 (-16.8 eV), so the depth is 1/6, not 0.3 eV/atom
+  test(`inverse hull spans every other phase, not only precursor-reachable ones`, () => {
+    const { phases } = prepare_phase_set([
+      ...toy_entries,
+      make_phase({ Li: 1, Ti: 1, O: 2 }, -3.2, { entry_id: `LiTiO2` }),
+    ])
+    assign_e_above_hull(phases)
+    const target = find(phases, `Li2TiO3`)
+    const precursors = [find(phases, `Li2O`), find(phases, `TiO2`)]
+    const { inverse_hull_energy } = analyze_selectivity(precursors, target, [], phases, -0.3)
+    const others = phases.filter((phase) => phase.id !== target.id)
+    const hull = hull_at(target.fractions, others)
+    expect(hull?.energy).toBeCloseTo(-15.8 / 6, 12)
+    expect(inverse_hull_energy).toBeCloseTo((hull?.energy ?? NaN) - target.energy_per_atom, 12)
+    expect(inverse_hull_energy).toBeCloseTo(1 / 6, 12)
+  })
+
+  // Li2Ti (-0.6) sits 1/15 eV/atom above Li + LiTi, so the competitor cut drops it, yet without
+  // the target it is on the hull: Li2Ti + Ti reach -0.45 at LiTi (-1), a depth of 0.55, not 1
+  test(`plan_synthesis takes the inverse hull over phases the competitor cut drops`, () => {
+    const plan = plan_synthesis({
+      entries: [
+        make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+        make_phase({ Ti: 1 }, 0, { entry_id: `Ti` }),
+        make_phase({ Li: 1, Ti: 1 }, -1, { entry_id: `LiTi` }),
+        make_phase({ Li: 2, Ti: 1 }, -0.6, { entry_id: `Li2Ti` }),
+      ],
+      target: `LiTi`,
+      precursors: { only_common: false, allow: [`Li`, `Ti`] },
+    })
+    const route = plan.routes.find(({ reaction }) => reaction.equation === `Li + Ti → LiTi`)
+    expect(route?.selectivity.inverse_hull_energy).toBeCloseTo(0.55, 12)
+  })
+
   // with no competitors selectivity_margin collapses to the target driving force, so saturating
   // it would echo the driving_force term; an empty list is perfect selectivity and scores 1
   test(`score_route: no competitors is perfect selectivity, not a driving-force echo`, () => {

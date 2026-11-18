@@ -256,7 +256,7 @@
   const placeholder: BinaryPhaseDiagram = {
     format: BINARY_DIAGRAM_FORMAT,
     components: [``, ``],
-    pressure_pa: 101325,
+    pressure_gpa: 1.01325e-4,
     temperature_range: [0, 1],
     phases: [],
     regions: [],

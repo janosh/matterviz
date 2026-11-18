@@ -356,7 +356,7 @@ const results: { name: Case; median_ms: number; limit_ms: number }[] = []
 let reference_ms = REFERENCE_MS
 let machine_factor = 1
 
-// 5 reps of a ~1 s mount plus cleanup can exceed vitest's 5 s default on a loaded runner
+// 5 reps of a ~1 s mount plus cleanup can exceed the 10 s test timeout on a loaded runner
 describe(`perf baselines`, { timeout: 120_000 }, () => {
   beforeAll(async () => {
     reference_workload() // JIT warm-up: the first call runs unoptimized and would skew the median
@@ -872,7 +872,16 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       ),
     )
     await measure(`symmetry elements 41472 ops`, () => {
-      expect(symmetry_elements_from_ops(operations)).toHaveLength(30_456)
+      // the input is a 6x6x6 supercell of the standardized cell: x_std = 6·x
+      const identity: MoyoOperation[`rotation`] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+      const std_linear = identity.map((val) => val / n_rep) as MoyoOperation[`rotation`]
+      const std_frame = {
+        std_linear,
+        std_origin_shift: [0, 0, 0] as Vec3,
+        std_rotation_matrix: identity,
+        std_cell: { lattice: { basis: identity } },
+      }
+      expect(symmetry_elements_from_ops({ operations, ...std_frame })).toHaveLength(30_456)
     })
   })
 

@@ -4,9 +4,8 @@
   // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
   // only remap through the LUT and never rerun marching cubes.
   import { value_key } from '#lib/utils.js'
-  import type { Matrix3x3, Vec3 } from '../math'
-  import { create_frac_to_cart, IDENTITY_3X3 } from '../math'
-  import { diagonal_scaling, supercell_translations } from '#lib/structure/supercell.js'
+  import type { Matrix3x3 } from '../math'
+  import { IDENTITY_3X3 } from '../math'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
@@ -19,13 +18,12 @@
   import { compute_geometries_async } from './async-geometry.svelte'
   import type { GeometryInput, GeometryResult } from './geometry'
   import { compute_isosurface_geometries } from './geometry'
-  import type { ScalarGrid3D } from './grid'
   import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'
-  import type { DisplayRange } from './sampling'
+  import type { VolumeWindow } from './sampling'
   import {
     prepare_geometry_grid,
-    resolve_volume_display_range,
+    resolve_volume_window,
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
@@ -78,49 +76,33 @@
     return identifier
   }
 
-  // A diagonal supercell is one box of cells, extracted as one tiled window with the halo
-  // around the whole block. Any other draws unpadded one-cell copies at each cell's t·L, so
-  // no two copies overlap. An explicit display range or a finite volume draws its window once.
-  const tiling = $derived(diagonal_scaling(supercell))
-  const translations = $derived(tiling ? [] : supercell_translations(supercell).translations)
-  const copy_offsets = (vol: VolumetricData): Vec3[] => {
-    if (!vol.periodic || settings.display_range || !translations.length) return [[0, 0, 0]]
-    const to_cart = create_frac_to_cart(vol.lattice)
-    return translations.map((translation) => to_cart(translation))
-  }
-  // Finite extraction range: always for periodic volumes (tiling and fractional bounds share
-  // endpoint semantics), only an explicit crop for finite ones
-  const effective_range = (vol: VolumetricData): DisplayRange | null =>
-    resolve_volume_display_range(vol, {
+  // Finite extraction window: always for periodic volumes (supercell + halo, or an explicit
+  // display range), only an explicit crop for finite ones
+  const effective_window = (vol: VolumetricData): VolumeWindow | null =>
+    resolve_volume_window(vol, {
       display_range: settings.display_range,
-      tiling: tiling ?? [1, 1, 1],
-      halo: copy_offsets(vol).length > 1 ? 0 : settings.halo,
+      supercell,
+      halo: settings.halo,
     })
 
   // === Prepared geometry grids ===
-  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The range
-  // fully determines it (it encodes tiling and halo, which finite volumes ignore).
-  type PreparedGrid = {
-    key: string
-    grid: ScalarGrid3D<Float64Array>
-    lattice: Matrix3x3
-    origin: Vec3
-  }
+  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The window
+  // fully determines it (it encodes supercell and halo, which finite volumes ignore).
+  type PreparedGrid = ReturnType<typeof prepare_geometry_grid> & { key: string }
   // Keyed by volume object so removed/replaced volumes release their grids to GC
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
-  const range_key = (vol: VolumetricData): string =>
-    effective_range(vol)?.flat().join(`,`) ?? ``
+  const window_key = (vol: VolumetricData): string => JSON.stringify(effective_window(vol))
 
   // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
   // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
   const prepared_grid = (vol: VolumetricData): PreparedGrid => {
-    const key = range_key(vol)
+    const key = window_key(vol)
     const cached = prepared_cache.get(vol)
     if (cached?.key === key) return cached
     const prepared = time_stage(
       `prepare_geometry`,
-      () => ({ key, ...prepare_geometry_grid(vol, effective_range(vol)) }),
+      () => ({ key, ...prepare_geometry_grid(vol, effective_window(vol)) }),
       ({ grid }) => ({ output_points: grid.values.length }),
     )
     prepared_cache.set(vol, prepared)
@@ -210,9 +192,9 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // range_key covers halo + tiling, so the geometry identity needs no other inputs
+  // window_key covers halo and supercell, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    value_key([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
+    value_key([volume_id, vol_id(volume), sign * isovalue, window_key(volume)])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
@@ -226,12 +208,12 @@
       surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
     }))
 
-  // Large grids go to the geometry worker; small ones are cheaper on the main thread than a
-  // round trip
+  // Large outputs go to the geometry worker; small ones are cheaper on the main thread than a
+  // round trip. A periodic grid is one unit cell, tiled over its window's cells.
   const use_geometry_worker = (jobs: GeometryInput[`volumes`]): boolean =>
     typeof window !== `undefined` &&
     can_create_worker() &&
-    jobs.some(({ grid }) => grid.values.length >= 200_000)
+    jobs.some(({ grid, clip }) => grid.values.length * (clip?.cells.length ?? 1) >= 200_000)
 
   // Build geometries from one geometry result (worker or sync)
   function ingest_geometry_result(
@@ -564,44 +546,40 @@
     {@const color = vertex_colored ? `#ffffff` : lobe_color(layer, entry.sign)}
     {@const opacity = layer.opacity}
     {@const transparent = opacity < 1}
-    {#each copy_offsets(layer.volume) as offset, copy_idx (copy_idx)}
-      <T.Group position={offset}>
-        <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->
-        {#key vertex_colored}
-          {#if settings.wireframe}
-            <T.Mesh geometry={entry.geometry} frustumCulled={false}>
-              <T.MeshBasicMaterial
-                {color}
-                vertexColors={vertex_colored}
-                wireframe
-                {transparent}
-                {opacity}
-              />
-            </T.Mesh>
-          {:else}
-            <!-- Transparent surfaces render back then front faces in two passes for
-              correct blending; opaque surfaces need a single double-sided pass -->
-            {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
-              <T.Mesh
-                geometry={entry.geometry}
-                renderOrder={entry.render_order + pass_idx}
-                frustumCulled={false}
-              >
-                <T.MeshStandardMaterial
-                  {color}
-                  vertexColors={vertex_colored}
-                  {transparent}
-                  {opacity}
-                  {side}
-                  depthWrite={!transparent}
-                  metalness={0.1}
-                  roughness={0.6}
-                />
-              </T.Mesh>
-            {/each}
-          {/if}
-        {/key}
-      </T.Group>
-    {/each}
+    <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->
+    {#key vertex_colored}
+      {#if settings.wireframe}
+        <T.Mesh geometry={entry.geometry} frustumCulled={false}>
+          <T.MeshBasicMaterial
+            {color}
+            vertexColors={vertex_colored}
+            wireframe
+            {transparent}
+            {opacity}
+          />
+        </T.Mesh>
+      {:else}
+        <!-- Transparent surfaces render back then front faces in two passes for
+          correct blending; opaque surfaces need a single double-sided pass -->
+        {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
+          <T.Mesh
+            geometry={entry.geometry}
+            renderOrder={entry.render_order + pass_idx}
+            frustumCulled={false}
+          >
+            <T.MeshStandardMaterial
+              {color}
+              vertexColors={vertex_colored}
+              {transparent}
+              {opacity}
+              {side}
+              depthWrite={!transparent}
+              metalness={0.1}
+              roughness={0.6}
+            />
+          </T.Mesh>
+        {/each}
+      {/if}
+    {/key}
   {/if}
 {/each}

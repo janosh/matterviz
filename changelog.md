@@ -4,6 +4,7 @@
 
 ### Migration
 
+- Binary phase-diagram JSON stores pressure as `pressure_gpa` (GPa) instead of `pressure_pa`; files with the old key are rejected [#518](https://github.com/janosh/matterviz/pull/518)
 - Analysis functions use one verb: every `calc_*` / `calculate_*` is now `compute_*` with matching `compute_*_async` (`calc_msd` → `compute_msd`, `calc_vacf` → `compute_vacf`, `calculate_rdf` → `compute_rdf`, `calc_bond_angles` → `compute_bond_angles`, `calculate_e_above_hull` → `compute_e_above_hull`, ...), `CalcRdfsAsync`/`CalcStructureIdAsync` → `Compute*Async`, and `calc-*.ts` files → `compute-*.ts` [#515](https://github.com/janosh/matterviz/pull/515)
 - 3x3 helpers: `matrix_inverse_3x3` → `inverse_3x3`, `transpose_3x3_matrix` → `transpose_3x3`, `mat3x3_vec3_multiply` → `mul_3x3_vec3`, `vec9_to_mat3x3` → `mat3x3_from_flat_row_major`, `det2` → `det_2x2`; `mat3_from_flat_col_major` moves from `matterviz/symmetry` to `matterviz/math` as `mat3x3_from_flat_col_major` [#515](https://github.com/janosh/matterviz/pull/515)
 - The root `matterviz` import no longer re-exports infrastructure (`math`, `utils`, `labels`, `constants`, `settings`, `controls`, `colors`, `theme`, `io`, `scene`, `sanitize`, `url-params`, `fft`, `lineshape`): import those from their subpaths. New subpaths `matterviz/host`, `matterviz/shortcuts` and `matterviz/workers` (`disable_workers`, `check_blob_workers`) [#515](https://github.com/janosh/matterviz/pull/515)
@@ -14,14 +15,21 @@
 - Supercells: the session exposes `supercell_matrix` instead of `supercell_tiling`, and `LatticePlanes` prop `tiling` → `supercell` [#515](https://github.com/janosh/matterviz/pull/515)
 - Units: `BandGridData`, `FermiSurfaceData` and `ElectronicDos` require `energy_unit` (`null` when the file states none), `VolumetricData` requires `units`; `ElectronicBandStructure.band_gap` and `is_spin_polarized` are removed [#515](https://github.com/janosh/matterviz/pull/515)
 - `materialize_series_points` throws on series whose `x`/`y` are not arrays or typed arrays instead of skipping them [#515](https://github.com/janosh/matterviz/pull/515)
+- `high_symmetry_kpath` returns primitive-basis k-points plus `primitive`/`k_lattice`; `kpath_to_k_path_data` takes one object. `Isosurface`/`ColorFieldVolume` `tiling` → `supercell` matrix, likewise the symmetry-element tiling API [#516](https://github.com/janosh/matterviz/pull/516)
+- `ImageAtom` is a `{ site_idx, xyz, abc, is_completion }` record, `displacement_pbc`/`pick_displacement` take `{ converters, pbc }`, `PhaseData.energy` is optional [#516](https://github.com/janosh/matterviz/pull/516)
+- Plots: one `LineStyle { color, width, dash, curve }` (`stroke`/`stroke_width`/`line_dash` keys and `scatter_line_style` removed), one-sided `SizeScaleConfig.value_range`, log-axis KDE `bandwidth` in decades; `normalize_band_structure` throws on malformed input; `apply_gaussian_smearing` removed [#516](https://github.com/janosh/matterviz/pull/516)
+- `symmetry_elements_from_ops(sym_data)` takes the moyo dataset (labels follow ITA in the standard frame); `resolve_volume_display_range` → `resolve_volume_window`, `prepare_geometry_grid(volume, window)`; CIF export adds a `cif_symmetrized` format (`cif` stays P1); `unwrap_molecules` returns `{ structure, bonds }` [#518](https://github.com/janosh/matterviz/pull/518)
 
 ### 🚀 New Features
 
+- ITA symmetry labels, symmetrized CIF export, keep-molecules-whole option, hull composition probe and grand-potential projection (`open_elements`), anywidget binary array transfer (`matterviz-binary-v1`), log-axis minor ticks, derived secondary x-axis [#518](https://github.com/janosh/matterviz/pull/518)
+- CIF moment/ADP export, Uiso ellipsoids, non-diagonal supercell volumes and symmetry elements, primitive-zone default k-paths, bar error tooltips, Ry/Ha Fermi-band links, ASE-compatible extXYZ [#516](https://github.com/janosh/matterviz/pull/516)
 - Typed bonding options, VESTA-style `pair_cutoffs` bonding strategy with an editor, general integer supercell matrices, mCIF magnetic moments, ADPs with thermal ellipsoids, Kα1/Kα2 XRD doublets, EOS standard errors, band-gap VBM/CBM and direct/indirect detail, Setyawan–Curtarolo default k-paths (`high_symmetry_kpath`), bar error bars and typed-array plot series [#515](https://github.com/janosh/matterviz/pull/515)
 - LAMMPS dumps with `reset_timestep`, labelled species (`Fe1`, `OW`) in XYZ/LAMMPS and pre-5.3 XDATCAR now open [#515](https://github.com/janosh/matterviz/pull/515)
 
 ### 🐛 Bug Fixes
 
+- Box stats on log axes, unknown hull stability counted separately, distinct DOS spin styles, inverse hull energy over all competing phases, half-resolution sheared-supercell isosurfaces [#518](https://github.com/janosh/matterviz/pull/518)
 - Compound gases are hull phases at μ(T, p), so carbonates decompose on the hull where the synthesis planner says they do; gas shifts apply without elemental entries; false `d`-glide labels in Fm-3m; arcsinh axes without ticks; `clean_series` misaligned `point_ids`; Savitzky-Golay edges; OUTCAR run-together lattice rows; undecoded ASE `atoms.info` arrays; heatmap keyboard navigation in shadow roots; Tl electronegativity 1.62; unique CIF atom labels [#515](https://github.com/janosh/matterviz/pull/515)
 
 ## [v0.9.0](https://github.com/janosh/matterviz/compare/v0.8.0...v0.9.0)

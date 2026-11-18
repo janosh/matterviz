@@ -475,9 +475,7 @@ function is_anion_vertex(
   const n_data = element_by_symbol.get(neighbor_element)
   if (n_data?.metal) return false
   const n_en = n_data?.electronegativity ?? null
-  if (center_en !== null && n_en !== null) {
-    return n_en > center_en + electronegativity_margin
-  }
+  if (center_en !== null && n_en !== null) return n_en > center_en + electronegativity_margin
   // EN data missing: only metal centers with nonmetal neighbors qualify
   return center_is_metal && n_data?.nonmetal === true
 }

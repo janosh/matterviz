@@ -170,16 +170,18 @@
     y_scale_fn: frame.scales.y,
     y2_scale_fn: frame.scales.y2,
     pad: frame.pad,
-    x_range: frame.ranges.current.x,
-    x2_range: frame.ranges.current.x2,
-    y_range: frame.ranges.current.y,
-    y2_range: frame.ranges.current.y2,
+    // axis_domains: a derived x2 reports its scale's domain, not the data-less [0, 1] range
+    x_range: frame.axis_domains.x,
+    x2_range: frame.axis_domains.x2,
+    y_range: frame.axis_domains.y,
+    y2_range: frame.axis_domains.y2,
   })
   const title_pad = $derived(frame.effective_base_pad)
+  // axis_domains, so a derived x2's marginal bins over the domain it displays
   const get_marginal_axis = (axis: MarginalAxisBinding): MarginalAxis =>
     marginal_axis(
       frame.scales[axis],
-      frame.ranges.current[axis],
+      frame.axis_domains[axis],
       frame.axes[axis],
       marginal_tick_label[axis],
     )

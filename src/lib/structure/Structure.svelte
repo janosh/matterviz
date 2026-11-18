@@ -59,7 +59,12 @@
   import { DEFAULTS, type ShowBonds } from '#lib/settings.js'
   import type { ImageAtomCompletion } from './pbc'
   import { polyhedra_options_from } from './polyhedra'
-  import { strategy_bonding_options } from './bonding'
+  import type { BondingOptions, BondingStrategy } from './bonding'
+  import {
+    BONDING_STRATEGIES,
+    strategy_bonding_options,
+    validate_bonding_options,
+  } from './bonding'
   import type {
     AnyStructure,
     BondEditMode,
@@ -212,6 +217,7 @@
     performance_mode = `quality`,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     image_atom_completion = $bindable(DEFAULTS.structure.image_atom_completion),
+    keep_molecules_whole = $bindable(DEFAULTS.structure.keep_molecules_whole),
     supercell_scaling = $bindable(`1x1x1`),
     apply_supercell_scaling = true,
     cell_type = $bindable(`original`),
@@ -360,6 +366,8 @@
     show_image_atoms?: boolean
     // Which bonds crossing a cell face get their far atom drawn (see find_image_atoms)
     image_atom_completion?: ImageAtomCompletion
+    // Reassemble molecules torn across cell faces (see unwrap_molecules); networks stay wrapped
+    keep_molecules_whole?: boolean
     // Supercell as repeats along a, b and c, e.g. `2x2x2`, or a single number for all three.
     supercell_scaling?: string
     // False when `structure` is already expanded to `supercell_scaling`
@@ -466,12 +474,35 @@
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
   let series_key = $derived(structure_series_key ?? structure)
-  const bonding_strategy = $derived(
-    scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
+  // Checked once for every bond search (scene bonds and polyhedra, image completion, whole
+  // molecules): invalid settings (pair cutoffs with min > max, an unknown strategy name) bond
+  // with a known strategy's defaults and say so in one notice, cleared once valid ones return
+  const bonding = $derived.by(
+    (): { strategy: BondingStrategy; options: BondingOptions; notice?: string } => {
+      const requested = scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy
+      const options = strategy_bonding_options(scene_props.bonding_options, requested)
+      try {
+        return { strategy: requested, options: validate_bonding_options(requested, options) }
+      } catch (error) {
+        const strategy = Object.hasOwn(BONDING_STRATEGIES, requested)
+          ? requested
+          : DEFAULTS.structure.bonding_strategy
+        const notice = `${to_error(error).message} (bonding with the ${strategy} defaults)`
+        return { strategy, options: {}, notice }
+      }
+    },
   )
-  const bonding_options = $derived(
-    strategy_bonding_options(scene_props.bonding_options, bonding_strategy),
-  )
+  const bonding_strategy = $derived(bonding.strategy)
+  const bonding_options = $derived(bonding.options)
+  let shown_bonding_notice: string | undefined
+  $effect(() => {
+    const { notice } = bonding
+    untrack(() => {
+      if (notice) show_toast(notice)
+      else if (toast_store.active_toast?.message === shown_bonding_notice) toast_store.clear()
+      shown_bonding_notice = notice
+    })
+  })
   // Declared before the session: its pre-effect builds the display pipeline during construction,
   // when active_overlay is not yet initialized (and no overlay exists yet).
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
@@ -502,6 +533,7 @@
     supercell_scaling: () => supercell_scaling,
     apply_supercell_scaling: () => apply_supercell_scaling,
     show_image_atoms: () => show_image_atoms,
+    keep_molecules_whole: () => keep_molecules_whole,
     // The scene's own polyhedra (absent while hidden; images exist only for crystals) and bonding.
     // Legend-hidden elements draw no polyhedra, so they complete none either.
     image_atom_options: () => {
@@ -1003,6 +1035,8 @@
     if (open) active_pane = pane
     else if (active_pane === pane) active_pane = null
   }
+  // setter half of a `bind:pane_open={getter, setter}` pair
+  const pane_setter = (pane: StructurePane) => (open: boolean) => set_pane_open(pane, open)
   function select_structure_layout(mode: StructureLayoutMode): void {
     if (mode === `slice` || mode === `split`) display_mode = mode
     else {
@@ -1103,6 +1137,12 @@
     },
     get slice_polygon() {
       return slice_polygon
+    },
+    get bonding_strategy() {
+      return bonding_strategy
+    },
+    get bonding_options() {
+      return { [bonding_strategy]: bonding_options }
     },
   }
   // Scene inputs that follow the displayed frame (tool_trail_positions too, as it reads the
@@ -1560,9 +1600,7 @@
                 structure={session.mapped_base_structure}
                 displayed_structure={session.render_structure}
                 bonding_strategy={scene_props.bonding_strategy}
-                bind:pane_open={
-                  () => is_pane_open(`info`), (open) => set_pane_open(`info`, open)
-                }
+                bind:pane_open={() => is_pane_open(`info`), pane_setter(`info`)}
                 bind:highlighted_sites
                 bind:hovered_site_idx
                 bind:selected_sites
@@ -1592,13 +1630,10 @@
                 prediction={saved_prediction ?? undefined}
                 on_clear_prediction={tool_controller.clear}
                 on_reset_prediction_surfaces={reset_prediction_surfaces}
-                bind:export_pane_open={
-                  () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
-                }
-                bind:flight_pane_open={
-                  () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
-                }
+                bind:export_pane_open={() => is_pane_open(`export`), pane_setter(`export`)}
+                bind:flight_pane_open={() => is_pane_open(`flight`), pane_setter(`flight`)}
                 structure={session.mapped_normalized_structure}
+                {sym_data}
                 {wrapper}
                 {scene}
                 image_canvas={display_mode === `slice` ? slice_canvas : undefined}
@@ -1613,9 +1648,7 @@
 
             {#if controls_config.visible(`controls`)}
               <StructureControls
-                bind:controls_open={
-                  () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
-                }
+                bind:controls_open={() => is_pane_open(`controls`), pane_setter(`controls`)}
                 {scene_props}
                 bind:show_trajectory_lines={
                   () =>
@@ -1631,6 +1664,7 @@
                 trajectory_position_stream={trail_stream}
                 bind:show_image_atoms
                 bind:image_atom_completion
+                bind:keep_molecules_whole
                 bind:supercell_scaling
                 bind:background_color
                 bind:background_opacity

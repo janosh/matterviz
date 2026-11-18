@@ -55,7 +55,13 @@ import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
 import type { PlotTitleProp } from '#lib/plot/core/plot-title.js'
 import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-title.js'
 import { index_ref_lines, solve_reference_annotations } from '#lib/plot/core/reference-line.js'
-import { create_axis_scales, generate_ticks, log_floor_scale } from '#lib/plot/core/scales.js'
+import {
+  create_axis_scales,
+  derived_tick_type,
+  generate_log_minor_ticks,
+  generate_ticks,
+  log_floor_scale,
+} from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   arrays_equal,
@@ -69,6 +75,8 @@ import type {
   PanConfig,
   RefLine,
   RefLineEvent,
+  AxisDerive,
+  ScaleType,
 } from '#lib/plot/core/types.js'
 import { get_scale_type_name } from '#lib/plot/core/types.js'
 import { unique_id } from '#lib/plot/core/utils.js'
@@ -188,8 +196,30 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // reported as ScatterPlot's resolved_padding so hosts sharing one padding raise it to fit
   let fit_pad = $derived(DEFAULT_PLOT_PADDING)
   const title_config = $derived(normalize_plot_title(opts.title()))
+  // An x2 derived from x (x2_axis.derive) shows without data of its own and is never set
+  const x2_derived = (): boolean => Boolean(opts.axes().x2.derive)
+  const has_x2 = (): boolean => opts.has_x2() || x2_derived()
   const axis_shown = (axis: FacetAxis): boolean =>
-    axis === `x2` ? opts.has_x2() : axis === `y2` ? opts.has_y2() : true
+    axis === `x2` ? has_x2() : axis === `y2` ? opts.has_y2() : true
+  // Tick scheme an axis asks for: its own scale_type, else x's for a derived x2, else linear
+  const requested_tick_type = (axis: FacetAxis): ScaleType => {
+    const axes = opts.axes()
+    const inherited = axis === `x2` && axes.x2.derive ? axes.x.scale_type : undefined
+    return axes[axis].scale_type ?? inherited ?? `linear`
+  }
+  // ...and the one it ticks with: a derived x2 is log only over a positive domain
+  const tick_scale_type = (axis: FacetAxis): ScaleType =>
+    axis === `x2` && x2_derived()
+      ? derived_tick_type(requested_tick_type(axis), scales.x2.domain() as Vec2)
+      : requested_tick_type(axis)
+  // Generated x2 ticks a derived axis can place: domain sampling misses a narrow gap where the
+  // conversion is undefined, so each tick's preimage must map back to a finite value
+  const placeable = (axis: FacetAxis, ticks: number[]): number[] => {
+    const derive = axis === `x2` ? opts.axes().x2.derive : undefined
+    return derive
+      ? ticks.filter((tick) => Number.isFinite(derive.forward(derive.inverse(tick))))
+      : ticks
+  }
   const measured_axis_config = (axis: FacetAxis): AxisConfig =>
     opts.measured_axes?.()[axis] ?? opts.axes()[axis]
 
@@ -231,9 +261,13 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       const override = opts.tick_override?.(axis)
       if (override?.length) return override
       const config = opts.axes()[axis]
-      return generate_ticks(
-        axis_ranges[axis],
-        config.scale_type ?? `linear`,
+      // A derived axis ticks its own (derived-unit) domain
+      const domain =
+        axis === `x2` && x2_derived() ? (axis_scales.x2.domain() as Vec2) : axis_ranges[axis]
+      if (!domain.every(Number.isFinite)) return []
+      const generated = generate_ticks(
+        domain,
+        tick_scale_type(axis),
         config.ticks,
         axis_scales[axis],
         {
@@ -241,6 +275,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
           format: config.format,
         },
       )
+      return placeable(axis, generated)
     }
     const entries = FACET_AXES.map((axis) => [axis, axis_ticks(axis)])
     return Object.fromEntries(entries) as Record<FacetAxis, number[]>
@@ -585,18 +620,32 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  let last_scales: { key: string; value: ReturnType<typeof create_axis_scales> } | undefined
+  type AxisScales = ReturnType<typeof create_axis_scales>
+  let last_scales: { key: string; derive?: Partial<AxisDerive>; value: AxisScales } | undefined
   const scales = $derived.by(() => {
     const axes = opts.axes()
     const { current } = ranges
+    // keyed by each axis's tick scheme, so a derived x2 going from inherited log to explicit
+    // linear rebuilds its scale
     const key = JSON.stringify([
-      FACET_AXES.map((axis) => [axes[axis].scale_type ?? `linear`, current[axis]]),
+      FACET_AXES.map((axis) => [requested_tick_type(axis), current[axis]]),
       pad,
       width,
       height,
     ])
-    if (last_scales?.key !== key) {
-      last_scales = { key, value: create_axis_scales(axes, current, pad, width, height) }
+    // derive's callbacks can't be keyed by JSON, so they are compared by identity
+    const { forward, inverse } = axes.x2.derive ?? {}
+    const cached_derive = last_scales?.derive
+    if (
+      last_scales?.key !== key ||
+      cached_derive?.forward !== forward ||
+      cached_derive?.inverse !== inverse
+    ) {
+      last_scales = {
+        key,
+        derive: { forward, inverse },
+        value: create_axis_scales(axes, current, pad, width, height),
+      }
     }
     return last_scales.value
   })
@@ -606,7 +655,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const px_per_unit = $derived.by(() => {
     const next = Object.fromEntries(
       FACET_AXES.map((axis) => {
-        const { forward } = axis_transform(opts.axes()[axis].scale_type)
+        const { forward } = axis_transform(tick_scale_type(axis))
         const [[dom_lo, dom_hi], [px_lo, px_hi]] = [
           scales[axis].domain(),
           scales[axis].range(),
@@ -615,8 +664,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       }),
     ) as Record<FacetAxis, number>
     const prev = last_px_per_unit
+    // non-finite (a derived x2's NaN domain) counts as unchanged, so it reruns nothing
     const near = (axis: FacetAxis) =>
-      prev !== undefined && Math.abs(next[axis] - prev[axis]) <= 1e-9 * Math.abs(next[axis])
+      prev !== undefined &&
+      (Math.abs(next[axis] - prev[axis]) <= 1e-9 * Math.abs(next[axis]) ||
+        (!Number.isFinite(next[axis]) && !Number.isFinite(prev[axis])))
     return FACET_AXES.every(near) && prev ? prev : (last_px_per_unit = next)
   })
   let last_ticks: Record<FacetAxis, number[]> | undefined
@@ -626,12 +678,30 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     if (prev && FACET_AXES.every((axis) => arrays_equal(prev[axis], next[axis]))) return prev
     return (last_ticks = next)
   })
+  // What each axis's ticks span: its live range, or a derived x2's forward image of x's
+  const axis_domains = $derived.by(() =>
+    x2_derived() ? { ...ranges.current, x2: scales.x2.domain() as Vec2 } : ranges.current,
+  )
+  // Unlabeled minor ticks of log axes (on unless the axis sets minor_ticks: false)
+  const minor_ticks = $derived(
+    Object.fromEntries(
+      FACET_AXES.map((axis) => {
+        const show =
+          get_scale_type_name(tick_scale_type(axis)) === `log` &&
+          opts.axes()[axis].minor_ticks !== false &&
+          ticks[axis].length > 0
+        const minor = show ? generate_log_minor_ticks(axis_domains[axis], ticks[axis]) : []
+        return [axis, placeable(axis, minor)]
+      }),
+    ) as Record<FacetAxis, number[]>,
+  )
   // Ref lines on a data-less x2/y2 (whose scales are [0, 1] sentinels) resolve against the
   // primary axis, so charts without secondary axes still honour `x_axis: 'x2'`
   const ref_line_axes = $derived.by(() => {
-    const coord_x = opts.has_x2() ? `x2` : `x`
+    // a derived x2 resolves its ref lines in derived units through its own scale
+    const coord_x = has_x2() ? `x2` : `x`
     const coord_y_2 = opts.has_y2() ? `y2` : `y`
-    const { current } = ranges
+    const current = axis_domains
     return {
       ranges: { x: current.x, x2: current[coord_x], y: current.y, y2: current[coord_y_2] },
       scales: { x: scales.x, x2: scales[coord_x], y: scales.y, y2: scales[coord_y_2] },
@@ -706,7 +776,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // The axes a gesture or `view` write may set: not a data-less x2/y2 ([0, 1] sentinel) nor a
   // y2 derived from y
   const settable_axes = () =>
-    FACET_AXES.filter((axis) => axis_shown(axis) && (axis !== `y2` || y2_sync.mode === `none`))
+    FACET_AXES.filter(
+      (axis) =>
+        axis_shown(axis) &&
+        (axis !== `y2` || y2_sync.mode === `none`) &&
+        (axis !== `x2` || !x2_derived()),
+    )
   const pan_zoom = create_pan_zoom({
     axes: settable_axes,
     ranges: () => ranges.current,
@@ -720,7 +795,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     on_rect_zoom: (start, current) => {
       // The live range keeps reversed axes reversed; x2/y2 only with data behind them
       const zoom_axis = (axis: FacetAxis, from_px: number, to_px: number) => {
-        if (!axis_shown(axis)) return null
+        if (!settable_axes().includes(axis)) return null
         const range = invert_rect_range(scales[axis], from_px, to_px, ranges.current[axis])
         if (range) synced_facet.update_range(axis, range)
         return range
@@ -905,6 +980,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get ticks() {
       return ticks
     },
+    get minor_ticks() {
+      return minor_ticks
+    },
+    get axis_domains() {
+      return axis_domains
+    },
     get tick_label_widths() {
       return tick_label_widths
     },
@@ -930,7 +1011,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       return exclusion_rects
     },
     get has_x2() {
-      return opts.has_x2()
+      return has_x2()
     },
     get has_y2() {
       return opts.has_y2()

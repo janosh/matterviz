@@ -2,7 +2,6 @@
 import { is_plain_object } from 'svelte-widgets/utils'
 import { DEFAULTS } from '../../src/lib/settings'
 import { DATA_PROPS } from '../../extensions/anywidget/reactive.svelte'
-import { extract_prop_docs } from '../../src/scripts/prop-docs'
 import { flushSync } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { inline_workers, widget_scope } from '../../extensions/anywidget/vite.config'
@@ -10,9 +9,8 @@ import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
+import { library_prop_docs } from './setup'
 
-// The registry shared with the custom elements: src/lib paths by widget_type
-const component_files = Object.values(COMPONENTS).map((path) => `src/lib/${path}.svelte`)
 const component_name = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
 const { check_blob_workers, spectral_doc } = vi.hoisted(() => ({
   check_blob_workers: vi.fn(),
@@ -36,6 +34,9 @@ vi.mock(`matterviz`, async () => {
   return {
     ...Object.fromEntries(stubs),
     volume_from_json: (raw: unknown) => raw,
+    // binary envelopes dispatch to their own decoders (real ones: anywidget-binary.test.ts)
+    volume_from_binary: (raw: unknown) => ({ binary_volume: raw }),
+    trajectory_from_binary: (value: unknown) => ({ binary_run_of: value }),
     is_plain_object,
     set_moyo_wasm_source,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
@@ -119,10 +120,15 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // reactive_widget keeps undefined DATA_PROPS keys, whose setter lets a component write data it
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
-// a TypeScript program over every widget component: seconds on shared CI runners
 // the custom elements define an accessor per prop, which shadows an HTMLElement member of that name
-test(`no widget prop binds defaulted data or shadows the DOM`, { timeout: 30_000 }, () => {
-  const docs = Object.entries(extract_prop_docs(component_files))
+test(`no widget prop binds defaulted data or shadows the DOM`, async () => {
+  const library_docs = await library_prop_docs()
+  // the registry shared with the custom elements: src/lib paths by widget_type
+  const docs = Object.values(COMPONENTS).map((path) => {
+    const doc = library_docs[component_name(path)]
+    if (!doc) throw new Error(`No prop docs for widget component src/lib/${path}.svelte`)
+    return [component_name(path), doc] as const
+  })
   const defaulted = docs.flatMap(([component, { props }]) =>
     props
       .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
@@ -211,6 +217,11 @@ describe(`structure wiring`, () => {
     [`single object`, `density`, [`density`]],
     [`array`, [`density`, `spin`], [`density`, `spin`]],
     [`unset`, null, undefined],
+    [
+      `binary envelope beside JSON`,
+      [{ format: `matterviz-binary-v1`, kind: `volume` }, `density`],
+      [{ binary_volume: { format: `matterviz-binary-v1`, kind: `volume` } }, `density`],
+    ],
   ] as const)(`normalizes %s volumetric_data`, (_shape, raw, expected) => {
     const model = new MockModel({ widget_type: `structure`, volumetric_data: raw })
     expect(run_widget(`structure`, model).read().volumetric_data).toEqual(expected)
@@ -288,6 +299,10 @@ describe(`widget config wiring`, () => {
     })
     const stub = run_widget(`trajectory`, model)
     expect(stub.read().trajectory).toEqual({ run_of: payload })
+    const envelope = { format: `matterviz-binary-v1`, kind: `trajectory`, arrays: {} }
+    model.push_from_python(`trajectory`, envelope)
+    flushSync()
+    expect(stub.read().trajectory).toEqual({ binary_run_of: envelope })
     expect(stub.read().source).toBe(`/a.xyz`)
     expect(`data_url` in stub.read()).toBe(false)
     model.push_from_python(`trajectory`, null)

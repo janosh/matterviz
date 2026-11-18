@@ -1452,28 +1452,37 @@ describe(`neighbor_query`, () => {
       origin + (idx % 12) * 0.2,
     ])
 
+  // Contact distances keyed center * n_sites + neighbor, -1 for none: a dense table, since a
+  // Map of the ~600k contacts of 2000 grid sites cost most of these tests' runtime
+  const contact_table = (n_sites: number) => new Float64Array(n_sites * n_sites).fill(-1)
+
   // Max |streamed - expected| distance among Si sites at `positions`, after checking that
-  // streaming visits exactly the expected contacts (keyed center * n_sites + neighbor), by
-  // default the listed ones
-  const stream_error = (positions: Vec3[], cutoff: number, given?: Map<number, number>) => {
+  // streaming visits exactly the expected contacts (a contact_table), by default the listed ones
+  const stream_error = (positions: Vec3[], cutoff: number, given?: Float64Array) => {
     const structure = si_cloud(positions)
     const options = { cutoff, pbc: NO_PBC }
     const list = neighbor_list.neighbor_query(structure, options)
-    const expected = given ?? new Map<number, number>()
-    if (!given) {
-      for (const [center, slot] of slots(list))
-        expected.set(center * positions.length + list.neighbors[slot], list.distances[slot])
-      expect(expected.size).toBe(list.neighbors.length)
+    const expected = given ?? contact_table(positions.length)
+    let remaining = 0
+    if (given) for (const dist of given) remaining += Number(dist >= 0)
+    else {
+      for (const [center, slot] of slots(list)) {
+        const key = center * positions.length + list.neighbors[slot]
+        remaining += Number(expected[key] < 0) // a repeated contact counts once
+        expected[key] = list.distances[slot]
+      }
+      expect(remaining).toBe(list.neighbors.length)
     }
     let max_error = 0
     neighbor_list.visit_neighbor_distances(structure, options, (center, neighbor, dist) => {
       const key = center * positions.length + neighbor
-      const reference = expected.get(key)
-      if (reference === undefined) throw new Error(`Unexpected contact ${center}, ${neighbor}`)
+      const reference = expected[key]
+      if (reference < 0) throw new Error(`Unexpected contact ${center}, ${neighbor}`)
       max_error = Math.max(max_error, Math.abs(reference - dist))
-      expected.delete(key)
+      expected[key] = -1
+      remaining--
     })
-    expect(expected.size).toBe(0)
+    expect(remaining).toBe(0)
     return max_error
   }
 
@@ -1591,18 +1600,18 @@ describe(`neighbor_query`, () => {
     positions[2] = [0, 0, 0]
     positions[1][axis] = 1 - Number.EPSILON / 2
     positions[2][axis] = 2
-    const expected = new Map<number, number>()
+    const expected = contact_table(positions.length)
     for (let center = 0; center < positions.length; center++) {
       for (let neighbor = center + 1; neighbor < positions.length; neighbor++) {
         const delta = math.subtract(positions[neighbor], positions[center])
         const dist_sq = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]
         if (dist_sq > 1) continue
-        expected.set(center * positions.length + neighbor, Math.sqrt(dist_sq))
-        expected.set(neighbor * positions.length + center, Math.sqrt(dist_sq))
+        expected[center * positions.length + neighbor] = Math.sqrt(dist_sq)
+        expected[neighbor * positions.length + center] = Math.sqrt(dist_sq)
       }
     }
     // Rounded subtraction gives distance 1; unpadded whole bins 0 and 2 miss this pair.
-    expect(expected.get(positions.length + 2)).toBe(1)
+    expect(expected[positions.length + 2]).toBe(1)
     expect(stream_error(positions, 1, expected)).toBe(0)
     expect(stream_error(positions, 1)).toBe(0)
   })
@@ -1738,8 +1747,8 @@ describe(`neighbor_query`, () => {
     expect(bonds.slice(0, -1)).toEqual(hydrogen_bonds)
     expect(bonds.at(-1)).toMatchObject({ site_idx_1: 4600, site_idx_2: 4601, bond_length: 5 })
     // Inherently heavy: the refusals must actually cross the fixed 10M-pair limit (~160 MB of
-    // pair buffers) and the streaming check visits 21M pairs. ~0.6 s alone but 5-7 s under a
-    // loaded full-suite run.
+    // pair buffers) and the streaming check visits 21M pairs: ~0.6 s alone but 5-7 s under a
+    // loaded full-suite run
   }, 20_000)
 
   // The refusal estimate counts the images that will actually be built (only those within

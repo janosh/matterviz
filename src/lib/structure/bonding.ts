@@ -740,6 +740,11 @@ export function validate_bonding_options<Strategy extends BondingStrategy>(
   strategy: Strategy,
   options: object,
 ): BondingOptions<Strategy> {
+  // names arrive as plain strings from hosts and saved settings too
+  if (!Object.hasOwn(BONDING_OPTION_CHECKS, strategy)) {
+    const valid = Object.keys(BONDING_OPTION_CHECKS).join(`, `)
+    throw new Error(`Unknown bonding strategy '${strategy}', expected one of ${valid}`)
+  }
   const checks = BONDING_OPTION_CHECKS[strategy]
   for (const [key, value] of Object.entries(options)) {
     if (!Object.hasOwn(checks, key)) {

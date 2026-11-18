@@ -3,6 +3,7 @@ import { host } from '#lib/host.js'
 import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout.js'
 import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
 import type { ShortcutScope } from '#lib/shortcuts.js'
+import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -1002,6 +1003,21 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
   }
 }
 
+// V8's spread-argument limit (~125k on Node's main thread) is ~490k in Vitest workers, so
+// Math.max and Math.min throw past `max_args` arguments for the rest of the test: a spread
+// overflows as in a browser tab, at a fraction of the input size.
+export const limit_math_spread = (max_args: number): void => {
+  for (const key of [`max`, `min`] as const) {
+    const native = Math[key]
+    const spy = vi.spyOn(Math, key).mockImplementation((...values: number[]) => {
+      if (values.length > max_args)
+        throw new RangeError(`Math.${key} spread ${values.length} arguments > ${max_args}`)
+      return native(...values)
+    })
+    onTestFinished(() => spy.mockRestore())
+  }
+}
+
 // Re-imports a module graph with workers disabled, as on a file:// or blob:-refusing page
 export const import_without_workers = async <Module>(
   load: () => Promise<Module>,
@@ -1045,4 +1061,16 @@ export async function export_via_pane(
   await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
   const [called_format, { data, filename }] = on_export.mock.calls[0]
   return { offered, format: called_format, data, filename }
+}
+
+// Every src/lib component's prop docs via the test server's virtual:prop-docs, so the
+// whole-library extraction (seconds of TypeScript checking) runs once per test run
+export const library_prop_docs = async (): Promise<Record<string, ComponentDoc>> => {
+  const { default: loaders } = await import(`virtual:prop-docs`)
+  const docs = await Promise.all(
+    Object.entries(loaders).map(
+      async ([name, load]) => [name, (await load()).default] as const,
+    ),
+  )
+  return Object.fromEntries(docs)
 }

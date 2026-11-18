@@ -27,6 +27,7 @@ export const diagonal_matrix = (factors: Vec3): Matrix3x3 =>
 
 // The integer supercell matrix of any SupercellScaling form. Diagonal forms need positive
 // factors; a matrix may hold any integers but must be invertible (|det| copies of each site).
+const MAX_SUPERCELL_ENTRY = 100_000
 export function parse_supercell_matrix(scaling: SupercellScaling): Matrix3x3 {
   const tokens = typeof scaling === `string` ? scaling.trim().split(/[\s,;]+/) : []
   let matrix: Matrix3x3
@@ -39,6 +40,11 @@ export function parse_supercell_matrix(scaling: SupercellScaling): Matrix3x3 {
   } else matrix = diagonal_matrix(parse_supercell_scaling_factors(scaling))
   if (matrix.flat().some((val) => !Number.isInteger(val)))
     throw new Error(`Supercell matrix entries must be integers: ${JSON.stringify(matrix)}`)
+  // |entries| <= 1e5 keep the det's six triple products, and so det itself, below 2^53: exact
+  if (matrix.flat().some((val) => Math.abs(val) > MAX_SUPERCELL_ENTRY))
+    throw new Error(
+      `Supercell matrix entries must be at most ${MAX_SUPERCELL_ENTRY} in magnitude: ${JSON.stringify(matrix)}`,
+    )
   if (math.det_3x3(matrix) === 0)
     throw new Error(`Supercell matrix is singular (det 0): ${JSON.stringify(matrix)}`)
   return matrix
@@ -85,6 +91,7 @@ function parse_supercell_scaling_factors(scaling: string | number | Vec3): Vec3 
 // i.e. with t · M^-1 in [0, 1)^3, c slowest and a fastest. `to_frac` maps a row vector x in
 // old-lattice units to x · M^-1 as integer numerators (x · det M^-1, det M^-1 being an integer
 // matrix) over det, so membership and floors of integer vectors are exact.
+const MAX_TRANSLATION_BOX = 2 ** 20 // ~0.1 s to scan
 export function supercell_translations(matrix: Matrix3x3): {
   translations: Vec3[]
   det: number
@@ -100,6 +107,13 @@ export function supercell_translations(matrix: Matrix3x3): {
   const [lower, upper] = [Math.min, Math.max].map((pick) =>
     AXES.map((axis) => matrix.reduce((sum, row) => sum + pick(0, row[axis]), 0)),
   )
+  // the box holds every translation but can dwarf |det| ([[1, n, n], [0, 1, n], [0, 0, 1]]
+  // has det 1 in a 2n²-cell box), so a box past the work cap is refused before scanning it
+  const n_box = AXES.reduce((prod: number, axis) => prod * (upper[axis] - lower[axis] + 1), 1)
+  if (n_box > Math.max(MAX_TRANSLATION_BOX, 8 * Math.abs(det)))
+    throw new Error(
+      `Supercell matrix ${JSON.stringify(matrix)} spans a bounding box of ${n_box.toLocaleString()} cells for ${Math.abs(det)} copies, too skewed to tile`,
+    )
   const translations: Vec3[] = []
   for (let t_c = lower[2]; t_c <= upper[2]; t_c++)
     for (let t_b = lower[1]; t_b <= upper[1]; t_b++)
@@ -328,9 +342,12 @@ function make_matrix_supercell(
         `Supercell matrix ${JSON.stringify(matrix)} mixes non-periodic axis ${`abc`[axis]} with the others`,
       )
   }
-  const { translations, to_frac } = supercell_translations(matrix)
   const { sites } = structure
-  check_site_cap(sites.length, translations.length, JSON.stringify(matrix))
+  // |det M| copies, known before enumerating them, so an oversized matrix fails at once
+  const n_copies = Math.abs(Math.round(math.det_3x3(matrix)))
+  check_site_cap(sites.length, n_copies, JSON.stringify(matrix))
+  const layout = supercell_translations(matrix)
+  const { translations, to_frac } = layout
   const new_matrix = math.dot(matrix, lattice) // rows of M · L: the new lattice vectors
   const to_old_cart = math.create_frac_to_cart(lattice)
   const to_new_cart = math.create_frac_to_cart(new_matrix)
@@ -356,15 +373,18 @@ function make_matrix_supercell(
       })
     }
   }
-  return assemble_supercell(structure, matrix, new_matrix, new_sites, site_shifts)
+  return assemble_supercell(structure, matrix, new_matrix, new_sites, site_shifts, layout)
 }
 
 // The explicit bonds the unit cell draws (an out-of-range index rejected there would be offset
 // into range by the tiling and bond atoms of a neighbouring cell), once per translation t of
 // the supercell `matrix`. A bond i -> j + S from the copy at t ends at j's copy at t + S, which
 // is the in-cell translation t' plus whole supercell vectors K: t + S = t' + K · M
-function replicate_bonds(structure: Crystal, matrix: Matrix3x3): StructureBond[] {
-  const { translations, to_frac } = supercell_translations(matrix)
+function replicate_bonds(
+  structure: Crystal,
+  matrix: Matrix3x3,
+  { translations, to_frac }: ReturnType<typeof supercell_translations>,
+): StructureBond[] {
   const n_sites = structure.sites.length
   const bonds = get_explicit_bond_metadata(structure)
   const translation_idx = new Map(translations.map((vec, idx) => [vec.join(`,`), idx]))
@@ -398,6 +418,8 @@ function assemble_supercell(
   new_matrix: Matrix3x3,
   sites: Site[],
   site_shifts: (Vec3 | undefined)[],
+  // the general path's own, else enumerated here only when there are bonds to replicate
+  layout?: ReturnType<typeof supercell_translations>,
 ): Crystal {
   const n_copies = Math.abs(Math.round(math.det_3x3(matrix)))
   return {
@@ -414,7 +436,7 @@ function assemble_supercell(
         : {
             ...structure.properties,
             bonds: shift_bonds_for_moved_sites(
-              replicate_bonds(structure, matrix),
+              replicate_bonds(structure, matrix, layout ?? supercell_translations(matrix)),
               (site_idx) => site_shifts[site_idx],
             ),
           },

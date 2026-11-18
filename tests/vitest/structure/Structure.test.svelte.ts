@@ -26,6 +26,9 @@ import { get_element_counts } from '#lib/structure/density.js'
 import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
 import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
 import * as site_table_module from '#lib/structure/site-table'
+// imported up front, as the file loads: the sidebar's lazy import of it (a large component
+// tree) took seconds on a busy machine, inside whichever test opened the sidebar first
+import SiteTable from '#lib/structure/SiteTable.svelte'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type {
@@ -2320,7 +2323,7 @@ test.each([`symmetry`, `lattice planes`, `thermal`])(
     await init_moyo_for_tests()
     const prim_fcc_cu = fcc_cu()
     const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
-    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
+    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data)
     expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
     const field: AtomColorField = {
       dims: [1, 1, 1],
@@ -2483,6 +2486,49 @@ test.each([
   Object.assign(props, change)
   await tick()
   expect(completion_count()).toBe(0)
+})
+
+// Invalid bonding settings are checked once, before any search: the scene's bonds and
+// polyhedra, image completion and whole molecules all bond with the strategy's defaults
+// instead of throwing mid-flush, and one notice says why until a valid value replaces them
+test(`invalid pair cutoffs keep the viewer usable with one notice until fixed`, async () => {
+  mock_gpu()
+  const bonding = (range: [number, number]) => ({
+    pair_cutoffs: { pair_cutoffs: { 'O-Ti': range } },
+  })
+  const props = $state<StructureProps>({
+    structure: make_srtio3(`corner`),
+    show_image_atoms: true,
+    image_atom_completion: `boundary`,
+    keep_molecules_whole: true,
+    scene_props: {
+      show_bonds: `always`,
+      bonding_strategy: `pair_cutoffs`,
+      bonding_options: bonding([2, 1]),
+    },
+  })
+  const analysis = await mount_settled(props)
+  const toast = () => document.querySelector(TOAST_MESSAGE)?.textContent ?? null
+  expect(toast()).toContain(`Invalid pair_cutoffs bonding option pair_cutoffs: 'O-Ti'`)
+  expect(analysis.displayed_structure?.sites.length).toBeGreaterThan(5)
+  expect(scene_stub.props?.bonding_options).toEqual({ pair_cutoffs: {} })
+  // the controls stay usable: raising the max past the min in the cutoff row fixes the range
+  await fire(doc_query(`button.structure-controls-toggle`))
+  const max_input = doc_query<HTMLInputElement>(`input[aria-label="O-Ti max (Å)"]`)
+  max_input.value = `2.5`
+  max_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+  await tick()
+  expect(toast()).toBeNull()
+  expect(scene_stub.props?.bonding_options).toEqual(bonding([2, 2.5]))
+  if (!props.scene_props) throw new Error(`scene_props missing`)
+  // an unknown strategy name gets the same single notice, naming what bonds instead
+  props.scene_props.bonding_strategy = `nope` as `pair_cutoffs`
+  await tick()
+  expect(toast()).toContain(
+    `Unknown bonding strategy 'nope', expected one of electroneg_ratio, pair_cutoffs, explicit_only (bonding with the electroneg_ratio defaults)`,
+  )
+  expect(scene_stub.props?.bonding_strategy).toBe(`electroneg_ratio`)
+  expect(analysis.displayed_structure?.sites.length).toBeGreaterThan(5)
 })
 
 test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {
@@ -3446,12 +3492,11 @@ const site_table_loaded = () =>
 
 // until the import resolves, the sidebar says so instead of showing a count over nothing
 test(`shows a loading status in the site sidebar until its table arrives`, async () => {
-  const real_load = site_table_module.load_site_table
-  const table_gate = Promise.withResolvers<Awaited<ReturnType<typeof real_load>>>()
+  const table_gate = Promise.withResolvers<typeof SiteTable>()
   vi.spyOn(site_table_module, `load_site_table`).mockReturnValueOnce(table_gate.promise)
   await mount_settled({ structure: with_forces, site_sidebar: true })
   expect(sidebar()?.textContent).toContain(`Loading site table`)
-  table_gate.resolve(await real_load())
+  table_gate.resolve(SiteTable)
   await site_table_loaded()
   expect(sidebar()?.textContent).not.toContain(`Loading site table`)
 })

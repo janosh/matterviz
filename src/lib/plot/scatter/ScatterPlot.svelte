@@ -483,7 +483,7 @@
 
   const auto_range = (
     data_extent: RunningExtent,
-    axis: typeof final_x_axis,
+    axis: typeof final_x2_axis,
     axis_px: number,
     time_scale = false,
   ): Vec2 =>
@@ -728,10 +728,16 @@
 
   // InternalPoints built once per data change, picked by range on each pan/zoom frame
   const materialized_series = $derived(materialize_series_points(assigned_series))
+  // culled against the displayed domains: a derived x2's (forward of x's range, not the pixel-
+  // sampled scale domain, which depends on the padding these points feed), not its own range
+  const x2_shown = $derived.by((): Vec2 => {
+    const { derive } = final_x2_axis
+    return derive ? [derive.forward(x_min), derive.forward(x_max)] : [x2_min, x2_max]
+  })
   let filtered_series = $derived(
     filter_series_to_ranges(materialized_series, {
       x: [x_min, x_max],
-      x2: [x2_min, x2_max],
+      x2: x2_shown,
       y: [y_min, y_max],
       y2: [y2_min, y2_max],
     }),
@@ -756,7 +762,8 @@
   const line_series = $derived(
     filtered_series.filter(
       (srs) =>
-        has_marker(srs, `line`) && line_reaches_view(srs, frame.ranges.current, log_y_axes),
+        has_marker(srs, `line`) &&
+        line_reaches_view(srs, { ...frame.ranges.current, x2: x2_shown }, log_y_axes),
     ),
   )
   const marker_series = $derived(
@@ -773,7 +780,19 @@
     if (!density_config) return []
     const fractions = density_level_fractions(density_config.levels)
     // Non-finite values and log-invalid ones become NaN pixels, which the grid skips
-    const to_px = (axis: FacetAxis, { scale_type }: typeof final_x_axis) => {
+    const to_px = (axis: FacetAxis): ((val: number) => number) => {
+      const { derive } = final_x2_axis
+      // a derived x2 sits where x puts its inverse: densities in that rendered metric
+      if (axis === `x2` && derive) {
+        const x_px = to_px(`x`)
+        return (val) => x_px(derive.inverse(val))
+      }
+      const { scale_type } = {
+        x: final_x_axis,
+        x2: final_x2_axis,
+        y: final_y_axis,
+        y2: final_y2_axis,
+      }[axis]
       const { forward } = axis_transform(scale_type)
       const is_log = get_scale_type_name(scale_type) === `log`
       const slope = frame.px_per_unit[axis]
@@ -782,8 +801,8 @@
     }
     return assigned_series.map((srs) => {
       if (!srs || srs.visible === false) return null
-      const x_px = srs.x_axis === `x2` ? to_px(`x2`, final_x2_axis) : to_px(`x`, final_x_axis)
-      const y_px = srs.y_axis === `y2` ? to_px(`y2`, final_y2_axis) : to_px(`y`, final_y_axis)
+      const x_px = to_px(srs.x_axis === `x2` ? `x2` : `x`)
+      const y_px = to_px(srs.y_axis === `y2` ? `y2` : `y`)
       const xs = Float64Array.from({ length: srs.x.length }, (_, idx) => x_px(srs.x[idx]))
       const ys = Float64Array.from({ length: srs.x.length }, (_, idx) => y_px(srs.y[idx]))
       return level_densities(xs, ys, fractions, { bandwidth: density_config.bandwidth })

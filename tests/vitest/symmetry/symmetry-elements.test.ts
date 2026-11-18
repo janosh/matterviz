@@ -4,7 +4,7 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { diagonal_matrix } from '#lib/structure/supercell.js'
-import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
+import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import {
   classify_symmetry_op,
   clip_axis_family,
@@ -33,6 +33,16 @@ import {
   init_moyo_for_tests,
   make_crystal,
 } from '../test-fixtures'
+
+// Operations already in moyo's standardized frame (std_linear = I, no origin shift)
+// Unit-cube Cartesian basis, so label_frame keeps this frame
+const standard = (operations: MoyoDataset[`operations`]) => ({
+  operations,
+  std_linear: col_major(IDENTITY) as MoyoDataset[`std_linear`],
+  std_origin_shift: [0, 0, 0] as Vec3,
+  std_rotation_matrix: col_major(IDENTITY) as MoyoDataset[`std_rotation_matrix`],
+  std_cell: { lattice: { basis: IDENTITY.flat() as MoyoDataset[`std_linear`] } },
+})
 
 const diag = (xx: number, yy: number, zz: number): Matrix3x3 => [
   [xx, 0, 0],
@@ -135,10 +145,12 @@ describe(`classify_symmetry_op`, () => {
     })
     // (I-W) has determinant 4: two x/y positions, each with centers at z=0 and 1/2.
     const elements = symmetry_elements_from_ops(
-      [0, 2 - 2e-9].map((shift) => ({
-        rotation: col_major(ROTOINV4_Z),
-        translation: [0, 0, shift],
-      })) as MoyoDataset[`operations`],
+      standard(
+        [0, 2 - 2e-9].map((shift) => ({
+          rotation: col_major(ROTOINV4_Z),
+          translation: [0, 0, shift],
+        })) as MoyoDataset[`operations`],
+      ),
     )
     expect(elements.map(({ point }) => point)).toEqual([
       [0, 0, 0],
@@ -190,24 +202,45 @@ describe(`classify_symmetry_op`, () => {
 describe(`symmetry_elements_from_ops: space group inventories`, () => {
   beforeAll(init_moyo_for_tests)
 
-  const elements_for = (spg_num: number, primitive = false): SymmetryElement[] =>
-    symmetry_elements_from_ops(
-      operations_from_number(spg_num, { type: `Standard` }, primitive),
-    )
+  const standard_ops = (spg: number) =>
+    operations_from_number(spg, { type: `Standard` }, false)
+  const elements_for = (spg: number): SymmetryElement[] =>
+    symmetry_elements_from_ops(standard(standard_ops(spg)))
 
-  // A group's operations re-expressed in the sheared basis b' = b + 50a (x = M·x')
+  // A group's operations re-expressed in the sheared basis b' = b + 50a (x = M·x'), with the
+  // standardized frame x = std_linear⁻¹·x' moyo would report for that input
   const to_old = math.IDENTITY_3X3.with(0, [1, 50, 0]) as Matrix3x3
   const to_new = math.IDENTITY_3X3.with(0, [1, -50, 0]) as Matrix3x3
-  const sheared_ops = (spg: number, primitive = false) =>
-    operations_from_number(spg, { type: `Standard` }, primitive).map(
-      ({ rotation, translation }) => {
+  const sheared_ops = (spg: number) => ({
+    ...standard(
+      standard_ops(spg).map(({ rotation, translation }) => {
         const rot = math.dot(to_new, math.mat3x3_from_flat_col_major(rotation))
         return {
           rotation: col_major(math.dot(rot, to_old)),
           translation: math.dot(to_new, translation),
         }
-      },
-    ) as MoyoDataset[`operations`]
+      }) as MoyoDataset[`operations`],
+    ),
+    std_linear: col_major(to_new) as MoyoDataset[`std_linear`],
+  })
+
+  // Orbits of two generic points (Si, O) in the standard setting: exactly the group's
+  // symmetry (one orbit alone can carry extra, e.g. any 2-site orbit is centrosymmetric)
+  const generic_points = { Si: [0.11, 0.23, 0.37], O: [0.31, 0.07, 0.19] } as const
+  const orbit_sites = (spg: number) =>
+    Object.entries(generic_points).flatMap(([element, point]) => {
+      const orbit = new Map<string, Vec3>()
+      for (const { rotation, translation } of standard_ops(spg)) {
+        const abc = math
+          .add(
+            math.mul_3x3_vec3(math.mat3x3_from_flat_col_major(rotation), [...point]),
+            translation,
+          )
+          .map((coord) => coord - Math.floor(coord + 1e-9)) as Vec3
+        orbit.set(abc.map((coord) => coord.toFixed(6)).join(`,`), abc)
+      }
+      return [...orbit.values()].map((abc) => ({ element, abc }))
+    })
 
   const count_by = (elements: SymmetryElement[], key: `kind` | `label`) =>
     elements.reduce<Record<string, number>>((acc, elem) => {
@@ -232,10 +265,12 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   // one at 0 and must share its locus key, else the same point shows up twice
   test(`inversion centers at 1 - 1e-9 and 0 dedupe to one element`, () => {
     const inversion = col_major(INVERSION)
-    const elements = symmetry_elements_from_ops([
-      { rotation: inversion, translation: [0, 0, 0] },
-      { rotation: inversion, translation: [2 - 2e-9, 0, 0] }, // center at w/2 = 1 - 1e-9
-    ] as MoyoDataset[`operations`])
+    const elements = symmetry_elements_from_ops(
+      standard([
+        { rotation: inversion, translation: [0, 0, 0] },
+        { rotation: inversion, translation: [2 - 2e-9, 0, 0] }, // center at w/2 = 1 - 1e-9
+      ] as MoyoDataset[`operations`]),
+    )
     expect(elements).toHaveLength(8)
     expect(elements.every((elem) => elem.kind === `inversion`)).toBe(true)
   })
@@ -266,14 +301,32 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(directions).toEqual(new Set([`1,0,0`, `0,1,0`, `0,0,1`]))
   })
 
-  // Tied glide vectors (a/2 vs b/2, c/2 vs (1/3,-1/3,1/6)) must not list a plane twice
+  // Plane letters per plane-equation normal (sorted, one per plane in the cell) vs ITA A: e double
+  // glides in centred cells, g for (a+b)/2 and (-1/4,1/4,1/2) on diagonal planes, d only in
+  // diamond-type groups. Expected letters are read off ITA A's symmetry-element listings for
+  // these 13 groups (moyo's standard settings), one entry per plane in the cell.
+  // Tied glide vectors (a/2 vs b/2, c/2 vs (1/3,-1/3,1/6)) must not list a plane twice.
   test.each([
-    // normal to ⟨110⟩ Fm-3m has g(-1/4,1/4,1/2) glides, no diamond glides (those need Fd-3m)
-    [`Fm-3m`, 225, { a: 4, b: 2, g: 12 }],
-    [`R3c`, 161, { c: 3, g: 3 }],
-  ])(`%s (#%i) glide labels`, (_, spg, expected) => {
-    const glides = elements_for(spg).filter((elem) => elem.kind === `glide`)
-    expect(count_by(glides, `label`)).toEqual(expected)
+    [`Fm-3m`, 225, { '0,0,1': `e e m m`, '1,-1,0': `g g m m` }],
+    [`Fd-3m`, 227, { '0,0,1': `d d d d`, '1,-1,0': `g g m m` }],
+    [`Pm-3m`, 221, { '0,0,1': `m m`, '1,-1,0': `g m` }],
+    [`Im-3m`, 229, { '0,0,1': `m m n n`, '1,-1,0': `e m` }],
+    [`Ia-3d`, 230, { '0,0,1': `a a b b`, '1,-1,0': `d d` }],
+    [`I4_1/amd`, 141, { '0,0,1': `a a b b`, '1,0,0': `m m n n`, '1,-1,0': `d d` }],
+    [`I4/mmm`, 139, { '0,0,1': `m m n n`, '1,-1,0': `e m` }],
+    [`Pnma`, 62, { '1,0,0': `n n`, '0,1,0': `m m`, '0,0,1': `a a` }],
+    [`Cmce`, 64, { '1,0,0': `b b m m`, '0,1,0': `c c n n`, '0,0,1': `e e` }],
+    [`P2_1/c`, 14, { '0,1,0': `c c` }],
+    [`C2/c`, 15, { '0,1,0': `c c n n` }],
+    [`R3c`, 161, { '1,1,0': `c g`, '1,-2,0': `c g` }],
+    [`R-3c`, 167, { '1,1,0': `c g`, '2,-1,0': `c g` }],
+  ])(`%s (#%i) ITA plane letters`, (_, spg, expected) => {
+    const letters: Record<string, string[]> = {}
+    for (const { plane_normal, label } of elements_for(spg)) {
+      if (plane_normal) (letters[String(plane_normal)] ??= []).push(label)
+    }
+    for (const [normal, expected_letters] of Object.entries(expected))
+      expect(letters[normal]?.toSorted().join(` `), normal).toBe(expected_letters)
   })
 
   test(`P2_13 (#198): 3-fold axes along ⟨111⟩ + 2_1 screws, no improper elements`, () => {
@@ -350,7 +403,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     }
     // The 3 label-`g` elements are the rhombohedral diagonal glides: reduced glide vector
     // (1/6, 1/3, 1/3) is no half cell-axis (a/b/c), half diagonal (n) or quarter diagonal
-    // (d), so glide_letter must fall back to its otherwise-untested catch-all "g" — and
+    // (d), so ita_glide_letter falls back to "g" — and
     // they must still classify as order-2 glide planes, not something mislabeled
     const g_glides = elements.filter((elem) => elem.label === `g`)
     expect(g_glides.map((elem) => [elem.kind, elem.order])).toEqual([
@@ -372,10 +425,12 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       [0, 0, 1],
     ]
     const elements = symmetry_elements_from_ops(
-      [IDENTITY, mirror].map((rot) => ({
-        rotation: col_major(rot),
-        translation: [0, 0, 0],
-      })) as MoyoDataset[`operations`],
+      standard(
+        [IDENTITY, mirror].map((rot) => ({
+          rotation: col_major(rot),
+          translation: [0, 0, 0],
+        })) as MoyoDataset[`operations`],
+      ),
     )
     const planes = elements.filter(
       (element) => element.kind === `mirror` || element.kind === `glide`,
@@ -387,7 +442,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // Smoke test: classification must not throw for ANY operation of ANY space group,
     // and every non-trivial op must classify to an element with a valid label
     for (let num = 1; num <= 230; num++) {
-      const ops = operations_from_number(num, { type: `Standard` }, false)
+      const ops = standard_ops(num)
       // centering vectors (needed to reduce screw/glide translations in centered cells)
       const centerings = ops
         .filter(
@@ -403,7 +458,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
           centerings,
         )
         if (elem === null) continue
-        expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
+        expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndeg])$/)
         if (elem.axis) {
           // axes are reduced integer vectors with canonical sign
           expect(elem.axis.every((val) => Number.isInteger(val))).toBe(true)
@@ -429,10 +484,9 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       { element: `Si`, abc: [0, 0, 0] },
       { element: `Si`, abc: [0.25, 0.25, 0.25] },
     ])
-    const { operations } = await analyze_structure_symmetry(prim_diamond)
-    const axes = symmetry_elements_from_ops(operations).filter(
-      (elem) => elem.axis && elem.kind !== `mirror` && elem.kind !== `glide`,
-    )
+    const axes = symmetry_elements_from_ops(
+      await analyze_structure_symmetry(prim_diamond),
+    ).filter((elem) => elem.axis && elem.kind !== `mirror` && elem.kind !== `glide`)
     const order_4 = axes.filter((elem) => elem.order === 4)
     const order = axes.filter((elem) => elem.order === 2)
     expect(order_4.length).toBeGreaterThan(0)
@@ -449,18 +503,129 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(order_4.some((elem) => !two_fold_intercepts.has(intercept_key(elem)))).toBe(true)
   })
 
-  // Sheared frames read cubic [110] as [51,-1,0]; glide letters follow axes, so tally as one
-  test(`sheared cell (b' = b + 50a) keeps every element inventory`, () => {
-    const tally = (elements: SymmetryElement[]) =>
-      count_by(
-        elements.map((elem) => (elem.kind === `glide` ? { ...elem, label: `glide` } : elem)),
-        `label`,
+  // Labels are read in moyo's standardized frame, so one crystal given as its conventional cell,
+  // its primitive cell or rotated in Cartesian space with cyclically permuted axes shows the
+  // same letters on every plane orientation (input-frame letters gave primitive diamond a/b/c/n
+  // and no d). The rotated input's normals are rotated back before comparing.
+  // Generic rotation (Rz(0.7)·Rx(0.4)): no Cartesian axis of the input stays put
+  const [cos_z, sin_z, cos_x, sin_x] = [
+    Math.cos(0.7),
+    Math.sin(0.7),
+    Math.cos(0.4),
+    Math.sin(0.4),
+  ]
+  // oxfmt-ignore
+  const rotation = math.dot([[cos_z, -sin_z, 0], [sin_z, cos_z, 0], [0, 0, 1]], [[1, 0, 0], [0, cos_x, -sin_x], [0, sin_x, cos_x]])
+  test.each([
+    [`Fm-3m`, 225, cubic_matrix(5)],
+    [`Fd-3m`, 227, cubic_matrix(5)],
+    [`Pm-3m`, 221, cubic_matrix(5)],
+    [`Ia-3d`, 230, cubic_matrix(5)],
+    [`I4_1/amd`, 141, diag(4, 4, 7)],
+    [`Pnma`, 62, diag(5, 6, 7)],
+    [`Cmce`, 64, diag(5, 6, 7)],
+    // oxfmt-ignore
+    [`C2/c`, 15, [[5, 0, 0], [0, 6, 0], [-1.2, 0, 6.9]] as Matrix3x3],
+    // oxfmt-ignore
+    [`R-3c`, 167, [[5, 0, 0], [-2.5, 2.5 * Math.sqrt(3), 0], [0, 0, 13]] as Matrix3x3],
+  ])(
+    `%s (#%i): conventional, primitive and rotated + permuted inputs label alike`,
+    async (_, spg, lattice) => {
+      const sites = orbit_sites(spg)
+      const conventional = make_crystal(lattice, sites)
+      const sym_data = await analyze_structure_symmetry(conventional)
+      expect(sym_data.number).toBe(spg)
+      const primitive = transform_cell(conventional, `primitive`, sym_data)
+      // lattice rows rotated (Cartesian v -> R·v) and cycled (a, b, c) -> (b, c, a)
+      const rotated = make_crystal(
+        [lattice[1], lattice[2], lattice[0]].map((row) =>
+          math.mul_3x3_vec3(rotation, row),
+        ) as Matrix3x3,
+        sites.map(({ element, abc: [x_val, y_val, z_val] }) => ({
+          element,
+          abc: [y_val, z_val, x_val],
+        })),
       )
+      // Cartesian plane normal L⁻¹·n (unit, canonical sign, mapped back by `to_reference`)
+      // -> letters on planes of that orientation
+      const letters_by_orientation = async (
+        crystal: typeof conventional,
+        to_reference: Matrix3x3 = math.IDENTITY_3X3,
+      ) => {
+        const inv_lattice = math.inverse_3x3(crystal.lattice.matrix)
+        const out: Record<string, Set<string>> = {}
+        const elements = symmetry_elements_from_ops(await analyze_structure_symmetry(crystal))
+        for (const { plane_normal, label } of elements) {
+          if (!plane_normal) continue
+          let normal = math.normalize_vec(
+            math.mul_3x3_vec3(to_reference, math.mul_3x3_vec3(inv_lattice, plane_normal)),
+          )
+          if ((normal.find((val) => Math.abs(val) > 1e-6) ?? 1) < 0)
+            normal = math.scale(normal, -1)
+          ;(out[
+            normal.map((val) => (Math.round(val * 1e3) / 1e3 + 0).toFixed(3)).join(`,`)
+          ] ??= new Set()).add(label)
+        }
+        return out
+      }
+      const reference = await letters_by_orientation(conventional)
+      expect(Object.keys(reference).length).toBeGreaterThan(0)
+      expect(await letters_by_orientation(primitive)).toEqual(reference)
+      expect(await letters_by_orientation(rotated, math.transpose_3x3(rotation))).toEqual(
+        reference,
+      )
+    },
+  )
+
+  // Sheared frames read cubic [110] as [51,-1,0]; labels come from the standardized frame, so
+  // even glide letters match. Each group's generic orbit (conventional and primitive cell) is
+  // given to moyo in the sheared basis b' = b + 50a, so ops, std_linear and the standardized
+  // cell are moyo's own, not this test's transform.
+  const lattice_for = (spg: number): Matrix3x3 => {
+    // oxfmt-ignore
+    if (spg <= 2) return [[5, 0, 0], [0.7, 6, 0], [-1.2, 0.9, 6.9]]
+    // oxfmt-ignore
+    if (spg <= 15) return [[5, 0, 0], [0, 6, 0], [-1.2, 0, 6.9]]
+    if (spg <= 74) return diag(5, 6, 7)
+    if (spg <= 142) return diag(5, 5, 7)
+    // oxfmt-ignore
+    if (spg <= 194) return [[5, 0, 0], [-2.5, 2.5 * Math.sqrt(3), 0], [0, 0, 7]]
+    return cubic_matrix(5)
+  }
+  const shear = (crystal: ReturnType<typeof make_crystal>) => {
+    const [vec_a, vec_b, vec_c] = crystal.lattice.matrix
+    return make_crystal(
+      [vec_a, math.add(vec_b, math.scale(vec_a, 50)), vec_c],
+      crystal.sites.map(({ species, abc: [x_val, y_val, z_val] }) => ({
+        element: species[0].element,
+        abc: [x_val - 50 * y_val, y_val, z_val],
+      })),
+    )
+  }
+  test(`sheared cell (b' = b + 50a) keeps every element inventory and label`, async () => {
+    const tally = (elements: SymmetryElement[]) => count_by(elements, `label`)
     for (let spg = 1; spg <= 230; spg++) {
-      for (const primitive of [false, true]) {
-        const sheared = tally(symmetry_elements_from_ops(sheared_ops(spg, primitive)))
-        expect(sheared, `#${spg} primitive=${primitive}`).toEqual(
-          tally(elements_for(spg, primitive)),
+      const conventional = make_crystal(lattice_for(spg), orbit_sites(spg))
+      const sym_data = await analyze_structure_symmetry(conventional)
+      expect(sym_data.number, `#${spg}`).toBe(spg)
+      const primitive = transform_cell(conventional, `primitive`, sym_data)
+      // references: the standard-setting ops as given, and moyo's labels of the unsheared
+      // primitive cell, which must name the same letters (counts shrink with the centering)
+      const reference = tally(elements_for(spg))
+      const prim_reference = tally(
+        symmetry_elements_from_ops(await analyze_structure_symmetry(primitive)),
+      )
+      expect(Object.keys(prim_reference).toSorted(), `#${spg} primitive labels`).toEqual(
+        Object.keys(reference).toSorted(),
+      )
+      for (const [crystal, expected, cell] of [
+        [conventional, reference, `conventional`],
+        [primitive, prim_reference, `primitive`],
+      ] as const) {
+        const sheared_data = await analyze_structure_symmetry(shear(crystal))
+        expect(sheared_data.std_linear).not.toEqual(col_major(math.IDENTITY_3X3))
+        expect(tally(symmetry_elements_from_ops(sheared_data)), `#${spg} ${cell}`).toEqual(
+          expected,
         )
       }
     }
@@ -486,7 +651,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // get intrinsic translation 5/6 along <111> and a bogus "3_0" label
     const elements = elements_for(199)
     for (const elem of elements) {
-      expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndg])$/)
+      expect(elem.label).toMatch(/^(?:-?[1-6](?:_[1-5])?|[mabcndeg])$/)
     }
     const labels = new Set(elements.map((elem) => elem.label))
     expect(labels).toContain(`3`)

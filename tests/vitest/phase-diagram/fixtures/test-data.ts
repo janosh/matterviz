@@ -26,7 +26,7 @@ const shifted_regions = split_regions(600)
 export const eutectic: BinaryPhaseDiagram = {
   format: BINARY_DIAGRAM_FORMAT,
   components: [`Al`, `Cu`],
-  pressure_pa: 101325,
+  pressure_gpa: 1.01325e-4,
   temperature_range: [0, 1000],
   phases: [
     { id: `LIQUID`, model_phase: `LIQUID`, label: `L`, kind: `liquid` },

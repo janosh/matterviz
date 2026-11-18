@@ -333,6 +333,13 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Comp
     parsed_files.set(name, source)
     return source
   }
+  // Shared by every import in this program: uncached, each one re-walks its ancestor
+  // directories' package.json files (over half the extraction time)
+  const resolution_cache = ts.createModuleResolutionCache(
+    host.getCurrentDirectory(),
+    host.getCanonicalFileName,
+    options,
+  )
   // `./X.svelte` and `#lib/.../X.svelte` resolve to X's virtual TS file
   host.resolveModuleNameLiterals = (literals, containing_file, redirected, compiler_options) =>
     literals.map(({ text }) => {
@@ -342,7 +349,7 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Comp
           containing_file,
           compiler_options,
           host,
-          undefined,
+          resolution_cache,
           redirected,
         )
       const virtual = text.endsWith(`.svelte`)
@@ -370,11 +377,16 @@ const LIB_DIR = `${repo_root}/src/lib/`
 // `virtual:prop-docs/<name>` (that component's ComponentDoc), so a page fetches only its own
 // components' docs (~2 KB of ~330 KB). One shared extraction (~2.5 s cold, ~0.4 s after an edit)
 // runs on the first per-component import.
-export const prop_docs_plugin = (): Plugin => {
-  const component_files = () =>
-    globSync(`**/*.svelte`, { cwd: LIB_DIR })
-      .map((path) => `${LIB_DIR}${path}`)
-      .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
+const component_files = (): string[] =>
+  globSync(`**/*.svelte`, { cwd: LIB_DIR })
+    .map((path) => `${LIB_DIR}${path}`)
+    .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
+
+// `extract` builds the docs for every component: tests pass the dev server's extraction instead
+// of repeating the whole-library one (seconds of TypeScript checking)
+export const prop_docs_plugin = (
+  extract: () => Record<string, ComponentDoc> = () => extract_prop_docs(component_files()),
+): Plugin => {
   let docs: Record<string, ComponentDoc> | undefined
   return {
     name: `prop-docs`,
@@ -386,7 +398,7 @@ export const prop_docs_plugin = (): Plugin => {
           // a failure here (e.g. a file mid-edit) must not crash the server: the first
           // per-component load extracts again and reports it there
           try {
-            docs ??= extract_prop_docs(component_files())
+            docs ??= extract()
           } catch (error) {
             server.config.logger.warn(`prop-docs prewarm failed: ${error}`)
           }
@@ -406,7 +418,7 @@ export const prop_docs_plugin = (): Plugin => {
       }
       if (!id.startsWith(`\0${VIRTUAL_ID}/`)) return null
       const name = id.slice(`\0${VIRTUAL_ID}/`.length)
-      docs ??= extract_prop_docs(component_files())
+      docs ??= extract()
       const component_docs = docs[name]
       if (!component_docs)
         throw new Error(`No component named ${name} in src/lib has $props()`)

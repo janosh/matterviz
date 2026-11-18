@@ -290,9 +290,8 @@ export const create_html = (
   context: ExtensionContextLike,
   data: WebviewBootstrapData,
 ): string => {
-  // 128 bits from the CSPRNG: Math.random() gave ~52 bits (11 base-36 chars) of a generator
-  // whose state is recoverable from its outputs, and the CSP nonce is all that keeps markup
-  // injected through file content from running as script
+  // 128 CSPRNG bits: the CSP nonce is all that keeps markup injected through file content from
+  // running as script, so Math.random() (recoverable state) won't do
   const nonce = randomBytes(16).toString(`hex`)
   const ext_path = context.extensionUri.fsPath
   // Webview-loadable URL for a file under dist/
@@ -310,15 +309,12 @@ export const create_html = (
   const moyo_wasm_url = wasm_filename && dist_uri(`assets`, wasm_filename)
 
   const webview_data = { ...data, moyo_wasm_url }
-  // Every `<` goes in as a JSON unicode escape, which parses back to `<`: escaping only `</`
-  // let file content like `<!--<script>` put the HTML parser in double-escaped script state,
-  // where the closing tag ends nothing and the rest of the page is swallowed
+  // Escape every `<`, not just `</`: file content like `<!--<script>` would otherwise put the
+  // HTML parser in double-escaped script state and swallow the rest of the page
   const bootstrap_json = JSON.stringify(webview_data).replaceAll(`<`, `\\u003c`)
-  // Set color-scheme before main-*.css loads, or its light-dark() tokens flash white/light
-  // until JS applies the theme. Must be a style attribute, not a <style> rule: it needs to
-  // outrank main-*.css's own same-specificity `:root, :host { color-scheme: light dark }`.
-  // THEME_TYPE, not a ternary: it is a Record over ThemeName, so a new theme is a type
-  // error there rather than silently rendering light here.
+  // color-scheme before main-*.css loads, or its light-dark() tokens flash light until JS
+  // applies the theme. A style attribute, to outrank main-*.css's same-specificity `:root`
+  // rule; THEME_TYPE (a Record over ThemeName) makes a new theme a type error here.
   const color_scheme = THEME_TYPE[data.theme]
   const root_style = `color-scheme: ${color_scheme}; background-color: var(--vscode-editor-background, Canvas);`
 
@@ -439,17 +435,14 @@ function stream_run_updates(
   webview: WebviewLike,
 ): () => void {
   const post = (rows: TrajectoryRun[`properties`][`rows`], complete: boolean): void =>
-    post_to_webview(
-      webview,
-      { command: `plot_metadata_stream`, request_id, rows: [...rows], complete },
-      `plot_metadata_stream`,
-    )
+    post_to_webview(webview, {
+      command: `plot_metadata_stream`,
+      request_id,
+      rows: [...rows],
+      complete,
+    })
   const unsubscribe_warnings = post_new_warnings(run, (warnings) =>
-    post_to_webview(
-      webview,
-      { command: `trajectory_warnings`, request_id, warnings },
-      `trajectory_warnings`,
-    ),
+    post_to_webview(webview, { command: `trajectory_warnings`, request_id, warnings }),
   )
   let pending: TrajectoryRun[`properties`][`rows`] = []
   const unsubscribe_rows = run.properties.complete
@@ -491,7 +484,7 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
 
     watcher.onDidDelete(() => {
       for (const subscriber of active_watcher_subscribers.get(file_path) ?? []) {
-        post_to_webview(subscriber, { command: `fileDeleted`, file_path }, `fileDeleted`)
+        post_to_webview(subscriber, { command: `fileDeleted`, file_path })
       }
       stop_watching_file(file_path)
     })
@@ -506,15 +499,11 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
   }
 }
 
-function post_to_webview(
-  webview: WebviewLike,
-  message: HostToWebviewMessage,
-  label: string,
-): void {
+function post_to_webview(webview: WebviewLike, message: HostToWebviewMessage): void {
   try {
     webview.postMessage(message)
   } catch (error) {
-    console.error(`[MatterViz] Failed to send ${label} message:`, error)
+    console.error(`[MatterViz] Failed to send ${message.command} message:`, error)
   }
 }
 
@@ -527,16 +516,11 @@ async function broadcast_file_updated(
     const data = await read_file(file_path)
     const theme = get_theme()
     for (const webview of subscribers) {
-      post_to_webview(
-        webview,
-        { command: `fileUpdated`, file_path, data, theme },
-        `fileUpdated`,
-      )
+      post_to_webview(webview, { command: `fileUpdated`, file_path, data, theme })
     }
   } catch (error) {
     console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
-    // Once per failure, not once per subscriber, and shown rather than posted: the webview has
-    // no error surface of its own
+    // once per failure, not per subscriber; shown, as in start_watching_file
     vscode.window.showErrorMessage(`MatterViz: failed to read updated file: ${error}`)
   }
 }
@@ -621,11 +605,11 @@ function setup_webview_panel(
   // Push fresh theme/settings into the live webview. Rebuilding the HTML instead would
   // re-read the file from disk (discarding an unsaved editor buffer) and re-parse it.
   const post_settings = () =>
-    post_to_webview(
-      panel.webview,
-      { command: `settingsChanged`, theme: get_theme(), defaults: get_defaults() },
-      `settingsChanged`,
-    )
+    post_to_webview(panel.webview, {
+      command: `settingsChanged`,
+      theme: get_theme(),
+      defaults: get_defaults(),
+    })
 
   const theme_listener = vscode.window.onDidChangeActiveColorTheme(post_settings)
   const config_listener = vscode.workspace.onDidChangeConfiguration(

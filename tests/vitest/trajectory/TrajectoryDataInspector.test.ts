@@ -7,7 +7,7 @@ import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
-import { doc_query, query, trigger_resize_observer } from '../setup'
+import { doc_query, limit_math_spread, query, trigger_resize_observer } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_inspector: ReturnType<typeof mount> | undefined
@@ -155,16 +155,17 @@ test(`frame switches between repaints reach the global tab once, as the latest f
 })
 
 // Math.max(...norms) overflowed the call stack past ~125k atoms and took every tab down
-test(`global tab derives Fmax from 200k sites carrying forces`, async () => {
+test(`global tab derives Fmax from sites past the spread argument limit`, async () => {
+  limit_math_spread(1000)
   const force_of = (site_idx: number) => (site_idx === 7 ? [0, 3, 4] : [0.1, 0, 0])
-  const sites = Array.from({ length: 200_000 }, (_unused, site_idx) =>
+  const sites = Array.from({ length: 2000 }, (_unused, site_idx) =>
     make_site(site_idx, { force: force_of(site_idx) }),
   )
   const run = trajectory_from_frames([make_sites_frame(sites.slice(0, 2))])
   await mount_inspector({ run, current_frame: make_sites_frame(sites) })
   const { Fmax, Atoms } = attributes()
   expect(Fmax).toEqual([`5`, `eV/Å`])
-  expect(Atoms).toEqual([`200000`, ``])
+  expect(Atoms).toEqual([`2000`, ``])
 })
 
 // A render sample previews every n-th atom: counts and per-atom values come from the whole

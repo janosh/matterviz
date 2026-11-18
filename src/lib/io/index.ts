@@ -1,4 +1,5 @@
 export { default as ExportPane } from './ExportPane.svelte'
+export * from './binary-arrays'
 export * from './decompress'
 export * from './export'
 export * from './file-drop'

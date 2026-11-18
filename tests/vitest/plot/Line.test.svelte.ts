@@ -3,7 +3,7 @@ import Line from '#lib/plot/core/components/Line.svelte'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import { resolve_line_tween } from '#lib/plot/core/utils.js'
 import * as svg_paths from '#lib/plot/core/svg.js'
-import { flushSync, mount } from 'svelte'
+import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, expect_transition_properties } from '../setup'
 
@@ -23,6 +23,8 @@ describe(`resolve_line_tween (path-morph budget)`, () => {
 })
 
 describe(`Line`, () => {
+  const mount_line = (props: ComponentProps<typeof Line>) =>
+    mount(Line, { target: document.body, props })
   // only the attributes each case sets; the shipped default stroke is not pinned here
   test.each([
     [
@@ -35,7 +37,7 @@ describe(`Line`, () => {
   ] as const)(`renders with %s`, (_name, props, attrs) => {
     // oxfmt-ignore
     const points: Vec2[] = [[10, 10], [50, 50], [100, 20]]
-    mount(Line, { target: document.body, props: { points, ...props } })
+    mount_line({ points, ...props })
     const line_path = doc_query(`path`)
     expect(document.querySelectorAll(`path`)).toHaveLength(1)
     expect(line_path.getAttribute(`fill`)).toBe(`none`)
@@ -53,18 +55,15 @@ describe(`Line`, () => {
     // oxfmt-ignore
     let points = $state.raw<Vec2[]>([[0, 0], [10, 5], [20, 0]])
     let curve = $state<`monotone` | `linear`>(`monotone`)
-    mount(Line, {
-      target: document.body,
-      props: {
-        get points() {
-          void frame // the parent rebuilding the series objects it reads points from
-          return points
-        },
-        get curve() {
-          return curve
-        },
-        line_tween: { duration: 0 },
+    mount_line({
+      get points() {
+        void frame // the parent rebuilding the series objects it reads points from
+        return points
       },
+      get curve() {
+        return curve
+      },
+      line_tween: { duration: 0 },
     })
     flushSync()
     const path = doc_query(`path`)
@@ -93,10 +92,7 @@ describe(`Line`, () => {
   ])(`re-traces a $state line after %s`, (_desc, edit) => {
     // oxfmt-ignore
     const points = $state<Vec2[]>([[0, 0], [10, 5], [20, 0]])
-    mount(Line, {
-      target: document.body,
-      props: { points, curve: `linear`, line_tween: { duration: 0 } },
-    })
+    mount_line({ points, curve: `linear`, line_tween: { duration: 0 } })
     flushSync()
     const path = doc_query(`path`)
     expect(path.getAttribute(`d`)).toBe(`M0,0L10,5L20,0`)
@@ -107,7 +103,7 @@ describe(`Line`, () => {
   })
 
   test(`does not CSS-transition path geometry`, () => {
-    mount(Line, { target: document.body, props: { points: [[0, 0]] } })
+    mount_line({ points: [[0, 0]] })
     const path = doc_query(`path`)
     expect(path).toBeInstanceOf(SVGElement)
     expect_transition_properties(path, [
@@ -134,14 +130,11 @@ describe(`Line`, () => {
     [`no points`, [], {}, /^$/],
     [`a single point`, [[50, 50]], {}, /^M50,50Z?$/],
   ] as const)(`draws %s`, (_name, points, extra, line) => {
-    mount(Line, {
-      target: document.body,
-      props: {
+    mount_line({
         points: points.map((point): Vec2 => [...point]),
         line_tween: { duration: 0 },
         ...extra,
-      },
-    })
+      })
     expect(doc_query(`path`).getAttribute(`d`)).toMatch(line)
   })
 
@@ -151,10 +144,7 @@ describe(`Line`, () => {
     vi.useFakeTimers({ toFake: [`performance`] })
     try {
       const state = $state({ points: two_points, line_tween: { duration: 0 } })
-      mount(Line, {
-        target: document.body,
-        props: bind_props({}, state),
-      })
+      mount_line(bind_props({}, state))
       vi.advanceTimersByTime(SETTLE_MS + 1) // past the window where every change snaps anyway
 
       // move the line while morphing is disabled
@@ -174,7 +164,7 @@ describe(`Line`, () => {
 
   test(`passes additional props to the path`, () => {
     const rest = { 'data-testid': `custom-line`, 'aria-label': `line chart element` }
-    mount(Line, { target: document.body, props: { points: two_points, ...rest } })
+    mount_line({ points: two_points, ...rest })
     const path = doc_query(`path`)
     expect(path.getAttribute(`data-testid`)).toBe(rest[`data-testid`])
     expect(path.getAttribute(`aria-label`)).toBe(rest[`aria-label`])

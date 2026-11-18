@@ -6,8 +6,15 @@
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShortcutScope } from '#lib/shortcuts.js'
+  import type { CompositionType } from '#lib/composition/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import { type OpenElements, type ProbeSubmission, probe_from_text } from './model'
   import ConvexHullStats from './ConvexHullStats.svelte'
-  import { visible_entries as filter_visible } from './helpers'
+  import {
+    get_entry_label,
+    type HullProbe,
+    visible_entries as filter_visible,
+  } from './helpers'
   import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
@@ -23,6 +30,12 @@
     max_hull_dist_show_labels,
     label_threshold,
     pane_open = $bindable(false),
+    probe_composition = $bindable(null),
+    probe_submission = $bindable(null),
+    probe = null,
+    elements = [],
+    components,
+    open_elements,
     toggle_props = {},
     pane_props = {},
     shortcut_scopes,
@@ -39,6 +52,16 @@
     max_hull_dist_show_labels: number
     label_threshold: number
     pane_open?: boolean
+    // Composition entered in the probe field, and its decomposition (null: none or outside)
+    probe_composition?: CompositionType | null
+    // The last submitted formula and the probe it set (the object read back from the binding,
+    // so a host replacement is told apart by identity), kept by the hull across remounts
+    probe_submission?: ProbeSubmission | null
+    probe?: HullProbe | null
+    elements?: ElementSymbol[]
+    // the hull's composition keys, which typed formulas are converted to before probing
+    components?: readonly string[]
+    open_elements?: OpenElements
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     shortcut_scopes?: readonly ShortcutScope[] // the hull's, listed at the pane's bottom
@@ -75,6 +98,39 @@
         ]
       : []),
   ])
+  // === Composition probe ===
+  let probe_text = $state(``)
+  const apply_probe = (text: string) => {
+    const projected = probe_from_text(text, components, open_elements, elements)
+    if (projected.probe !== undefined) probe_composition = projected.probe
+    probe_submission = { text, probe: probe_composition, error: projected.error }
+  }
+  const submit_probe = (event: SubmitEvent) => {
+    event.preventDefault()
+    apply_probe(probe_text.trim())
+  }
+  // a composition set here or by the host that the hull can't decompose is outside its system
+  // a submission's error shows while its probe does: a host probe set since replaces it
+  const probe_error = $derived(
+    (probe_submission?.probe === probe_composition ? probe_submission.error : null) ??
+      (probe_composition && !probe
+        ? `${get_entry_label({ composition: probe_composition }, elements)} is outside the ${elements.join(`-`)} system`
+        : null),
+  )
+  let probe_card = $derived(
+    probe && {
+      title: `Decomposition`,
+      rows: [
+        { label: `Hull E<sub>form</sub>`, value: energy(probe.energy), key: `probe-energy` },
+        ...probe.decomposition.map(({ phase, atom_fraction }, idx) => ({
+          label: get_entry_label(phase, elements),
+          value: format_num(atom_fraction, `.1~%`),
+          key: `probe-product-${idx}`,
+        })),
+      ],
+    },
+  )
+
   let info_cards = $derived([
     { title: `Visualization Settings`, rows: settings_rows },
     { title: `Usage Tips`, rows: usage_tips },
@@ -100,6 +156,30 @@
   {shortcut_scopes}
   {...rest}
 >
+  <form class="composition-probe" onsubmit={submit_probe}>
+    <label>
+      Probe composition
+      <input
+        type="text"
+        bind:value={probe_text}
+        placeholder="e.g. {elements.join(``)}"
+        aria-invalid={probe_error !== null}
+      />
+    </label>
+    <button type="submit">Decompose</button>
+  </form>
+  {#if probe_error}
+    <p class="probe-error" role="alert">{probe_error}</p>
+  {:else if probe_card}
+    <InfoPaneCards
+      cards={[probe_card]}
+      show_filter={false}
+      empty_label="decomposition"
+      heading_level={5}
+      style={info_card_style}
+    />
+  {/if}
+
   <!-- A closed pane stays mounted (hidden), and these stats rebuild their entry table on every
     threshold step, so they only exist while someone can see them -->
   {#if pane_open}
@@ -121,3 +201,26 @@
     style={info_card_style}
   />
 </ViewerPane>
+
+<style>
+  .composition-probe {
+    display: flex;
+    gap: 4pt;
+    align-items: end;
+    padding: 3pt;
+    label {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      font-size: 0.9em;
+    }
+    input {
+      min-width: 0;
+    }
+  }
+  .probe-error {
+    margin: 0 3pt;
+    color: var(--error-color, #c00);
+    font-size: 0.85em;
+  }
+</style>

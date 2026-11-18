@@ -8,6 +8,7 @@ import type {
   DisplayConfig,
   FillRegion,
   StyleOverrides,
+  UserContentProps,
 } from '#lib/plot/core/types.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
@@ -15,7 +16,7 @@ import { level_densities } from '#lib/plot/core/density-contours.js'
 import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import * as scales from '#lib/plot/core/scales.js'
-import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { rgb } from 'd3-color'
 import { scaleSequentialLog } from 'd3-scale'
@@ -509,6 +510,36 @@ describe(`ScatterPlot`, () => {
       await hover(query(plot, `.legend-item`))
       expect(groups.map((group) => group.getAttribute(`opacity`))).toEqual([`1`, `0.25`])
     })
+
+    // a series on a derived x2 over a log x is the same points as its x twin, so its contours
+    // match: they are densities in the rendered pixel metric, also when x2 - 10's signed domain
+    // ticks linearly
+    test.each([
+      [`10x`, (val: number) => 10 * val, (val: number) => val / 10],
+      [`x - 10`, (val: number) => val - 10, (val: number) => val + 10],
+    ])(
+      `contours on a derived %s x2 over log x match the same points on x`,
+      async (_name, forward, inverse) => {
+        const on_x = cloud(5, 5)
+        const contour_paths = async (series: DataSeries) => {
+          document.body.innerHTML = ``
+          const plot = await mount_sized_scatter_plot({
+            x_axis: { scale_type: `log`, range: [1, 10] },
+            y_axis: { range: [0, 10] },
+            series: [series],
+            x2_axis: { derive: { forward, inverse } },
+            density_contours: { bandwidth: 10, levels: [0.5] },
+          })
+          return [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
+            path.getAttribute(`d`),
+          )
+        }
+        const x_paths = await contour_paths(on_x)
+        expect(x_paths.length).toBeGreaterThan(0)
+        const on_x2 = { ...on_x, x: Array.from(on_x.x, forward), x_axis: `x2` as const }
+        expect(await contour_paths(on_x2)).toEqual(x_paths)
+      },
+    )
 
     test(`contours ring the cluster centroid, inner levels tighter`, async () => {
       const plot = await mount_sized_scatter_plot({
@@ -2647,6 +2678,208 @@ describe(`ScatterPlot`, () => {
     const coords = (path_d.match(/-?\d+\.?\d*/g) ?? []).map(Number)
     expect(coords.length).toBeGreaterThan(0) // guard: Math.max(...[]) is -Infinity, a false pass
     expect(Math.max(...coords.map(Math.abs))).toBeLessThan(1000)
+  })
+
+  // a fresh derive object per use: one test reassigns its callbacks in place
+  const times_10 = () => ({
+    forward: (val: number) => 10 * val,
+    inverse: (val: number) => val / 10,
+  })
+
+  test.each([
+    [`log axis default`, { scale_type: `log`, range: [1, 100] }, 16],
+    [`minor_ticks: false`, { scale_type: `log`, range: [1, 100], minor_ticks: false }, 0],
+    [`linear axis`, { range: [1, 100] }, 0],
+  ] satisfies [string, AxisConfig, number][])(
+    `y minor ticks: %s`,
+    async (_, y_axis, n_minor) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [1, 10, 100], y: [2, 20, 80] }],
+        x_axis: { range: [1, 100] },
+        y_axis,
+      })
+      const minors = plot.querySelectorAll(`.y-axis line.minor-tick`)
+      expect(minors).toHaveLength(n_minor)
+      // shorter and fainter than the major tick marks, and unlabeled (outside the .tick groups)
+      for (const line of minors) {
+        expect(line.getAttribute(`x1`)).toBe(`-3`)
+        expect(line.getAttribute(`stroke-opacity`)).toBe(`0.5`)
+        expect(line.closest(`.tick`)).toBeNull()
+      }
+    },
+  )
+
+  // x2 labels per conversion: an inherited log scheme needs a positive derived domain (log10
+  // over log x is [-1, 2]), a pole on an end sample (1240/E at E = 0) shrinks the domain to the
+  // outermost finite samples, and a constant or an inverse that doesn't undo forward shows none
+  // oxfmt-ignore
+  test.each([
+    [`log10 over log x`, { scale_type: `log`, range: [0.1, 100] }, Math.log10, (val: number) => 10 ** val, [`−1`, `−0.5`, `0`, `0.5`, `1`, `1.5`, `2`]],
+    [`1240/E from E = 0`, { range: [0, 10] }, (val: number) => 1240 / val, (val: number) => 1240 / val, [`6k`, `4k`, `2k`]],
+    [`constant`, { range: [1, 10] }, () => 3, () => 1, []],
+    [`inverse not undoing forward`, { range: [1, 10] }, (val: number) => 2 * val, (val: number) => val, []],
+  ] as const)(`derived x2 labels: %s`, async (_name, x_axis, forward, inverse, expected) => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [...x_axis.range], y: [1, 2] }],
+      x_axis: { ...x_axis, range: [...x_axis.range] },
+      x2_axis: { derive: { forward, inverse } },
+    })
+    const labels = [...plot.querySelectorAll(`.x2-axis .tick text`)].map(
+      (el) => el.textContent,
+    )
+    expect(labels).toEqual(expected)
+  })
+
+  // a top marginal bound to a derived x2 bins over its displayed domain ([0, 100] here), not
+  // its own x2 range (ignored for display), which dropped the samples outside it
+  test(`top marginal on a derived x2 bins over the derived domain`, async () => {
+    const axes: { x_axis: AxisConfig; x2_axis: AxisConfig } = {
+      x_axis: { range: [0, 10] },
+      x2_axis: { range: [40, 60], derive: times_10() },
+    }
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [0, 10], y: [1, 2] },
+        { x: [20, 50, 80], y: [1, 2, 3], x_axis: `x2` },
+      ],
+      ...axes,
+      marginals: { top: { type: `histogram`, axis: `x2` } },
+    })
+    expect(plot.querySelectorAll(`.marginal-top rect`)).toHaveLength(3)
+    // and its markers and lines are culled against that domain too: all 5 points draw
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
+    // a line wholly outside x2's own range but inside the derived domain is drawn
+    const line_plot = await mount_sized_scatter_plot({
+      series: [{ x: [70, 80], y: [1, 2], x_axis: `x2`, markers: `line` }],
+      ...axes,
+      line_tween: { duration: 0 },
+    })
+    expect(plot_svg(line_plot).querySelectorAll(`path[fill="none"][d^="M"]`)).toHaveLength(1)
+  })
+
+  // domain sampling (64 steps) misses a narrow gap where the conversion is undefined: interval
+  // majors and log minors at it are dropped, valid ticks on either side kept
+  // oxfmt-ignore
+  test.each([
+    [`interval majors`, { range: [0, 1] }, { ticks: -0.49 }, [0.49, 0.495], `.tick`, [0, 0.98]],
+    [`log minors`, { range: [0.1, 1.1] }, { scale_type: `log` }, [0.499, 0.501], `line.minor-tick`, 7],
+  ] as const)(
+    `derived x2 drops %s where the conversion is undefined`,
+    async (_name, x_axis, x2_config, [gap_lo, gap_hi], selector, expected) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [...x_axis.range], y: [1, 2] }],
+        x_axis: { range: [...x_axis.range] },
+        x2_axis: {
+          ...x2_config,
+          derive: {
+            forward: (val: number) => (val >= gap_lo && val <= gap_hi ? NaN : val),
+            inverse: (val: number) => val,
+          },
+        },
+      })
+      const marks = [...plot.querySelectorAll(`.x2-axis ${selector}`)]
+      if (typeof expected === `number`) expect(marks).toHaveLength(expected)
+      else expect(marks.map((el) => Number(el.textContent))).toEqual(expected)
+    },
+  )
+
+  // a derived x2 without its own scale_type inherits x's log tick scheme, minor ticks included,
+  // and overlays get its visible domain as x2_range, not the data-less [0, 1] sentinel. The
+  // x2 tick cache follows its effective tick scheme and both conversion callbacks: an explicit
+  // linear x2 drops the inherited log ticks, and new callbacks in the same derive object relabel it
+  test(`derived x2 over log x: log ticks, overlay range, scale_type and derive changes`, async () => {
+    let overlay_ctx = (): UserContentProps | undefined => undefined
+    const state = $state<{ series: DataSeries[]; x_axis: AxisConfig; x2_axis: AxisConfig }>({
+      series: [{ x: [1, 10, 100], y: [1, 2, 3] }],
+      x_axis: { scale_type: `log`, range: [1, 100] },
+      x2_axis: { derive: times_10() },
+    })
+    const children = createRawSnippet<[UserContentProps]>((get_ctx) => {
+      overlay_ctx = get_ctx
+      return { render: () => `<span></span>` }
+    })
+    const plot = await mount_sized_scatter_plot(bind_props({ children }, state))
+    const { x2_range, x2_scale_fn, x_range, x_scale_fn } = overlay_ctx() ?? {}
+    if (!x2_range || !x2_scale_fn || !x_range || !x_scale_fn)
+      throw new Error(`children snippet got no x/x2 range or scale`)
+    expect(x2_range).toEqual([10, 1000])
+    // range and scale agree: the x2 range ends land on the x range ends
+    expect(x2_range.map(x2_scale_fn)).toEqual(x_range.map(x_scale_fn))
+    expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(16)
+    const x2_labels = () =>
+      [...plot.querySelectorAll(`.x2-axis .tick text`)].map((el) => el.textContent)
+    expect(x2_labels()).toEqual([`10`, `100`, `1k`])
+    state.x2_axis = { ...state.x2_axis, scale_type: `linear` }
+    await flush_render()
+    const linear = x2_labels()
+    expect(linear).toEqual([`200`, `400`, `600`, `800`, `1k`])
+    expect(plot.querySelectorAll(`.x2-axis line.minor-tick`)).toHaveLength(0)
+    const derive = state.x2_axis.derive
+    if (!derive) throw new Error(`x2_axis.derive missing`)
+    state.x2_axis = {
+      ...state.x2_axis,
+      derive: Object.assign(derive, {
+        forward: (val: number) => 2 * val,
+        inverse: (val: number) => val / 2,
+      }),
+    }
+    await flush_render()
+    expect(x2_labels()).toEqual([`50`, `100`, `150`, `200`])
+  })
+
+  // a derived x2's zero line follows its displayed domain (forward image of x), not x2's range:
+  // x in [0, 10] with x2 = x - 5 puts x2 = 0 halfway across
+  test(`derived x2 zero line uses the displayed x2 domain`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 10], y: [1, 2] }],
+      x_axis: { range: [0, 10] },
+      x2_axis: {
+        range: [1, 10],
+        derive: { forward: (val: number) => val - 5, inverse: (val: number) => val + 5 },
+      },
+      y_axis: { range: [1, 2] },
+      display: { x_zero_line: false, y_zero_line: false, x2_zero_line: true },
+    })
+    const lines = [...plot.querySelectorAll(`.zero-line`)]
+    expect(lines).toHaveLength(1)
+    const x_ticks = [...plot.querySelectorAll(`.x-axis .tick`)]
+    const tick_x = (label: string) =>
+      translate_of(x_ticks.find((el) => el.textContent?.trim() === label) ?? x_ticks[0]).x
+    const [x_lo, x_hi] = [tick_x(`0`), tick_x(`10`)]
+    expect(x_hi).toBeGreaterThan(x_lo)
+    expect(Number(lines[0].getAttribute(`x1`))).toBeCloseTo((x_lo + x_hi) / 2, 6)
+  })
+
+  test(`derived x2 axis shows wavelength ticks above a photon-energy x axis`, async () => {
+    const hc = 1239.84198
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1.5, 3, 6], y: [1, 2, 3] }],
+      x_axis: { range: [1.5, 6], label: `Energy (eV)` },
+      x2_axis: {
+        label: `Wavelength (nm)`,
+        derive: { forward: (energy: number) => hc / energy, inverse: (nm: number) => hc / nm },
+      },
+    })
+    const x2_axis_ticks = [...plot.querySelectorAll(`.x2-axis .tick`)]
+    expect(x2_axis_ticks.length).toBeGreaterThanOrEqual(3)
+    // nice wavelengths (multiples of 100 nm) between 1240/6 and 1240/1.5
+    const values = x2_axis_ticks.map((axis_tick) =>
+      Number(axis_tick.querySelector(`text`)?.textContent?.replaceAll(`,`, ``)),
+    )
+    expect(values.every((nm) => nm % 100 === 0 && nm >= 206 && nm <= 827)).toBe(true)
+    // each wavelength sits where the x axis puts its photon energy: 400 nm at 3.0996 eV
+    const x_axis_ticks = [...plot.querySelectorAll(`.x-axis .tick`)]
+    const [x_lo, x_hi] = [x_axis_ticks[0], x_axis_ticks.at(-1)].map((axis_tick) => [
+      Number(axis_tick?.querySelector(`text`)?.textContent),
+      translate_of(axis_tick).x,
+    ])
+    const energy_px = (energy: number) =>
+      x_lo[1] + ((energy - x_lo[0]) / (x_hi[0] - x_lo[0])) * (x_hi[1] - x_lo[1])
+    for (const [idx, axis_tick] of x2_axis_ticks.entries()) {
+      expect(translate_of(axis_tick).x).toBeCloseTo(energy_px(hc / values[idx]), 6)
+    }
+    // the title renders with the axis although no series uses x2
+    expect(plot.querySelector(`.x2-axis`)?.textContent).toContain(`Wavelength (nm)`)
   })
 
   const decorated_series = (): DataSeries[] => [

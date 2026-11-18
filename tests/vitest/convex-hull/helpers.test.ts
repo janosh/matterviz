@@ -1,6 +1,11 @@
 import * as draw from '#lib/convex-hull/canvas-draw.js'
 import * as helpers from '#lib/convex-hull/helpers.js'
-import { compute_e_above_hull, get_energy_per_atom } from '#lib/convex-hull/thermodynamics.js'
+import {
+  compute_e_above_hull,
+  decompose_hull_composition,
+  get_energy_per_atom,
+} from '#lib/convex-hull/thermodynamics.js'
+import { compute_hull_model, hull_plot_position } from '#lib/convex-hull/model.js'
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -16,6 +21,7 @@ import {
   test,
   vi,
 } from 'vite-plus/test'
+import { make_phase } from '../test-fixtures'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
 // depends on which energy fields are absent
@@ -824,5 +830,34 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
       helpers.build_entry_tooltip_text(mag_entry({ magnetic_ordering: `FiM` }), magnetic),
     ).toContain(`Magnetic: FiM`)
     expect(helpers.build_entry_tooltip_text(mag_entry(), magnetic)).not.toContain(`Magnetic`)
+  })
+})
+
+// A composition probe rings its point on the hull and ties it to each product; a probe on a
+// stable entry is that entry, so it gets the ring only
+describe(`build_hull_overlay probe`, () => {
+  const model = compute_hull_model(
+    [
+      make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+      make_phase({ O: 1 }, 0, { entry_id: `O` }),
+      make_phase({ Li: 2, O: 1 }, -2, { entry_id: `Li2O` }),
+    ],
+    { energy_source_mode: `on-the-fly` },
+  )
+  const system = { entries: model.entries, elements: [...model.elements] }
+  const { elements } = system
+  test.each([
+    [{ Li: 1, O: 1 }, 2, [`probe`, `75%`, `25%`]],
+    [{ Li: 2, O: 1 }, 0, [`probe`]],
+  ])(`probe %j`, (composition, n_segments, ring_labels) => {
+    const mixture = decompose_hull_composition(composition, model.entries, elements)
+    if (!mixture) throw new Error(`no decomposition for ${JSON.stringify(composition)}`)
+    const probe = { composition, ...mixture }
+    const overlay = helpers.build_hull_overlay(system, null, undefined, probe)
+    expect(overlay.segments).toHaveLength(n_segments)
+    expect(overlay.rings.map(({ label }) => label)).toEqual(ring_labels)
+    const at = hull_plot_position(composition, probe.energy, elements, 2)
+    expect(overlay.rings[0].at).toEqual(at)
+    for (const { from } of overlay.segments) expect(from).toEqual(at)
   })
 })

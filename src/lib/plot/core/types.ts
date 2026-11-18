@@ -630,6 +630,17 @@ export interface AxisConfig {
   // Full config: { mode: Y2SyncMode, align_value?: number }
   sync?: Y2SyncConfig | Y2SyncMode
   categories?: readonly string[] // explicit category order/filter for categorical bar plots
+  // Unlabeled minor ticks at 2..9 x each decade, on by default for log axes only
+  minor_ticks?: boolean
+  // x2_axis only: label the top axis with a function of x (photon energy -> wavelength), ticks
+  // at x = inverse(tick) on `scale_type`'s scheme (default x's). No ticks where forward isn't
+  // finite and monotonic over the view (1240 / x across 0); a time-scale x axis throws.
+  derive?: AxisDerive
+}
+
+export interface AxisDerive {
+  forward: (value: number) => number // primary axis value -> derived value
+  inverse: (derived: number) => number // derived value -> primary axis value
 }
 
 // Async data retrieval is owned by the caller, independently of chart rendering.

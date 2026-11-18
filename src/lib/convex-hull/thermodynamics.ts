@@ -308,6 +308,14 @@ export function get_convex_hull_stats(
   for (const entry of processed_entries) arity_counts[Math.min(5, get_arity(entry))]++
   const [, unary, binary, ternary, quaternary, quinary_plus] = arity_counts
   const stable = processed_entries.filter((entry) => is_on_hull(entry)).length
+  // Off the hull with neither a stability flag nor a finite hull distance: we can't call
+  // these unstable, so they get their own count
+  const unknown_stability = processed_entries.filter(
+    (entry) =>
+      !is_on_hull(entry) &&
+      typeof entry.is_stable !== `boolean` &&
+      !Number.isFinite(entry.e_above_hull),
+  ).length
 
   // E_form only: absolute computed energies would put ~-8 and ~-1 eV/atom in one stat
   const e_forms = processed_entries
@@ -316,7 +324,7 @@ export function get_convex_hull_stats(
   const [min_e_form, max_e_form] = math.array_extent(e_forms)
   const hull_distances = processed_entries
     .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number` && val >= 0)
+    .filter((val): val is number => val !== undefined && val >= 0 && val < Infinity)
 
   return {
     total: processed_entries.length,
@@ -327,7 +335,8 @@ export function get_convex_hull_stats(
     quaternary: max_arity >= 4 ? quaternary : 0,
     quinary_plus,
     stable,
-    unstable: processed_entries.length - stable,
+    unstable: processed_entries.length - stable - unknown_stability,
+    unknown_stability,
     e_form_range:
       e_forms.length > 0
         ? { min: min_e_form, max: max_e_form, avg: math.mean(e_forms) }
@@ -716,17 +725,54 @@ export function get_hull_decomposition<Entry extends PhaseData>(
   elements: readonly ElementSymbol[],
 ): LowestEnergyMixture<Entry> | null {
   if (is_on_hull(entry) || !Number.isFinite(entry.e_form_per_atom)) return null
-  const fractions = system_fractions(entry.composition, elements)
-  if (!fractions) return null
-  const vertices = entries.flatMap((vertex) => {
-    const vertex_fractions =
-      is_on_hull(vertex) && system_fractions(vertex.composition, elements)
+  return decompose_hull_composition(entry.composition, entries, elements)
+}
+
+type ProbeCandidate<Entry> = { vertex: Entry; fractions: number[]; energy_per_atom: number }
+// Candidates per entries array (a new model builds a new one) and element order
+const probe_candidate_cache = new WeakMap<object, Map<string, ProbeCandidate<PhaseData>[]>>()
+// The lowest finite, non-excluded E_form entry per normalized composition (first on ties): a
+// higher polymorph can't lower the hull, but each would cost the probe's LP a pivot on hover
+function probe_candidates<Entry extends PhaseData>(
+  entries: readonly Entry[],
+  elements: readonly ElementSymbol[],
+): ProbeCandidate<Entry>[] {
+  let by_elements = probe_candidate_cache.get(entries)
+  if (!by_elements) probe_candidate_cache.set(entries, (by_elements = new Map()))
+  const elements_key = elements.join(`,`)
+  const cached = by_elements.get(elements_key)
+  if (cached) return cached as ProbeCandidate<Entry>[]
+  // correctly rounded division: proportional integer compositions give equal fractions
+  const lowest = new Map<string, ProbeCandidate<Entry>>()
+  for (const vertex of entries) {
     const energy_per_atom = vertex.e_form_per_atom
-    return vertex_fractions && typeof energy_per_atom === `number`
-      ? [{ vertex, fractions: vertex_fractions, energy_per_atom }]
-      : []
-  })
-  const mixture = lowest_energy_mixture(fractions, vertices)
+    if (vertex.exclude_from_hull || energy_per_atom === undefined) continue
+    if (!Number.isFinite(energy_per_atom)) continue
+    const fractions = system_fractions(vertex.composition, elements)
+    if (!fractions) continue
+    const key = fractions.join(`,`)
+    const current = lowest.get(key)
+    if (!current || energy_per_atom < current.energy_per_atom)
+      lowest.set(key, { vertex, fractions, energy_per_atom })
+  }
+  const candidates = [...lowest.values()]
+  by_elements.set(elements_key, candidates)
+  return candidates
+}
+
+// Equilibrium products of ANY composition in the system: the entries (atom fractions) whose
+// mixture is the lower hull of every finite, non-excluded E_form there, and its E_form in
+// eV/atom. Cached stability is no filter: a filtered dataset's cached distances may come from a
+// larger reference set than the plotted hull. A stable entry's own composition returns that
+// entry alone. Null outside the system or when no entries reach it.
+export function decompose_hull_composition<Entry extends PhaseData>(
+  composition: PhaseData[`composition`],
+  entries: readonly Entry[],
+  elements: readonly ElementSymbol[],
+): LowestEnergyMixture<Entry> | null {
+  const fractions = system_fractions(composition, elements)
+  if (!fractions) return null
+  const mixture = lowest_energy_mixture(fractions, probe_candidates(entries, elements))
   if (!mixture) return null
   const decomposition = mixture.decomposition.map(({ phase, atom_fraction }) => ({
     phase: phase.vertex,

@@ -34,11 +34,18 @@ vi.mock(`#lib/symmetry/index.js`, async (original) => ({
 
 let mounted_component: ReturnType<typeof mount> | undefined
 
-afterEach(async () => {
-  vi.restoreAllMocks()
+const unmount_zone = async () => {
   if (mounted_component) await unmount(mounted_component)
   mounted_component = undefined
+}
+afterEach(async () => {
+  vi.restoreAllMocks()
+  await unmount_zone()
 })
+// mounts the viewer on (possibly live $state) props, unmounted again after each test
+const mount_zone = (props: ComponentProps<typeof BrillouinZone>) => {
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+}
 
 const si_site: SimpleSite[] = [[`Si`, [0, 0, 0]]]
 const poscar = `cubic
@@ -70,7 +77,7 @@ const external = compute_brillouin_zone(
 test(`loads dropped structures and reports their provenance`, async () => {
   const on_file_load = vi.fn()
   const props = $state({ structure: undefined as typeof cubic | undefined, on_file_load })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await tick()
   const file = new File([poscar], `cubic.poscar`)
   document.querySelector(`.brillouin-zone`)?.dispatchEvent(create_drop_event(file))
@@ -99,7 +106,7 @@ test(`loads a second source when a host on_file_drop set the structure`, async (
     structure: undefined as typeof cubic | undefined,
     on_file_drop,
   })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
   await tick()
   props.source = `http://x/b.poscar`
@@ -119,7 +126,7 @@ test(`a failing load callback keeps the parsed value and URL ownership`, async (
     on_file_load,
     on_error,
   })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await vi.waitFor(() =>
     expect(on_error).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -141,7 +148,7 @@ test.each([{ data: poscar, filename: `inline.poscar` }, new File([poscar], `loca
   async (source) => {
     const on_file_load = vi.fn()
     const props = $state({ source, loading: false, on_file_load })
-    mounted_component = mount(BrillouinZone, { target: document.body, props })
+    mount_zone(props)
     flushSync()
     // Parsing is asynchronous, so the spinner covers at least one microtask
     expect(props.loading).toBe(true)
@@ -166,7 +173,7 @@ test(`ignores a stale async on_file_drop failure`, async () => {
   })
   const on_error = vi.fn()
   const props = $state({ source: `http://x/a.poscar`, on_file_drop, on_error })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
 
   props.source = `http://x/b.poscar`
@@ -183,10 +190,7 @@ test(`ignores a stale async on_file_drop failure`, async () => {
 // on its own rather than asking for a structure file
 test(`a caller-supplied bz_data without a structure renders the zone`, async () => {
   const { children, rendered } = zone_probe()
-  mounted_component = mount(BrillouinZone, {
-    target: document.body,
-    props: { bz_data: external, children, info_pane_open: true },
-  })
+  mount_zone({ bz_data: external, children, info_pane_open: true })
   await tick()
   await tick()
   expect(rendered()).toBe(external)
@@ -239,7 +243,7 @@ async function mount_until_error(init: { structure: typeof cubic; show_ibz?: boo
     children,
     error_msg: undefined as string | undefined,
   })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
   return { props, rendered, error: on_error.mock.calls[0][0].error_msg }
 }
@@ -249,7 +253,7 @@ async function mount_until_error(init: { structure: typeof cubic; show_ibz?: boo
 test(`recomputes the zone when bz_order or the structure changes`, async () => {
   const { children, rendered } = zone_probe()
   const props = $state({ structure: cubic, bz_order: 1, children })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await vi.waitFor(() => expect(rendered()?.order).toBe(1))
   const first_volume = rendered()?.volume ?? 0
   expect(first_volume).toBeCloseTo(((2 * Math.PI) / 3) ** 3, 8)
@@ -272,23 +276,20 @@ test(`a caller-supplied bz_data wins over the structure-derived zone and is neve
   // identity (a deep $state would proxy it) and any write-back would hit the setter
   const set_bz_data = vi.fn()
   const props = $state({ bz_order: 1, supplied: true })
-  mounted_component = mount(BrillouinZone, {
-    target: document.body,
-    props: {
-      structure: cubic,
-      children,
-      get bz_order() {
-        return props.bz_order
-      },
-      set bz_order(value) {
-        props.bz_order = value
-      },
-      get bz_data() {
-        return props.supplied ? external : undefined
-      },
-      set bz_data(value) {
-        set_bz_data(value)
-      },
+  mount_zone({
+    structure: cubic,
+    children,
+    get bz_order() {
+      return props.bz_order
+    },
+    set bz_order(value) {
+      props.bz_order = value
+    },
+    get bz_data() {
+      return props.supplied ? external : undefined
+    },
+    set bz_data(value) {
+      set_bz_data(value)
     },
   })
   await tick()
@@ -318,7 +319,7 @@ test(`a caller-supplied bz_data keeps rendering when the structure's zone fails 
     on_error,
     error_msg: undefined as string | undefined,
   })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await tick()
   await tick()
   expect(props.error_msg).toBeUndefined()
@@ -359,7 +360,7 @@ test(`a structure change drops the previous IBZ while symmetry reruns`, async ()
     show_ibz: true,
     ibz_data: null as ComponentProps<typeof BrillouinZone>[`ibz_data`],
   })
-  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+  mount_zone(state)
   await vi.waitFor(() => expect(state.ibz_data).not.toBeNull())
   state.structure = make_crystal(4, si_site)
   flushSync()
@@ -372,7 +373,7 @@ test(`the info pane ignores a symmetry result for a replaced structure`, async (
     .mockReturnValueOnce(late.promise)
     .mockResolvedValueOnce({ operations: [identity_op], hm_symbol: `NEW` })
   const state = $state({ structure: cubic, info_pane_open: true })
-  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+  mount_zone(state)
   await tick()
   state.structure = make_crystal(4, si_site)
   await vi.waitFor(() => expect(document.body.textContent).toContain(`(NEW)`))
@@ -388,7 +389,7 @@ test(`the info pane ignores a symmetry result for a replaced structure`, async (
 test(`hovering the zone and pressing f fullscreens it`, async () => {
   mock_fullscreen()
   const props = $state({ structure: cubic, fullscreen: false })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   await tick()
   const zone = doc_query(`.brillouin-zone`)
   zone.dispatchEvent(new PointerEvent(`pointerenter`))
@@ -405,7 +406,7 @@ test.each([
   `i toggles the info pane unless canceled=%s or composing=%s`,
   async (canceled, is_composing) => {
     const state = $state({ info_pane_open: true })
-    mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+    mount_zone(state)
     await tick()
     const event = new KeyboardEvent(`keydown`, {
       key: `i`,
@@ -423,7 +424,7 @@ test.each([
 // No viewer binding: the mounted pane's own Escape layer claims the key first
 test(`Escape closes the open info pane`, async () => {
   const state = $state({ bz_data: external, info_pane_open: true })
-  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+  mount_zone(state)
   await tick()
   expect_shortcuts_in_pane(document, `.bz-info-pane`, [`viewer`, `camera`, `brillouin`])
   doc_query(`.brillouin-zone`).dispatchEvent(keydown(`Escape`, { cancelable: true }))
@@ -434,10 +435,7 @@ test(`Escape closes the open info pane`, async () => {
 test(`export pane saves the zone geometry as JSON named by its order`, async () => {
   const save = vi.fn()
   vi.stubGlobal(`download`, save)
-  mounted_component = mount(BrillouinZone, {
-    target: document.body,
-    props: { structure: cubic },
-  })
+  mount_zone({ structure: cubic })
   await vi.waitFor(() => expect(document.querySelector(`.bz-export-toggle`)).not.toBeNull())
   expect(await click_export(`JSON`)).toEqual([`PNG`, `JSON`])
   await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
@@ -466,10 +464,7 @@ test.each([
 ])(`default_k_path %s`, async (_desc, k_path, n_calls) => {
   analyze_structure_symmetry.mockRejectedValue(new Error(`no space group`))
   const { children, rendered } = zone_probe()
-  mounted_component = mount(BrillouinZone, {
-    target: document.body,
-    props: { structure: cubic, default_k_path: true, k_path, children },
-  })
+  mount_zone({ structure: cubic, default_k_path: true, k_path, children })
   await vi.waitFor(() => expect(rendered()?.order).toBe(1))
   await tick()
   expect(analyze_structure_symmetry).toHaveBeenCalledTimes(n_calls)
@@ -515,7 +510,7 @@ test.each([
   const on_file_load = vi.fn()
   const ibz = { show_ibz: true, ibz_data, on_file_load }
   const props = $state({ source, default_k_path: true, children, ...ibz })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  mount_zone(props)
   // the point group, carried into the primitive basis, still cuts the 1/48 wedge
   const wedge_ratio = (wedge?: typeof ibz_data, zone?: BrillouinZoneData) =>
     ((wedge?.volume ?? 0) * 48) / (zone?.volume ?? 1)
@@ -540,10 +535,10 @@ test.each([
     [own_zone, true],
     [compute_brillouin_zone(equal_volume, 1), true],
   ] as const) {
-    await unmount(mounted_component)
+    await unmount_zone()
     analyze_structure_symmetry.mockImplementationOnce(analyze)
     const supplied = $state({ structure, bz_data, default_k_path: path, ...ibz })
-    mounted_component = mount(BrillouinZone, { target: document.body, props: supplied })
+    mount_zone(supplied)
     const path_error = () => document.body.querySelector(`.k-path-error`)?.textContent
     await vi.waitFor(() =>
       path
@@ -552,14 +547,14 @@ test.each([
     )
   }
   // a throw from the delayed primitive-zone notification reaches on_error like the first one's
-  await unmount(mounted_component)
+  await unmount_zone()
   analyze_structure_symmetry.mockImplementationOnce(analyze)
   const on_error = vi.fn()
   const throw_second = vi.fn(() => {
     if (throw_second.mock.calls.length > 1) throw new Error(`host exploded`)
   })
   const loader = { source, default_k_path: true, on_file_load: throw_second, on_error }
-  mounted_component = mount(BrillouinZone, { target: document.body, props: loader })
+  mount_zone(loader)
   await vi.waitFor(() =>
     expect(on_error).toHaveBeenCalledWith(
       expect.objectContaining({

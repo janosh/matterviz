@@ -35,6 +35,7 @@ export type SessionHost = {
   supercell_scaling: string
   apply_supercell_scaling: boolean
   show_image_atoms: boolean
+  keep_molecules_whole: boolean
   image_atom_completion: ImageAtomCompletion
   polyhedra_options: Partial<ResolvedPolyhedraOptions>
   cell_type: CellType
@@ -64,6 +65,7 @@ export function make_session(
     supercell_scaling: `1x1x1`,
     apply_supercell_scaling: true,
     show_image_atoms: false,
+    keep_molecules_whole: false,
     image_atom_completion: `polyhedra`,
     polyhedra_options: {},
     cell_type: `original`,
@@ -105,6 +107,7 @@ export function make_session(
       supercell_scaling: () => host.supercell_scaling,
       apply_supercell_scaling: () => host.apply_supercell_scaling,
       show_image_atoms: () => host.show_image_atoms,
+      keep_molecules_whole: () => host.keep_molecules_whole,
       image_atom_options: () =>
         image_options(host.image_atom_completion, host.polyhedra_options),
       cell_type: () => host.cell_type,

@@ -3,7 +3,13 @@ import ConvexHullInfoPane from '#lib/convex-hull/ConvexHullInfoPane.svelte'
 import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
-import { click_export, doc_query, mock_object_url, set_select } from '../setup'
+import {
+  click_export,
+  doc_query,
+  limit_math_spread,
+  mock_object_url,
+  set_select,
+} from '../setup'
 
 const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   total: 100,
@@ -14,6 +20,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   quinary_plus: 0,
   stable: 15,
   unstable: 85,
+  unknown_stability: 0,
   elements: 4,
   chemical_system: `Li-Fe-P-O`,
   e_form_range: { min: -2.5, max: 0.5, avg: -0.8 },
@@ -96,7 +103,8 @@ describe(`ConvexHullStats`, () => {
       phase_stats: mock_stats({
         total: 150,
         stable: 25,
-        unstable: 125,
+        unstable: 120,
+        unknown_stability: 5,
         e_form_range: { min: -2.567, max: 0.123, avg: -1.234 },
         hull_distance: { max: 0.456, avg: 0.089 },
       }),
@@ -108,6 +116,8 @@ describe(`ConvexHullStats`, () => {
     for (const snippet of [
       `Total entries in Li-Fe-P-O 150`,
       `Stable phases 25 (16.7%)`,
+      `Unstable phases 120 (80%)`,
+      `Unknown stability 5 (3.3%)`,
       `Binary phases 20 (13.3%)`,
       `Min / avg / max (eV/atom) −2.567 / −1.234 / 0.123`,
       `Max / avg (eV/atom) 0.456 / 0.089`,
@@ -398,13 +408,14 @@ describe(`ConvexHullStats`, () => {
       for (const row of rows_after) expect(rows_before.has(row)).toBe(true)
     })
 
-    // Math.max(1, ...arities) threw RangeError past ~125k entries
-    test(`dropdown options span the max arity of 200k entries without a spread overflow`, () => {
-      const binaries = Array.from({ length: 200_000 }, () => binary)
+    // Math.max(1, ...arities) threw RangeError past ~125k entries in a browser tab
+    test(`dropdown options span the max arity of entries past the spread argument limit`, () => {
+      limit_math_spread(1000)
+      const binaries = Array.from({ length: 2000 }, () => binary)
       mount_stats_table({ stable_entries: [...binaries, mock_entry()] })
       const options = get_table_filter_select(`Min N`)?.options ?? []
       expect(Array.from(options, (opt) => opt.value)).toEqual([`1`, `2`, `3`, `4`])
-    }, 15_000)
+    })
   })
 
   describe(`table export`, () => {
@@ -432,7 +443,9 @@ describe(`ConvexHullStats`, () => {
       await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
       expect((create.mock.calls[0][0] as Blob).type).toBe(mime_type)
       expect(anchor_click).toHaveBeenCalledTimes(1)
-      expect(revoke).toHaveBeenCalledTimes(1)
+      // download() revokes the URL in a setTimeout(0) after the click
+      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+      expect(revoke).toHaveBeenCalledExactlyOnceWith(`blob:test-url`)
       expect(downloaded_as).toBe(`li-fe-p-o.${ext}`)
     })
   })
@@ -506,11 +519,24 @@ describe(`ConvexHullStats`, () => {
     )
   }
 
+  // open-element entries (LiCoO2, LiCoO3 both at LiCo on an O-open hull) group and show by
+  // their full composition
   test(`Poly column counts polymorphs per reduced formula (Fe4O6 groups with Fe2O3), 1 for unique`, () => {
     const fe4o6 = mock_entry({ composition: { Fe: 4, O: 6 }, reduced_formula: `Fe4O6` })
-    mount_stats_table({ stable_entries: [...polymorph_entries, fe4o6] })
+    const open = [2, 3].map((n_oxygen) =>
+      mock_entry({
+        composition: { Li: 1, Co: 1 },
+        full_composition: { Li: 1, Co: 1, O: n_oxygen },
+      }),
+    )
+    mount_stats_table({ stable_entries: [...polymorph_entries, fe4o6, ...open] })
     expect(get_headers()).toContain(`Poly`)
-    expect(get_poly_values().toSorted()).toEqual([`1`, `3`, `3`, `3`])
+    expect(get_poly_values().toSorted()).toEqual([`1`, `1`, `1`, `3`, `3`, `3`])
+    const formula_idx = get_headers().indexOf(`Formula`)
+    const formulas = Array.from(document.querySelectorAll(`tbody tr`), (row) =>
+      row.querySelectorAll(`td`)[formula_idx]?.textContent?.trim(),
+    )
+    expect(formulas).toEqual(expect.arrayContaining([`Li Co O2`, `Li Co O3`]))
   })
 
   describe(`entry_href prop`, () => {

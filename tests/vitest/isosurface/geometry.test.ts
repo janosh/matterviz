@@ -15,7 +15,7 @@ import {
   UNIT_CELL_RANGE,
 } from '#lib/isosurface/sampling.js'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
-import { cross_3d, dot, subtract, type Vec3 } from '#lib/math.js'
+import { cross_3d, dot, IDENTITY_3X3, type Matrix3x3, subtract, type Vec3 } from '#lib/math.js'
 import { afterEach, beforeAll, describe, expect, test } from 'vite-plus/test'
 import { install_stub_worker } from '../setup'
 import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
@@ -43,17 +43,25 @@ const blob_input = (
     { token: `1:1`, isovalue: 0.2 },
   ],
   range: DisplayRange | null = two_cells,
-): GeometryInput => ({ volumes: [{ ...prepare_geometry_grid(volume, range), surfaces }] })
+): GeometryInput => ({
+  volumes: [{ ...prepare_geometry_grid(volume, range && { range }), surfaces }],
+})
 
 describe(`compute_isosurface_geometries`, () => {
   test(`extracts a display window and one mesh per isovalue in the scene frame`, () => {
     const volume = { ...blob_volume(), origin: [1, 2, 3] as Vec3 }
     const input = blob_input(volume)
-    const [{ grid, lattice, origin }] = input.volumes
-    // 2x1x1 window at source density, endpoint inclusive
-    expect(grid.dims).toEqual([33, 17, 17])
-    expect(lattice[0][0]).toBeCloseTo(20, 12)
-    expect(origin).toEqual(volume.origin)
+    const [{ grid, lattice, origin, clip }] = input.volumes
+    // the unit cell's source voxels, tiled over the window's 2 x 1 x 1 cells
+    expect(grid.values).toBe(volume.values)
+    expect([lattice, origin, clip?.cells]).toEqual([
+      volume.lattice,
+      volume.origin,
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
+    ])
     const result = compute_isosurface_geometries(input)
     expect(result.surfaces.map((surface) => surface.token)).toEqual([`0:1`, `1:1`])
 
@@ -75,17 +83,20 @@ describe(`compute_isosurface_geometries`, () => {
     )
   })
 
-  test(`no range and within budget: the source grid is resampled without interpolation`, () => {
-    // a periodic [0, 1] window is endpoint-inclusive: an 8-point axis becomes 9 samples whose
-    // last repeats the first, so no value is blended
-    const volume = blob_volume(8)
-    const { grid, lattice } = prepare_geometry_grid(volume, null)
-    expect(grid.dims).toEqual([9, 9, 9])
-    expect(lattice).toEqual(volume.lattice)
-    for (const [idx, val] of grid.values.entries()) {
-      // oxfmt-ignore
-      const [idx_x, idx_y, idx_z] = [Math.floor(idx / 81) % 8, (Math.floor(idx / 9) % 9) % 8, (idx % 9) % 8]
-      expect(val).toBe(volume.values[(idx_x * 8 + idx_y) * 8 + idx_z])
+  // periodic: marching cubes runs on the source voxels themselves in budget, else on a
+  // resampled unit cell, tiled over the one cell of a windowless volume
+  test.each([8, 81])(`no window, periodic %i³: the unit cell is tiled once`, (n_pts) => {
+    const volume = blob_volume(n_pts)
+    const { grid, lattice, clip } = prepare_geometry_grid(volume, null)
+    expect([lattice, clip]).toEqual([
+      volume.lattice,
+      { frame: IDENTITY_3X3, range: UNIT_CELL_RANGE, cells: [[0, 0, 0]] },
+    ])
+    if (n_pts ** 3 <= MAX_GRID_POINTS)
+      expect(grid).toEqual({ values: volume.values, dims: volume.dims, order: volume.order })
+    else {
+      expect(grid.dims).toEqual([79, 79, 79]) // ∛(500k / 81³) of 81 per axis
+      expect(grid.values[0]).toBe(volume.values[0])
     }
   })
 
@@ -143,9 +154,16 @@ describe(`compute_isosurface_geometries`, () => {
   })
 
   // Otherwise the transparent back-then-front pass draws negative lobes inside-out
-  test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
+  // a left-handed lattice mirrors the index-space winding marching cubes emits
+  test.each([
+    [1, 10],
+    [-1, 10],
+    [1, -10],
+  ])(`lobe of sign %i, c = %i Å, gets outward-facing triangles`, (sign, lattice_c) => {
     const blob = blob_volume()
-    const volume = { ...blob, values: blob.values.map((val) => sign * val) }
+    // oxfmt-ignore
+    const lattice: Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, lattice_c]]
+    const volume = { ...blob, lattice, values: blob.values.map((val) => sign * val) }
     const input = blob_input(volume, [{ token: `s`, isovalue: sign * 0.5 }], null)
     const [{ positions, indices }] = compute_isosurface_geometries(input).surfaces
     const vertex = (idx: number) => [...positions.subarray(3 * idx, 3 * idx + 3)] as Vec3
@@ -153,7 +171,7 @@ describe(`compute_isosurface_geometries`, () => {
     for (let tri = 0; tri < indices.length; tri += 3) {
       const [vert_a, vert_b, vert_c] = [0, 1, 2].map((corner) => vertex(indices[tri + corner]))
       const normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
-      expect(dot(normal, subtract(vert_a, [5, 5, 5]))).toBeGreaterThan(0) // blob centre (Å)
+      expect(dot(normal, subtract(vert_a, [5, 5, lattice_c / 2]))).toBeGreaterThan(0) // blob centre
     }
   })
 
@@ -192,16 +210,16 @@ test(`compute_geometries_async posts the prepared grid and returns the worker re
   const result = await compute_geometries_async(input)
   expect(stub.posted).toHaveLength(1)
   const payload = stub.posted[0].message.input.volumes[0]
-  // only the prepared window's values, not the source volume
+  // only the unit grid's values (in budget, the source's), not the whole volume object
   expect(payload.grid).toEqual({
     values: job.grid.values,
-    dims: [33, 17, 17],
+    dims: [16, 16, 16],
     order: `z_fastest`,
   })
   expect([payload.lattice, payload.origin]).toEqual([job.lattice, volume.origin])
   // Value buffers stay owned by the caller (copied, not transferred)
   expect(stub.posted[0].transfer).toEqual([])
-  expect(job.grid.values).toHaveLength(33 * 17 * 17)
+  expect(job.grid.values).toHaveLength(16 ** 3)
 
   const sync = compute_isosurface_geometries(input)
   expect(result.surfaces[0].positions).toEqual(sync.surfaces[0].positions)

@@ -43,9 +43,7 @@ const suggested_stride = (
   max_bytes: number,
   frame_label = `a single frame`,
 ): number => {
-  if (!(max_bytes > 0)) {
-    throw new Error(`max_bytes must be positive, got ${max_bytes}`)
-  }
+  if (!(max_bytes > 0)) throw new Error(`max_bytes must be positive, got ${max_bytes}`)
   if (max_bytes === Number.POSITIVE_INFINITY) return 1
   const affordable_frames = Math.floor(max_bytes / frame_bytes)
   if (affordable_frames < 1) {

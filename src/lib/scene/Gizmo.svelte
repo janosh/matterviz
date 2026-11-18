@@ -189,9 +189,7 @@
     gizmo_camera.updateMatrixWorld()
 
     label_nudge.copy(view_dir).multiplyScalar(GIZMO_LAYOUT.handle_radius + 0.02)
-    for (const { dir, label } of handles) {
-      label?.position.set(...dir).add(label_nudge)
-    }
+    for (const { dir, label } of handles) label?.position.set(...dir).add(label_nudge)
   }
 
   // Camera fly-to, shared with the zone-axis control (see #lib/scene/fly-to)

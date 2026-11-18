@@ -284,6 +284,7 @@ describe(`StructureControls schema rows`, () => {
         show_cell_vectors: false,
       } as StructureSettings,
       show_image_atoms: false,
+      keep_molecules_whole: false,
       background_color: undefined,
     })
     const target = await mount_bound_controls(state, {
@@ -315,6 +316,7 @@ describe(`StructureControls schema rows`, () => {
       [`zoom_to_cursor`, false],
       [`show_cell_vectors`, false],
       [`show_image_atoms`, false], // local bindable row
+      [`keep_molecules_whole`, false], // local bindable row
       [`show_displacement_arrows`, true],
     ] as const
     for (const [key, expected] of checkboxes) {
@@ -366,6 +368,7 @@ describe(`StructureControls schema rows`, () => {
     await choose(`polyhedra_neighbor_mode`, `anion`)
     query(row_of(`show_cell_vectors`), `input`).click()
     query(row_of(`show_image_atoms`), `input`).click()
+    query(row_of(`keep_molecules_whole`), `input`).click()
     set_input(
       query(row_of(`bond_thickness`), `input[type="number"]`, HTMLInputElement),
       `0.35`,
@@ -376,8 +379,10 @@ describe(`StructureControls schema rows`, () => {
     expect(state.scene_props.bond_thickness).toBe(0.35)
     expect(state.scene_props.show_cell_vectors).toBe(true)
     expect(state.show_image_atoms).toBe(true)
-    // ...and nothing leaked onto scene_props from the accessor row
-    expect(Object.hasOwn(state.scene_props, `show_image_atoms`)).toBe(false)
+    expect(state.keep_molecules_whole).toBe(true)
+    // ...and nothing leaked onto scene_props from the accessor rows
+    for (const key of [`show_image_atoms`, `keep_molecules_whole`])
+      expect(Object.hasOwn(state.scene_props, key), key).toBe(false)
 
     // conditional rows follow their gate
     state.scene_props.auto_bond_order = false
@@ -398,6 +403,7 @@ describe(`StructureControls schema rows`, () => {
       trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
       show_image_atoms: true,
       image_atom_completion: DEFAULTS.structure.image_atom_completion,
+      keep_molecules_whole: false,
       show_trajectory_lines: true,
       multi_view: false,
     })
@@ -420,7 +426,7 @@ describe(`StructureControls schema rows`, () => {
     // oxfmt-ignore
     expect([...target.querySelectorAll<HTMLElement>(`[data-key]`)].map((row) => row.dataset.key)).toEqual([
       // Visibility
-      `show_atoms`, `show_image_atoms`, `show_site_labels`, `show_site_indices`, `show_cell_vectors`, `vector_config:force`, `vector_config:magmom`, `show_bonds`, `show_polyhedra`, `image_atom_completion`,
+      `show_atoms`, `show_image_atoms`, `keep_molecules_whole`, `show_site_labels`, `show_site_indices`, `show_cell_vectors`, `vector_config:force`, `vector_config:magmom`, `show_bonds`, `show_polyhedra`, `image_atom_completion`,
       // Atoms
       `atom_radius`, `same_size_atoms`, `color_scheme`, `atom_color_mode`,
       // Bonds

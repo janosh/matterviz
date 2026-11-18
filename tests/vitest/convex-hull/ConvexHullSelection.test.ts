@@ -18,6 +18,7 @@ import {
   marker_fill,
   mock_parse_worker,
   mount_sized,
+  set_input,
 } from '../setup'
 import { make_phase, png_blob } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
@@ -328,6 +329,59 @@ describe(`convex hull replacement state`, () => {
     expect(sizes).toEqual([[1600, 1200]]) // 2x the unmeasured canvas's 800x600 CSS size
   })
 
+  const submit_probe = async (text: string) => {
+    set_input(doc_query<HTMLInputElement>(`.composition-probe input`), text)
+    doc_query<HTMLFormElement>(`.composition-probe`).requestSubmit()
+    await tick()
+  }
+  // LiO is no entry: it decomposes to 3/4 Li2O + 1/4 O by atoms at 3/4 of Li2O's -2 eV/atom
+  test(`info pane composition probe decomposes any composition`, async () => {
+    const entries = [
+      make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
+      make_phase({ O: 1 }, 0, { entry_id: `O` }),
+      make_phase({ Li: 2, O: 1 }, -2, { entry_id: `Li2O`, reduced_formula: `Li2O` }),
+    ]
+    const target = await mount_hull({ entries, info_pane_open: true })
+    await submit_probe(`LiO`)
+    expect(test_text(`probe-energy`)).toContain(`-1.5 eV/atom`.replace(`-`, `−`))
+    expect([0, 1].map((idx) => test_text(`probe-product-${idx}`))).toEqual([
+      `Li2O 75%`,
+      `O 25%`,
+    ])
+    expect(target.querySelector(`.probe-error`)).toBeNull()
+    await submit_probe(`NaCl`)
+    expect(doc_query(`.probe-error`).textContent).toContain(`outside the`)
+    expect(target.querySelector(`[data-testid="probe-energy"]`)).toBeNull()
+  })
+
+  // probes are element formulas: components mode solves for component amounts (Li2CoO2 =
+  // CoO + Li2O, 2 of 3 component units), open elements are dropped (LiCoO2 → LiCo on Li-Co)
+  // oxfmt-ignore
+  test.each<[string, object, Record<string, number>[], string, string]>([
+    [`components`, { components: [`CoO`, `Li2O`] }, [{ CoO: 1 }, { Li2O: 1 }, { CoO: 1, Li2O: 1 }], `Li2CoO2`, `CoO-Li2O`],
+    [`open elements`, { open_elements: { O: -3 } }, [{ Li: 1 }, { Co: 1 }, { O: 1 }, { Li: 1, Co: 1, O: 2 }], `LiCoO2`, `Co-Li`],
+  ])(
+    `probe takes element formulas with %s`,
+    async (_label, props, compositions, formula, system) => {
+      const entries = compositions.map((composition, idx) =>
+        idx === compositions.length - 1
+          ? make_phase(composition, -3, { name: `compound` })
+          : make_phase(composition, 0),
+      )
+      const target = await mount_hull({ entries, ...props, info_pane_open: true })
+      // oxfmt-ignore
+      for (const [text, inside] of [[formula, true], [`NaCl`, false]] as const) {
+        await submit_probe(text)
+        expect(target.querySelector(`.probe-error`)?.textContent ?? null).toBe(
+          inside ? null : `NaCl is outside the ${system} system`,
+        )
+        expect(
+          target.querySelector(`[data-testid="probe-product-0"]`)?.textContent ?? null,
+        ).toBe(inside ? `compound 100%` : null)
+      }
+    },
+  )
+
   // synthetic corners close the hull but are no data entries, so the pane counts skip them
   test(`pane counts leave out synthetic corners`, async () => {
     // precomputed E_form: an excluded unary is no reference to compute it against
@@ -399,6 +453,33 @@ describe(`convex hull replacement state`, () => {
         expect(console_error).not.toHaveBeenCalled()
       },
     )
+  })
+
+  // With O open, a Li reference tabulated at 300 K only can't project LiFeO at 600 K: the hull
+  // says which reference is missing there (no synthetic Li corner silently dropping LiFeO)
+  // and keeps the temperature slider to return to 300 K
+  test(`open elements: a reference missing at the selected T names it and keeps the slider`, async () => {
+    const entries = [
+      with_temps({ Li: 1 }, [300], `Li`),
+      ...[`Fe`, `O`].map((element) => with_temps({ [element]: 1 }, [300, 600], element)),
+      with_temps({ Li: 1, Fe: 1, O: 1 }, [300, 600], `LiFeO`),
+    ]
+    const state = { temperature: 600 }
+    const target = await mount_hull(
+      bind_props({ entries, open_elements: { O: -1 }, interpolate_temperature: false }, state),
+    )
+    flushSync()
+    expect(target.querySelector(`.empty-state`)?.textContent).toContain(
+      `open_elements needs an elemental reference for Li at 600 K`,
+    )
+    const temp_input = target.querySelector<HTMLInputElement>(
+      `.temperature-slider input[type="number"]`,
+    )
+    expect(state.temperature).toBe(600)
+    if (!temp_input) throw new Error(`no temperature input`)
+    temp_input.value = `300`
+    temp_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(state.temperature).toBe(300)
   })
 
   // Without interpolation an untabulated T snaps to the nearest tabulated one, while
@@ -492,6 +573,23 @@ describe(`convex hull replacement state`, () => {
     expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
     expect(target.querySelector(`.empty-state`)).toBeNull()
     expect(model_entries()?.map((entry) => entry.entry_id)).toContain(`compound`)
+  })
+
+  // Fe-Li-O open to O renders as an Fe-Li binary of grand potentials: at mu_O = -3 the
+  // compound's Φ = -12 + 3 * 2 = -6 eV over 2 non-O atoms lies 3 eV/atom below the unaries
+  test(`open_elements projects a ternary to a grand-potential binary`, async () => {
+    const entries = [
+      ...[`Fe`, `Li`, `O`].map((element) =>
+        make_phase({ [element]: 1 }, 0, { entry_id: element }),
+      ),
+      make_phase({ Fe: 1, Li: 1, O: 2 }, -3, { entry_id: `compound` }), // -12 eV total
+    ]
+    const target = await mount_hull({ entries, open_elements: { O: -3 } })
+    flushSync()
+    expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
+    const compound = model_entries()?.find((entry) => entry.entry_id === `compound`)
+    expect(compound).toMatchObject({ composition: { Fe: 1, Li: 1 }, is_stable: true })
+    expect(compound?.e_form_per_atom).toBeCloseTo(-3, 12)
   })
 
   // the info pane ends with the shortcuts of the hull's dimension

@@ -139,9 +139,7 @@ const plane_basis = (normal: Vec3, up_vector?: Vec3): [Vec3, Vec3] => {
   if (!up_vector) return math.compute_in_plane_basis(normal)
   const normal_projection = math.dot(up_vector, normal)
   const projected = math.subtract(up_vector, math.scale(normal, normal_projection))
-  if (Math.hypot(...projected) < PLANE_TOLERANCE) {
-    return math.compute_in_plane_basis(normal)
-  }
+  if (Math.hypot(...projected) < PLANE_TOLERANCE) return math.compute_in_plane_basis(normal)
   const u_axis = math.normalize_vec(projected)
   return [u_axis, math.cross_3d(normal, u_axis)]
 }

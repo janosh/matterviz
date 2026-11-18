@@ -34,12 +34,15 @@ import {
   Structure,
   Sunburst,
   TernaryPlot,
+  trajectory_from_binary,
   trajectory_from_json,
   Trajectory,
   Treemap,
+  volume_from_binary,
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
+import { is_binary_envelope } from 'matterviz/io'
 import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
@@ -340,11 +343,13 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         const data = get_prop(model, `structure_string`)
         return url || (data ? { data, filename: `string` } : undefined)
       }),
-      // Traits carry nested JSON grids; the renderer stores flat typed arrays
+      // Nested JSON grids or binary envelopes (readme); the renderer stores flat typed arrays
       derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
         const raw = get_prop(model, `volumetric_data`)
         if (raw == null) return undefined
-        return (Array.isArray(raw) ? raw : [raw]).map(volume_from_json)
+        return (Array.isArray(raw) ? raw : [raw]).map((volume) =>
+          is_binary_envelope(volume) ? volume_from_binary(volume) : volume_from_json(volume),
+        )
       }),
       writeback_prop(`active_volume_id`),
       writeback_prop(`display_mode`, `structure`),
@@ -362,12 +367,14 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       ...drive_props(`show_controls layout fullscreen_toggle auto_play step_labels
         property_labels`),
-      // The JSON trait (pymatgen Trajectory, { frames }, array of structures) becomes an
-      // in-memory run; data_url is fetched and parsed by the file viewer itself. A malformed
-      // trait throws like a malformed spectral one, failing the mount with the parse error
+      // The JSON trait (pymatgen Trajectory, { frames }, array of structures) or a binary
+      // envelope (readme) becomes an in-memory run; data_url is fetched and parsed by the file
+      // viewer. A malformed trait throws like a malformed spectral one, failing the mount
       derived_prop(`trajectory`, [`trajectory`], (model) => {
         const value = get_prop(model, `trajectory`)
-        return value == null ? undefined : trajectory_from_json(value, { format: `json` })
+        if (value == null) return undefined
+        if (is_binary_envelope(value)) return trajectory_from_binary(value)
+        return trajectory_from_json(value, { format: `json` })
       }),
       derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump

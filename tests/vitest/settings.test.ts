@@ -501,7 +501,7 @@ describe(`Settings`, () => {
       return { drift, stale }
     }
 
-    test.each(components)(`%s`, { timeout: 20_000 }, async (component) => {
+    test.each(components)(`%s`, async (component) => {
       const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
       const { drift, stale } = await analyze(component, source)
       expect(drift, `${component} hardcodes defaults that belong to the schema`).toEqual([])

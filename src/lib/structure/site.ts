@@ -199,3 +199,10 @@ export const merge_site_properties = <Structure extends AnyStructure>(
     properties: { ...site.properties, ...rows[row_of(site, site_idx)] },
   })),
 })
+
+// Species, occupancies and oxidation states of a site, order-independent
+export const species_key = (species: Site[`species`]): string =>
+  species
+    .map(({ element, occu, oxidation_state }) => `${element}${oxidation_state ?? ``}:${occu}`)
+    .toSorted()
+    .join(` `)

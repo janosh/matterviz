@@ -92,6 +92,7 @@
     scene_props,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     image_atom_completion = $bindable(DEFAULTS.structure.image_atom_completion),
+    keep_molecules_whole = $bindable(DEFAULTS.structure.keep_molecules_whole),
     supercell_scaling = $bindable(`1x1x1`),
     background_color = $bindable(),
     background_opacity = $bindable(DEFAULTS.background_opacity),
@@ -128,6 +129,7 @@
     trajectory_position_stream?: TrajectoryPositionStream | null
     show_image_atoms?: boolean
     image_atom_completion?: ImageAtomCompletion
+    keep_molecules_whole?: boolean
     supercell_scaling?: string
     background_color?: string
     background_opacity?: number
@@ -203,6 +205,8 @@
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
     image_atom_completion =
       structure_settings.image_atom_completion ?? DEFAULTS.structure.image_atom_completion
+    keep_molecules_whole =
+      structure_settings.keep_molecules_whole ?? DEFAULTS.structure.keep_molecules_whole
     show_trajectory_lines =
       structure_settings.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines
     // `custom` needs a runtime color_fn that no saved blob can carry, so a stored value
@@ -249,6 +253,7 @@
       background_opacity,
       show_image_atoms,
       image_atom_completion,
+      keep_molecules_whole,
       atom_color_config,
       supercell_scaling,
       cell_type,
@@ -409,6 +414,12 @@
       when: () => periodic,
       get: () => show_image_atoms,
       set: (value) => (show_image_atoms = Boolean(value)),
+    },
+    {
+      ...row(`keep_molecules_whole`, `Whole molecules`),
+      when: () => periodic,
+      get: () => keep_molecules_whole,
+      set: (value) => (keep_molecules_whole = Boolean(value)),
     },
     row(`show_site_labels`, `Site labels`),
     row(`show_site_indices`, `Site indices`),

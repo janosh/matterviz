@@ -72,6 +72,10 @@ vi.mock(`@threlte/core`, async (import_original) => ({
 }))
 
 const mounted: ReturnType<typeof mount>[] = []
+// mounts the viewer on (possibly live) props, unmounted again after each test
+const mount_fermi = (props: ComponentProps<typeof FermiSurface>) => {
+  mounted.push(mount(FermiSurface, { target: document.body, props }))
+}
 
 afterEach(async () => {
   extraction.jobs = null
@@ -114,7 +118,7 @@ test(`custom drops receive raw content while loading remains visible`, async () 
   const pending = Promise.withResolvers<undefined>()
   const on_file_drop = vi.fn(() => pending.promise)
   const props = $state({ loading: false, on_file_drop })
-  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  mount_fermi(props)
   await tick()
   const file = new File([`custom surface`], `custom.txt`)
   document.querySelector(`.fermi-surface`)?.dispatchEvent(create_drop_event(file))
@@ -145,7 +149,7 @@ test(`built-in drops load typed Fermi surface data and provenance`, async () => 
     fermi_data: undefined,
     on_file_load,
   })
-  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  mount_fermi(props)
   await tick()
   const file = new File([payload], `fermi.json`)
   document.querySelector(`.fermi-surface`)?.dispatchEvent(create_drop_event(file))
@@ -181,7 +185,7 @@ test(`a dropped file shows its own bands, not the previous file's selection`, as
     selected_bands: undefined,
     isolated_band: null,
   })
-  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  mount_fermi(props)
   await tick()
   const drop = (bands: number[], name: string) => {
     const file = new File([surface_json(bands)], name)
@@ -211,7 +215,7 @@ test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
       fermi_data: undefined as FermiSurfaceData | undefined,
       on_file_load,
     })
-    mounted.push(mount(FermiSurface, { target: document.body, props }))
+    mount_fermi(props)
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
     await vi.advanceTimersByTimeAsync(300) // spinner frame + extraction frame
     expect(props.fermi_data?.isosurfaces.length).toBeGreaterThan(0)
@@ -236,7 +240,7 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
     mu: number
     interpolation_factor: number
   }>({ band_data, fermi_data: undefined, mu: 0, interpolation_factor: 1 })
-  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  mount_fermi(props)
   await vi.advanceTimersByTimeAsync(200)
   expect(props.fermi_data?.isosurfaces).toHaveLength(1)
   const n_vertices_at_0 = props.fermi_data?.isosurfaces[0].positions.length
@@ -338,19 +342,16 @@ test.each([
     tile_bz: false,
     error_msg: undefined,
   })
-  mounted.push(
-    mount(FermiSurface, {
-      target: document.body,
-      props: bind_props(
-        {
-          fermi_data: fermi_data as FermiSurfaceData,
-          children,
-          on_error,
-          controls_open: true,
-        },
-        props,
-      ),
-    }),
+  mount_fermi(
+    bind_props(
+      {
+        fermi_data: fermi_data as FermiSurfaceData,
+        children,
+        on_error,
+        controls_open: true,
+      },
+      props,
+    ),
   )
   await tick()
   expect(on_error).not.toHaveBeenCalled()
@@ -379,12 +380,7 @@ test(`malformed fermi_data reports via error_msg/on_error and a later valid one 
     fermi_data: { isosurfaces: [{ vertices: `nope` }] },
     error_msg: undefined,
   })
-  mounted.push(
-    mount(FermiSurface, {
-      target: document.body,
-      props: bind_props({ on_error }, props) as ComponentProps<typeof FermiSurface>,
-    }),
-  )
+  mount_fermi(bind_props({ on_error }, props) as ComponentProps<typeof FermiSurface>)
   await tick()
   expect(props.error_msg).toMatch(/^Invalid Fermi surface data: /)
   expect(on_error).toHaveBeenCalledWith({ error_msg: props.error_msg })
@@ -411,9 +407,7 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   const typed = typed_grid(nested)
   const props = $state<{ fermi_data?: FermiSurfaceData }>({ fermi_data: undefined })
   const band_data: BandGridJson = { ...typed, energies: [[nested]], properties: undefined }
-  mounted.push(
-    mount(FermiSurface, { target: document.body, props: bind_props({ band_data }, props) }),
-  )
+  mount_fermi(bind_props({ band_data }, props))
   await vi.advanceTimersByTimeAsync(200)
   expect(props.fermi_data?.isosurfaces).toHaveLength(1)
   // the nested [kx][ky][kz] JSON must flatten z-fastest to the same mesh the typed grid
@@ -508,9 +502,7 @@ test(`the last surface stays up while the next grid's extracts`, async () => {
     fermi_data: undefined,
     band_data: typed_grid(sphere_energies(6)),
   })
-  mounted.push(
-    mount(FermiSurface, { target: document.body, props: bind_props({ children }, props) }),
-  )
+  mount_fermi(bind_props({ children }, props))
   fake_frames()
   await vi.advanceTimersByTimeAsync(40)
   const first = jobs[0].settle()
@@ -553,7 +545,7 @@ test.each([
   [{ show_controls: { hidden: [`export-pane`] } }, null],
 ] as const)(`export pane with %j offers %j`, async (props, offered) => {
   const band_data = typed_grid(sphere_energies(5))
-  mounted.push(mount(FermiSurface, { target: document.body, props: { band_data, ...props } }))
+  mount_fermi({ band_data, ...props })
   // the chrome (with the controls toggle) mounts once the band grid is loaded
   const controls_toggle = () => document.querySelector(`.fermi-surface .pane-toggle`)
   await vi.waitFor(() => expect(controls_toggle()).not.toBeNull())
@@ -592,12 +584,7 @@ test.each<[ColorProperty | undefined, ColorProperty, string | null]>([
 ])(`color_property %s shows %s, colour bar %s`, async (color_property, shown, title) => {
   fake_webgpu()
   const fermi_data = surface_with(`Δ_nk (meV)`, `λ_nk`)
-  mounted.push(
-    mount(FermiSurface, {
-      target: document.body,
-      props: { fermi_data, color_property, controls_open: true },
-    }),
-  )
+  mount_fermi({ fermi_data, color_property, controls_open: true })
   await tick()
   expect([color_by().value, colorbar_title()]).toEqual([shown, title])
 })
@@ -613,12 +600,7 @@ test(`a colouring picked in the controls survives frames, data without propertie
     color_property: undefined,
     property_name: undefined,
   })
-  mounted.push(
-    mount(FermiSurface, {
-      target: document.body,
-      props: bind_props({ controls_open: true }, props),
-    }),
-  )
+  mount_fermi(bind_props({ controls_open: true }, props))
   await tick()
   set_select(doc_query(`select[aria-label="Fermi surface colouring property"]`), `λ_nk`)
   await tick()

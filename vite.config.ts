@@ -249,6 +249,8 @@ export default defineConfig({
       reporter: [`text`, `json-summary`],
     },
     setupFiles: `tests/vitest/environment.ts`,
+    // the slowest tests take ~2 s idle, up to ~7 s at load 40
+    testTimeout: 10_000,
     sequence: { sequencer: SizeShardSequencer },
     // The VS Code extension's tests run under its own vitest (pnpm -C extensions/vscode test):
     // they need the `vscode` module mocked and the extension's own dependency tree

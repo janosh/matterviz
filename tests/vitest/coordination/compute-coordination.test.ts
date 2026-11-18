@@ -160,7 +160,7 @@ describe(`compute_coordination_nums`, () => {
 })
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
-describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
+describe(`CoordinationBarPlot`, () => {
   const mount_plot = (props: Record<string, unknown>) =>
     mount_sized(CoordinationBarPlot, props, {
       selector: `.bar-plot, .status-message, section`,

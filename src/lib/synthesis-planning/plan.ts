@@ -58,6 +58,8 @@ interface PlannerContext {
   partial_pressures: Partial<Record<GasSpecies, number>>
   // Per element of the phase set: can it be supplied or removed by an open gas?
   open_elements: boolean[]
+  // every phase of the hull (with a displaced ground state), and those close enough to compete
+  working_phases: PlannerPhase[]
   competitor_phases: PlannerPhase[]
   conditions: SynthesisConditions
   weights: ScoreWeights
@@ -196,6 +198,7 @@ function evaluate_route(
     ctx.competitor_phases,
     reaction.driving_force,
     ctx.thermo_cache,
+    ctx.working_phases,
   )
   const practicality = assess_practicality(reaction)
   const { score, breakdown, rationale } = score_route(
@@ -393,6 +396,7 @@ export function plan_synthesis(
     open_elements: phase_set.elements.map((_, el_idx) =>
       gases.some((gas) => gas.fractions[el_idx] > 0),
     ),
+    working_phases,
     competitor_phases: working_phases.filter(
       (phase) =>
         phase.e_above_hull <= COMPETITOR_E_ABOVE_HULL + ENERGY_TOL || phase.id === target.id,
@@ -440,10 +444,7 @@ export function plan_synthesis(
   const kept_route_ids = new Set(request.keep_route_ids)
   return {
     target: to_phase_ref(target),
-    phases: (ground_state.id === target.id
-      ? phase_set.phases
-      : [...phase_set.phases, ground_state]
-    ).map(to_phase_ref),
+    phases: working_phases.map(to_phase_ref),
     chemical_system: phase_set.elements.join(`-`),
     elements: phase_set.elements,
     conditions: {
