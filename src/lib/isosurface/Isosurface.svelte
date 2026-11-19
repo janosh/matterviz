@@ -28,6 +28,7 @@
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
+  import { cubic_surface_volume } from './spline'
   import SurfaceMaterial from './SurfaceMaterial.svelte'
 
   let {
@@ -87,23 +88,29 @@
     })
 
   // === Prepared geometry grids ===
-  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The window
-  // fully determines it (it encodes supercell and halo, which finite volumes ignore).
+  // A volume's marching-cubes grid, cached across isovalue changes.
   type PreparedGrid = ReturnType<typeof prepare_geometry_grid> & { key: string }
   // Keyed by volume object so removed/replaced volumes release their grids to GC
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
-  const window_key = (vol: VolumetricData): string => JSON.stringify(effective_window(vol))
+  const grid_key = (vol: VolumetricData): string =>
+    JSON.stringify([effective_window(vol), settings.interpolation ?? `linear`])
 
   // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
   // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
   const prepared_grid = (vol: VolumetricData): PreparedGrid => {
-    const key = window_key(vol)
+    const key = grid_key(vol)
     const cached = prepared_cache.get(vol)
     if (cached?.key === key) return cached
     const prepared = time_stage(
       `prepare_geometry`,
-      () => ({ key, ...prepare_geometry_grid(vol, effective_window(vol)) }),
+      () => ({
+        key,
+        ...prepare_geometry_grid(
+          settings.interpolation === `cubic` ? cubic_surface_volume(vol) : vol,
+          effective_window(vol),
+        ),
+      }),
       ({ grid }) => ({ output_points: grid.values.length }),
     )
     prepared_cache.set(vol, prepared)
@@ -196,9 +203,8 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // window_key covers halo and supercell, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    value_key([volume_id, vol_id(volume), sign * isovalue, window_key(volume)])
+    value_key([volume_id, vol_id(volume), sign * isovalue, grid_key(volume)])
 
   type BuiltSurface = Pick<MeshEntry, `geometry` | `lobes`>
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {

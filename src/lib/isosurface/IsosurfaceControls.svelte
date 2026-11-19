@@ -254,10 +254,10 @@
     update_settings({ display_range: is_default ? undefined : range })
   }
 
-  const default_settings = () =>
-    volumes.length > 0
-      ? auto_isosurface_settings(volumes[0])
-      : { ...DEFAULT_ISOSURFACE_SETTINGS }
+  const default_settings = () => ({
+    ...(volumes.length ? auto_isosurface_settings(volumes[0]) : DEFAULT_ISOSURFACE_SETTINGS),
+    interpolation: settings.interpolation,
+  })
   const isosurface_settings = $derived(
     track_settings(() => ({ ...settings }), { ...default_settings() }),
   )

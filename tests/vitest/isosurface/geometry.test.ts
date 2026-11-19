@@ -16,6 +16,7 @@ import {
   prepare_geometry_grid,
   UNIT_CELL_RANGE,
 } from '#lib/isosurface/sampling.js'
+import { cubic_surface_volume } from '#lib/isosurface/spline.js'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
 import { cross_3d, dot, IDENTITY_3X3, type Matrix3x3, subtract, type Vec3 } from '#lib/math.js'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
@@ -102,6 +103,72 @@ describe(`compute_isosurface_geometries`, () => {
       expect(grid.dims).toEqual([79, 79, 79]) // ∛(500k / 81³) of 81 per axis
       expect(grid.values[0]).toBe(volume.values[0])
     }
+  })
+
+  test.each([false, true])(
+    `cubic refinement reduces sphere facet error (periodic=%s)`,
+    (periodic) => {
+      const size = 13
+      const intervals = periodic ? size : size - 1
+      const radius = 0.3
+      const volume = make_volume(
+        make_grid(
+          size,
+          size,
+          size,
+          (...coords) =>
+            0.5 - coords.reduce((sum, coord) => sum + (coord / intervals - 0.5) ** 2, 0),
+        ),
+        { lattice: cubic_matrix(1), periodic },
+      )
+      const refined = cubic_surface_volume(volume)
+      expect(cubic_surface_volume(volume)).toBe(refined) // shared by all panes
+      const count = periodic ? 2 * size : 2 * size - 1
+      expect(refined.dims).toEqual([count, count, count])
+      const [native, fine] = [volume, refined].map((source) => {
+        const [{ positions, indices }] = compute_isosurface_geometries(
+          blob_input(source, [{ token: `sphere`, isovalue: 0.5 - radius ** 2 }], null),
+        ).surfaces
+        let max_error = 0
+        for (let tri = 0; tri < indices.length; tri += 3) {
+          const corners = indices.subarray(tri, tri + 3)
+          const centroid = [0, 1, 2].map(
+            (axis) =>
+              corners.reduce((sum, vert) => sum + positions[3 * vert + axis], 0) / 3 - 0.5,
+          )
+          max_error = Math.max(max_error, Math.abs(Math.hypot(...centroid) - radius))
+        }
+        return { triangles: indices.length / 3, max_error }
+      })
+      expect(fine.triangles).toBeGreaterThan(3 * native.triangles)
+      expect(fine.max_error).toBeLessThan(native.max_error / 2)
+    },
+  )
+
+  // Fractional resampling under the budget missed the native peak, erasing its entire surface.
+  test.each([60, 64])(`budgeted cubic refinement keeps native peaks on %i³`, (size) => {
+    const peak = 19
+    const values = new Float64Array(size ** 3)
+    values[(peak * size + peak) * size + peak] = 1
+    const volume = make_flat_volume(values, [size, size, size], {
+      id: `peak`,
+      origin: [0, 0, 0],
+      lattice: [
+        [1, 0, 0],
+        [0, 2, 0],
+        [0, 0, 1],
+      ],
+      periodic: false,
+      units: null,
+    })
+    const fine = cubic_surface_volume(volume)
+    const rows = size === 60 ? size * 2 - 1 : size
+    expect(fine.dims).toEqual([size, rows, size]) // split only the widest spacing if it fits
+    expect(fine.values[(peak * rows + (size === 60 ? 2 : 1) * peak) * size + peak]).toBe(1)
+    const [{ indices }] = compute_isosurface_geometries(
+      blob_input(fine, [{ token: `peak`, isovalue: 0.8 }], null),
+    ).surfaces
+    expect(indices).toHaveLength(24)
   })
 
   // Re-extracting a finite cell copied the whole grid and rescanned its range on every isovalue

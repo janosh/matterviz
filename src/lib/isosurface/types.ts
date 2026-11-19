@@ -185,6 +185,8 @@ export interface IsosurfaceLayer {
 export interface IsosurfaceSettings {
   layers: IsosurfaceLayer[]
   wireframe: boolean
+  // March on the source grid (default) or refine coarse geometry with a cubic B-spline.
+  interpolation?: `linear` | `cubic`
   surface_finish: SurfaceFinish // material finish shared by every layer
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
   // VESTA-style fractional range per lattice axis for periodic volumes, e.g. [[-0.15, 2.15],
@@ -356,15 +358,20 @@ export function isovalue_histogram(
 
 // Settings for a freshly loaded file: one auto layer on its first volume (later ones, e.g. a
 // CHGCAR's magnetization, stay available as colour sources or manual surfaces). Only the
-// per-file fields (layers, display_range) are reset; the finish, wireframe and halo of `prefs`
-// (the user's or host's choice) carry over.
+// per-file fields (layers, display_range) are reset; rendering preferences carry over.
 export const auto_isosurface_settings = (
   volume: VolumetricData,
-  { surface_finish, wireframe, halo }: IsosurfaceSettings = DEFAULT_ISOSURFACE_SETTINGS,
+  {
+    surface_finish,
+    wireframe,
+    halo,
+    interpolation,
+  }: IsosurfaceSettings = DEFAULT_ISOSURFACE_SETTINGS,
 ): IsosurfaceSettings => ({
   surface_finish,
   wireframe,
   halo,
+  interpolation,
   layers: [auto_volume_layer(volume)],
 })
 

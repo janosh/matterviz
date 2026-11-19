@@ -367,7 +367,7 @@ describe(`Isosurface`, () => {
     expect(outer).toBeGreaterThan(inner)
   })
 
-  test(`color-only changes reuse geometry; isovalue changes rebuild it`, async () => {
+  test(`color-only changes reuse geometry; isovalue and interpolation rebuild it`, async () => {
     // mirrored, so crossing opacity 1 turns on lobe sorting, which must not re-mesh either
     const props = mount_isosurface({
       settings: with_layers([layer(0.3, { opacity: 1, show_negative: true })]),
@@ -387,6 +387,13 @@ describe(`Isosurface`, () => {
     await settle()
     expect(geometry_of(meshes()[0])).not.toBe(geometry)
     expect(dispose).toHaveBeenCalledTimes(1)
+    const native_count = geometry_of(meshes()[0]).getIndex()?.count ?? 0
+    props.settings.interpolation = `cubic`
+    await settle()
+    expect(geometry_of(meshes()[0]).getIndex()?.count).toBeGreaterThan(3 * native_count)
+    props.settings.interpolation = `linear`
+    await settle()
+    expect(geometry_of(meshes()[0]).getIndex()?.count).toBe(native_count)
   })
 
   // A slider drag changes the isovalue every frame; a trailing debounce never fired until the
