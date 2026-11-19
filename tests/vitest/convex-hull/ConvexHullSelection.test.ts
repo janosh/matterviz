@@ -858,7 +858,7 @@ describe(`convex hull replacement state`, () => {
       expect(state.probe_composition?.[element]).toBeCloseTo(fractions[idx], 12),
     )
     // A host may replace the bound probe between the two clicks.
-    const host_probe = { Li: 1, Na: 1 }
+    const host_probe = { ...state.probe_composition }
     state.probe_composition = host_probe
     click(2)
     expect(state.probe_composition).toBe(host_probe)
@@ -866,6 +866,19 @@ describe(`convex hull replacement state`, () => {
     expect(state.probe_composition).not.toBe(host_probe)
     click(2)
     expect(state.probe_composition).toBe(host_probe)
+    // Hosts can also edit, add or delete a bound fraction in place.
+    for (const [key, value] of [
+      [`Li`, 1],
+      [`Fe`, 1],
+      [`O`, undefined],
+    ] as const) {
+      click()
+      const edited = state.probe_composition
+      if (key === `O`) delete edited.O
+      else edited[key] = value
+      click(2)
+      expect(state.probe_composition).toBe(edited)
+    }
     // a drag (which rotates the view) ending in a click, or a click outside the triangle
     state.probe_composition = null
     canvas.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))

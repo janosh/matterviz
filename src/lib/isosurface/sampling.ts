@@ -303,6 +303,20 @@ export function resolve_volume_window(
   return { range, frame: supercell }
 }
 
+const validate_grid_budget = (max_points: number): void => {
+  if (!Number.isSafeInteger(max_points) || max_points < 8)
+    throw new RangeError(`max_points must allow at least a 2×2×2 grid, got ${max_points}`)
+}
+
+// Counts already include marching cubes' minimum two points on each axis.
+const fit_grid_counts = (counts: Vec3, max_points: number): Vec3 => {
+  while (counts[0] * counts[1] * counts[2] > max_points) {
+    const largest = counts.indexOf(Math.max(...counts))
+    counts[largest] = Math.max(2, Math.floor(counts[largest] * 0.9))
+  }
+  return counts
+}
+
 // Endpoint-inclusive sample counts per axis for a (sanitized) fractional window, at most
 // max_points in all. Periodic volumes have n intervals per cell, finite ones n - 1. Over budget,
 // the largest axis shrinks first. A window too wide to count (e.g. [0, 1e308]) throws.
@@ -311,6 +325,7 @@ export function range_sample_counts(
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
 ): Vec3 {
+  validate_grid_budget(max_points)
   const intervals = volume.dims.map((dim) => (volume.periodic ? dim : Math.max(dim - 1, 1)))
   const counts = range.map(([lower, upper], axis) =>
     Math.max(2, Math.round((upper - lower) * intervals[axis]) + 1),
@@ -320,12 +335,7 @@ export function range_sample_counts(
       `Volume window ${JSON.stringify(range)} needs ${counts.join(` x `)} samples at the source density`,
     )
   }
-  const fits = () => counts[0] * counts[1] * counts[2] <= Math.max(max_points, 8)
-  while (!fits()) {
-    const largest = counts.indexOf(Math.max(...counts))
-    counts[largest] = Math.max(2, Math.floor(counts[largest] * 0.9))
-  }
-  return counts
+  return fit_grid_counts(counts, max_points)
 }
 
 interface AxisInterpolation {
@@ -535,8 +545,7 @@ export function prepare_geometry_grid(
   window: VolumeWindow | null,
   max_points = MAX_GRID_POINTS,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3; clip?: SurfaceClip } {
-  if (!Number.isSafeInteger(max_points) || max_points < 8)
-    throw new RangeError(`max_points must allow at least a 2×2×2 grid, got ${max_points}`)
+  validate_grid_budget(max_points)
   const { values, dims, order, lattice, origin, periodic } = volume
   const in_budget = values.length <= max_points && dims.every((dim) => dim >= 2)
   if (periodic) {
@@ -577,7 +586,10 @@ export function prepare_geometry_grid(
       ? source
       : resample_periodic(
           source,
-          dims.map((dim) => Math.max(2, Math.floor(dim * scale))) as Vec3,
+          fit_grid_counts(
+            dims.map((dim) => Math.max(2, Math.floor(dim * scale))) as Vec3,
+            max_points,
+          ),
         )
     return { grid, lattice, origin, clip: { frame, range, cells: window_cells(frame, range) } }
   }

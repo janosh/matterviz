@@ -220,7 +220,13 @@
       wrapper?.addEventListener(
         `click`,
         (next) => {
-          if (next.detail === 2 && probe_composition === clicked) probe_composition = previous
+          if (
+            next.detail === 2 &&
+            probe_composition === clicked &&
+            Object.keys(clicked).length === elements.length &&
+            elements.every((element, idx) => clicked[element] === fractions[idx])
+          )
+            probe_composition = previous
         },
         { capture: true, once: true },
       )

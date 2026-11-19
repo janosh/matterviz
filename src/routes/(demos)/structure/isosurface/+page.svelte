@@ -119,6 +119,8 @@
   }
 
   // All panes share the caffeine volume and camera direction. Only their rendering differs.
+  const gallery_source = `/isosurfaces/caffeine-LUMO.cube.gz`
+  let gallery_error = $state<string>()
   const gallery_finishes = [`satin`, `translucent_shell`, `chalk`] as const
   let gallery_settings = $state<IsosurfaceSettings>({ ...demo_settings })
   const render_mode_views: StructureView[] = $derived(
@@ -243,24 +245,34 @@
 </p>
 <div class="render-modes bleed-1400">
   <LazyDemo label="Caffeine LUMO render modes" height="var(--struct-height)">
-    <Structure
-      source="/isosurfaces/caffeine-LUMO.cube.gz"
-      bind:isosurface_settings={gallery_settings}
-      multi_view
-      views={render_mode_views}
-      show_controls={{
-        mode: `always`,
-        hidden: [
-          `multi-view`,
-          `view-mode`,
-          `measure-mode`,
-          `controls`,
-          `info-pane`,
-          `export-pane`,
-          `site-table`,
-        ],
-      }}
-    />
+    {#if gallery_error}
+      <p class="demo-error-message" role="alert">
+        {gallery_error}
+        <button onclick={() => (gallery_error = undefined)}>Retry</button>
+      </p>
+    {:else}
+      <Structure
+        source={gallery_source}
+        on_error={({ error_msg, source_url }) => {
+          if (source_url === gallery_source) gallery_error = error_msg
+        }}
+        bind:isosurface_settings={gallery_settings}
+        multi_view
+        views={render_mode_views}
+        show_controls={{
+          mode: `always`,
+          hidden: [
+            `multi-view`,
+            `view-mode`,
+            `measure-mode`,
+            `controls`,
+            `info-pane`,
+            `export-pane`,
+            `site-table`,
+          ],
+        }}
+      />
+    {/if}
   </LazyDemo>
 </div>
 

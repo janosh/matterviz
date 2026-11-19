@@ -35,7 +35,7 @@ import { type Component, flushSync, mount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { trigger_intersection } from '../environment'
 import { renderer_stub, reset_stub } from '../reactive-renderer-registry'
-import { create_drop_event, doc_query, set_input, set_select, settle } from '../setup'
+import { create_drop_event, doc_query, query, set_input, set_select, settle } from '../setup'
 import { make_crystal, make_grid, make_molecule, make_volume } from '../test-fixtures'
 import { globSync, readFileSync } from 'node:fs'
 
@@ -448,6 +448,15 @@ test(`the isosurface render-mode gallery is one lazily mounted multi-view viewer
     [`translucent_shell`, 0.65, [[0.5, volume.id]]],
     [`chalk`, 0.65, [[1, volume.id]]],
   ])
+  const { on_error, source } = viewer.read()
+  if (typeof on_error !== `function`) throw new TypeError(`Gallery has no error handler`)
+  on_error({ source_url: source, error_msg: `Volume unavailable` })
+  flushSync()
+  expect(gallery.querySelector(`[role=alert]`)?.textContent).toContain(`Volume unavailable`)
+  query(gallery, `button`, HTMLButtonElement).click()
+  flushSync()
+  expect(gallery.querySelector(`[role=alert]`)).toBeNull()
+  expect(renderer_stub(2).read().source).toBe(source)
 })
 
 // dropped local files wrote ?file=<their name>, so a reload asked for a missing fixture

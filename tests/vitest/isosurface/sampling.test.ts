@@ -551,8 +551,27 @@ describe(`extract_volume_range`, () => {
     },
   )
 
+  test.each([
+    [[2, 100, 100], 8],
+    [[1, 1, 71], 64],
+    [[3, 4, 9], 108],
+  ] satisfies [Vec3, number][])(
+    `periodic grid %j fits a %i-point budget`,
+    (dims, max_points) => {
+      const volume = make_volume(make_grid(...dims, (_idx_x, _idx_y, idx_z) => idx_z))
+      const { grid } = prepare_geometry_grid(volume, null, max_points)
+      expect(Math.min(...grid.dims)).toBeGreaterThanOrEqual(2)
+      expect(grid.values.length).toBeLessThanOrEqual(max_points)
+      if (volume.values.length === max_points) expect(grid.values).toBe(volume.values)
+      expect(grid.values[0]).toBe(0)
+      expect(grid.values[1]).toBeCloseTo(dims[2] / grid.dims[2], 12)
+    },
+  )
+
   test.each([7, NaN])(`rejects an invalid mesh grid budget %s`, (max_points) => {
-    expect(() => prepare_geometry_grid(periodic_vol(), null, max_points)).toThrow(RangeError)
+    const volume = periodic_vol()
+    expect(() => prepare_geometry_grid(volume, null, max_points)).toThrow(RangeError)
+    expect(() => range_sample_counts(volume, UNIT_CELL_RANGE, max_points)).toThrow(RangeError)
   })
 
   test(`a window too wide to count is rejected, not looped on`, () => {
