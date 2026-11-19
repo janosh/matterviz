@@ -1027,6 +1027,16 @@ test(`clicking a trends point selects its series and frame`, () => {
   props.sweep = other
   flushSync()
   expect([props.series_id, status(root)]).toEqual([`fcc`, `0 GPa`])
+  // frames of one series share the structure viewer's series (and its bond edits), a new
+  // sweep reusing the series' id starts a new one
+  const series_key = scenes.props.structure?.series_key
+  props.frame_idx = 1
+  flushSync()
+  expect(scenes.props.structure?.series_key).toBe(series_key)
+  props.sweep = make_sweep()
+  flushSync()
+  expect(props.series_id).toBe(`fcc`)
+  expect(scenes.props.structure?.series_key).not.toBe(series_key)
 })
 
 test(`load_frame fetches the shown frame and its neighbours, merged into the panes`, async () => {

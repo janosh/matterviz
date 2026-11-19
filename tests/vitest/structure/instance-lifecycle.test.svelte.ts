@@ -55,6 +55,7 @@ import {
   make_volume,
 } from '../test-fixtures'
 import { scene_registry } from '#lib/io/export.js'
+import { scene_renders } from '#lib/scene/lighting'
 import { DEFAULT_ISOSURFACE_SETTINGS, type IsosurfaceSettings } from '#lib/isosurface/types.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import type { Component, ComponentProps } from 'svelte'
@@ -571,6 +572,19 @@ test(`dragging the depth cue strength while it is on keeps its depth points`, ()
   flushSync()
   render_frame()
   expect(measured().size).toBe(1)
+})
+
+test(`ambient_occlusion builds its render pipeline only while on`, () => {
+  const state = $state<SceneProps>({ ambient_occlusion: false })
+  const { scene } = mount_carbon(state)
+  const built = () => scene_renders.has(scene)
+  const steps = [built()]
+  for (const ambient_occlusion of [true, false]) {
+    state.ambient_occlusion = ambient_occlusion
+    flushSync()
+    steps.push(built())
+  }
+  expect(steps).toEqual([false, true, false])
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path

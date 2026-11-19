@@ -10,7 +10,13 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { watch_theme_changes } from '#lib/theme/index.js'
   import { T, useTask, useThrelte } from '@threlte/core'
-  import { create_depth_cue, css_background_rgb, depth_cue_fog, depth_cues } from './lighting'
+  import {
+    create_depth_cue,
+    css_background_rgb,
+    depth_cue_fog,
+    depth_cues,
+    scene_lights_task,
+  } from './lighting'
   import { AgXToneMapping, Box3, Group, SRGBColorSpace, Vector3 } from 'three/webgpu'
 
   let {
@@ -82,6 +88,7 @@
 
   const view_dir = new Vector3()
   useTask(
+    scene_lights_task,
     () => {
       const cam = camera.current
       if (camera_space) group.quaternion.copy(cam.quaternion)

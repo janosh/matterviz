@@ -2,6 +2,7 @@ import type { HullModel } from '#lib/convex-hull/index.js'
 import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
 import * as thermo from '#lib/convex-hull/thermodynamics.js'
 import * as canvas_draw from '#lib/convex-hull/canvas-draw.js'
+import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { interpolateReds } from 'd3-scale-chromatic'
@@ -816,6 +817,50 @@ describe(`convex hull replacement state`, () => {
     expect(document.querySelector(`.tooltip-content`)).toBeNull()
   })
 
+  // A click on empty space probes the composition under the cursor (on the E_form = 0
+  // triangle in 3D); entry clicks keep selecting and a drag rotates without probing
+  test(`empty ternary canvas click probes the composition under the cursor`, async () => {
+    const draw_edges = vi.spyOn(canvas_draw, `draw_dashed_edges`)
+    const entries = [`Li`, `O`, `Na`].map((element) => make_phase({ [element]: 1 }))
+    const state: { probe_composition: Record<string, number> | null } = {
+      probe_composition: null,
+    }
+    const target = await mount_hull(bind_props({ entries }, state))
+    await vi.waitFor(() => expect(draw_edges).toHaveBeenCalled())
+    const project = draw_edges.mock.calls.at(-1)?.[2] as canvas_draw.ProjectPoint
+    const fractions = [0.2, 0.3, 0.5]
+    const [coord_x, coord_y] = [0, 1].map((axis) =>
+      fractions.reduce((sum, weight, idx) => sum + weight * TRIANGLE_VERTICES[idx][axis], 0),
+    )
+    const { x: clientX, y: clientY } = project(coord_x, coord_y, 0)
+    const canvas = target.querySelector(`canvas`)
+    if (!canvas) throw new Error(`no hull canvas`)
+    const click = () =>
+      canvas.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX, clientY }))
+    click() // the hit-test mock resolves this to an entry
+    expect(state.probe_composition).toBeNull()
+    const find_entry = vi.spyOn(canvas_draw, `find_hull_entry_at_mouse`).mockReturnValue(null)
+    click()
+    const { elements } = (
+      mounted_components.at(-1) as { get_model: () => HullModel }
+    ).get_model()
+    expect(Object.keys(state.probe_composition ?? {})).toEqual(elements)
+    elements.forEach((element, idx) =>
+      expect(state.probe_composition?.[element]).toBeCloseTo(fractions[idx], 12),
+    )
+    // a drag (which rotates the view) ending in a click, or a click outside the triangle
+    state.probe_composition = null
+    canvas.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+    document.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 5, buttons: 1 }))
+    document.dispatchEvent(new MouseEvent(`mouseup`))
+    click()
+    canvas.dispatchEvent(
+      new MouseEvent(`click`, { bubbles: true, clientX: -1e4, clientY: -1e4 }),
+    )
+    expect(state.probe_composition).toBeNull()
+    find_entry.mockRestore()
+  })
+
   // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s
   // to animate one ring. The rings now live on a transparent canvas stacked over the hull.
   // Selecting (like hovering) re-projected and re-sorted every point while selected_entry and
@@ -973,6 +1018,47 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
       .find((datum) => datum.startsWith(`M`) && datum.split(`L`).length === 5)
     // a monotone spline would emit cubic (C) commands; facets must be M followed by L only
     expect(hull_path).toMatch(/^M[-\d.,]+(?:L[-\d.,]+){4}$/)
+  })
+
+  // A plot click off every entry probes the composition at its x; an entry click selects it
+  test(`empty binary plot click probes the composition at the cursor's x`, async () => {
+    const entries: PhaseData[] = [
+      { ...compound({ Li: 1 }, `ref-li`, 0), e_form_per_atom: 0 },
+      { ...compound({ O: 1 }, `ref-o`, 0), e_form_per_atom: 0 },
+      { ...compound({ Li: 1, O: 1 }, `lio`, 0), e_form_per_atom: -0.6 },
+    ]
+    const state: { probe_composition: Record<string, number> | null } = {
+      probe_composition: null,
+    }
+    const plot = await mount_sized(ConvexHull, bind_props({ entries }, state), {
+      selector: `.scatter`,
+      on_mount: track_component,
+    })
+    // the dashed guides at x = 0 and x = 1 give the x axis' pixel scale, and span the plot area
+    const guides = [...plot.querySelectorAll(`line[stroke-dasharray]`)].slice(0, 2)
+    const [x_0, x_1] = guides.map((line) => Number(line.getAttribute(`x1`)))
+    const [y_start, y_end] = [`y1`, `y2`].map((attr) => Number(guides[0].getAttribute(attr)))
+    const svg = doc_query(`.scatter svg[role="application"]`)
+    const click_at = (fraction: number, clientY: number) =>
+      svg.dispatchEvent(
+        new MouseEvent(`click`, {
+          bubbles: true,
+          clientX: x_0 + fraction * (x_1 - x_0),
+          clientY,
+        }),
+      )
+    // LiO's marker, at x = 0.5
+    const marker_y = [...plot.querySelectorAll(`g[transform] > path.marker`)]
+      .map((path) => (path.parentElement?.getAttribute(`transform`) ?? ``).match(/[-\d.]+/g))
+      .map((coords) => (coords ?? []).map(Number))
+      .find(([coord_x]) => Math.abs(coord_x - (x_0 + x_1) / 2) < 1)?.[1]
+    if (marker_y === undefined) throw new Error(`no LiO marker`)
+    click_at(0.5, marker_y)
+    // the top padding above the plot area (axis title, labels) probes nothing either
+    click_at(0.25, 1)
+    expect(state.probe_composition).toBeNull()
+    click_at(0.25, (y_start + y_end) / 2)
+    expect(state.probe_composition).toEqual({ Li: 0.75, O: 0.25 })
   })
 
   // Linked views: a selected entry above the hull is tied by dashed lines to the stable phases

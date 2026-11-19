@@ -304,6 +304,9 @@ fit the axes' tick labels and titles -->
   {user_content}
   selected_point={selected_scatter_point}
   on_point_click={handle_point_click}
+  on_empty_click={({ x: fraction }) => {
+    if (fraction >= 0 && fraction <= 1) selection.set_probe([1 - fraction, fraction])
+  }}
   on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) =>
     selection.set_hover(
       data?.metadata

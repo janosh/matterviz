@@ -61,6 +61,18 @@ describe(`auto_volume_layer`, () => {
     // a fresh layers array, not the defaults' own
     settings.layers.push(settings.layers[0])
     expect(DEFAULT_ISOSURFACE_SETTINGS.layers).toEqual([])
+    // a file load keeps the chosen finish, wireframe and halo but resets per-file fields
+    const prefs = { surface_finish: `chalk`, wireframe: true, halo: 0.3 } as const
+    const reloaded = auto_isosurface_settings(vol, {
+      ...prefs,
+      layers: [{ ...auto_volume_layer(vol), isovalue: 1 }],
+      display_range: [
+        [0, 2],
+        [0, 2],
+        [0, 1],
+      ],
+    })
+    expect(reloaded).toEqual({ ...prefs, layers: [auto_volume_layer(vol)] })
   })
 
   // isovalue, opacity and offset palette colors per shell are pinned by the shell table below

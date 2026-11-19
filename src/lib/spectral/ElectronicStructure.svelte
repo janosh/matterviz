@@ -669,6 +669,9 @@
       })
     }
     series = $derived.by(() => this.inputs.series())
+    // the structure viewer's series: frames of one series share bond edits, a new sweep (even
+    // one reusing the series' id) drops them
+    structure_series_key = $derived(this.series && [sweep, this.series.id])
     data = $derived.by(() => this.inputs.data())
     // e.g. `fcc Cu · 175 GPa`, plain text (a series label may hold the trends legend's HTML)
     label = $derived.by((): string => {
@@ -1118,7 +1121,7 @@
       {#if shown.has(`structure`)}
         <div class="pane" data-pane="structure" style={pane_style(`structure`, side)}>
           <Structure
-            structure_series_key={side.series?.id}
+            structure_series_key={side.structure_series_key}
             {...structure_props}
             bind:structure={
               () => side.structure,

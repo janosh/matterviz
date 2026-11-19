@@ -25,7 +25,7 @@ import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
 type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
-// One leaf of the settings schema. `web_only` settings (fullscreen toggles, isosurface finish) are skipped
+// One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf
 // whose `value` is a plain object is a free-form map (JSON-schema `object`); `additionalProperties`
 // names its value type (string unless set).
@@ -584,6 +584,10 @@ export const SETTINGS_CONFIG = define_settings({
       0,
       1,
     ),
+    ambient_occlusion: {
+      value: false,
+      description: `Screen-space ambient occlusion: darken creases and crowded regions (a post pass, costs GPU time)`,
+    },
 
     // Site Vectors (force, magmom, spin) & Lattice
     vector_configs: typed_setting<Record<string, VectorLayerConfig>>({
@@ -705,7 +709,6 @@ export const SETTINGS_CONFIG = define_settings({
         chalk: `Chalk`,
         unlit: `Unlit`,
       },
-      web_only: true, // the VS Code webview has no way to set it yet
     }),
   },
 
@@ -1305,5 +1308,6 @@ export const build_structure_props_from_settings = (defaults: DefaultSettings) =
     image_atom_completion: structure.image_atom_completion,
     keep_molecules_whole: structure.keep_molecules_whole,
     show_trajectory_lines: structure.show_trajectory_lines,
+    symmetry_settings: { ...defaults.symmetry },
   }
 }

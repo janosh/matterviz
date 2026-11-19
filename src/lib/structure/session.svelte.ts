@@ -51,7 +51,13 @@ import {
   type StructureToolPrediction,
 } from './prediction'
 import { capitalize_symbol } from './parsers/shared'
-import { get_pbc_image_sites, site_token, unwrap_molecules, wrap_to_unit_cell } from './pbc'
+import {
+  carry_bonds_across_frame,
+  get_pbc_image_sites,
+  site_token,
+  unwrap_molecules,
+  wrap_to_unit_cell,
+} from './pbc'
 import type { ImageAtomOptions } from './pbc'
 import {
   get_image_source_idx,
@@ -550,6 +556,9 @@ export class StructureSession {
   // Source bonds captured when the first edit begins; edits merge onto these. Wrapped so an
   // undefined source still counts as captured. own: not a caller's set.
   private bond_edit_base = $state.raw<{ bonds: StructureBond[] | undefined; own: boolean }>()
+  // The wrapped input frame the edits' cell shifts are addressed in, so the next frame of a
+  // series can re-address them (see carry_bond_edits)
+  private bond_edit_frame: AnyStructure | undefined
   // What this session last wrote to the bonds binding, read back so a proxied binding
   // compares equal; anything else in the binding is a caller-supplied source
   private emitted_bonds: StructureBond[] | undefined
@@ -657,7 +666,13 @@ export class StructureSession {
             this.emit_bonds(this.normalized_structure?.properties?.bonds)
           }
           this.bond_edit_base = undefined
-          this.clear_bond_edits()
+          // the next frame of a series (same atoms, new coordinates) keeps the edits; ones
+          // written without push_bond_undo name no frame to re-address them from
+          const [edit_frame, next_frame] = [this.bond_edit_frame, this.normalized_structure]
+          const same_series = !internal && !topology_changed && !transform_changed
+          if (same_series && this.has_bond_edits && edit_frame && next_frame) {
+            this.carry_bond_edits(edit_frame, next_frame)
+          } else this.clear_bond_edits()
           if (!internal) {
             this.history.clear()
             this.singular_lattice_notified = false
@@ -858,6 +873,7 @@ export class StructureSession {
       ;[this.added_bonds, this.removed_bonds, this.bond_order_overrides] = [[], [], []]
     }
     this.bond_history.clear()
+    this.bond_edit_frame = undefined
   }
   // Undoing the last edit hands the source back out and forgets it; the next edit (or a redo
   // of the undone one) captures whatever is bound — the source again — as its new base
@@ -868,8 +884,21 @@ export class StructureSession {
       own: bound === undefined || bound === this.own_bonds,
     }
   }
+  // Re-address the edits for a new frame of the series: their cell shifts follow sites the
+  // frame wrapped across a face, so each edit still names the same bond. The undo history,
+  // addressed in the previous frame, is dropped.
+  private carry_bond_edits(previous: AnyStructure, next: AnyStructure): void {
+    const carry = (bonds: StructureBond[]) => carry_bonds_across_frame(bonds, previous, next)
+    this.added_bonds = carry($state.snapshot(this.added_bonds))
+    this.removed_bonds = carry($state.snapshot(this.removed_bonds))
+    this.bond_order_overrides = carry($state.snapshot(this.bond_order_overrides))
+    this.bond_edit_frame = next
+    this.bond_history.clear()
+    this.capture_bond_edit_base()
+  }
   // Called by the scene before each bond edit
   push_bond_undo = (): void => {
+    this.bond_edit_frame = this.normalized_structure
     this.capture_bond_edit_base()
     this.bond_history.push(this.snapshot_bond_edits())
   }

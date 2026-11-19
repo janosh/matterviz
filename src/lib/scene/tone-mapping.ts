@@ -2,9 +2,9 @@
 // a surface emitting untone_agx(color) displays `color` after the renderer's frame-wide AgX
 // pass, i.e. as if it were not tone mapped. WebGPURenderer tone-maps the whole frame in one
 // output pass, so material.toneMapped = false cannot exempt a single mesh. Each AgX step is
-// invertible: matrices, log2 encoding and the monotonic contrast polynomial (inverted by
-// bisection: 16 steps put every display color within 6e-4 of its target in sRGB, under 1/255).
-import { exp2, Fn, Loop, mat3, mix, step, uniform, vec3 } from 'three/tsl'
+// invertible: matrices, log2 encoding and the monotonic contrast polynomial (inverted by a
+// fitted guess and Newton steps, see UNTONE_GUESS).
+import { exp2, Fn, Loop, mat3, uniform, vec3 } from 'three/tsl'
 import type { Node } from 'three/webgpu'
 import type { Vec3 } from '#lib/math.js'
 
@@ -41,8 +41,12 @@ const [inv_rec2020_to_srgb, inv_outset, inv_inset_srgb_to_rec2020] = Object.valu
   UNTONE_MATRICES,
 ).map(([col_a, col_b, col_c]: Columns) => mat3(vec3(...col_a), vec3(...col_b), vec3(...col_c)))
 
-// bisection steps inverting the contrast curve
-export const UNTONE_STEPS = 16
+// Least-squares quartic fit (ascending powers) of the contrast curve's inverse on its range,
+// then Newton steps, where 16 bisection steps took 2.5x the GPU time: the curve's residual is
+// at most 7e-4 and the root off by up to 1.8e-3, a display error under 1/255. Plain Newton from
+// the identity guess oscillates about the inflection.
+export const UNTONE_GUESS = [0.09237584, 3.177989, -8.193203, 9.477408, -3.597172]
+export const UNTONE_NEWTON_STEPS = 2
 
 // agxDefaultContrastApprox, increasing on [0, 1] from -0.00232 to 0.99858
 const agx_contrast = (val: Node<`vec3`>): Node<`vec3`> => {
@@ -58,6 +62,19 @@ const agx_contrast = (val: Node<`vec3`>): Node<`vec3`> => {
     .add(val.mul(0.1191))
     .sub(0.00232)
 }
+// agx_contrast's derivative: its coefficients are the contrast curve's times their powers
+const agx_contrast_slope = (val: Node<`vec3`>): Node<`vec3`> => {
+  const sq = val.mul(val)
+  return sq
+    .mul(sq)
+    .mul(val)
+    .mul(93)
+    .sub(sq.mul(sq).mul(200.7))
+    .add(sq.mul(val).mul(127.84))
+    .sub(sq.mul(20.604))
+    .add(val.mul(0.8596))
+    .add(0.1191)
+}
 
 // Linear scene radiance that AgX at `exposure` maps to the linear display color `display`
 export const untone_agx = Fn(([display, exposure]: [Node<`vec3`>, Node<`float`>]) => {
@@ -66,19 +83,16 @@ export const untone_agx = Fn(([display, exposure]: [Node<`vec3`>, Node<`float`>]
     .max(0)
     .pow(1 / 2.2)
   const contrast = inv_outset.mul(encoded_power).toVar()
-  const low = vec3(0).toVar()
-  const high = vec3(1).toVar()
-  Loop(UNTONE_STEPS, () => {
-    const mid = low.add(high).mul(0.5).toVar()
-    // 1 where the curve at mid is still below the target, so the root lies above mid
-    const below = step(agx_contrast(mid), contrast)
-    low.assign(mix(low, mid, below))
-    high.assign(mix(mid, high, below))
+  const root = UNTONE_GUESS.reduceRight<Node<`vec3`>>(
+    (acc, coef) => acc.mul(contrast).add(coef),
+    vec3(0),
+  )
+    .clamp(0, 1)
+    .toVar()
+  Loop(UNTONE_NEWTON_STEPS, () => {
+    const newton_step = agx_contrast(root).sub(contrast).div(agx_contrast_slope(root))
+    root.assign(root.sub(newton_step).clamp(0, 1))
   })
-  const stops = low
-    .add(high)
-    .mul(0.5)
-    .mul(MAX_EV - MIN_EV)
-    .add(MIN_EV)
+  const stops = root.mul(MAX_EV - MIN_EV).add(MIN_EV)
   return inv_inset_srgb_to_rec2020.mul(exp2(stops)).div(exposure)
 })

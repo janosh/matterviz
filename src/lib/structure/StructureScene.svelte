@@ -95,6 +95,7 @@
     type PickState,
   } from './scene-picking.svelte'
   import { T, useTask, useThrelte } from '@threlte/core'
+  import AmbientOcclusion from '#lib/scene/AmbientOcclusion.svelte'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, tick, untrack } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
@@ -215,6 +216,7 @@
     ambient_light = DEFAULTS.structure.ambient_light,
     directional_light = DEFAULTS.structure.directional_light,
     depth_cue = DEFAULTS.structure.depth_cue,
+    ambient_occlusion = DEFAULTS.structure.ambient_occlusion,
     sphere_segments = DEFAULTS.structure.sphere_segments,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
     cell_surface_color = DEFAULTS.structure.cell_surface_color,
@@ -294,6 +296,7 @@
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     depth_cue?: number // 0-1 fade of the far side of the structure toward the background
+    ambient_occlusion?: boolean // GTAO post pass, built only while on
     structure?: AnyStructure
     render_token?: unknown
     on_rendered?: (token: unknown) => void
@@ -1635,6 +1638,9 @@
   {depth_cue}
   {depth_points}
 />
+{#if ambient_occlusion}
+  <AmbientOcclusion />
+{/if}
 
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>

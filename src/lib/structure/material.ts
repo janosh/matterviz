@@ -99,7 +99,7 @@ export function apply_structure_material(
         volumetric_data: incoming,
         isosurface_settings: caller_layers
           ? current.isosurface_settings
-          : auto_isosurface_settings(first_volume),
+          : auto_isosurface_settings(first_volume, current.isosurface_settings),
         active_volume_id: first_volume.id,
       },
       notice: same_structure

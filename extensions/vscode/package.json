@@ -551,6 +551,11 @@
           "minimum": 0,
           "maximum": 1
         },
+        "matterviz.structure.ambient_occlusion": {
+          "type": "boolean",
+          "default": false,
+          "description": "Screen-space ambient occlusion: darken creases and crowded regions (a post pass, costs GPU time)"
+        },
         "matterviz.structure.vector_configs": {
           "type": "object",
           "default": {},
@@ -720,6 +725,17 @@
           "description": "Width of cell edge lines",
           "minimum": 0.5,
           "maximum": 5
+        },
+        "matterviz.isosurface.surface_finish": {
+          "type": "string",
+          "default": "satin",
+          "description": "Isosurface material. satin: lit, saturated surfaces whose translucent layers take the translucent_shell look so overlapping lobes stay distinct and atoms inside readable; colormapped surfaces shade only toward their silhouette so colors match the legend. translucent_shell: glossy shells with darkened rims, whose faces fade toward the viewer. chalk: matte diffuse. unlit: flat colors.",
+          "enum": [
+            "satin",
+            "translucent_shell",
+            "chalk",
+            "unlit"
+          ]
         },
         "matterviz.brillouin.bz_order": {
           "type": "number",

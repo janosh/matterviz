@@ -1,8 +1,9 @@
 // Each scene passes its own light positions, so the props must reach the Threlte nodes unchanged
+import AmbientOcclusion from '#lib/scene/AmbientOcclusion.svelte'
 import SceneLights from '#lib/scene/SceneLights.svelte'
 import { useThrelte } from '@threlte/core'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { css_background_rgb, depth_cues } from '#lib/scene/lighting'
+import { css_background_rgb, depth_cues, scene_lights_task } from '#lib/scene/lighting'
 import type * as lighting_module from '#lib/scene/lighting'
 import { type Group, type PerspectiveCamera, Quaternion, type Scene } from 'three/webgpu'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
@@ -177,4 +178,25 @@ test(`css_background_rgb composites translucent ancestors, skipping unparsable c
   expect(background_rgb(renderer.domElement)).toEqual(
     [255 * (1 - weight), 0, 255 * weight].map((channel) => expect.closeTo(channel, 9)),
   )
+})
+
+test(`ambient occlusion renders after the depth-cue update and before the auto render`, () => {
+  mount_lights({ depth_cue: 0.5, depth_points: [0, 0, 0] })
+  const occlusion = mount(AmbientOcclusion, { target: document.body })
+  flushSync()
+  onTestFinished(() => void unmount(occlusion))
+  const { autoRenderTask, renderStage } = useThrelte()
+  const [lights_spec, occlusion_spec] = stub_state.task_specs
+  expect(lights_spec).toEqual({
+    key: scene_lights_task,
+    options: { before: autoRenderTask, autoInvalidate: false },
+  })
+  // the Gizmo draws over the frame after autoRenderTask without clearing it, so a pipeline
+  // drawn after the auto render would cover it
+  expect(occlusion_spec.options).toEqual({
+    stage: renderStage,
+    after: scene_lights_task,
+    before: autoRenderTask,
+    autoInvalidate: false,
+  })
 })

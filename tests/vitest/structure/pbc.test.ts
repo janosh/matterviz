@@ -6,6 +6,7 @@ import {
   find_drawn_completion_sites,
   find_image_atoms,
   get_pbc_image_sites,
+  carry_bonds_across_frame,
   shift_bonds_by_unwrap,
   unwrap_molecules,
   wrap_to_unit_cell,
@@ -819,6 +820,48 @@ describe(`unwrap_molecules`, () => {
     expect(shift_bonds_by_unwrap(displayed, unwrapped.sites, -1)).toEqual(explicit)
     expect(shift_bonds_by_unwrap(explicit, crystal.sites, 1)).toBe(explicit)
   })
+
+  // A frame wrapping site 1 across the a face: its edits keep the image nearest their previous
+  // displacement, so a minimum-image bond stays one and a longer image bond keeps its length.
+  // Non-periodic axes and lattice-free structures are left alone.
+  test.each([
+    [`minimum image`, undefined, [1, 0, 0]],
+    [`longer image`, [1, 0, 0], [2, 0, 0]],
+    [`opposite image`, [-1, 0, 0], undefined],
+  ] as [string, Vec3 | undefined, Vec3 | undefined][])(
+    `carry_bonds_across_frame keeps the %s`,
+    (_label, before, after) => {
+      const frame = (abc_x: number, pbc?: [boolean, boolean, boolean]) =>
+        make_crystal(
+          10,
+          [
+            [`C`, [0.9, 0.5, 0.5]],
+            [`C`, [abc_x, 0.5, 0.5]],
+          ],
+          { pbc },
+        )
+      const bond: StructureBond = {
+        site_idx_1: 0,
+        site_idx_2: 1,
+        order: 1,
+        cell_shift: before,
+      }
+      const carried = carry_bonds_across_frame([bond], frame(0.98), frame(0.04))
+      expect(carried).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: after }])
+      const bonds = [bond]
+      expect(
+        carry_bonds_across_frame(
+          bonds,
+          frame(0.98, [false, true, true]),
+          frame(0.04, [false, true, true]),
+        ),
+      ).toEqual(bonds)
+      const [molecule_1, molecule_2] = [0.98, 0.04].map((abc_x) => ({
+        sites: frame(abc_x).sites,
+      }))
+      expect(carry_bonds_across_frame(bonds, molecule_1, molecule_2)).toBe(bonds)
+    },
+  )
 
   // 2 C 1.5 A apart along a 3 A axis bond into an infinite chain through the a face
   // oxfmt-ignore

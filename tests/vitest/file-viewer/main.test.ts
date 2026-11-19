@@ -337,15 +337,38 @@ test.each([``, `\uFEFF`])(`hull JSON named *convex* renders (prefix %j)`, async 
 // order <select>: only 1, 2 or 3 reach BrillouinZone
 test.each([
   [2, 2],
-  [1.5, undefined],
-  [Number.NaN, undefined],
-  [0, undefined],
-  [4, undefined],
-  [-1, undefined],
-])(`mount_viewer forwards bz_order %s as %s`, (bz_order, expected) => {
+  [1.5, 3],
+  [Number.NaN, 3],
+  [0, 3],
+  [4, 3],
+  [-1, 3],
+])(`mount_viewer forwards bz_order %s as %s over the host's`, (bz_order, expected) => {
   const data = { k_lattice: IDENTITY_MATRIX3, bz_order }
-  mount_viewer(make_container(), `brillouin_zone`, data, { defaults: DEFAULTS })
-  expect(last_mount_props().bz_order).toBe(expected)
+  const brillouin = { ...DEFAULTS.brillouin, bz_order: 3, surface_color: `#123456` }
+  mount_viewer(make_container(), `brillouin_zone`, data, {
+    defaults: { ...DEFAULTS, brillouin },
+  })
+  expect(last_mount_props()).toMatchObject({ bz_order: expected, surface_color: `#123456` })
+})
+
+// VS Code's matterviz.isosurface.* reach the viewer: the auto layer for the new file must not
+// reset the host's finish, and matterviz.symmetry.* reach Structure the same way
+test(`mount_viewer keeps the host's isosurface finish and symmetry settings`, async () => {
+  const values = Array.from({ length: 8 }, (_, idx) => idx)
+  const volume = { id: `rho`, lattice: IDENTITY_MATRIX3, origin: [0, 0, 0], values }
+  const result = await parse_file_content(
+    JSON.stringify({ ...volume, periodic: true, dims: [2, 2, 2] }),
+    `density.json`,
+  )
+  const symmetry = { symprec: 0.01, algo: `Spglib` } as const
+  const defaults = { ...DEFAULTS, isosurface: { surface_finish: `chalk` }, symmetry } as const
+  mount_viewer(make_container(), `isosurface`, result.data, { defaults })
+  const { isosurface_settings, symmetry_settings } = last_mount_props()
+  expect(isosurface_settings).toMatchObject({
+    surface_finish: `chalk`,
+    layers: [{ volume_id: `rho` }],
+  })
+  expect(symmetry_settings).toEqual(symmetry)
 })
 
 test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, async () => {

@@ -98,7 +98,10 @@ function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => 
   }
   const canvas = make_mock_canvas(toBlob_impl)
   renderer_registry.set(canvas, renderer as unknown as WebGPURenderer)
-  return { canvas, renderer }
+  // supersampled PNGs are downscaled into an offscreen canvas that encodes like the live one
+  const offscreen = mock_offscreen_canvas()
+  offscreen.toBlob = canvas.toBlob
+  return { canvas, renderer, offscreen }
 }
 
 test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
@@ -344,34 +347,50 @@ describe(`canvas_to_png_blob`, () => {
   )
 
   test.each([
-    [72, 1, 1, false],
-    [300, 1, 300 / 72, true],
+    // [dpi, display ratio, supersample, GPU texture limit, render ratio, output size]
+    [72, 1, 1, 8192, 1, null],
+    [72, 1, 2, 8192, 2, [800, 600]],
+    [72, 2, 4, 8192, 4, [800, 600]],
     // the export ratio is absolute: a HiDPI screen's ratio is not multiplied in again
-    [300, 2, 300 / 72, true],
-    [144, 2, 2, false],
-    [7200, 1, 10, true],
+    [200, 2, 2, 8192, (2 * 200) / 72, [2222, 1666]],
+    // supersampling shrinks to what the GPU's texture limit fits: 2x of 3333 px > 6000
+    [300, 1, 2, 6000, 300 / 72, null],
+    [72, 1, 4, 2000, 2, [800, 600]],
+    // and to the pixel budget: 4x of 1600x1200 is 30.7 MP, 2x is 7.7 MP; 2x of 3333x2500 is 33 MP
+    [144, 1, 4, 16384, 4, [1600, 1200]],
+    [300, 1, 2, 16384, 300 / 72, null],
   ])(
-    `GPU canvas at DPI %s with display ratio %s renders at ratio %s (resize=%s)`,
-    async (dpi, display_ratio, expected_ratio, resize) => {
-      const { canvas, renderer } = make_canvas_with_renderer()
+    `GPU canvas at DPI %s, display ratio %s, supersample %s, limit %s renders at ratio %s into %s`,
+    async (dpi, display_ratio, supersample, max_dimension, render_ratio, output_size) => {
+      const { canvas, renderer, offscreen } = make_canvas_with_renderer()
       renderer.getPixelRatio.mockReturnValue(display_ratio)
+      renderer.getContext().getConfiguration().device.limits.maxTextureDimension2D =
+        max_dimension
       const view = { scene: {} as Scene, camera: {} as Camera }
       scene_registry.set(canvas, view)
-      await canvas_to_png_blob(canvas, dpi)
+      const png = await canvas_to_png_blob(canvas, dpi, supersample)
+      expect((await read_png(png)).dpi).toBeCloseTo(dpi, 1)
       // the drawing buffer is cleared after present, so even same-size captures re-render,
       // then render again so the viewer never keeps showing the capture frame
       expect(renderer.render.mock.calls).toEqual([
         [view.scene, view.camera],
         [view.scene, view.camera],
       ])
+      const resize = Math.abs(render_ratio - display_ratio) > 1e-6
       expect(renderer.setDrawingBufferSize.mock.calls).toEqual(
         resize
           ? [
-              [800, 600, expected_ratio],
+              [800, 600, render_ratio],
               [800, 600, display_ratio],
             ]
           : [],
       )
+      // supersampled renders downscale into an offscreen canvas at the DPI's pixel size
+      const context = offscreen.getContext.mock.results[0]?.value
+      expect(context?.drawImage.mock.calls[0]?.slice(1) ?? null).toEqual(
+        output_size && [0, 0, ...output_size],
+      )
+      if (output_size) expect([offscreen.width, offscreen.height]).toEqual(output_size)
     },
   )
 
@@ -390,11 +409,31 @@ describe(`canvas_to_png_blob`, () => {
       depth_cues.set(scene, cue)
       scene_registry.set(canvas, { scene, camera: {} as Camera })
       const strengths: number[] = []
-      renderer.render.mockImplementation(() => void strengths.push(cue.strength.value))
+      renderer.render.mockImplementation(
+        () => void strengths.push(cue.strength.value * cue.shown.value),
+      )
       await canvas_to_png_blob(canvas, 72)
       expect([strengths, cue.strength.value]).toEqual([[captured, 0.3], 0.3])
     },
   )
+
+  test(`a depth cue change during a pending capture survives its release`, async () => {
+    let finish_encode = () => {}
+    const { canvas } = make_canvas_with_renderer((callback) => {
+      finish_encode = () => callback(png_blob())
+    })
+    const cue = create_depth_cue()
+    cue.strength.value = 0.3
+    const scene = { background: null } as unknown as Scene
+    depth_cues.set(scene, cue)
+    scene_registry.set(canvas, { scene, camera: {} as Camera })
+    const pending = canvas_to_png_blob(canvas, 72)
+    await vi.waitFor(() => expect(canvas.toBlob).toHaveBeenCalled())
+    cue.strength.value = 0.6 // SceneLights writes the user's new setting mid-encode
+    finish_encode()
+    await pending
+    expect([cue.strength.value, cue.shown.value]).toEqual([0.6, 1])
+  })
 
   test.each([72, 432])(
     `rejects %s DPI when the GPU never initializes, without resizing`,
@@ -484,16 +523,17 @@ describe(`canvas_to_png_blob`, () => {
       },
     )
     scene_registry.set(canvas, { scene: {} as Scene, camera: {} as Camera })
-    const captures = [canvas_to_png_blob(canvas, 300), canvas_to_png_blob(canvas, 144)]
+    const captures = [canvas_to_png_blob(canvas, 200), canvas_to_png_blob(canvas, 144)]
     await vi.waitFor(() => expect(pending).toHaveLength(1))
     pending[0](png_blob())
     await vi.waitFor(() => expect(pending).toHaveLength(2))
     pending[1](png_blob())
     await Promise.all(captures)
+    // each renders at its supersampled ratio and restores the live one
     expect(renderer.setDrawingBufferSize.mock.calls.map((call) => call[2])).toEqual([
-      300 / 72,
+      (2 * 200) / 72,
       1,
-      2,
+      4,
       1,
     ])
   })

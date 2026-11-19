@@ -1,6 +1,12 @@
-// untone_agx's constants and bisection, run in JS through a port of three's AgX
+// untone_agx's constants and Newton inversion, run in JS through a port of three's AgX
 // (nodes/display/ToneMappingFunctions.js): AgX of the untoned color must give back the color
-import { MAX_EV, MIN_EV, UNTONE_MATRICES, UNTONE_STEPS } from '#lib/scene/tone-mapping.js'
+import {
+  MAX_EV,
+  MIN_EV,
+  UNTONE_GUESS,
+  UNTONE_MATRICES,
+  UNTONE_NEWTON_STEPS,
+} from '#lib/scene/tone-mapping.js'
 import type { Vec3 } from '#lib/math.js'
 import { expect, test } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
@@ -21,6 +27,13 @@ const contrast = (val: number) =>
   0.4298 * val ** 2 +
   0.1191 * val -
   0.00232
+const slope = (val: number) =>
+  93 * val ** 5 -
+  200.7 * val ** 4 +
+  127.84 * val ** 3 -
+  20.604 * val ** 2 +
+  0.8596 * val +
+  0.1191
 // three's agxToneMapping (r187)
 const srgb_to_rec2020: Columns = [
   [0.6274, 0.0691, 0.0164],
@@ -64,13 +77,10 @@ const untone = (display: Vec3, exposure: number): Vec3 => {
     (val) => Math.max(val, 0) ** (1 / 2.2),
   )
   const stops = each(mul(inv_outset, power), (target) => {
-    let [low, high] = [0, 1]
-    for (let step = 0; step < UNTONE_STEPS; step++) {
-      const mid = (low + high) / 2
-      if (contrast(mid) <= target) low = mid
-      else high = mid
-    }
-    return ((low + high) / 2) * (MAX_EV - MIN_EV) + MIN_EV
+    let root = clamp01(UNTONE_GUESS.reduceRight((acc, coef) => acc * target + coef, 0))
+    for (let step = 0; step < UNTONE_NEWTON_STEPS; step++)
+      root = clamp01(root - (contrast(root) - target) / slope(root))
+    return root * (MAX_EV - MIN_EV) + MIN_EV
   })
   return each(
     mul(
