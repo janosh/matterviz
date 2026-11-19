@@ -509,19 +509,41 @@ describe(`Isosurface`, () => {
       expect(grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)
   })
 
-  test(`the cubic worker mesh keeps all three refined axes of an orbital-sized grid`, async () => {
-    hold_worker_jobs()
+  test(`cubic worker meshes share mirrored levels, keep nodal and explicit windows in their own frame`, async () => {
+    const pending = hold_worker_jobs()
     const volume = make_volume(
-      make_grid(56, 49, 32, (idx_x) => idx_x),
+      make_grid(56, 49, 32, (idx_x, idx_y, idx_z) =>
+        Math.exp(-((idx_x - 28) ** 2 + (idx_y - 24) ** 2 + (idx_z - 16) ** 2) / 64),
+      ),
       { periodic: false },
     )
-    mount_isosurface({
+    const props = mount_isosurface({
       volumes: [volume],
-      settings: with_layers([layer(0.3)], { interpolation: `cubic` }),
+      settings: with_layers([layer(0.3, { show_negative: true }), layer(0)], {
+        interpolation: `cubic`,
+      }),
     })
     await settle()
     const [[job]] = compute_geometries_async.mock.calls
-    expect(job.volumes[0].grid.dims).toEqual([111, 97, 63])
+    expect(job.volumes).toHaveLength(2)
+    const [focused, nodal] = job.volumes
+    expect(focused.surfaces.map(({ isovalue }: { isovalue: number }) => isovalue)).toEqual([
+      0.3, -0.3,
+    ])
+    expect(focused.origin[0]).toBeGreaterThan(0)
+    expect(nodal.grid.dims).toEqual([111, 97, 63])
+    expect(nodal.origin).toEqual(volume.origin)
+    props.settings.display_range = [
+      [0.25, 1],
+      [0, 1],
+      [0, 1],
+    ]
+    pending[0].resolve({ surfaces: [] })
+    await settle()
+    const [cropped] = compute_geometries_async.mock.calls[1]
+    expect(cropped.volumes).toHaveLength(1)
+    expect(cropped.volumes[0].origin).toEqual([1.25, 0, 0])
+    expect(cropped.volumes[0].surfaces).toHaveLength(3)
   })
 
   test(`large grids stay on the main thread where workers are disabled`, async () => {

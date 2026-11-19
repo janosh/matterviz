@@ -98,24 +98,24 @@
 
   // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
   // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
-  const prepared_grid = (vol: VolumetricData): PreparedGrid => {
+  const prepared_grid = (vol: VolumetricData, isovalue: number): PreparedGrid => {
+    const start = performance.now()
     const key = grid_key(vol)
-    const cached = prepared_cache.get(vol)
-    if (cached?.key === key) return cached
+    const window = effective_window(vol)
     const cubic = settings.interpolation === `cubic`
-    const prepared = time_stage(
-      `prepare_geometry`,
-      () => ({
-        key,
-        ...prepare_geometry_grid(
-          cubic ? cubic_surface_volume(vol) : vol,
-          effective_window(vol),
-          cubic ? MAX_CUBIC_GRID_POINTS : undefined,
-        ),
-      }),
-      ({ grid }) => ({ output_points: grid.values.length }),
-    )
-    prepared_cache.set(vol, prepared)
+    // A requested window has coordinates in the original volume. Only a whole finite
+    // field may use a smaller, surface-specific frame.
+    const source = cubic ? cubic_surface_volume(vol, window ? 0 : Math.abs(isovalue)) : vol
+    const cached = prepared_cache.get(source)
+    if (cached?.key === key) return cached
+    const prepared = {
+      key,
+      ...prepare_geometry_grid(source, window, cubic ? MAX_CUBIC_GRID_POINTS : undefined),
+    }
+    record_stage(`prepare_geometry`, performance.now() - start, {
+      output_points: prepared.grid.values.length,
+    })
+    prepared_cache.set(source, prepared)
     return prepared
   }
 
@@ -214,12 +214,14 @@
     volume: VolumetricData
   }
 
-  // One job per volume on its prepared grid
+  // Levels using the same field region share one worker input, including mirrored lobes.
   const geometry_jobs = (pending: PendingSurface[]): GeometryInput[`volumes`] =>
-    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
-      ...prepared_grid(vol),
-      surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
-    }))
+    [...Map.groupBy(pending, ({ volume, isovalue }) => prepared_grid(volume, isovalue))].map(
+      ([prepared, surfaces]) => ({
+        ...prepared,
+        surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
+      }),
+    )
 
   // Large outputs go to the geometry worker; small ones are cheaper on the main thread than a
   // round trip. A periodic grid is one unit cell, tiled over its window's cells.

@@ -149,6 +149,59 @@ describe(`compute_isosurface_geometries`, () => {
     },
   )
 
+  test(`focused finite meshes retain between-knot and boundary lobes in the original frame`, () => {
+    const size = 53
+    const values = new Float64Array(size ** 3)
+    for (const [idx_x, value] of [
+      [4, 0.84],
+      [5, 0.84],
+      [23, 1],
+      [52, -1],
+    ]) {
+      values[(idx_x * size + 25) * size + 22] = value
+    }
+    const volume = make_flat_volume(values, [size, size, size], {
+      id: `field`,
+      origin: [2, -4, 9],
+      lattice: [
+        [52, 0, 0],
+        [26, 52, 0],
+        [0, 13, 52],
+      ],
+      periodic: false,
+      units: null,
+    })
+    const fine = cubic_surface_volume(volume, 0.9)
+    expect(fine.values.length).toBeLessThanOrEqual(MAX_CUBIC_GRID_POINTS)
+    expect(fine.dims[0] - 1).toBe(fine.lattice[0][0] * 4) // four samples per native interval
+    expect(fine.origin).not.toEqual(volume.origin)
+    expect(cubic_surface_volume(volume, 0.901)).toBe(fine)
+    const sample = create_volume_sampler(fine)
+    // The first lobe rises above 0.9 strictly between the two 0.84 native samples.
+    const at_knot = (coord_x: number): Vec3 => [2 + coord_x + 25 / 2, -4 + 25 + 22 / 4, 9 + 22]
+    expect(sample(at_knot(4.5))).toBeGreaterThan(0.9)
+    for (const [coord, measured] of [
+      [4, 0.84],
+      [5, 0.84],
+      [23, 1],
+      [52, -1],
+    ])
+      expect(sample(at_knot(coord))).toBeCloseTo(measured, 12)
+    const { surfaces } = compute_isosurface_geometries(
+      blob_input(
+        fine,
+        [
+          { token: `between knots and interior peak`, isovalue: 0.9 },
+          { token: `boundary peak`, isovalue: -0.9 },
+        ],
+        null,
+      ),
+    )
+    expect(surfaces[0].lobes?.offsets).toHaveLength(3) // two disconnected positive lobes
+    expect(surfaces[1].indices.length).toBeGreaterThan(0)
+    expect(cubic_surface_volume(volume, 0)).toBe(cubic_surface_volume(volume))
+  })
+
   // Fractional resampling under the budget missed the native peak, erasing its entire surface.
   test.each([78, 80])(`budgeted cubic refinement keeps native peaks on %i³`, (size) => {
     const peak = 19
