@@ -130,13 +130,21 @@
   const gallery_url = volumetric_files.find(
     (file) => file.name === `caffeine-LUMO.cube.gz`,
   )?.url
+  // `loading` keeps repeated in-view callbacks from starting a second load; a failure shows
+  // its error with a retry instead of six silently empty cells
+  let gallery_status = $state<{ loading: boolean; error?: string }>({ loading: false })
   const load_gallery = async (url: string) => {
-    const opened = await open_material(url)
-    if (opened.type === `isosurface`) {
+    gallery_status = { loading: true }
+    try {
+      const opened = await open_material(url)
+      opened.dispose()
+      if (opened.type !== `isosurface`) throw new Error(`${url} holds no volumetric data`)
       const { structure: gallery_structure, volumes } = opened.data
       gallery = { structure: gallery_structure as AnyStructure, volumes }
+      gallery_status = { loading: false }
+    } catch (error) {
+      gallery_status = { loading: false, error: String(error) }
     }
-    opened.dispose()
   }
   const gallery_settings = (volumes: VolumetricData[], surface_finish: SurfaceFinish) => {
     const auto = auto_isosurface_settings(volumes[0])
@@ -251,9 +259,21 @@
 <div
   class="render-modes"
   {@attach in_view(
-    (visible) => visible && !gallery && gallery_url && load_gallery(gallery_url),
+    (visible) =>
+      visible &&
+      !gallery &&
+      !gallery_status.loading &&
+      !gallery_status.error &&
+      gallery_url &&
+      load_gallery(gallery_url),
   )}
 >
+  {#if gallery_status.error && gallery_url}
+    <p class="error">
+      Could not load the gallery volume: {gallery_status.error}
+      <button onclick={() => gallery_url && load_gallery(gallery_url)}>Retry</button>
+    </p>
+  {/if}
   {#each gallery_cells as { finish, depth_cue }, idx (idx)}
     <figure {@attach in_view((visible) => visible && (gallery_seen[idx] = true))}>
       {#if gallery && gallery_seen[idx]}

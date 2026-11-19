@@ -605,6 +605,7 @@
             {#snippet children(material)}
               {#each sort_lobes && entry.lobes.length ? entry.lobes : [entry.geometry] as geometry (geometry)}
                 <T.Mesh
+                  name="isosurface"
                   {geometry}
                   {material}
                   renderOrder={sort_lobes ? layer_order : entry.render_order + pass_idx}

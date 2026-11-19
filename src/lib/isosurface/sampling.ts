@@ -539,13 +539,14 @@ export function prepare_geometry_grid(
   if (periodic) {
     const { range, frame = IDENTITY_3X3 } = window ?? { range: UNIT_CELL_RANGE }
     // An over-budget source in a box window that fits at its own spacing (a crop) keeps its
-    // resolution: the whole voxels lo..hi + 1 around the crop, copied exactly and meshed as
-    // one periodic cell, clipped to the crop. Its wrap slab (hi + 1 back to lo) lies a whole
-    // voxel past the crop, so the clip drops it; coarsening the cell, or resampling a crop
-    // that starts between voxels, stepped over narrow crossings.
+    // resolution: the whole voxels around the crop, copied exactly and meshed as one periodic
+    // cell, clipped to the crop. A voxel of halo on each side keeps the wrap slab and the
+    // edge voxels' wrapped gradient stencils outside the crop, so the clip drops them and the
+    // kept normals see true neighbours; coarsening the cell, or resampling a crop that starts
+    // between voxels, stepped over narrow crossings.
     const voxels = range.map(([lower, upper], axis) => [
-      Math.floor(lower * dims[axis]),
-      Math.ceil(upper * dims[axis]) + 1,
+      Math.floor(lower * dims[axis]) - 1,
+      Math.ceil(upper * dims[axis]) + 2,
     ])
     if (!in_budget && !window?.frame && voxels_fit(voxels)) {
       const box = voxels.map((bounds, axis) =>
