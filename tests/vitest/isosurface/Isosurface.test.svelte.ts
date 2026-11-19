@@ -509,6 +509,21 @@ describe(`Isosurface`, () => {
       expect(grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)
   })
 
+  test(`the cubic worker mesh keeps all three refined axes of an orbital-sized grid`, async () => {
+    hold_worker_jobs()
+    const volume = make_volume(
+      make_grid(56, 49, 32, (idx_x) => idx_x),
+      { periodic: false },
+    )
+    mount_isosurface({
+      volumes: [volume],
+      settings: with_layers([layer(0.3)], { interpolation: `cubic` }),
+    })
+    await settle()
+    const [[job]] = compute_geometries_async.mock.calls
+    expect(job.volumes[0].grid.dims).toEqual([111, 97, 63])
+  })
+
   test(`large grids stay on the main thread where workers are disabled`, async () => {
     hold_worker_jobs()
     worker_gate.workers_disabled = true

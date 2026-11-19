@@ -551,6 +551,10 @@ describe(`extract_volume_range`, () => {
     },
   )
 
+  test.each([7, NaN])(`rejects an invalid mesh grid budget %s`, (max_points) => {
+    expect(() => prepare_geometry_grid(periodic_vol(), null, max_points)).toThrow(RangeError)
+  })
+
   test(`a window too wide to count is rejected, not looped on`, () => {
     // oxfmt-ignore
     const huge: DisplayRange = [[0, 1e308], [0, 1], [0, 1]]

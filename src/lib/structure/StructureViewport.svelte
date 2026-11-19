@@ -641,11 +641,12 @@
   }
   /* In multi-view, give each pane a subtle separator and highlight the active one */
   .viewport-cell.multi {
-    border: 1px solid var(--struct-viewport-border, rgba(128, 128, 128, 0.35));
+    outline: var(--struct-viewport-gap) solid
+      var(--struct-viewport-border, rgba(128, 128, 128, 0.35));
   }
   /* Raise the active pane's portaled tooltip above sibling panes. */
   .viewport-cell.multi.active {
-    border-color: var(--struct-viewport-active-border, var(--accent-color, #4a9eff));
+    outline-color: var(--struct-viewport-active-border, var(--accent-color, #4a9eff));
     z-index: 1;
   }
   .viewport-label {

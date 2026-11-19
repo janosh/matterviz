@@ -27,7 +27,7 @@
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes, MAX_CUBIC_GRID_POINTS } from './types'
   import { cubic_surface_volume } from './spline'
   import SurfaceMaterial from './SurfaceMaterial.svelte'
 
@@ -102,13 +102,15 @@
     const key = grid_key(vol)
     const cached = prepared_cache.get(vol)
     if (cached?.key === key) return cached
+    const cubic = settings.interpolation === `cubic`
     const prepared = time_stage(
       `prepare_geometry`,
       () => ({
         key,
         ...prepare_geometry_grid(
-          settings.interpolation === `cubic` ? cubic_surface_volume(vol) : vol,
+          cubic ? cubic_surface_volume(vol) : vol,
           effective_window(vol),
+          cubic ? MAX_CUBIC_GRID_POINTS : undefined,
         ),
       }),
       ({ grid }) => ({ output_points: grid.values.length }),

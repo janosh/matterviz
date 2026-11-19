@@ -228,6 +228,8 @@ export function grid_data_range(values: ArrayLike<number>): DataRange {
 // Max total grid points the geometry grid is resampled down to for isosurface extraction.
 // 500K balances visual quality with interactive performance (<200ms marching cubes).
 export const MAX_GRID_POINTS = 500_000
+// Cubic meshes can spend up to 8 MB of scalar samples to refine all three axes of a coarse orbital.
+export const MAX_CUBIC_GRID_POINTS = 1_000_000
 
 // Default isosurface rendering settings (no layers: nothing renders until a volume adds one)
 export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {

@@ -17,7 +17,11 @@ import {
   UNIT_CELL_RANGE,
 } from '#lib/isosurface/sampling.js'
 import { cubic_surface_volume } from '#lib/isosurface/spline.js'
-import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
+import {
+  make_volume as make_flat_volume,
+  MAX_CUBIC_GRID_POINTS,
+  MAX_GRID_POINTS,
+} from '#lib/isosurface/types.js'
 import { cross_3d, dot, IDENTITY_3X3, type Matrix3x3, subtract, type Vec3 } from '#lib/math.js'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { install_stub_worker } from '../setup'
@@ -146,7 +150,7 @@ describe(`compute_isosurface_geometries`, () => {
   )
 
   // Fractional resampling under the budget missed the native peak, erasing its entire surface.
-  test.each([60, 64])(`budgeted cubic refinement keeps native peaks on %i³`, (size) => {
+  test.each([78, 80])(`budgeted cubic refinement keeps native peaks on %i³`, (size) => {
     const peak = 19
     const values = new Float64Array(size ** 3)
     values[(peak * size + peak) * size + peak] = 1
@@ -162,12 +166,14 @@ describe(`compute_isosurface_geometries`, () => {
       units: null,
     })
     const fine = cubic_surface_volume(volume)
-    const rows = size === 60 ? size * 2 - 1 : size
+    const rows = size === 78 ? size * 2 - 1 : size
     expect(fine.dims).toEqual([size, rows, size]) // split only the widest spacing if it fits
-    expect(fine.values[(peak * rows + (size === 60 ? 2 : 1) * peak) * size + peak]).toBe(1)
-    const [{ indices }] = compute_isosurface_geometries(
-      blob_input(fine, [{ token: `peak`, isovalue: 0.8 }], null),
-    ).surfaces
+    expect(fine.values[(peak * rows + (size === 78 ? 2 : 1) * peak) * size + peak]).toBe(1)
+    const prepared = prepare_geometry_grid(fine, null, MAX_CUBIC_GRID_POINTS)
+    expect(prepared.grid.values).toBe(fine.values)
+    const [{ indices }] = compute_isosurface_geometries({
+      volumes: [{ ...prepared, surfaces: [{ token: `peak`, isovalue: 0.8 }] }],
+    }).surfaces
     expect(indices).toHaveLength(24)
   })
 

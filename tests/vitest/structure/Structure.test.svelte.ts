@@ -2963,16 +2963,16 @@ test(`toggle button is hidden when 'multi-view' control is in hidden list`, asyn
   expect(document.querySelector(`button[aria-label^="View layout:"]`)).toBeNull()
 })
 
-// Inline panes need 300×200 px plus a 2 px gap. Fullscreen fits the entire grid.
+// Inline panes need 300×200 px with 1 px shared dividers and an outer outline. Fullscreen fits the entire grid.
 test.each([
-  [299, 1210, 6, 1, false],
-  [300, 1210, 6, 1, true],
-  [601, 402, 4, 1, false],
-  [602, 401, 4, 2, false],
-  [602, 402, 4, 2, true],
-  [602, 200, 2, 2, true],
+  [301, 1207, 6, 1, false],
+  [302, 1207, 6, 1, true],
+  [602, 403, 4, 1, false],
+  [603, 402, 4, 2, false],
+  [603, 403, 4, 2, true],
+  [603, 202, 2, 2, true],
   [903, 604, 6, 2, true],
-  [904, 402, 6, 3, true],
+  [904, 403, 6, 3, true],
   [904, 603, 7, 3, false],
   [904, 604, 7, 3, true],
 ] as const)(
@@ -2993,7 +2993,7 @@ test.each([
 
 test(`per-pane settings inherit viewer defaults, respect hidden volumes and survive collapse`, async () => {
   mock_gpu()
-  mock_viewer_size(602, 200)
+  mock_viewer_size(603, 202)
   const density = live_volume(`density`, 1)
   const layers = [{ ...auto_volume_layer(density), opacity: 0.4 }]
   const views: StructureView[] = [

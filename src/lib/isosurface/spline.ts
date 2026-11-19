@@ -1,6 +1,6 @@
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { safe_mod } from './grid'
-import { MAX_GRID_POINTS, type VolumetricData } from './types'
+import { MAX_CUBIC_GRID_POINTS, type VolumetricData } from './types'
 
 const POLE = Math.sqrt(3) - 2 // pole of the cubic B-spline interpolation prefilter
 const HORIZON = 30 // POLE ** 30 ≈ 1e-17: the prefilter's exponential tail
@@ -108,7 +108,7 @@ export function upsample_volume(
 // All panes and isovalues share this geometry-only grid; measurement uses the source.
 const surface_grids = new WeakMap<VolumetricData, VolumetricData>()
 export function cubic_surface_volume(volume: VolumetricData): VolumetricData {
-  if (volume.values.length >= MAX_GRID_POINTS || !volume.values.length) return volume
+  if (volume.values.length >= MAX_CUBIC_GRID_POINTS || !volume.values.length) return volume
   const cached = surface_grids.get(volume)
   if (cached) return cached
   const endpoint = volume.periodic ? 0 : 1
@@ -117,7 +117,7 @@ export function cubic_surface_volume(volume: VolumetricData): VolumetricData {
   )
   const axes = [0, 1, 2].toSorted((first, second) => spacing[second] - spacing[first])
   const refined = resample_volume(volume, axes, (size, points) =>
-    (points / size) * (2 * size - endpoint) <= MAX_GRID_POINTS ? 2 : 1,
+    (points / size) * (2 * size - endpoint) <= MAX_CUBIC_GRID_POINTS ? 2 : 1,
   )
   surface_grids.set(volume, refined)
   return refined

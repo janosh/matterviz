@@ -275,7 +275,7 @@
       --struct-height: 780px;
     }
   }
-  @container (width < 602px) {
+  @container (width < 603px) {
     .render-modes > :global(.lazy-demo) {
       --struct-height: 1560px;
     }

@@ -70,6 +70,12 @@ for (const { width, height, columns, fullscreen_columns } of [
       )
     await expect(stage.locator(`canvas`)).toHaveCount(6, { timeout: EXPECT_TIMEOUT })
     await expect.poll(column_count).toBe(columns)
+    // Each shared edge occupies just the gutter, including the active pane's highlight.
+    await expect(stage).toHaveCSS(`gap`, `1px`)
+    for (const cell of await stage.locator(`.viewport-cell`).all()) {
+      await expect(cell).toHaveCSS(`border-width`, `0px`)
+      await expect(cell).toHaveCSS(`outline-width`, `1px`)
+    }
     await viewer.locator(`.fullscreen-btn`).click()
     await expect(gallery.locator(`:fullscreen`)).toBeVisible()
     await expect.poll(column_count).toBe(fullscreen_columns)

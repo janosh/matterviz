@@ -501,9 +501,9 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
   return cells
 }
 
-// Whether voxel index spans [lo, hi] (inclusive) hold at most MAX_GRID_POINTS
-const voxels_fit = (voxels: number[][]): boolean =>
-  voxels.reduce((prod, [lower, upper]) => prod * (upper - lower + 1), 1) <= MAX_GRID_POINTS
+// Whether the inclusive voxel spans fit the extraction budget
+const voxels_fit = (voxels: number[][], max_points: number): boolean =>
+  voxels.reduce((prod, [lower, upper]) => prod * (upper - lower + 1), 1) <= max_points
 
 // A periodic grid trilinearly resampled to `dims` points per axis (z-fastest)
 export function resample_periodic(grid: ScalarGrid3D, dims: Vec3): ScalarGrid3D<Float64Array> {
@@ -533,9 +533,12 @@ export function resample_periodic(grid: ScalarGrid3D, dims: Vec3): ScalarGrid3D<
 export function prepare_geometry_grid(
   volume: VolumeGrid,
   window: VolumeWindow | null,
+  max_points = MAX_GRID_POINTS,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3; clip?: SurfaceClip } {
+  if (!Number.isSafeInteger(max_points) || max_points < 8)
+    throw new RangeError(`max_points must allow at least a 2×2×2 grid, got ${max_points}`)
   const { values, dims, order, lattice, origin, periodic } = volume
-  const in_budget = values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2)
+  const in_budget = values.length <= max_points && dims.every((dim) => dim >= 2)
   if (periodic) {
     const { range, frame = IDENTITY_3X3 } = window ?? { range: UNIT_CELL_RANGE }
     // An over-budget source in a box window that fits at its own spacing (a crop) keeps its
@@ -548,11 +551,11 @@ export function prepare_geometry_grid(
       Math.floor(lower * dims[axis]) - 1,
       Math.ceil(upper * dims[axis]) + 2,
     ])
-    if (!in_budget && !window?.frame && voxels_fit(voxels)) {
+    if (!in_budget && !window?.frame && voxels_fit(voxels, max_points)) {
       const box = voxels.map((bounds, axis) =>
         bounds.map((idx) => idx / dims[axis]),
       ) as DisplayRange
-      const block = extract_volume_range(volume, box)
+      const block = extract_volume_range(volume, box, max_points)
       const counts = block.dims
       const cell_range = range.map(([lower, upper], axis) =>
         [lower, upper].map((bound) => (bound * dims[axis] - voxels[axis][0]) / counts[axis]),
@@ -569,7 +572,7 @@ export function prepare_geometry_grid(
     }
     // read off the volume once: per-sample reads through a $state proxy are far slower
     const source = { values, dims: [...dims] as Vec3, order }
-    const scale = Math.min(Math.cbrt(MAX_GRID_POINTS / values.length), 1)
+    const scale = Math.min(Math.cbrt(max_points / values.length), 1)
     const grid = in_budget
       ? source
       : resample_periodic(
@@ -579,6 +582,6 @@ export function prepare_geometry_grid(
     return { grid, lattice, origin, clip: { frame, range, cells: window_cells(frame, range) } }
   }
   if (!window && in_budget) return { grid: volume, lattice, origin }
-  const extracted = extract_volume_range(volume, window?.range ?? UNIT_CELL_RANGE)
+  const extracted = extract_volume_range(volume, window?.range ?? UNIT_CELL_RANGE, max_points)
   return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

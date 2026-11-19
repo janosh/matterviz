@@ -148,7 +148,7 @@
   type StructureLayoutMode = `single` | `multi` | `slice` | `split`
 
   // Each multi-view pane needs room for orbit controls, labels and atom picking
-  const MULTI_VIEW_MIN_PANE = { width: 300, height: 200, gap: 2 }
+  const MULTI_VIEW_MIN_PANE = { width: 300, height: 200, gap: 1 }
   const STRUCTURE_LAYOUTS = {
     single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
     multi: { mode: `multi`, icon: Grid2x2, label: `3D multi-view grid` },
@@ -993,16 +993,18 @@
     const preferred = Math.ceil(Math.sqrt(count))
     if (fullscreen) return width < height ? Math.ceil(count / preferred) : preferred
     const { width: pane_width, gap } = MULTI_VIEW_MIN_PANE
-    return Math.max(1, Math.min(preferred, Math.floor((width + gap) / (pane_width + gap))))
+    return Math.max(1, Math.min(preferred, Math.floor((width - gap) / (pane_width + gap))))
   })
   let grid_rows = $derived(Math.ceil(views.length / grid_columns))
   let min_grid_height = $derived(
-    grid_rows * (MULTI_VIEW_MIN_PANE.height + MULTI_VIEW_MIN_PANE.gap) -
+    grid_rows * (MULTI_VIEW_MIN_PANE.height + MULTI_VIEW_MIN_PANE.gap) +
       MULTI_VIEW_MIN_PANE.gap,
   )
   let multi_view_available = $derived(
     views.length > 1 &&
-      (fullscreen || (width >= MULTI_VIEW_MIN_PANE.width && height >= min_grid_height)),
+      (fullscreen ||
+        (width >= MULTI_VIEW_MIN_PANE.width + 2 * MULTI_VIEW_MIN_PANE.gap &&
+          height >= min_grid_height)),
   )
   // The caller's preference survives while a small viewer temporarily collapses the grid
   let is_multi_view_active = $derived(
@@ -1976,7 +1978,13 @@
     display: grid;
     grid-template-columns: repeat(var(--struct-grid-columns, 2), minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .viewport-stage.multi {
+    /* Adjacent pane outlines share the same pixel. Padding keeps the outer outline inside. */
     gap: var(--struct-viewport-gap);
+    padding: var(--struct-viewport-gap);
+    box-sizing: border-box;
   }
   @container (aspect-ratio < 1) {
     .viewport-stage.split {
