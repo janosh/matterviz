@@ -39,7 +39,14 @@ vi.mock(`svelte-widgets/browser`, async (import_original) => ({
   download: vi.fn(),
 }))
 
-beforeEach(() => vi.clearAllMocks())
+// happy-dom has no createImageBitmap; supersampled exports decode their render through it
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.stubGlobal(
+    `createImageBitmap`,
+    vi.fn(async () => ({ close: vi.fn() })),
+  )
+})
 // Restores every vi.spyOn (console, document.createElement, URL) so stubs never leak
 // across describes; the module-level `download` vi.fn is unaffected in vitest 4.
 afterEach(() => {
@@ -427,7 +434,8 @@ describe(`canvas_to_png_blob`, () => {
     const scene = { background: null } as unknown as Scene
     depth_cues.set(scene, cue)
     scene_registry.set(canvas, { scene, camera: {} as Camera })
-    const pending = canvas_to_png_blob(canvas, 72)
+    // one encode only: a supersampled capture would also encode its downscale
+    const pending = canvas_to_png_blob(canvas, 72, 1)
     await vi.waitFor(() => expect(canvas.toBlob).toHaveBeenCalled())
     cue.strength.value = 0.6 // SceneLights writes the user's new setting mid-encode
     finish_encode()
@@ -524,10 +532,11 @@ describe(`canvas_to_png_blob`, () => {
     )
     scene_registry.set(canvas, { scene: {} as Scene, camera: {} as Camera })
     const captures = [canvas_to_png_blob(canvas, 200), canvas_to_png_blob(canvas, 144)]
-    await vi.waitFor(() => expect(pending).toHaveLength(1))
-    pending[0](png_blob())
-    await vi.waitFor(() => expect(pending).toHaveLength(2))
-    pending[1](png_blob())
+    // each supersampled capture encodes twice: its render, then the downscale
+    for (let encode_idx = 0; encode_idx < 4; encode_idx++) {
+      await vi.waitFor(() => expect(pending).toHaveLength(encode_idx + 1))
+      pending[encode_idx](png_blob())
+    }
     await Promise.all(captures)
     // each renders at its supersampled ratio and restores the live one
     expect(renderer.setDrawingBufferSize.mock.calls.map((call) => call[2])).toEqual([

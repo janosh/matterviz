@@ -217,14 +217,19 @@ export async function canvas_to_png_blob(
       if (resize)
         renderer.setDrawingBufferSize(orig_size.width, orig_size.height, render_ratio)
       if (view) render_scene(renderer, view.scene, view.camera)
-      if (factor === 1) return await canvas_to_blob(canvas, export_dpi)
+      const rendered = await canvas_to_blob(canvas, export_dpi)
+      if (factor === 1) return rendered
+      // downscale the encoded render: drawing the GPU canvas itself into a 2D context reads
+      // back blank under software WebGPU (CI's SwiftShader), while its toBlob is reliable
+      const bitmap = await createImageBitmap(rendered)
       return await paint_png_blob(
         width,
         height,
         1,
         (ctx) => {
           ctx.imageSmoothingQuality = `high`
-          ctx.drawImage(canvas, 0, 0, width, height)
+          ctx.drawImage(bitmap, 0, 0, width, height)
+          bitmap.close()
         },
         export_dpi,
       )
