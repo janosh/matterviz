@@ -1,6 +1,7 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { wait_for_renderer, renderer_registry, scene_registry } from '#lib/io/export.js'
+  import { render_scene } from './lighting'
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import { display_idx } from '#lib/labels.js'
@@ -110,7 +111,7 @@
     const view = scene_registry.get(canvas)
     if (!renderer || !view) throw new Error(`Wait for the 3D view to be ready`)
     await wait_for_renderer(renderer)
-    renderer.render(view.scene, view.camera)
+    render_scene(renderer, view.scene, view.camera)
     const image = document.createElement(`canvas`)
     image.width = 160
     image.height = 100

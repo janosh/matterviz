@@ -14,7 +14,16 @@ import { parse_supercell_matrix } from '#lib/structure/supercell.js'
 import { compute_isosurface_geometries } from '#lib/isosurface/geometry.js'
 import { prepare_geometry_grid, type VolumeWindow } from '#lib/isosurface/sampling.js'
 import { flushSync, mount, unmount } from 'svelte'
-import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
+import {
+  AgXToneMapping,
+  BufferAttribute,
+  type BufferGeometry,
+  Material,
+  NeutralToneMapping,
+  NodeMaterial,
+} from 'three/webgpu'
+import { shell_front_alpha } from '#lib/isosurface/shell-alpha'
+import { agx_exposure } from '#lib/scene/tone-mapping'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { make_grid, make_volume } from '../test-fixtures'
 import { threlte_stub } from './threlte-stub'
@@ -22,9 +31,14 @@ import { threlte_stub } from './threlte-stub'
 // Threlte's on-demand renderer only repaints on invalidate(); the component must call it
 // after mutating three objects the <T> props don't track (vertex colours, rebuilt geometry)
 const invalidate = vi.hoisted(() => vi.fn())
+const tone_mapping = vi.hoisted(() => ({ current: 0 }))
 vi.mock(`@threlte/core`, async () => ({
   T: (await import(`./threlte-stub`)).threlte_stub.T,
-  useThrelte: () => ({ invalidate }),
+  useThrelte: () => ({
+    invalidate,
+    renderer: { toneMappingExposure: 1 },
+    toneMapping: tone_mapping,
+  }),
 }))
 // Large volumes go through the geometry worker; tests swap it for a controllable stub
 const compute_geometries_async = vi.hoisted(() => {
@@ -118,7 +132,16 @@ const settle = async () => {
   flushSync()
 }
 const meshes = () => threlte_stub.nodes.filter((node) => node.tag === `Mesh`)
-const materials = () => threlte_stub.nodes.filter((node) => node.tag.endsWith(`Material`))
+// Wireframe <T.MeshBasicMaterial> nodes, plus SurfaceMaterial's <T is={material}> recorded under
+// the material's type with its build-time flags and the color/opacity uniforms it sets
+const materials = () =>
+  threlte_stub.nodes.flatMap((node) => {
+    if (node.tag.endsWith(`Material`)) return [node]
+    const { is: material, ...uniforms } = node.props
+    if (!(material instanceof Material)) return []
+    const { type, transparent, depthWrite, vertexColors, side } = material
+    return [{ tag: type, props: { transparent, depthWrite, vertexColors, side, ...uniforms } }]
+  })
 const geometry_of = (node: { props: Record<string, unknown> }) =>
   node.props.geometry as BufferGeometry
 // Large grids then route through the mocked worker client: only `typeof Worker` is consulted,
@@ -138,6 +161,7 @@ beforeEach(() => {
     toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
   })
   threlte_stub.reset()
+  tone_mapping.current = AgXToneMapping
 })
 afterEach(() => {
   teardown?.()
@@ -146,6 +170,26 @@ afterEach(() => {
   vi.unstubAllGlobals()
   compute_geometries_async.mockReset()
   compute_geometries_async.release.mockReset()
+})
+
+// shell_front_alpha evaluated on numbers instead of shader nodes
+class Scalar {
+  constructor(readonly value: number) {}
+  oneMinus = () => new Scalar(1 - this.value)
+  mul = (factor: Scalar | number) =>
+    new Scalar(this.value * (factor instanceof Scalar ? factor.value : factor))
+  add = (term: number) => new Scalar(this.value + term)
+  min = (cap: number) => new Scalar(Math.min(this.value, cap))
+}
+test.each([
+  [0.01, 1, 0.01],
+  [0.01, 0.3, 0.0198],
+  [0.01, 0, 0.03],
+  [0.9, 1, 0.9],
+  [0.9, 0, 1],
+])(`shell front alpha at pass opacity %s and facing %s is %s`, (opacity, facing, expected) => {
+  const alpha = shell_front_alpha(new Scalar(facing), new Scalar(opacity)).value
+  expect(alpha).toBeCloseTo(expected, 12)
 })
 
 describe(`Isosurface`, () => {
@@ -162,14 +206,34 @@ describe(`Isosurface`, () => {
     expect(geometry.getAttribute(`position`).count).toBeGreaterThan(0)
     expect(geometry.getAttribute(`normal`).count).toBe(geometry.getAttribute(`position`).count)
     expect(geometry.getAttribute(`color`)).toBeUndefined()
-    expect(materials().map((node) => node.tag)).toEqual(Array(2).fill(`MeshStandardMaterial`))
+    // a translucent satin layer takes the shell material (opaque ones stay standard, below)
+    expect(materials().map((node) => node.tag)).toEqual(
+      Array(2).fill(`MeshPhysicalNodeMaterial`),
+    )
+    // the back and front passes split the layer's 0.6 so both together cover 0.6
     expect(materials()[0].props).toMatchObject({
       color: `#3b82f6`,
-      opacity: 0.6,
+      opacity: 1 - Math.sqrt(0.4),
       transparent: true,
       depthWrite: false,
       vertexColors: false,
     })
+  })
+
+  // Scene fog would land after the shell's rim darkening (or after untone_agx), so every
+  // tone mapping skips it and fades in the outputNode; only AgX untones, its exposure a
+  // renderer uniform so changing it never rebuilds the shader
+  test.each([AgXToneMapping, NeutralToneMapping])(`tone mapping %s`, async (tone) => {
+    tone_mapping.current = tone
+    mount_isosurface()
+    await settle()
+    const surface = threlte_stub.nodes.find((node) => node.props.is instanceof Material)?.props
+      .is
+    if (!(surface instanceof NodeMaterial)) throw new TypeError(`no surface material`)
+    expect(surface.fog).toBe(false)
+    const output_nodes: unknown[] = []
+    surface.outputNode?.traverse((node: unknown) => output_nodes.push(node))
+    expect(output_nodes.includes(agx_exposure)).toBe(tone === AgXToneMapping)
   })
 
   test.each([
@@ -204,6 +268,7 @@ describe(`Isosurface`, () => {
       expect(materials()[0].props).toMatchObject({ wireframe: true })
     }
     if (settings.layers[0]?.opacity === 1) {
+      expect(materials()[0].tag).toBe(`MeshStandardNodeMaterial`)
       expect(materials()[0].props).toMatchObject({ transparent: false, depthWrite: true })
     }
   })
@@ -211,6 +276,31 @@ describe(`Isosurface`, () => {
   // A mirrored pair colours each lobe by the sign of the value drawn, not which lobe mirrors
   // the other; a lone surface keeps `color` even at a negative isovalue
   const [blue, red] = [`#3b82f6`, `#ef4444`]
+  test(`transparent mirrored lobes share a priority so the camera can depth-sort both signs`, async () => {
+    const volume = blob_volume(
+      `orbital`,
+      (x, y, z) =>
+        Math.exp(-((x - 2) ** 2 + (y - 2) ** 2 + (z - 2) ** 2)) +
+        Math.exp(-((x - 7) ** 2 + (y - 7) ** 2 + (z - 7) ** 2)) -
+        Math.exp(-((x - 2) ** 2 + (y - 7) ** 2 + (z - 7) ** 2)),
+    )
+    mount_isosurface({
+      volumes: [volume],
+      settings: with_layers([layer(0.3, { show_negative: true })]),
+    })
+    await settle()
+    const nodes = meshes()
+    expect(nodes).toHaveLength(6) // two positive lobes, one negative, back and front faces each
+    expect(new Set(nodes.map((node) => node.props.renderOrder))).toEqual(new Set([0]))
+    // one material per sign and side, shared by that pass's lobes
+    expect(materials()).toHaveLength(4)
+    expect(new Set(nodes.map((node) => node.props.material)).size).toBe(4)
+    const centers = nodes.map((node) =>
+      geometry_of(node).boundingSphere?.center.toArray().join(`,`),
+    )
+    expect(new Set(centers).size).toBe(3)
+  })
+
   test.each([
     [0.3, true, [blue, blue, red, red]],
     [-0.3, true, [blue, blue, red, red]],
@@ -278,7 +368,10 @@ describe(`Isosurface`, () => {
   })
 
   test(`color-only changes reuse geometry; isovalue changes rebuild it`, async () => {
-    const props = mount_isosurface({ settings: with_layers([layer(0.3, { opacity: 1 })]) })
+    // mirrored, so crossing opacity 1 turns on lobe sorting, which must not re-mesh either
+    const props = mount_isosurface({
+      settings: with_layers([layer(0.3, { opacity: 1, show_negative: true })]),
+    })
     await settle()
     const geometry = geometry_of(meshes()[0])
     const dispose = vi.spyOn(geometry, `dispose`)
@@ -287,7 +380,7 @@ describe(`Isosurface`, () => {
     props.settings.layers[0].opacity = 0.5
     await settle()
     expect(geometry_of(meshes()[0])).toBe(geometry)
-    expect(materials()[0].props).toMatchObject({ color: `#abcdef`, opacity: 0.5 })
+    expect(materials()[0].props).toMatchObject({ color: `#abcdef`, opacity: 1 - Math.SQRT1_2 })
     expect(dispose).not.toHaveBeenCalled()
 
     props.settings.layers[0].isovalue = 0.5

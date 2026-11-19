@@ -7,7 +7,11 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
-import type { VolumetricFileData } from '#lib/isosurface/types.js'
+import {
+  auto_isosurface_settings,
+  DEFAULT_ISOSURFACE_SETTINGS,
+  type VolumetricFileData,
+} from '#lib/isosurface/types.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
 import { build_structure_props_from_settings, type DefaultSettings } from '#lib/settings.js'
@@ -87,16 +91,39 @@ export function mount_viewer(
   }
   if (type === `isosurface`) {
     const { structure, volumes } = data as VolumetricFileData
+    const [first_volume] = volumes
+    if (!first_volume) throw new Error(`mount_viewer: volumetric data has no volumes`)
+    // The host's isosurface finish applies; the first volume only supplies the layers
+    const isosurface_settings = auto_isosurface_settings(first_volume, {
+      ...DEFAULT_ISOSURFACE_SETTINGS,
+      ...defaults.isosurface,
+    })
     return mount(Structure, {
       target,
-      props: { structure, volumetric_data: volumes, parse_warnings, ...structure_props },
+      props: {
+        structure,
+        volumetric_data: volumes,
+        isosurface_settings,
+        parse_warnings,
+        ...structure_props,
+      },
     })
   }
   if (type === `fermi_surface` || type === `band_grid`) {
     const fermi_props = is_fermi_surface_data(data as FermiSurfaceData | BandGridData)
       ? { fermi_data: data as FermiSurfaceData }
       : { band_data: data as BandGridData }
-    return mount(FermiSurface, { target, props: { ...fermi_props, ...no_file_drop } })
+    // color_property stays unset so per-state data colors by its first property by default.
+    // fullscreen_toggle is web-only: the host gates the viewer's own toggle.
+    const {
+      color_property: _property,
+      fullscreen_toggle: _toggle,
+      ...fermi_defaults
+    } = defaults.fermi
+    return mount(FermiSurface, {
+      target,
+      props: { ...fermi_defaults, ...fermi_props, ...no_file_drop },
+    })
   }
   if (type === `convex_hull`) {
     return mount(ConvexHull, {
@@ -124,7 +151,9 @@ export function mount_viewer(
       data as Record<string, unknown>
     // detect_view_type accepts a bare {k_lattice | reciprocal_lattice, ...} document, which
     // without its lattice handed over showed the empty "Drop Structure File" state
+    const { fullscreen_toggle: _toggle, ...bz_defaults } = defaults.brillouin
     const bz_props: Record<string, unknown> = {
+      ...bz_defaults,
       ...no_file_drop,
       structure,
       k_lattice: k_lattice ?? reciprocal_lattice,

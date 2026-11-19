@@ -16,6 +16,8 @@
   import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, ISO_COLORMAP_SELECT_PROPS } from './coloring'
   import type { DisplayRange } from './sampling'
+  import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
+  import { SETTINGS_CONFIG, type SurfaceFinish } from '#lib/settings.js'
   import { compare_volume_grids, UNIT_CELL_RANGE } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import {
@@ -357,6 +359,18 @@
   layout="grid"
   class="isosurface-settings"
 >
+  <label>
+    <span {@attach tooltip({ content: SETTINGS_CONFIG.isosurface.surface_finish.description })}
+      >Finish</span
+    >
+    <select
+      value={settings.surface_finish}
+      onchange={(event) =>
+        update_settings({ surface_finish: event.currentTarget.value as SurfaceFinish })}
+    >
+      {@render enum_options(SETTINGS_CONFIG.isosurface.surface_finish)}
+    </select>
+  </label>
   <label
     {@attach tooltip({
       content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,

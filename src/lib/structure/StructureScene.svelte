@@ -95,6 +95,7 @@
     type PickState,
   } from './scene-picking.svelte'
   import { T, useTask, useThrelte } from '@threlte/core'
+  import AmbientOcclusion from '#lib/scene/AmbientOcclusion.svelte'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, tick, untrack } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
@@ -214,6 +215,8 @@
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
     directional_light = DEFAULTS.structure.directional_light,
+    depth_cue = DEFAULTS.structure.depth_cue,
+    ambient_occlusion = DEFAULTS.structure.ambient_occlusion,
     sphere_segments = DEFAULTS.structure.sphere_segments,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
     cell_surface_color = DEFAULTS.structure.cell_surface_color,
@@ -292,6 +295,8 @@
     trajectory_lines_emphasis = false,
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
+    depth_cue?: number // 0-1 fade of the far side of the structure toward the background
+    ambient_occlusion?: boolean // GTAO post pass, built only while on
     structure?: AnyStructure
     render_token?: unknown
     on_rendered?: (token: unknown) => void
@@ -908,6 +913,18 @@
       view_dir: world_to_content_dir(view_dir, DEFAULT_CAMERA_VIEW),
       view_up: world_to_content_dir(camera_up, [0, 1, 0]),
     }).spans
+  // Depth cue fades over the atoms alone: a cube file's molecule sits mid-box, so fading over
+  // the cell would wash it out uniformly. Gated on cue_on, so dragging the strength never
+  // rebuilds the points
+  const cue_on = $derived(depth_cue > 0)
+  let depth_points = $derived.by(() => {
+    if (!cue_on || !structure) return undefined
+    const { sites } = structure
+    const points = new Float64Array(3 * sites.length)
+    for (let idx = 0; idx < sites.length; idx++)
+      points.set(content_to_world(sites[idx].xyz), 3 * idx)
+    return points
+  })
   // The structure the zoom was last fitted to (initially the mounted one), re-measured by the
   // follow below along wherever the camera looks
   let framed_structure = untrack(() => structure)
@@ -1614,7 +1631,16 @@
   bind:orbit_controls
 />
 
-<SceneLights ambient={ambient_light} directional={directional_light} />
+<SceneLights
+  ambient={ambient_light}
+  directional={directional_light}
+  camera_space
+  {depth_cue}
+  {depth_points}
+/>
+{#if ambient_occlusion}
+  <AmbientOcclusion />
+{/if}
 
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>

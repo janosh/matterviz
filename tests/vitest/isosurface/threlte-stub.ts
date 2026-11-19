@@ -3,12 +3,18 @@
 // without a WebGPU renderer. `threlte_stub.T` is the drop-in for `@threlte/core`'s `T`:
 // `<T.Mesh>` records under the tag `Mesh`, the bare `<T is={object}>` form under `T`.
 import type * as threlte_core from '@threlte/core'
-import { BufferGeometry, PerspectiveCamera } from 'three/webgpu'
+import { AgXToneMapping, BufferGeometry, PerspectiveCamera } from 'three/webgpu'
 import { keydown, type PinStep, pin_spot } from '../setup'
 import ThrelteStub from './ThrelteStub.svelte'
 
 export type StubNode = { tag: string; props: Record<string, unknown> }
-export const stub_state = { nodes: [] as StubNode[], pending_tag: `` }
+export const stub_state = {
+  nodes: [] as StubNode[],
+  pending_tag: ``,
+  tasks: [] as (() => void)[],
+  // each recorded task's key and scheduling options (stage, after, before), in task order
+  task_specs: [] as { key?: unknown; options: Record<string, unknown> }[],
+}
 
 const record_as =
   (tag: string) =>
@@ -19,7 +25,11 @@ const record_as =
 
 export const threlte_stub = {
   nodes: stub_state.nodes,
-  reset: () => stub_state.nodes.splice(0),
+  reset: () => {
+    stub_state.nodes.splice(0)
+    stub_state.tasks.splice(0)
+    stub_state.task_specs.splice(0)
+  },
   T: new Proxy(record_as(`T`), { get: (_target, tag) => record_as(String(tag)) }),
 }
 
@@ -37,13 +47,25 @@ export const mock_threlte_core = async (
     ...core,
     T: threlte_stub.T,
     Canvas: Reflect.get(threlte_stub.T, `Canvas`),
+    // per-frame tasks are recorded, for a test to step a frame by calling them
+    useTask: (...args: unknown[]) => {
+      const keyed = typeof args[0] !== `function`
+      const [key, task, options = {}] = keyed ? args : [undefined, ...args]
+      if (typeof task !== `function`) throw new TypeError(`useTask without a callback`)
+      stub_state.tasks.push(() => task())
+      stub_state.task_specs.push({ key, options: options as Record<string, unknown> })
+    },
     useThrelte: () => ({
       invalidate,
       scene: { name: `scene` },
       camera: core.currentWritable(new PerspectiveCamera().translateZ(10)),
       size: core.currentWritable({ width: 800, height: 600 }),
       dom: document.createElement(`div`),
-      renderer: { domElement: document.createElement(`canvas`) },
+      renderer: { domElement: document.createElement(`canvas`), toneMappingExposure: 1 },
+      toneMapping: core.currentWritable(AgXToneMapping),
+      autoRender: core.currentWritable(true),
+      autoRenderTask: { key: `threlte-auto-render-task` },
+      renderStage: { key: `threlte-render-stage` },
     }),
   }
 }

@@ -38,6 +38,8 @@ import { create_drop_event, doc_query, set_input, set_select, settle } from '../
 import { make_crystal, make_grid, make_molecule, make_volume } from '../test-fixtures'
 import { globSync, readFileSync } from 'node:fs'
 
+const gallery_url = volumetric_files.find((file) => file.name === `caffeine-LUMO.cube.gz`)?.url
+
 const { stub } = vi.hoisted(() => ({
   stub: async () => (await import(`../reactive-renderer-stub.svelte`)).default,
 }))
@@ -397,7 +399,12 @@ test.each([
 ])(
   `isosurface ?file=%s loads the first fixture, applying ?isovalue: %s`,
   async (file, applied) => {
-    const open = vi.spyOn(open_module, `open_material`).mockResolvedValue(volume_result(`x`))
+    // the render-mode gallery's own load stays pending, so the main viewer is the latest stub
+    const open = vi
+      .spyOn(open_module, `open_material`)
+      .mockImplementation((url) =>
+        url === gallery_url ? new Promise(() => {}) : Promise.resolve(volume_result(`x`)),
+      )
     Object.assign(page, { url: new URL(`http://localhost/?file=${file}&isovalue=0.123`) })
     mount(IsosurfacePage, { target: document.body })
     flushSync()
@@ -409,6 +416,24 @@ test.each([
     expect(isosurface_settings.layers[0].isovalue === 0.123).toBe(applied)
   },
 )
+
+// a failed gallery load left six empty cells with no message or way to recover
+test(`the isosurface render-mode gallery reports a failed load and retries it`, async () => {
+  let fail = true
+  const open = vi.spyOn(open_module, `open_material`).mockImplementation(async (url) => {
+    if (url === gallery_url && fail) throw new Error(`network down`)
+    return volume_result(`x`)
+  })
+  mount(IsosurfacePage, { target: document.body })
+  await settle()
+  const error = document.querySelector<HTMLElement>(`.render-modes .error`)
+  expect(error?.textContent).toContain(`network down`)
+  fail = false
+  error?.querySelector(`button`)?.click()
+  await settle()
+  expect(open.mock.calls.filter(([url]) => url === gallery_url)).toHaveLength(2)
+  expect(document.querySelector(`.render-modes .error`)).toBeNull()
+})
 
 // dropped local files wrote ?file=<their name>, so a reload asked for a missing fixture
 test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () => {

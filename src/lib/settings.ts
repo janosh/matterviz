@@ -99,6 +99,8 @@ const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   web_only: true,
 })
 
+export type SurfaceFinish = 'satin' | 'translucent_shell' | 'chalk' | 'unlit'
+
 const VECTOR_COLOR_MODES = [
   `auto`,
   `element`,
@@ -576,6 +578,16 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 0,
       maximum: 4,
     },
+    depth_cue: bounded_setting(
+      0,
+      `Depth cueing: fade distant parts of the structure toward the background (0 = off, 1 = farthest point fully faded)`,
+      0,
+      1,
+    ),
+    ambient_occlusion: {
+      value: false,
+      description: `Screen-space ambient occlusion: darken creases and crowded regions (a post pass, costs GPU time)`,
+    },
 
     // Site Vectors (force, magmom, spin) & Lattice
     vector_configs: typed_setting<Record<string, VectorLayerConfig>>({
@@ -684,6 +696,20 @@ export const SETTINGS_CONFIG = define_settings({
     cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
     cell_edge_width: bounded_setting(1.5, `Width of cell edge lines`, 0.5, 5.0),
     fullscreen_toggle: fullscreen_toggle_setting(),
+  },
+
+  // Isosurface (volumetric data) settings
+  isosurface: {
+    surface_finish: typed_setting<SurfaceFinish>({
+      value: `satin`,
+      description: `Isosurface material. satin: lit, saturated surfaces whose translucent layers take the translucent_shell look so overlapping lobes stay distinct and atoms inside readable; colormapped surfaces shade only toward their silhouette so colors match the legend. translucent_shell: glossy shells with darkened rims, whose faces fade toward the viewer. chalk: matte diffuse. unlit: flat colors.`,
+      enum: {
+        satin: `Satin`,
+        translucent_shell: `Translucent shell`,
+        chalk: `Chalk`,
+        unlit: `Unlit`,
+      },
+    }),
   },
 
   // Brillouin zone viewer settings
@@ -1282,5 +1308,6 @@ export const build_structure_props_from_settings = (defaults: DefaultSettings) =
     image_atom_completion: structure.image_atom_completion,
     keep_molecules_whole: structure.keep_molecules_whole,
     show_trajectory_lines: structure.show_trajectory_lines,
+    symmetry_settings: { ...defaults.symmetry },
   }
 }

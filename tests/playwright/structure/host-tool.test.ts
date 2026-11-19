@@ -15,8 +15,7 @@ const scene_state = (page: Page) =>
     const atom_colors: number[] = []
     entry?.scene.traverse(
       (node: {
-        isMesh?: boolean
-        isInstancedMesh?: boolean
+        name?: string
         count?: number
         geometry?: {
           type: string
@@ -24,7 +23,6 @@ const scene_state = (page: Page) =>
             name: string,
           ) => { count: number; array: ArrayLike<number> } | undefined
         }
-        material?: { metalness?: number; roughness?: number }
       }) => {
         if (
           node.geometry?.getAttribute(`arrowLength`) &&
@@ -34,14 +32,8 @@ const scene_state = (page: Page) =>
         const colors = node.geometry?.getAttribute(`atomColor`)
         if (colors)
           atom_colors.push(...Array.from(colors.array).slice(0, (node.count ?? 0) * 3))
-        if (
-          node.isMesh &&
-          !node.isInstancedMesh &&
-          node.geometry?.type === `BufferGeometry` &&
-          node.material?.metalness === 0.1 &&
-          node.material?.roughness === 0.6
-        )
-          density_vertices += node.geometry.getAttribute(`position`)?.count ?? 0
+        if (node.name === `isosurface`)
+          density_vertices += node.geometry?.getAttribute(`position`)?.count ?? 0
       },
     )
     return {

@@ -211,6 +211,7 @@
     on_point_click,
     on_point_hover,
     on_plot_click,
+    on_empty_click,
     fill_regions = $bindable([]),
     error_bands = [],
     on_fill_click,
@@ -299,6 +300,9 @@
       on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
       // Called when the plot surface is clicked, with the nearest point within the hover reach
       on_plot_click?: (data: ScatterHandlerEvent<Metadata>) => void
+      // Called when a plot-surface click (not a drag) lands on no point, with the x/y data
+      // coordinates under the cursor
+      on_empty_click?: (data: { x: number; y: number; event: MouseEvent }) => void
       fill_regions?: FillRegion[] // Bindable for legend toggle support
       // Shaded bands of a series' error magnitude around its line
       error_bands?: ErrorBand[]
@@ -1489,8 +1493,23 @@
   // Canvas markers have no DOM node to click, so a plot-surface click activates the nearest
   // point within the click radius instead of reaching on_plot_click
   function handle_plot_click(evt: MouseEvent) {
-    if (!(on_plot_click || canvas_points_clickable)) return pin.toggle(tooltip_point)
     const coords = get_relative_coords(evt)
+    // only clicks on the plot area (the scales' pixel ranges), not its tick labels, axis
+    // titles or padding
+    const { x: x_scale, y: y_scale } = frame.scales
+    const in_range = (value: number, [start, end]: number[]) =>
+      value >= Math.min(start, end) && value <= Math.max(start, end)
+    const in_plot_area =
+      coords && in_range(coords.x, x_scale.range()) && in_range(coords.y, y_scale.range())
+    if (
+      on_empty_click &&
+      in_plot_area &&
+      !plot_click_target(closest_hit_at(coords.x, coords.y))
+    ) {
+      const [data_x, data_y] = [x_scale.invert(coords.x), y_scale.invert(coords.y)]
+      on_empty_click({ x: Number(data_x), y: Number(data_y), event: evt })
+    }
+    if (!(on_plot_click || canvas_points_clickable)) return pin.toggle(tooltip_point)
     if (!coords) return
     const point = plot_click_target(
       closest_hit_at(coords.x, coords.y, canvas_points_clickable),

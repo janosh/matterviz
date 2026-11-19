@@ -1782,6 +1782,23 @@ describe(`ScatterPlot`, () => {
     expect(tooltip_point).toMatchObject({ x: 2, y: 3 })
   })
 
+  test(`on_empty_click fires for empty plot-area clicks, not padding or points`, async () => {
+    const on_empty_click = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      on_empty_click,
+      point_tween: { duration: 0 },
+    })
+    const svg = plot_svg(plot)
+    const { left, top } = svg.getBoundingClientRect()
+    // the top-left corner is padding (tick labels, axis title), a marker is a point
+    click_at(svg, { x: left + 1, y: top + 1 })
+    click_at(svg, await move_to_marker(plot, 1))
+    expect(on_empty_click).not.toHaveBeenCalled()
+    click_at(svg, await move_to_marker(plot, 1, { dx: 40 }))
+    expect(on_empty_click).toHaveBeenCalledOnce()
+  })
+
   test(`shows a pointer cursor only where a plot click would reach a point`, async () => {
     const on_plot_click = vi.fn()
     const plot = await mount_sized_scatter_plot({

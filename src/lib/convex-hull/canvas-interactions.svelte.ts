@@ -43,6 +43,8 @@ interface HullSelectionInputs {
   enable_structure_preview: () => boolean
   allow_file_drop: () => boolean
   on_point_click: () => ((entry: ConvexHullEntry) => void) | undefined
+  // Probe the composition with these fractions of the plot's corners (a click on empty space)
+  set_probe: (fractions: number[]) => void
   on_point_hover: () => ((data: HoverData3D | null) => void) | undefined
   on_file_load: () => ((data: PhaseEntriesLoadData) => void) | undefined
   // Categorical classification config (for category line in copied entry text)
@@ -236,6 +238,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     clear_preview,
     select_entry,
     close_structure_popup,
+    set_probe: inputs.set_probe,
     copy_entry_data,
     root_attachments,
   }
@@ -384,7 +387,13 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       // gets the tooltip. Under a mouse the next mousemove would restore it anyway.
       selection.set_hover({ entry, position: { x: event.clientX, y: event.clientY } })
       selection.select_entry(entry)
-    } else selection.close_structure_popup()
+      return
+    }
+    selection.close_structure_popup()
+    const rect = inputs.canvas()?.getBoundingClientRect()
+    const pointer = rect && { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    const fractions = pointer && strategy.composition_at?.(inputs.project_point(), pointer)
+    if (fractions) selection.set_probe(fractions)
   }
 
   const handle_double_click = (event: MouseEvent) => {

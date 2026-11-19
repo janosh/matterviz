@@ -591,6 +591,22 @@ describe(`extract_volume_range`, () => {
     },
   )
 
+  // a crop block meshed as a periodic cell must not wrap its gradient stencil across the
+  // block: on a ramp falling along x, the voxel at the crop's lower edge read its neighbor
+  // from the block's far side and flipped the normals there
+  test(`a crop of an over-budget periodic ramp keeps every normal on one side`, () => {
+    const grid = make_grid(100, 100, 100, (idx_x) => 100 - idx_x)
+    const volume = make_volume(grid, { lattice: cubic, periodic: true })
+    // oxfmt-ignore
+    const range = [[0.3005, 0.335], [0, 0.1], [0, 0.1]] as DisplayRange
+    const { normals } = window_surface(volume, { range }, 69.9)
+    expect(normals.length).toBeGreaterThan(0)
+    // the field falls along +x, so every normal points down it: +x
+    const x_signs = new Set<number>()
+    for (let idx = 0; idx < normals.length; idx += 3) x_signs.add(Math.sign(normals[idx]))
+    expect([...x_signs]).toEqual([1])
+  })
+
   // 1000 full-resolution copies of the 7616-triangle unit surface would be 7.6M
   test(`a large tiled window coarsens its unit grid to the triangle budget`, () => {
     const volume = make_volume(gyroid(32), { lattice: cubic, periodic: true })

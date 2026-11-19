@@ -46,7 +46,7 @@ import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import MeasurementOverlays from '#lib/structure/MeasurementOverlays.svelte'
 import { mount_scene } from '../scene/mount'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, mock_canvas_context } from '../setup'
 import {
   image_options,
   make_crystal,
@@ -55,11 +55,13 @@ import {
   make_volume,
 } from '../test-fixtures'
 import { scene_registry } from '#lib/io/export.js'
+import { scene_renders } from '#lib/scene/lighting'
 import { DEFAULT_ISOSURFACE_SETTINGS, type IsosurfaceSettings } from '#lib/isosurface/types.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, untrack } from 'svelte'
 import {
+  Box3,
   type Color,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -554,6 +556,35 @@ test(`hover shell wraps the hovered atom at HOVER_SHELL_SCALE of its radius`, ()
     )
   // instance matrices are Float32 (eps 1.2e-7): the atom scale reads back to ~2e-8 relative
   expect(shell?.scale.x).toBeCloseTo(HOVER_SHELL_SCALE * atom_scale, 6)
+})
+
+test(`dragging the depth cue strength while it is on keeps its depth points`, () => {
+  mock_canvas_context({ getImageData: () => ({ data: new Uint8ClampedArray(4).fill(255) }) })
+  // SceneLights measures each new depth_points array once, through Box3.setFromArray
+  const set_from_array = vi.spyOn(Box3.prototype, `setFromArray`)
+  const measured = () =>
+    new Set(set_from_array.mock.calls.flat().filter((arr) => arr instanceof Float64Array))
+  const state = $state<SceneProps>({ depth_cue: 0.3 })
+  const { render_frame } = mount_carbon(state)
+  render_frame()
+  expect(measured().size).toBe(1)
+  state.depth_cue = 0.6
+  flushSync()
+  render_frame()
+  expect(measured().size).toBe(1)
+})
+
+test(`ambient_occlusion builds its render pipeline only while on`, () => {
+  const state = $state<SceneProps>({ ambient_occlusion: false })
+  const { scene } = mount_carbon(state)
+  const built = () => scene_renders.has(scene)
+  const steps = [built()]
+  for (const ambient_occlusion of [true, false]) {
+    state.ambient_occlusion = ambient_occlusion
+    flushSync()
+    steps.push(built())
+  }
+  expect(steps).toEqual([false, true, false])
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path

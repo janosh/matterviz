@@ -469,6 +469,32 @@ export const shift_bonds_by_unwrap = (
       )
     : bonds
 
+// Bonds addressed in one frame's wrapped sites, re-addressed for the next frame of the same
+// atoms: each takes the image of site_2 nearest its displacement in the previous frame, so a
+// site the next frame wraps across a periodic face keeps its partner (a minimum-image bond stays
+// one, an explicit longer image bond keeps its length). Holds while no bond vector changes by
+// half a cell between the two frames. Without a lattice the bonds are returned as is.
+export const carry_bonds_across_frame = (
+  bonds: StructureBond[],
+  previous: AnyStructure,
+  next: AnyStructure,
+): StructureBond[] => {
+  if (!(`lattice` in previous) || !(`lattice` in next)) return bonds
+  const { pbc } = next.lattice
+  return bonds.map((bond) => {
+    const { site_idx_1, site_idx_2, cell_shift = ZERO_SHIFT } = bond
+    const [prev_1, prev_2] = [previous.sites[site_idx_1].abc, previous.sites[site_idx_2].abc]
+    const [next_1, next_2] = [next.sites[site_idx_1].abc, next.sites[site_idx_2].abc]
+    const jump = AXES.map((axis) =>
+      pbc[axis] ? Math.round(prev_2[axis] - prev_1[axis] - (next_2[axis] - next_1[axis])) : 0,
+    ) as Vec3
+    if (jump.every((val) => val === 0)) return bond
+    const { cell_shift: _old_shift, ...rest } = bond
+    const carried = shifted(cell_shift, jump)
+    return carried.some(Boolean) ? { ...rest, cell_shift: carried } : rest
+  })
+}
+
 // Bond cell_shift s after its sites moved by lattice translations: s + t_1 - t_2
 const carried_shift = (
   shift: Vec3 | undefined,

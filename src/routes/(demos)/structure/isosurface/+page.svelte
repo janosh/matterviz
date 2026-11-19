@@ -20,7 +20,9 @@
     format_data_value,
     Structure,
   } from 'matterviz'
+  import type { SurfaceFinish } from '#lib/settings.js'
   import { onMount } from 'svelte'
+  import { in_view } from 'svelte-widgets/attachments'
   import { to_error } from 'svelte-widgets/utils'
 
   let structure = $state<AnyStructure | undefined>()
@@ -111,6 +113,52 @@
       if (is_current()) loading = false
     }
     return is_current()
+  }
+
+  // Render-mode gallery: one caffeine LUMO volume shared by every cell, each a GPU context
+  // mounted only once scrolled into view
+  const gallery_cells: { finish: SurfaceFinish; depth_cue: number }[] = [
+    ...([`satin`, `translucent_shell`, `chalk`, `unlit`] as const).map((finish) => ({
+      finish,
+      depth_cue: 0,
+    })),
+    { finish: `translucent_shell`, depth_cue: 0.3 },
+    { finish: `satin`, depth_cue: 0.3 },
+  ]
+  let gallery = $state.raw<{ structure: AnyStructure; volumes: VolumetricData[] }>()
+  let gallery_seen = $state(gallery_cells.map(() => false))
+  const gallery_url = volumetric_files.find(
+    (file) => file.name === `caffeine-LUMO.cube.gz`,
+  )?.url
+  // `gallery_loading` keeps repeated in-view callbacks from starting a second load; a failure
+  // shows its error with a retry instead of six silently empty cells
+  let gallery_error = $state<string>()
+  let gallery_loading = false
+  const load_gallery = async () => {
+    if (!gallery_url || gallery_loading) return
+    gallery_loading = true
+    gallery_error = undefined
+    try {
+      const opened = await open_material(gallery_url)
+      opened.dispose()
+      if (opened.type !== `isosurface`)
+        throw new Error(`${gallery_url} holds no volumetric data`)
+      const { structure: gallery_structure, volumes } = opened.data
+      gallery = { structure: gallery_structure as AnyStructure, volumes }
+    } catch (error) {
+      gallery_error = String(error)
+    } finally {
+      gallery_loading = false
+    }
+  }
+  const gallery_settings = (volumes: VolumetricData[], surface_finish: SurfaceFinish) => {
+    const auto = auto_isosurface_settings(volumes[0])
+    const opacity = surface_finish === `translucent_shell` ? 0.5 : 1
+    return {
+      ...auto,
+      surface_finish,
+      layers: auto.layers.map((layer) => ({ ...layer, opacity })),
+    }
   }
 
   // The active-file guard makes the initial pre-load effect a no-op.
@@ -212,7 +260,58 @@
   </div>
 {/if}
 
+<h2>Render modes</h2>
+<div
+  class="render-modes"
+  {@attach in_view((visible) => visible && !gallery && !gallery_error && load_gallery())}
+>
+  {#if gallery_error}
+    <p class="error">
+      Could not load the gallery volume: {gallery_error}
+      <button onclick={load_gallery}>Retry</button>
+    </p>
+  {/if}
+  {#each gallery_cells as { finish, depth_cue }, idx (idx)}
+    <figure {@attach in_view((visible) => visible && (gallery_seen[idx] = true))}>
+      {#if gallery && gallery_seen[idx]}
+        <Structure
+          structure={gallery.structure}
+          volumetric_data={gallery.volumes}
+          isosurface_settings={gallery_settings(gallery.volumes, finish)}
+          scene_props={{ depth_cue }}
+          show_controls="never"
+          style="flex: 1; min-height: 0"
+        />
+      {/if}
+      <figcaption>
+        <code>{finish}{depth_cue ? `, depth_cue: ${depth_cue}` : ``}</code>
+      </figcaption>
+    </figure>
+  {/each}
+</div>
+
 <style>
+  .render-modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1em;
+    margin-block: 1em;
+    --struct-min-width: 0;
+    figure {
+      margin: 0;
+      height: 260px;
+      display: flex;
+      flex-direction: column;
+    }
+    figcaption {
+      text-align: center;
+    }
+  }
+  @media (max-width: 700px) {
+    .render-modes {
+      grid-template-columns: 1fr;
+    }
+  }
   h1 {
     margin-bottom: 0.5em;
   }

@@ -774,6 +774,9 @@ export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
   face_stroke_alpha(fill_alpha: number): number
   // Plain or ⌘/Ctrl drag rotates the view (shift-drag pans)
   rotate(camera: Camera, delta_x: number, delta_y: number): void
+  // Canvas point → fractions of the simplex corners under it, null outside the simplex. Only
+  // the ternary view has one: a tetrahedron's screen point is a line through it, no single point.
+  composition_at?(project: ProjectPoint, pointer: { x: number; y: number }): number[] | null
   // Data coords → view coords [x, y, depth] about the simplex centroid, before the screen
   // transform. Built once per camera change so points skip re-deriving the rotation.
   rotation(camera: Camera, energy_range: EnergyRange): (...point: Vec3) => Vec3
@@ -872,6 +875,24 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
   rotate(camera, delta_x, delta_y) {
     camera.azimuth += delta_x * 0.3 // drag right rotates clockwise around z
     camera.elevation -= delta_y * 0.3 // drag down tilts the view down
+  },
+  // The projection is affine, so the pointer's barycentric weights against the projected
+  // E_form = 0 triangle are the composition there. Null outside it or when seen edge-on. That is
+  // the composition on the E = 0 plane under the cursor, so on a tilted view it shifts with
+  // parallax from the hull points drawn above or below that plane.
+  composition_at(project, pointer) {
+    const [corner_a, corner_b, corner_c] = TRIANGLE_VERTICES.map(([coord_x, coord_y]) =>
+      project(coord_x, coord_y, 0),
+    )
+    const edge_a = [corner_a.x - corner_c.x, corner_a.y - corner_c.y]
+    const edge_b = [corner_b.x - corner_c.x, corner_b.y - corner_c.y]
+    const offset = [pointer.x - corner_c.x, pointer.y - corner_c.y]
+    const det = edge_a[0] * edge_b[1] - edge_b[0] * edge_a[1]
+    if (Math.abs(det) < 1e-6 * (Math.hypot(...edge_a) * Math.hypot(...edge_b))) return null
+    const weight_a = (offset[0] * edge_b[1] - edge_b[0] * offset[1]) / det
+    const weight_b = (edge_a[0] * offset[1] - offset[0] * edge_a[1]) / det
+    const weights = [weight_a, weight_b, 1 - weight_a - weight_b]
+    return weights.every((weight) => weight >= 0) ? weights : null
   },
   // Rz(azimuth) then Rx(-elevation) about the centroid, energy scaled into the view
   rotation(camera, { center: e_ctr, z_scale }) {

@@ -207,6 +207,12 @@
     enable_structure_preview: () => enable_structure_preview,
     allow_file_drop: () => allow_file_drop,
     on_point_click: () => on_point_click,
+    set_probe: (fractions) => {
+      const { elements } = hull_data.model
+      probe_composition = Object.fromEntries(
+        elements.map((element, idx) => [element, fractions[idx]]),
+      )
+    },
     on_point_hover: () => on_point_hover,
     on_file_load: () => on_file_load,
     entry_category: () => entry_category,

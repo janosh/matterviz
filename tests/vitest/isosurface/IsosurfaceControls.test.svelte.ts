@@ -1,3 +1,4 @@
+import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
 import IsosurfaceControls from '#lib/isosurface/IsosurfaceControls.svelte'
 import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
 import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
@@ -100,6 +101,23 @@ const mount_layers = (
   })
 
 describe(`IsosurfaceControls`, () => {
+  test(`the finish select edits surface_finish and leaves the layers alone`, () => {
+    const original = [make_layer(`0`, { show_negative: true, opacity: 0.6 })]
+    const state = mount_layers(original)
+    const select = doc_query(
+      `select:has(option[value="translucent_shell"])`,
+      HTMLSelectElement,
+    )
+    expect([...select.options].map(({ value }) => value)).toEqual(
+      Object.keys(enum_labels(SETTINGS_CONFIG.isosurface.surface_finish)),
+    )
+    expect(select.value).toBe(DEFAULTS.isosurface.surface_finish)
+    select.value = `unlit`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(state.settings.surface_finish).toBe(`unlit`)
+    expect(state.settings.layers).toEqual(original)
+  })
   test.each([
     {
       desc: `single volume`,

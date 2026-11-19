@@ -1091,6 +1091,53 @@ describe(`edit-bonds`, () => {
     expect(host.bonds).toEqual([{ site_idx_1: 1, site_idx_2: 2, order: 1 }])
   })
 
+  // A trajectory frame wrapping a bonded atom across the a face changes which image its bond
+  // reaches: the edits carry over with shifts that name the same bonds (an in-cell bond that now
+  // crosses the face, and an explicit image bond kept longer than the minimum image)
+  it(`carries bond edits across a frame that wraps a bonded atom`, () => {
+    const frame = (abc_1: number, abc_2: number) =>
+      make_crystal(10, [
+        [`Si`, [0.85, 0.5, 0.5]],
+        [`O`, [abc_1, 0.5, 0.5]],
+        [`C`, [abc_2, 0.2, 0.5]],
+        [`C`, [0.3, 0.2, 0.5]],
+      ])
+    const { host, session } = make_session({
+      measure_mode: `edit-bonds`,
+      series_key: `frames`,
+      structure: frame(0.99, 0.02),
+    })
+    session.push_bond_undo()
+    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    session.added_bonds = [{ site_idx_1: 2, site_idx_2: 3, order: 1, cell_shift: [1, 0, 0] }]
+    flushSync()
+    expect(bond_lengths(session.base_structure)).toEqual([12.8])
+    flush_set(host, { structure: frame(0.01, 0.98) })
+    expect(session.removed_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] },
+    ])
+    // the removal names the 1.6 A Si-O bond across the face, as perception finds it
+    const removed = {
+      sites: [],
+      ...session.normalized_structure,
+      properties: { bonds: session.removed_bonds },
+    }
+    expect(bond_lengths(removed)).toEqual([1.6])
+    expect(host.bonds).toEqual([
+      { site_idx_1: 2, site_idx_2: 3, order: 1, cell_shift: [2, 0, 0] },
+    ])
+    expect(bond_lengths(session.base_structure)).toEqual([13.2])
+    // a new series drops them
+    flush_set(host, { series_key: `other`, structure: frame(0.99, 0.02) })
+    expect([session.has_bond_edits, host.bonds]).toEqual([false, undefined])
+    // clearing them forgets their frame, so edits written without push_bond_undo name none:
+    // the next frame drops them instead of throwing mid-update
+    expect(Reflect.get(session, `bond_edit_frame`)).toBeUndefined()
+    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    flush_set(host, { structure: frame(0.01, 0.98) })
+    expect(session.has_bond_edits).toBe(false)
+  })
+
   // an undone bond edit hands the source back out as the session's own set; an atom delete or
   // undo rewriting it must keep it recognizable, or the next file draws the previous one's bonds
   it.each([`delete`, `undo`] as const)(

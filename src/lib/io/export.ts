@@ -124,12 +124,13 @@ export async function wait_for_renderer(renderer: WebGPURenderer): Promise<void>
   await with_timeout(() => renderer.init(), device_timeout_ms, `GPU initialization`)
 }
 
-// Check before resizing: an oversized drawing buffer can invalidate the live viewer.
+// The capture's pixel size and the GPU's per-dimension texture limit, checked before resizing:
+// an oversized drawing buffer can invalidate the live viewer.
 function validate_capture_size(
   renderer: WebGPURenderer,
   size: Vector2,
   pixel_ratio: number,
-): void {
+): { width: number; height: number; max_dimension: number } {
   const width = Math.floor(size.width * pixel_ratio)
   const height = Math.floor(size.height * pixel_ratio)
   const context = renderer.getContext() as GPUCanvasContext | WebGL2RenderingContext
@@ -145,15 +146,25 @@ function validate_capture_size(
     throw new Error(
       `Export resolution ${width}×${height} exceeds this GPU's ${max_dimension}px limit per dimension. Select a lower resolution or resize the viewer.`,
     )
+  return { width, height, max_dimension }
 }
+
+// GPU PNG exports render at up to this multiple of their pixel size (as far as the GPU's
+// texture limit allows) and downscale, for edges smoother than MSAA alone gives
+export const PNG_SUPERSAMPLE = 2
+// Most pixels a supersampled render may hold (16 MP, ~64 MB at 4 bytes each, before the GPU's
+// own render targets): larger captures use the largest factor that fits, down to none
+export const PNG_SUPERSAMPLE_PIXELS = 16e6
 
 // PNG of a live canvas at `png_dpi` (72 DPI = one pixel per CSS pixel), independent of the
 // screen's devicePixelRatio. GPU canvases re-render their registered scene at that pixel ratio
-// (the drawing buffer is cleared after present, so even a same-size capture renders first);
-// plain 2D canvases encode as-is when their backing store already has the target size.
+// times `supersample` (the drawing buffer is cleared after present, so even a same-size
+// capture renders first); plain 2D canvases encode as-is when their backing store already has
+// the target size.
 export async function canvas_to_png_blob(
   canvas: HTMLCanvasElement,
   png_dpi = DEFAULT_PNG_DPI,
+  supersample = PNG_SUPERSAMPLE,
 ): Promise<Blob> {
   const scale = dpi_to_scale(png_dpi)
   // the DPI the scale realizes, after dpi_to_scale's clamping
@@ -174,8 +185,9 @@ export async function canvas_to_png_blob(
     )
   }
 
-  const [{ Vector2 }] = await Promise.all([
+  const [{ Vector2 }, { depth_cues, render_scene }] = await Promise.all([
     import('three/webgpu'),
+    import('#lib/scene/lighting'),
     wait_for_renderer(renderer),
   ])
   await scene_registry.get(canvas)?.ready?.()
@@ -184,15 +196,43 @@ export async function canvas_to_png_blob(
     const view = scene_registry.get(canvas)
     const orig_pixel_ratio = renderer.getPixelRatio()
     const orig_size = renderer.getSize(new Vector2())
-    const resize = Math.abs(scale - orig_pixel_ratio) > 1e-6
-    validate_capture_size(renderer, orig_size, scale)
+    const { width, height, max_dimension } = validate_capture_size(renderer, orig_size, scale)
+    const fits = Math.floor(max_dimension / Math.max(width, height))
+    const fits_budget = Math.floor(Math.sqrt(PNG_SUPERSAMPLE_PIXELS / (width * height)))
+    const factor = clamp(Math.min(fits, fits_budget), 1, supersample)
+    const render_ratio = scale * factor
+    const resize = Math.abs(render_ratio - orig_pixel_ratio) > 1e-6
+    // On a transparent PNG a depth cue would fade toward the page color and leave faded parts
+    // grey, so such captures render without it; opaque ones keep it
+    const transparent = !view?.scene.background && renderer.getClearAlpha() < 1
+    const cue = view && transparent ? depth_cues.get(view.scene) : undefined
     try {
-      if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
-      if (view) renderer.render(view.scene, view.camera)
-      return await canvas_to_blob(canvas, export_dpi)
+      if (cue) cue.shown.value = 0
+      if (resize)
+        renderer.setDrawingBufferSize(orig_size.width, orig_size.height, render_ratio)
+      if (view) render_scene(renderer, view.scene, view.camera)
+      const rendered = await canvas_to_blob(canvas, export_dpi)
+      if (factor === 1) return rendered
+      // downscale the encoded render: drawing the GPU canvas itself into a 2D context reads
+      // back blank under software WebGPU (CI's SwiftShader), while its toBlob is reliable
+      const bitmap = await createImageBitmap(rendered)
+      return await paint_png_blob(
+        width,
+        height,
+        1,
+        (ctx) => {
+          ctx.imageSmoothingQuality = `high`
+          ctx.drawImage(bitmap, 0, 0, width, height)
+          bitmap.close()
+        },
+        export_dpi,
+      )
     } finally {
+      if (cue) cue.shown.value = 1
       if (resize)
         renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
+      // the canvas shows the capture frame (or a cleared buffer) until redrawn
+      if (view) render_scene(renderer, view.scene, view.camera)
     }
   } finally {
     release()
@@ -1029,10 +1069,12 @@ export async function render_video_frames(
     { Vector2, PerspectiveCamera, OrthographicCamera },
     { create_camera_flight_sampler },
     { set_pan_offset },
+    { render_scene },
   ] = await Promise.all([
     import('three/webgpu'),
     import('#lib/scene/camera-flight.js'),
     import('#lib/scene/pan.js'),
+    import('#lib/scene/lighting'),
   ])
   const sample = camera_flight && create_camera_flight_sampler(camera_flight)
   const renderer = renderer_registry.get(canvas)
@@ -1113,7 +1155,7 @@ export async function render_video_frames(
           export_camera.updateMatrixWorld()
         }
       }
-      if (renderer && view && export_camera) renderer.render(view.scene, export_camera)
+      if (renderer && view && export_camera) render_scene(renderer, view.scene, export_camera)
       context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
       if (background) {
         context.fillStyle = background
