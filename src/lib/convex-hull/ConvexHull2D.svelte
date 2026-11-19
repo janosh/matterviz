@@ -23,6 +23,7 @@
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, merge_hull_config } from './index'
   import type { Snippet } from 'svelte'
+  import { on } from 'svelte/events'
   import type { HullSelection, create_canvas_interactions } from './canvas-interactions.svelte'
   import type { ConvexHullEntry, HullOverlay } from './types'
 
@@ -175,25 +176,22 @@
     return idx === -1 ? null : { series_idx: 0, point_idx: idx }
   })
 
-  // ScatterPlot only reports clicks, so a second click on the same entry within 300 ms is
-  // the double-click that copies the entry
-  let last_clicked: { entry: ConvexHullEntry; time: number } | null = null
+  let first_entry: ConvexHullEntry | undefined
+  const start_click = (event: MouseEvent) => {
+    // An independent click starts a new gesture even if it misses every entry.
+    if (event.detail !== 2) first_entry = undefined
+  }
+  $effect(() => wrapper && on(wrapper, `click`, start_click, { capture: true }))
   function handle_point_click({
     metadata: entry,
     event,
   }: ScatterHandlerEvent<ConvexHullEntry>) {
     if (!entry) return
-    const now = Date.now()
-    if (
-      last_clicked &&
-      same_entry(last_clicked.entry, entry) &&
-      now - last_clicked.time < 300
-    ) {
-      last_clicked = null
+    if (event.detail === 2 && same_entry(first_entry, entry)) {
       void selection.copy_entry_data(entry, { x: event.clientX, y: event.clientY })
       return
     }
-    last_clicked = { entry, time: now }
+    if (event.detail === 1) first_entry = entry
     selection.select_entry(entry)
     if (selection.modal_open) event.stopPropagation()
   }
@@ -304,8 +302,8 @@ fit the axes' tick labels and titles -->
   {user_content}
   selected_point={selected_scatter_point}
   on_point_click={handle_point_click}
-  on_empty_click={({ x: fraction }) => {
-    if (fraction >= 0 && fraction <= 1) selection.set_probe([1 - fraction, fraction])
+  on_empty_click={({ x: fraction, event }) => {
+    if (fraction >= 0 && fraction <= 1) selection.set_probe([1 - fraction, fraction], event)
   }}
   on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) =>
     selection.set_hover(

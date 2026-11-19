@@ -207,10 +207,22 @@
     enable_structure_preview: () => enable_structure_preview,
     allow_file_drop: () => allow_file_drop,
     on_point_click: () => on_point_click,
-    set_probe: (fractions) => {
+    set_probe: (fractions, event) => {
+      if (event.detail === 2) return
+      const previous = probe_composition
       const { elements } = hull_data.model
       probe_composition = Object.fromEntries(
         elements.map((element, idx) => [element, fractions[idx]]),
+      )
+      const clicked = probe_composition
+      // Only the very next click can complete this double-click. Capture it even if it
+      // hits a marker and never reaches set_probe. Preserve any intervening host edit.
+      wrapper?.addEventListener(
+        `click`,
+        (next) => {
+          if (next.detail === 2 && probe_composition === clicked) probe_composition = previous
+        },
+        { capture: true, once: true },
       )
     },
     on_point_hover: () => on_point_hover,
