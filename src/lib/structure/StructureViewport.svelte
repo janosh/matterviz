@@ -1,6 +1,6 @@
 <script lang="ts">
   // A single subcanvas (one Threlte <Canvas> + <StructureScene>) used by Structure.svelte
-  // for both the regular single view and each pane of the 2x2 multi-side view.
+  // for both the regular single view and each pane of the multi-view grid.
   //
   // Each viewport owns its camera: move tracking and reset (on reset_token). The primary pane (index 0) additionally binds out
   // scene/camera for the export pane and receives the on_camera_move/on_camera_reset
@@ -11,7 +11,11 @@
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { CameraProjection } from '#lib/settings.js'
-  import type { AnyStructure, StructureHandlerData } from '#lib/structure/index.js'
+  import type {
+    AnyStructure,
+    StructureHandlerData,
+    StructureView,
+  } from '#lib/structure/index.js'
   import type { DisplacementSummary } from '#lib/structure/measure.js'
   import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
   import { Canvas } from '@threlte/core'
@@ -106,6 +110,7 @@
     series_key = undefined,
     reference_structure = undefined,
     scene_props = {},
+    view_scene_props,
     scene_overrides = {},
     frame_scene_props = {},
     gizmo = false,
@@ -154,6 +159,7 @@
     series_key?: unknown
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
+    view_scene_props?: StructureView[`scene_props`]
     // a host's own overrides of scene_props, kept apart so changing one marks only the scene
     // props it feeds (see Structure's shared_viewport_props). Unset keys fall back to scene_props.
     scene_overrides?: Partial<Pick<ComponentProps<typeof StructureScene>, OverrideKey>>
@@ -515,6 +521,7 @@
         would re-run every structure-reading derived whenever a host replaces the settings -->
       <StructureScene
         {...scene_props}
+        {...view_scene_props}
         {structure}
         base_structure={session.base_structure}
         to_base_site_idx={session.to_base_site_idx}

@@ -7,21 +7,19 @@ export type StubHandle = {
   write: (key: string, value: unknown) => void
 }
 
-let current: StubHandle | null = null
+const handles: StubHandle[] = []
 
 export const register_stub = (handle: StubHandle): void => {
-  current = handle
+  handles.push(handle)
 }
 
-// Clear the registry before each render so a renderer that fails to mount the stub
-// makes latest_stub() throw rather than return a stale handle from a prior test.
 export const reset_stub = (): void => {
-  current = null
+  handles.length = 0
 }
 
-// Control surface of the most recently mounted stub, for the test to read the
-// props a renderer passed in and drive $bindable writeback by key.
-export const latest_stub = (): StubHandle => {
-  if (!current) throw new Error(`no reactive-renderer-stub mounted yet`)
-  return current
+// Defaults to the last renderer mounted. Pages with multiple viewers can select one by index.
+export const renderer_stub = (idx = -1): StubHandle => {
+  const handle = handles.at(idx)
+  if (!handle) throw new Error(`No renderer at index ${idx} among ${handles.length} mounted`)
+  return handle
 }

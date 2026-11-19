@@ -21,6 +21,7 @@ import type {
   StructureBond,
   StructureHandlerData,
   StructurePane,
+  StructureView,
 } from '#lib/structure/index.js'
 import { get_element_counts } from '#lib/structure/density.js'
 import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
@@ -89,11 +90,14 @@ vi.mock(`@threlte/core`, async (import_original) => ({
     props.children(anchor),
 }))
 const scene_stub = vi.hoisted(() => ({
-  props: undefined as ComponentProps<typeof StructureScene> | undefined,
+  all: [] as ComponentProps<typeof StructureScene>[],
+  get props() {
+    return this.all.at(-1)
+  },
 }))
 vi.mock(`#lib/structure/StructureScene.svelte`, () => ({
   default: (_anchor: Node, props: NonNullable<typeof scene_stub.props>) => {
-    scene_stub.props = props
+    scene_stub.all.push(props)
     props.camera = new OrthographicCamera()
     return {}
   },
@@ -130,7 +134,7 @@ const mount_settled = async (props: StructureProps) => {
   return analysis
 }
 afterEach(() => {
-  scene_stub.props = undefined
+  scene_stub.all = []
   for (const component of mounted.splice(0)) void unmount(component)
   structure_host_tool.component = original_host_component
   vi.useRealTimers()
@@ -2595,12 +2599,17 @@ test(`discovers new vector keys within one structure series`, async () => {
 
 // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
 // setting it from the parent requests/exits fullscreen like the button does
-test(`preserves control chrome overrides and toggles bind:fullscreen`, async () => {
+test(`preserves control chrome overrides and fits the requested grid in portrait fullscreen`, async () => {
+  mock_gpu()
+  mock_viewer_size(390, 844)
   const on_fullscreen_change = vi.fn()
   vi.spyOn(console, `error`).mockImplementation(() => undefined)
   const props = $state({ fullscreen: false })
   const chrome = { style: `--ctrl-btn-icon-size: 32px`, show_controls: `always` as const }
-  mount_structure(bind_props({ structure, ...chrome, on_fullscreen_change }, props))
+  const views = Array.from({ length: 6 }, () => ({}))
+  mount_structure(
+    bind_props({ structure, multi_view: true, views, ...chrome, on_fullscreen_change }, props),
+  )
   const { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
     stub_fullscreen_api()
   request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
@@ -2624,13 +2633,18 @@ test(`preserves control chrome overrides and toggles bind:fullscreen`, async () 
   expect(
     doc_query(`.structure-site-layout`).style.getPropertyValue(`--ctrl-btn-icon-size`),
   ).toBe(`32px`)
+  expect(wrapper.classList.contains(`multi-view`)).toBe(true)
+  expect(
+    doc_query(`.viewport-stage.multi`).style.getPropertyValue(`--struct-grid-columns`),
+  ).toBe(`2`)
   expect(props.fullscreen).toBe(true)
   expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
   props.fullscreen = false
   await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
   await set_fullscreen_element(null)
   expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
-  expect([props.fullscreen, wrapper.classList.contains(`fullscreen`)]).toEqual([false, false])
+  expect(props.fullscreen).toBe(false)
+  expect(wrapper.matches(`.fullscreen, .multi-view`)).toBe(false)
   expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: false })
   expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
 })
@@ -2949,27 +2963,75 @@ test(`toggle button is hidden when 'multi-view' control is in hidden list`, asyn
   expect(document.querySelector(`button[aria-label^="View layout:"]`)).toBeNull()
 })
 
-// Panes need 300x200 px each with a 2 px gap: 602x402 for the default 4 views (2 rows),
-// 602x604 for 6 views (3 rows)
+// Inline panes need 300×200 px plus a 2 px gap. Fullscreen fits the entire grid.
 test.each([
-  [`below width`, 601, 402, 4, false],
-  [`below height`, 602, 401, 4, false],
-  [`at boundary`, 602, 402, 4, true],
-  [`three rows below`, 602, 603, 6, false],
-  [`three rows at boundary`, 602, 604, 6, true],
+  [299, 1210, 6, 1, false],
+  [300, 1210, 6, 1, true],
+  [601, 402, 4, 1, false],
+  [602, 401, 4, 2, false],
+  [602, 402, 4, 2, true],
+  [602, 200, 2, 2, true],
+  [903, 604, 6, 2, true],
+  [904, 402, 6, 3, true],
+  [904, 603, 7, 3, false],
+  [904, 604, 7, 3, true],
 ] as const)(
-  `responsive multi-view availability: %s`,
-  async (_scenario, client_width, client_height, view_count, expected_active) => {
+  `%d×%d viewer, %d views: %d columns, grid active=%s`,
+  async (client_width, client_height, count, columns, active) => {
+    mock_gpu()
     mock_viewer_size(client_width, client_height)
-    const views = Array.from({ length: view_count }, () => ({}))
+    const views = Array.from({ length: count }, () => ({}))
     await mount_settled({ structure, multi_view: true, show_controls: `always`, views })
-    await tick()
-    expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
-      expected_active,
+    expect(Boolean(document.querySelector(`button[aria-label^="View layout:"]`))).toBe(active)
+    const stage = doc_query(`.viewport-stage`)
+    expect(stage.querySelectorAll(`.viewport-cell`)).toHaveLength(active ? count : 1)
+    expect(stage.style.getPropertyValue(`--struct-grid-columns`)).toBe(
+      active ? `${columns}` : ``,
     )
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(expected_active)
   },
 )
+
+test(`per-pane settings inherit viewer defaults, respect hidden volumes and survive collapse`, async () => {
+  mock_gpu()
+  mock_viewer_size(602, 200)
+  const density = live_volume(`density`, 1)
+  const layers = [{ ...auto_volume_layer(density), opacity: 0.4 }]
+  const views: StructureView[] = [
+    {
+      scene_props: { depth_cue: 0 },
+      isosurface_settings: { surface_finish: `unlit`, layers },
+    },
+    { isosurface_settings: { wireframe: true } },
+  ]
+  const tool = await mount_host_structure({
+    structure,
+    multi_view: true,
+    views,
+    scene_props: { depth_cue: 0.5, bond_thickness: 0.3 },
+  })
+  flushSync(() => tool.on_overlay({ transient: true, volumes: [density] }))
+  const [first, second] = scene_stub.all
+  expect(first).toMatchObject({
+    depth_cue: 0,
+    bond_thickness: 0.3,
+    isosurface_settings: { surface_finish: `unlit`, layers },
+  })
+  expect(second).toMatchObject({
+    depth_cue: 0.5,
+    bond_thickness: 0.3,
+    isosurface_settings: { surface_finish: `satin`, wireframe: true },
+  })
+  expect(second.isosurface_settings?.layers[0].opacity).toBe(
+    auto_volume_layer(density).opacity,
+  )
+  flushSync(() => tool.set_overlay_visible(false))
+  expect(first.isosurface_settings?.layers).toEqual([])
+  mock_viewer_size(390, 300)
+  trigger_resize_observer(doc_query(`.structure`))
+  await tick()
+  expect(document.querySelectorAll(`.viewport-cell`)).toHaveLength(1)
+  expect(first.depth_cue).toBe(0)
+})
 
 test(`collapsed multi-view preference can be cleared with its keyboard shortcut`, async () => {
   mock_viewer_size(599, 399)

@@ -7,7 +7,7 @@
     merge_site_properties,
     site_count,
   } from './site'
-  // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
+  // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/multi-view viewport
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '#lib/colors/index.js'
   import { rgb } from 'd3-color'
@@ -148,14 +148,10 @@
   type StructureLayoutMode = `single` | `multi` | `slice` | `split`
 
   // Each multi-view pane needs room for orbit controls, labels and atom picking
-  const MULTI_VIEW_COLUMNS = 2
   const MULTI_VIEW_MIN_PANE = { width: 300, height: 200, gap: 2 }
-  const MULTI_VIEW_MIN_WIDTH =
-    MULTI_VIEW_COLUMNS * MULTI_VIEW_MIN_PANE.width +
-    (MULTI_VIEW_COLUMNS - 1) * MULTI_VIEW_MIN_PANE.gap
   const STRUCTURE_LAYOUTS = {
     single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
-    multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
+    multi: { mode: `multi`, icon: Grid2x2, label: `3D multi-view grid` },
     slice: { mode: `slice`, icon: HeatmapMatrix, label: `2D cross-section` },
     split: { mode: `split`, icon: TwoColumns, label: `3D + 2D cross-section` },
   } as const
@@ -275,9 +271,9 @@
     scene_props?: StructureSettings
     // The one floating pane that is open
     active_pane?: StructurePane | null
-    // Ovito-style 2x2 grid; collapses to one pane while the viewer is too small for it
+    // Ovito-style grid of `views`; collapses to one pane while the viewer is too small for it
     multi_view?: boolean
-    // Pane definitions for multi_view (one perspective + three orthographic axis views by default)
+    // Panes of multi_view (default: 2x2 of one perspective + three orthographic axis views)
     views?: StructureView[]
     // Offer the measure-mode control (distances, angles, dihedrals, bond and atom editing).
     enable_measure_mode?: boolean
@@ -648,19 +644,20 @@
       ? `Finite and partially periodic prediction density is shown only in the input cell. Set supercell scaling to 1x1x1.`
       : `Prediction density is hidden in standardized cells. Select the original cell to align it with the atoms.`
   })
-  const display_isosurface_settings = $derived(
-    hidden_volume_ids.size > 0
+  const pane_isosurfaces = (overrides?: Partial<IsosurfaceSettings>): IsosurfaceSettings => {
+    const settings = overrides ? { ...isosurface_settings, ...overrides } : isosurface_settings
+    return hidden_volume_ids.size > 0
       ? {
-          ...isosurface_settings,
-          layers: isosurface_settings.layers.filter(
+          ...settings,
+          layers: settings.layers.filter(
             (layer) =>
               !hidden_volume_ids.has(layer.volume_id) &&
               (layer.color_volume_id === undefined ||
                 !hidden_volume_ids.has(layer.color_volume_id)),
           ),
         }
-      : isosurface_settings,
-  )
+      : settings
+  }
   // The active configuration lives in atom_color_config; retain only its hidden counterpart.
   let inactive_tool_color: AtomColorConfig | null = null
   const set_tool_overlay_visible = (visible: boolean): void => {
@@ -989,12 +986,23 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls))
-  let multi_view_min_height = $derived.by(() => {
-    const rows = Math.ceil(views.length / MULTI_VIEW_COLUMNS)
-    return rows * MULTI_VIEW_MIN_PANE.height + Math.max(0, rows - 1) * MULTI_VIEW_MIN_PANE.gap
+  // Fit as many columns as the inline viewer can hold. Fullscreen fits every pane,
+  // transposing the preferred grid on a portrait display.
+  let grid_columns = $derived.by(() => {
+    const count = Math.max(1, views.length)
+    const preferred = Math.ceil(Math.sqrt(count))
+    if (fullscreen) return width < height ? Math.ceil(count / preferred) : preferred
+    const { width: pane_width, gap } = MULTI_VIEW_MIN_PANE
+    return Math.max(1, Math.min(preferred, Math.floor((width + gap) / (pane_width + gap))))
   })
+  let grid_rows = $derived(Math.ceil(views.length / grid_columns))
+  let min_grid_height = $derived(
+    grid_rows * (MULTI_VIEW_MIN_PANE.height + MULTI_VIEW_MIN_PANE.gap) -
+      MULTI_VIEW_MIN_PANE.gap,
+  )
   let multi_view_available = $derived(
-    views.length > 1 && width >= MULTI_VIEW_MIN_WIDTH && height >= multi_view_min_height,
+    views.length > 1 &&
+      (fullscreen || (width >= MULTI_VIEW_MIN_PANE.width && height >= min_grid_height)),
   )
   // The caller's preference survives while a small viewer temporarily collapses the grid
   let is_multi_view_active = $derived(
@@ -1023,7 +1031,7 @@
     views.length < 2
       ? `Configure at least two views to enable multi-view`
       : !multi_view_available
-        ? `Requires at least ${MULTI_VIEW_MIN_WIDTH}×${multi_view_min_height} px. Enlarge the viewer or use fullscreen.`
+        ? `Each pane needs ${MULTI_VIEW_MIN_PANE.width}×${MULTI_VIEW_MIN_PANE.height} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
   let hovered = $state(false)
@@ -1080,7 +1088,9 @@
   const viewport_states: NonNullable<
     ComponentProps<typeof StructureViewport>[`view_state`]
   >[] = []
-  const pane_props = (pane_idx: number) => ({
+  const pane_props = (pane_idx: number, view: StructureView) => ({
+    label: is_multi_view_active ? view.label : undefined,
+    view_scene_props: view.scene_props,
     view_state: (viewport_states[pane_idx] ??= {
       get_pose_key: () =>
         pane_idx === 0 ? JSON.stringify([camera_position, camera_target]) : ``,
@@ -1106,7 +1116,6 @@
     scene_props,
     gizmo: scene_props.gizmo,
     volumetric_data,
-    isosurface_settings: display_isosurface_settings,
   })
   // The viewer's own overrides of scene settings, read through getters for the same reason:
   // a cutaway or opacity slider marks only the scene props it feeds
@@ -1730,10 +1739,11 @@
       reporting camera changes through on_camera_move/reset. -->
           {#snippet primary_viewport(view: StructureView)}
             <StructureViewport
-              {...pane_props(0)}
+              {...pane_props(0, view)}
               {on_camera_move}
               {on_camera_reset}
               {...shared_viewport_props}
+              isosurface_settings={pane_isosurfaces(view.isosurface_settings)}
               {scene_overrides}
               {frame_scene_props}
               active_sites={active_scene_sites}
@@ -1755,9 +1765,9 @@
 
           {#snippet extra_viewport(view: StructureView, pane_idx: number)}
             <StructureViewport
-              {...pane_props(pane_idx)}
-              label={view.label}
+              {...pane_props(pane_idx, view)}
               {...shared_viewport_props}
+              isosurface_settings={pane_isosurfaces(view.isosurface_settings)}
               {scene_overrides}
               {frame_scene_props}
               active_sites={active_scene_sites}
@@ -1783,10 +1793,13 @@
             <div
               class="viewport-stage"
               class:multi={is_multi_view_active}
+              style:--struct-grid-columns={is_multi_view_active ? grid_columns : undefined}
               class:split={display_mode === `split`}
             >
               {#if has_3d_view}
-                {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
+                {@render primary_viewport(
+                  multi_view && display_mode === `structure` ? (views[0] ?? {}) : {},
+                )}
                 {#if is_multi_view_active}
                   {#each views.slice(1) as view, idx (idx)}
                     {@render extra_viewport(view, idx + 1)}
@@ -1957,19 +1970,17 @@
     height: 100%;
     width: 100%;
   }
-  /* Two-column grid of the multi-side views or of the 3D scene beside the 2D cross-section
-    (stacked when the viewer is taller than wide). Implicit rows divide the available height
-    equally, including when a custom `views` array changes the number of panes. */
+  /* Each row shares the available height; the split cross-section stacks in portrait. */
   .viewport-stage.multi,
   .viewport-stage.split {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-auto-rows: 1fr;
+    grid-template-columns: repeat(var(--struct-grid-columns, 2), minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
     gap: var(--struct-viewport-gap);
   }
   @container (aspect-ratio < 1) {
     .viewport-stage.split {
-      grid-template-columns: 1fr;
+      --struct-grid-columns: 1;
     }
   }
   /* keep the atom legend on the 3D half instead of over the cross-section */

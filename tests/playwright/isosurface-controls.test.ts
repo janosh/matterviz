@@ -39,6 +39,48 @@ async function drag_from(page: Page, locator: Locator, delta_x: number, delta_y:
   await page.mouse.up()
 }
 
+for (const { width, height, columns, fullscreen_columns } of [
+  { width: 1600, height: 900, columns: 3, fullscreen_columns: 3 },
+  { width: 390, height: 844, columns: 1, fullscreen_columns: 2 },
+]) {
+  test(`render-mode gallery at ${width}px keeps all six panes inline and fullscreen`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height })
+    let volume_requests = 0
+    page.on(`request`, (request) => {
+      if (request.url().endsWith(`/caffeine-LUMO.cube.gz`)) volume_requests++
+    })
+    await wait_for_isosurface(page)
+    if (width === 1600) {
+      // The main viewer carries the page's 1400px width cap directly.
+      const main_viewer = page.locator(`.structure.bleed-1400`)
+      const fullscreen_button = main_viewer.locator(`.fullscreen-btn`)
+      await fullscreen_button.click()
+      await expect.poll(() => main_viewer.boundingBox()).toEqual({ x: 0, y: 0, width, height })
+      await fullscreen_button.click()
+    }
+    const gallery = page.getByRole(`region`, { name: `Caffeine LUMO render modes` })
+    await gallery.scrollIntoViewIfNeeded()
+    const viewer = gallery.getByRole(`application`, { name: `Structure viewer` })
+    const stage = viewer.locator(`.viewport-stage.multi`)
+    const column_count = () =>
+      stage.evaluate(
+        (element) => getComputedStyle(element).gridTemplateColumns.split(` `).length,
+      )
+    await expect(stage.locator(`canvas`)).toHaveCount(6, { timeout: EXPECT_TIMEOUT })
+    await expect.poll(column_count).toBe(columns)
+    await viewer.locator(`.fullscreen-btn`).click()
+    await expect(gallery.locator(`:fullscreen`)).toBeVisible()
+    await expect.poll(column_count).toBe(fullscreen_columns)
+    await expect(stage.locator(`canvas`)).toHaveCount(6)
+    expect(
+      await viewer.evaluate((element) => [element.clientWidth, element.clientHeight]),
+    ).toEqual([width, height])
+    expect(volume_requests).toBe(1)
+  })
+}
+
 test.describe(`Isosurface page`, () => {
   test.describe.configure({ mode: `serial` })
 

@@ -8,7 +8,7 @@ import { inline_workers, widget_scope } from '../../extensions/anywidget/vite.co
 import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
-import { latest_stub, reset_stub } from './reactive-renderer-registry'
+import { renderer_stub, reset_stub } from './reactive-renderer-registry'
 import { library_prop_docs } from './setup'
 
 const component_name = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
@@ -95,7 +95,7 @@ const run_widget = (widget_type: string, model: MockModel) => {
   document.body.append(element)
   mount_spec(as_model(model), element, WIDGETS[widget_type])
   flushSync() // settle the initial writeback effects (all no-ops)
-  return latest_stub()
+  return renderer_stub()
 }
 
 // Seed a unique sentinel for every drive dep so each prop computes to a distinct value
