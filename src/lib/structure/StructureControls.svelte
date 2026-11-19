@@ -516,6 +516,7 @@
   const lighting_rows = [
     row(`directional_light`, `Directional light`, 0.01),
     row(`ambient_light`, `Ambient light`, 0.05),
+    row(`depth_cue`, `Depth cue`, 0.05),
   ]
   const displacement_rows: Row[] = [
     row(`show_displacement_arrows`, `Show arrows`),

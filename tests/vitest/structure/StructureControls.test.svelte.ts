@@ -443,7 +443,7 @@ describe(`StructureControls schema rows`, () => {
       `camera_projection`, `auto_rotate`, `zoom_to_cursor`, `multi_view`, `rotation`, `zone_axis`,
       `rotate_speed`, `zoom_speed`, `pan_speed`, `rotation_damping`,
       // Scene
-      `background_color`, `background_opacity`, `directional_light`, `ambient_light`,
+      `background_color`, `background_opacity`, `directional_light`, `ambient_light`, `depth_cue`,
       // Overlays
       `show_displacement_arrows`, `displacement_arrow_scale`, `displacement_arrow_color`,
       `show_trajectory_lines`, `trajectory_line_elements`, `trajectory_line_trail_frames`, `trajectory_line_frame_stride`, `trajectory_line_color_mode`, `trajectory_line_wrap_mode`,

@@ -9,7 +9,6 @@
   import type { ElementSymbol } from '#lib/element/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
-  import { FIGURE_PRESETS } from '#lib/isosurface/figure-presets.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { CameraProjection } from '#lib/settings.js'
   import type { AnyStructure, StructureHandlerData } from '#lib/structure/index.js'
@@ -27,7 +26,7 @@
     responsive_gizmo_size,
   } from '#lib/scene/index.js'
   import { scope_orbit_link } from '#lib/scene/orbit-link.svelte.js'
-  import { type Camera, NoToneMapping, OrthographicCamera, type Scene } from 'three/webgpu'
+  import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'
   import StructureScene from './StructureScene.svelte'
@@ -490,11 +489,6 @@
     clearTimeout(remount_timer)
     clearTimeout(recovery_reset_timer)
   })
-  const figure = $derived(
-    (isosurface_settings?.figure_preset &&
-      FIGURE_PRESETS[isosurface_settings.figure_preset]?.lighting) ??
-      scene_props.figure,
-  )
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -516,16 +510,11 @@
     </div>
   {/if}
   {#key canvas_remount_token}
-    <Canvas
-      createRenderer={create_viewport_renderer}
-      shadows={false}
-      toneMapping={figure?.tone_mapping === 'none' ? NoToneMapping : undefined}
-    >
+    <Canvas createRenderer={create_viewport_renderer} shadows={false}>
       <!-- Props after the spread resolve without reading scene_props: the structure before it
         would re-run every structure-reading derived whenever a host replaces the settings -->
       <StructureScene
         {...scene_props}
-        {figure}
         {structure}
         base_structure={session.base_structure}
         to_base_site_idx={session.to_base_site_idx}

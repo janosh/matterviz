@@ -2,7 +2,13 @@
 import type { Vec3 } from '#lib/math.js'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
-import { BufferAttribute, BufferGeometry, Line2NodeMaterial } from 'three/webgpu'
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Line2NodeMaterial,
+  Sphere,
+  Vector3,
+} from 'three/webgpu'
 
 // Indexed triangle mesh sharing (not copying) flat xyz positions and index triples, with given
 // or computed normals (marching cubes, Fermi sheets). Null when nothing is drawable.
@@ -19,6 +25,32 @@ export function indexed_mesh_geometry(
   else geometry.computeVertexNormals()
   geometry.computeBoundingSphere()
   return geometry
+}
+
+// One view per index range of `geometry` (offsets[k] to offsets[k + 1]) through setDrawRange,
+// sharing its attribute map (so attributes added later, e.g. vertex colors, reach every view)
+// and index buffer, with its own bounds (center xyz, radius per range in `spheres`) so Three
+// depth-sorts the ranges for the current camera. Views are disposed with `geometry`.
+export function draw_range_views(
+  geometry: BufferGeometry,
+  { offsets, spheres }: { offsets: Uint32Array; spheres: Float32Array },
+): BufferGeometry[] {
+  const views = Array.from({ length: offsets.length - 1 }, (_, range_idx) => {
+    const view = new BufferGeometry()
+    view.attributes = geometry.attributes
+    view.index = geometry.index
+    view.setDrawRange(offsets[range_idx], offsets[range_idx + 1] - offsets[range_idx])
+    const [x_center, y_center, z_center, radius] = spheres.subarray(
+      4 * range_idx,
+      4 * range_idx + 4,
+    )
+    view.boundingSphere = new Sphere(new Vector3(x_center, y_center, z_center), radius)
+    return view
+  })
+  geometry.addEventListener(`dispose`, () => {
+    for (const view of views) view.dispose()
+  })
+  return views
 }
 
 // Non-indexed geometry from flat xyz positions (triangle soup for meshes, vertex pairs for

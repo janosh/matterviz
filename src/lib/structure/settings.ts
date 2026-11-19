@@ -26,7 +26,6 @@ export type StructureSettings = Pick<
   | `camera_target`
   | `camera_direction`
   | `camera_up`
-  | `figure`
   | `bonding_options`
   | `lattice_planes`
   | `symmetry_elements`

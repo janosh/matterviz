@@ -9,7 +9,6 @@ export { flatten_grid, grid_dimensions, scalar_grid_strides } from './grid'
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from './grid'
 
 export * from './coloring'
-export * from './figure-presets'
 export * from './binary'
 export * from './context'
 export * from './parse'

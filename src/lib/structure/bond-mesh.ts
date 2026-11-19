@@ -6,7 +6,13 @@ import {
   transformNormalToView,
   vec3,
 } from 'three/tsl'
-import type { Intersection, Material, NodeMaterial, Node, Raycaster } from 'three/webgpu'
+import type {
+  Intersection,
+  Material,
+  MeshBasicNodeMaterial,
+  Node,
+  Raycaster,
+} from 'three/webgpu'
 import {
   BufferGeometry,
   CylinderGeometry,
@@ -265,7 +271,10 @@ export function raycast_bond(
   }
 }
 
-export function set_bond_placement(material: NodeMaterial, thickness: Node<`float`>): void {
+export function set_bond_placement(
+  material: MeshBasicNodeMaterial,
+  thickness: Node<`float`>,
+): void {
   const center = attribute<`vec3`>(`bondCenter`, `vec3`)
   const delta = attribute<`vec3`>(`bondDelta`, `vec3`)
   const size = attribute<`vec3`>(`bondSize`, `vec3`)

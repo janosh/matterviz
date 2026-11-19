@@ -8,7 +8,7 @@
   import { IDENTITY_3X3 } from '../math'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
-  import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
+  import { draw_range_views, indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
@@ -29,8 +29,6 @@
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
   import SurfaceMaterial from './SurfaceMaterial.svelte'
-  import { sync_shell_colors, transparent_shells } from './transparent-shells'
-  import { FIGURE_PRESETS } from './figure-presets'
 
   let {
     volumes = [],
@@ -59,10 +57,6 @@
   // In-place geometry/colour updates bypass the <T> props Threlte watches, so on-demand
   // rendering needs an explicit invalidate to repaint
   const threlte = useThrelte()
-  const appearance = $derived(
-    (settings.figure_preset && FIGURE_PRESETS[settings.figure_preset]?.appearance) ??
-      settings.appearance,
-  )
 
   type ResolvedLayer = IsosurfaceLayer & { volume: VolumetricData }
   const volume_by_id = $derived(index_volumes(volumes))
@@ -122,12 +116,12 @@
       geometry.getIndex()?.array.byteLength ?? 0,
     )
 
-  // Indexed BufferGeometry from marching-cubes output (null for empty surfaces); normals
-  // are computed here on the main thread rather than in the worker
+  // Indexed BufferGeometry from marching-cubes output and its field-gradient normals (null
+  // for empty surfaces)
   const build_geometry = (
     positions: Float32Array,
     indices: Uint32Array,
-    normals?: Float32Array,
+    normals: Float32Array,
   ): BufferGeometry | null =>
     time_stage(
       `build_geometry`,
@@ -143,6 +137,8 @@
     layer_idx: number
     sign: 1 | -1
     geometry: BufferGeometry
+    // draw-range views of its disconnected lobes (empty for one lobe or too many)
+    lobes: BufferGeometry[]
     render_order: number
     // Cached per-vertex scalars from the color-source volume, so colormap and
     // color-range changes only remap through the LUT without resampling
@@ -200,14 +196,19 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
+  // A translucent mirrored pair gives every lobe of both signs one sort priority, so Three
+  // orders them back to front for the current camera. Every surface is split into lobes
+  // (a few ms for a 2x2x2 tiled 64^3 orbital), so opacity never re-meshes it.
+  const sorts_lobes = (layer: ResolvedLayer): boolean =>
+    layer.opacity < 1 && layer.show_negative && layer.isovalue !== 0
+
   // window_key covers halo and supercell, so the geometry identity needs no other inputs
-  const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
+  const geometry_key = (layer: ResolvedLayer, sign: 1 | -1) =>
     value_key([
-      volume_id,
-      vol_id(volume),
-      sign * isovalue,
-      window_key(volume),
-      Boolean(appearance),
+      layer.volume_id,
+      vol_id(layer.volume),
+      sign * layer.isovalue,
+      window_key(layer.volume),
     ])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
@@ -219,7 +220,6 @@
   const geometry_jobs = (pending: PendingSurface[]): GeometryInput[`volumes`] =>
     [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
       ...prepared_grid(vol),
-      gradient_normals: Boolean(appearance),
       surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
     }))
 
@@ -234,8 +234,8 @@
   function ingest_geometry_result(
     response: GeometryResult,
     worker: boolean,
-  ): Map<string, BufferGeometry> {
-    const geometries = new Map<string, BufferGeometry>()
+  ): Map<string, Pick<MeshEntry, `geometry` | `lobes`>> {
+    const geometries = new Map<string, Pick<MeshEntry, `geometry` | `lobes`>>()
     for (const surface_result of response.surfaces) {
       record_stage(`marching_cubes`, surface_result.marching_cubes_ms, {
         worker,
@@ -246,7 +246,12 @@
         surface_result.indices,
         surface_result.normals,
       )
-      if (geometry) geometries.set(surface_result.token, geometry)
+      if (geometry) {
+        const lobes = surface_result.lobes
+          ? draw_range_views(geometry, surface_result.lobes)
+          : []
+        geometries.set(surface_result.token, { geometry, lobes })
+      }
     }
     return geometries
   }
@@ -290,7 +295,7 @@
       }
     }
 
-    let geometries = new Map<string, BufferGeometry>()
+    let geometries = new Map<string, Pick<MeshEntry, `geometry` | `lobes`>>()
     const jobs = geometry_jobs(pending)
     if (use_geometry_worker(jobs)) {
       const abort = new AbortController()
@@ -318,7 +323,7 @@
     }
 
     if (generation !== rebuild_generation) {
-      for (const geometry of geometries.values()) geometry.dispose()
+      for (const { geometry } of geometries.values()) geometry.dispose()
       return
     }
     // Render outer shells first so back/front passes interleave roughly back-to-front,
@@ -330,8 +335,8 @@
     const entries = plans
       .flatMap((plan): MeshEntry[] => {
         if (`geometry` in plan) return [plan]
-        const geometry = geometries.get(plan.key)
-        if (!geometry) return []
+        const built = geometries.get(plan.key)
+        if (!built) return []
         const { key, geo_key, layer_idx, sign } = plan
         return [
           {
@@ -339,7 +344,7 @@
             geo_key,
             layer_idx,
             sign,
-            geometry,
+            ...built,
             render_order: 0,
             scalars: null,
             scalars_volume_id: null,
@@ -466,10 +471,7 @@
       const layer = layers[entry.layer_idx]
       const color_vol = color_vol_of(layer)
       if (!layer || !color_vol) {
-        if (entry.geometry.getAttribute(`color`)) {
-          entry.geometry.deleteAttribute(`color`)
-          sync_shell_colors(entry.geometry)
-        }
+        if (entry.geometry.getAttribute(`color`)) entry.geometry.deleteAttribute(`color`)
         entry.scalars = null
         entry.scalars_volume_id = null
         entry.color_key = null
@@ -525,7 +527,6 @@
       const color_key = to_key([entry.scalars_volume_id, options])
       if (color_key !== entry.color_key) {
         time_stage(`apply_colormap`, () => set_vertex_colors(entry.geometry, scalars, options))
-        sync_shell_colors(entry.geometry)
         entry.color_key = color_key
       }
       colored_keys.add(entry.key)
@@ -582,42 +583,36 @@
           />
         </T.Mesh>
       {:else}
-        {@const sort_lobes = transparent && layer.show_negative && layer.isovalue !== 0}
-        {@const shell_order = sort_lobes
-          ? active_entries.find((other) => other.layer_idx === entry.layer_idx)!.render_order
-          : entry.render_order}
-        <!-- Both signs share one sort priority. Three sorts their individual bounds
-          back-to-front for the current camera, with the back-face mesh first at a tie. -->
-        {#each sort_lobes ? transparent_shells(entry.geometry) : [entry.geometry] as geometry (geometry)}
-          {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
-            <T.Mesh
-              {geometry}
-              renderOrder={sort_lobes ? shell_order : entry.render_order + pass_idx}
-              frustumCulled={false}
-            >
-              {#if appearance}
-                <SurfaceMaterial
-                  {appearance}
-                  {color}
-                  {opacity}
-                  {side}
-                  vertex_colors={vertex_colored}
-                  bounds={entry.geometry.boundingSphere}
+        <!-- Transparent surfaces render back then front faces in two passes for correct
+          blending; opaque ones need a single double-sided pass. A mirrored transparent pair
+          gives every lobe of both signs one sort priority, so Three orders them back to
+          front by their own bounds for the current camera (back-face pass first at a tie, as
+          its meshes are created first). Each pass's material is shared by its lobes. -->
+        {@const sort_lobes = sorts_lobes(layer)}
+        {@const layer_order = Math.min(
+          ...active_entries
+            .filter((other) => other.layer_idx === entry.layer_idx)
+            .map((other) => other.render_order),
+        )}
+        {#each transparent ? [BackSide, FrontSide] : [DoubleSide] as side, pass_idx (side)}
+          <SurfaceMaterial
+            finish={settings.surface_finish}
+            {color}
+            {opacity}
+            {side}
+            vertex_colors={vertex_colored}
+          >
+            {#snippet children(material)}
+              {#each sort_lobes && entry.lobes.length ? entry.lobes : [entry.geometry] as geometry (geometry)}
+                <T.Mesh
+                  {geometry}
+                  {material}
+                  renderOrder={sort_lobes ? layer_order : entry.render_order + pass_idx}
+                  frustumCulled={false}
                 />
-              {:else}
-                <T.MeshStandardMaterial
-                  {color}
-                  vertexColors={vertex_colored}
-                  {transparent}
-                  {opacity}
-                  {side}
-                  depthWrite={!transparent}
-                  metalness={0.1}
-                  roughness={0.6}
-                />
-              {/if}
-            </T.Mesh>
-          {/each}
+              {/each}
+            {/snippet}
+          </SurfaceMaterial>
         {/each}
       {/if}
     {/key}

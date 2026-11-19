@@ -1,11 +1,11 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import { format_num } from 'svelte-widgets/format'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import type { FigurePresetId } from './figure-presets'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { zero_if_negligible } from '#lib/labels.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { is_finite_matrix3x3, is_finite_vec3 } from '#lib/math.js'
+import { DEFAULTS, type SurfaceFinish } from '#lib/settings.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { flatten_grid, type ScalarGrid3D } from './grid'
 
@@ -185,28 +185,12 @@ export interface IsosurfaceLayer {
 export interface IsosurfaceSettings {
   layers: IsosurfaceLayer[]
   wireframe: boolean
-  appearance?: SurfaceAppearance
-  figure_preset?: FigurePresetId
+  surface_finish: SurfaceFinish // material finish shared by every layer
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
   // VESTA-style fractional range per lattice axis for periodic volumes, e.g. [[-0.15, 2.15],
   // [-0.15, 2.15], [0, 1]] repeats surfaces and clips them exactly there. Unset follows the
   // structure's integer supercell; independent of the atom supercell and cell outline.
   display_range?: [Vec2, Vec2, Vec2]
-}
-
-export interface SurfaceAppearance {
-  material?: 'matte' | 'glossy' | 'pbr' | 'unlit'
-  roughness?: number
-  metalness?: number
-  specular?: number
-  shininess?: number
-  saturation?: number
-  outline?: number
-  outline_width?: number
-  angle_opacity?: boolean
-  inner_share?: number
-  depth_fade?: number
-  flat_shading?: boolean
 }
 
 // Categorical palette for auto-coloring isosurface layers (Tailwind-inspired)
@@ -247,6 +231,7 @@ export const MAX_GRID_POINTS = 500_000
 export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   layers: [],
   wireframe: false,
+  surface_finish: DEFAULTS.isosurface.surface_finish,
   halo: 0,
 }
 

@@ -544,6 +544,13 @@
           "minimum": 0,
           "maximum": 4
         },
+        "matterviz.structure.depth_cue": {
+          "type": "number",
+          "default": 0,
+          "description": "Depth cueing: fade distant parts of the structure toward the background (0 = off, 1 = farthest point fully faded)",
+          "minimum": 0,
+          "maximum": 1
+        },
         "matterviz.structure.vector_configs": {
           "type": "object",
           "default": {},

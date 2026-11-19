@@ -25,7 +25,7 @@ import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
 type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
-// One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
+// One leaf of the settings schema. `web_only` settings (fullscreen toggles, isosurface finish) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf
 // whose `value` is a plain object is a free-form map (JSON-schema `object`); `additionalProperties`
 // names its value type (string unless set).
@@ -98,6 +98,8 @@ const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   description: `Show fullscreen toggle button (where the page may fullscreen an element)`,
   web_only: true,
 })
+
+export type SurfaceFinish = 'satin' | 'translucent_shell' | 'chalk' | 'unlit'
 
 const VECTOR_COLOR_MODES = [
   `auto`,
@@ -576,6 +578,12 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 0,
       maximum: 4,
     },
+    depth_cue: bounded_setting(
+      0,
+      `Depth cueing: fade distant parts of the structure toward the background (0 = off, 1 = farthest point fully faded)`,
+      0,
+      1,
+    ),
 
     // Site Vectors (force, magmom, spin) & Lattice
     vector_configs: typed_setting<Record<string, VectorLayerConfig>>({
@@ -684,6 +692,21 @@ export const SETTINGS_CONFIG = define_settings({
     cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
     cell_edge_width: bounded_setting(1.5, `Width of cell edge lines`, 0.5, 5.0),
     fullscreen_toggle: fullscreen_toggle_setting(),
+  },
+
+  // Isosurface (volumetric data) settings
+  isosurface: {
+    surface_finish: typed_setting<SurfaceFinish>({
+      value: `satin`,
+      description: `Isosurface material. satin: lit, saturated surfaces whose translucent layers take the translucent_shell look so overlapping lobes stay distinct and atoms inside readable; colormapped surfaces shade only toward their silhouette so colors match the legend. translucent_shell: glossy shells with darkened rims, whose faces fade toward the viewer. chalk: matte diffuse. unlit: flat colors.`,
+      enum: {
+        satin: `Satin`,
+        translucent_shell: `Translucent shell`,
+        chalk: `Chalk`,
+        unlit: `Unlit`,
+      },
+      web_only: true, // the VS Code webview has no way to set it yet
+    }),
   },
 
   // Brillouin zone viewer settings

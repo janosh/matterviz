@@ -18,8 +18,9 @@ import {
 import { canvas_painters } from '#lib/plot/core/utils.js'
 import { download } from 'svelte-widgets/browser'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
-import { Vector2, PerspectiveCamera } from 'three/webgpu'
+import { Color, Vector2, PerspectiveCamera } from 'three/webgpu'
 import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
+import { create_depth_cue, depth_cues } from '#lib/scene/lighting'
 import { crc32 } from 'node:zlib'
 import {
   afterEach,
@@ -86,6 +87,7 @@ function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => 
     init: vi.fn().mockResolvedValue(undefined),
     render: vi.fn(),
     getPixelRatio: vi.fn().mockReturnValue(1),
+    getClearAlpha: vi.fn().mockReturnValue(0),
     setDrawingBufferSize: vi.fn(),
     getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
     getContext: vi.fn().mockReturnValue({
@@ -356,8 +358,12 @@ describe(`canvas_to_png_blob`, () => {
       const view = { scene: {} as Scene, camera: {} as Camera }
       scene_registry.set(canvas, view)
       await canvas_to_png_blob(canvas, dpi)
-      // the drawing buffer is cleared after present, so even same-size captures re-render
-      expect(renderer.render).toHaveBeenCalledExactlyOnceWith(view.scene, view.camera)
+      // the drawing buffer is cleared after present, so even same-size captures re-render,
+      // then render again so the viewer never keeps showing the capture frame
+      expect(renderer.render.mock.calls).toEqual([
+        [view.scene, view.camera],
+        [view.scene, view.camera],
+      ])
       expect(renderer.setDrawingBufferSize.mock.calls).toEqual(
         resize
           ? [
@@ -366,6 +372,27 @@ describe(`canvas_to_png_blob`, () => {
             ]
           : [],
       )
+    },
+  )
+
+  test.each([
+    [`transparent`, 0, null, 0],
+    [`opaque clear color`, 1, null, 0.3],
+    [`scene background`, 0, new Color(`white`), 0.3],
+  ])(
+    `a %s capture draws the 0.3 depth cue (clear alpha %s, background %s) at %s, then redraws`,
+    async (_desc, clear_alpha, background, captured) => {
+      const { canvas, renderer } = make_canvas_with_renderer()
+      renderer.getClearAlpha.mockReturnValue(clear_alpha)
+      const cue = create_depth_cue()
+      cue.strength.value = 0.3
+      const scene = { background } as unknown as Scene
+      depth_cues.set(scene, cue)
+      scene_registry.set(canvas, { scene, camera: {} as Camera })
+      const strengths: number[] = []
+      renderer.render.mockImplementation(() => void strengths.push(cue.strength.value))
+      await canvas_to_png_blob(canvas, 72)
+      expect([strengths, cue.strength.value]).toEqual([[captured, 0.3], 0.3])
     },
   )
 
@@ -430,7 +457,10 @@ describe(`canvas_to_png_blob`, () => {
       if (outcome === `resolves`) {
         ready.resolve(undefined)
         await capture
-        expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera)
+        expect(renderer.render.mock.calls).toEqual([
+          [scene, camera],
+          [scene, camera],
+        ])
       } else {
         ready.reject(new Error(`viewer unmounted`))
         await expect(capture).rejects.toThrow(`viewer unmounted`)

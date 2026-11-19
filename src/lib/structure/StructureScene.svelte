@@ -1,6 +1,4 @@
 <script lang="ts">
-  import FigureLights from '#lib/scene/FigureLights.svelte'
-  import type { FigureLighting } from '#lib/isosurface/figure-presets.js'
   import { numeric_sites, get_site, site_count } from './site'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
@@ -215,8 +213,8 @@
     fov = DEFAULTS.structure.fov,
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
-    figure,
     directional_light = DEFAULTS.structure.directional_light,
+    depth_cue = DEFAULTS.structure.depth_cue,
     sphere_segments = DEFAULTS.structure.sphere_segments,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
     cell_surface_color = DEFAULTS.structure.cell_surface_color,
@@ -295,6 +293,7 @@
     trajectory_lines_emphasis = false,
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
+    depth_cue?: number // 0-1 fade of the far side of the structure toward the background
     structure?: AnyStructure
     render_token?: unknown
     on_rendered?: (token: unknown) => void
@@ -303,7 +302,6 @@
     // ignores unit_cell_idx from a supercell built outside the viewer
     to_base_site_idx?: (site: Site, site_idx: number) => number
     atom_radius?: number // scale factor for atomic radii
-    figure?: FigureLighting
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
     show_thermal_ellipsoids?: boolean // sites with CIF ADPs as true-size thermal ellipsoids
     ellipsoid_probability?: number // probability each ellipsoid encloses
@@ -912,6 +910,18 @@
       view_dir: world_to_content_dir(view_dir, DEFAULT_CAMERA_VIEW),
       view_up: world_to_content_dir(camera_up, [0, 1, 0]),
     }).spans
+  // Depth cue fades over the atoms alone: a cube file's molecule sits mid-box, so fading over
+  // the cell would wash it out uniformly. Gated on cue_on, so dragging the strength never
+  // rebuilds the points
+  const cue_on = $derived(depth_cue > 0)
+  let depth_points = $derived.by(() => {
+    if (!cue_on || !structure) return undefined
+    const { sites } = structure
+    const points = new Float64Array(3 * sites.length)
+    for (let idx = 0; idx < sites.length; idx++)
+      points.set(content_to_world(sites[idx].xyz), 3 * idx)
+    return points
+  })
   // The structure the zoom was last fitted to (initially the mounted one), re-measured by the
   // follow below along wherever the camera looks
   let framed_structure = untrack(() => structure)
@@ -1618,14 +1628,13 @@
   bind:orbit_controls
 />
 
-{#if figure}
-  <FigureLights
-    rig={figure}
-    frame={{ center: content_to_world(fit_frame.center), extent: fit_frame.extent }}
-  />
-{:else}
-  <SceneLights ambient={ambient_light} directional={directional_light} />
-{/if}
+<SceneLights
+  ambient={ambient_light}
+  directional={directional_light}
+  camera_space
+  {depth_cue}
+  {depth_points}
+/>
 
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>
@@ -1648,7 +1657,6 @@
         {bond_thickness}
         {bonds_capped}
         {ambient_light}
-        {figure}
         {directional_light}
         {polyhedra}
         {polyhedra_color_mode}

@@ -20,7 +20,9 @@
     format_data_value,
     Structure,
   } from 'matterviz'
+  import type { SurfaceFinish } from '#lib/settings.js'
   import { onMount } from 'svelte'
+  import { in_view } from 'svelte-widgets/attachments'
   import { to_error } from 'svelte-widgets/utils'
 
   let structure = $state<AnyStructure | undefined>()
@@ -113,6 +115,39 @@
     return is_current()
   }
 
+  // Render-mode gallery: one caffeine LUMO volume shared by every cell, each a GPU context
+  // mounted only once scrolled into view
+  const gallery_cells: { finish: SurfaceFinish; depth_cue: number }[] = [
+    ...([`satin`, `translucent_shell`, `chalk`, `unlit`] as const).map((finish) => ({
+      finish,
+      depth_cue: 0,
+    })),
+    { finish: `translucent_shell`, depth_cue: 0.3 },
+    { finish: `satin`, depth_cue: 0.3 },
+  ]
+  let gallery = $state.raw<{ structure: AnyStructure; volumes: VolumetricData[] }>()
+  let gallery_seen = $state(gallery_cells.map(() => false))
+  const gallery_url = volumetric_files.find(
+    (file) => file.name === `caffeine-LUMO.cube.gz`,
+  )?.url
+  const load_gallery = async (url: string) => {
+    const opened = await open_material(url)
+    if (opened.type === `isosurface`) {
+      const { structure: gallery_structure, volumes } = opened.data
+      gallery = { structure: gallery_structure as AnyStructure, volumes }
+    }
+    opened.dispose()
+  }
+  const gallery_settings = (volumes: VolumetricData[], surface_finish: SurfaceFinish) => {
+    const auto = auto_isosurface_settings(volumes[0])
+    const opacity = surface_finish === `translucent_shell` ? 0.5 : 1
+    return {
+      ...auto,
+      surface_finish,
+      layers: auto.layers.map((layer) => ({ ...layer, opacity })),
+    }
+  }
+
   // The active-file guard makes the initial pre-load effect a no-op.
   $effect(update_url)
 
@@ -159,13 +194,6 @@
   next to the 3D view with its plane marked in the scene. To render several volumes at once and
   color one surface by another volume's values (e.g. density by ESP), see the
   <a href="/structure/multi-volume">multi-volume demo</a>.
-</p>
-<p>
-  Open <em>Isosurface → Figure preset</em> to apply a surface finish and matching lights to the
-  surface, atoms and bonds. Each preset sets an initial opacity for visible layers. You can
-  adjust the layers individually afterward. Programmatic callers can pass
-  <code>apply_figure_preset(settings, 'translucent-shell')</code> to
-  <code>isosurface_settings</code>.
 </p>
 
 <FilePicker
@@ -219,7 +247,54 @@
   </div>
 {/if}
 
+<h2>Render modes</h2>
+<div
+  class="render-modes"
+  {@attach in_view(
+    (visible) => visible && !gallery && gallery_url && load_gallery(gallery_url),
+  )}
+>
+  {#each gallery_cells as { finish, depth_cue }, idx (idx)}
+    <figure {@attach in_view((visible) => visible && (gallery_seen[idx] = true))}>
+      {#if gallery && gallery_seen[idx]}
+        <Structure
+          structure={gallery.structure}
+          volumetric_data={gallery.volumes}
+          isosurface_settings={gallery_settings(gallery.volumes, finish)}
+          scene_props={{ depth_cue }}
+          show_controls="never"
+          style="flex: 1; min-height: 0"
+        />
+      {/if}
+      <figcaption>
+        <code>{finish}{depth_cue ? `, depth_cue: ${depth_cue}` : ``}</code>
+      </figcaption>
+    </figure>
+  {/each}
+</div>
+
 <style>
+  .render-modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1em;
+    margin-block: 1em;
+    --struct-min-width: 0;
+    figure {
+      margin: 0;
+      height: 260px;
+      display: flex;
+      flex-direction: column;
+    }
+    figcaption {
+      text-align: center;
+    }
+  }
+  @media (max-width: 700px) {
+    .render-modes {
+      grid-template-columns: 1fr;
+    }
+  }
   h1 {
     margin-bottom: 0.5em;
   }

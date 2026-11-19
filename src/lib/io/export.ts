@@ -174,8 +174,9 @@ export async function canvas_to_png_blob(
     )
   }
 
-  const [{ Vector2 }] = await Promise.all([
+  const [{ Vector2 }, { depth_cues }] = await Promise.all([
     import('three/webgpu'),
+    import('#lib/scene/lighting'),
     wait_for_renderer(renderer),
   ])
   await scene_registry.get(canvas)?.ready?.()
@@ -186,13 +187,22 @@ export async function canvas_to_png_blob(
     const orig_size = renderer.getSize(new Vector2())
     const resize = Math.abs(scale - orig_pixel_ratio) > 1e-6
     validate_capture_size(renderer, orig_size, scale)
+    // On a transparent PNG a depth cue would fade toward the page color and leave faded parts
+    // grey, so such captures render without it; opaque ones keep it
+    const transparent = !view?.scene.background && renderer.getClearAlpha() < 1
+    const cue = view && transparent ? depth_cues.get(view.scene) : undefined
+    const cue_strength = cue?.strength.value ?? 0
     try {
+      if (cue) cue.strength.value = 0
       if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
       if (view) renderer.render(view.scene, view.camera)
       return await canvas_to_blob(canvas, export_dpi)
     } finally {
+      if (cue) cue.strength.value = cue_strength
       if (resize)
         renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
+      // the canvas shows the capture frame (or a cleared buffer) until redrawn
+      if (view) renderer.render(view.scene, view.camera)
     }
   } finally {
     release()
