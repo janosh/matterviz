@@ -105,10 +105,8 @@ function tile_and_clip(
   const inverse = inverse_3x3(lattice) // Cartesian gradient = A⁻¹ · fractional gradient
   // unit vertices' Cartesian offsets, frame fractions and normals (the same in every copy)
   const unit = new Float64Array(STRIDE * n_verts)
-  const [frac, grad]: Vec3[] = [
-    [0, 0, 0],
-    [0, 0, 0],
-  ]
+  const frac: Vec3 = [0, 0, 0]
+  const grad: Vec3 = [0, 0, 0]
   for (let vert = 0; vert < n_verts; vert++) {
     for (let col = 0; col < 3; col++) {
       frac[col] = fracs[3 * vert + col]
@@ -387,10 +385,8 @@ export function split_lobes(
   // Bounding box per lobe, then its circumscribed sphere (as Box3.getBoundingSphere)
   const spheres = new Float32Array(4 * counts.length)
   for (let lobe = 0; lobe < counts.length; lobe++) {
-    const [low, high] = [
-      [Infinity, Infinity, Infinity],
-      [-Infinity, -Infinity, -Infinity],
-    ]
+    const low = [Infinity, Infinity, Infinity]
+    const high = [-Infinity, -Infinity, -Infinity]
     for (let idx = offsets[lobe]; idx < offsets[lobe + 1]; idx++) {
       for (let axis = 0; axis < 3; axis++) {
         const coord = positions[3 * indices[idx] + axis]

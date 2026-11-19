@@ -130,20 +130,25 @@
   const gallery_url = volumetric_files.find(
     (file) => file.name === `caffeine-LUMO.cube.gz`,
   )?.url
-  // `loading` keeps repeated in-view callbacks from starting a second load; a failure shows
-  // its error with a retry instead of six silently empty cells
-  let gallery_status = $state<{ loading: boolean; error?: string }>({ loading: false })
-  const load_gallery = async (url: string) => {
-    gallery_status = { loading: true }
+  // `gallery_loading` keeps repeated in-view callbacks from starting a second load; a failure
+  // shows its error with a retry instead of six silently empty cells
+  let gallery_error = $state<string>()
+  let gallery_loading = false
+  const load_gallery = async () => {
+    if (!gallery_url || gallery_loading) return
+    gallery_loading = true
+    gallery_error = undefined
     try {
-      const opened = await open_material(url)
+      const opened = await open_material(gallery_url)
       opened.dispose()
-      if (opened.type !== `isosurface`) throw new Error(`${url} holds no volumetric data`)
+      if (opened.type !== `isosurface`)
+        throw new Error(`${gallery_url} holds no volumetric data`)
       const { structure: gallery_structure, volumes } = opened.data
       gallery = { structure: gallery_structure as AnyStructure, volumes }
-      gallery_status = { loading: false }
     } catch (error) {
-      gallery_status = { loading: false, error: String(error) }
+      gallery_error = String(error)
+    } finally {
+      gallery_loading = false
     }
   }
   const gallery_settings = (volumes: VolumetricData[], surface_finish: SurfaceFinish) => {
@@ -258,20 +263,12 @@
 <h2>Render modes</h2>
 <div
   class="render-modes"
-  {@attach in_view(
-    (visible) =>
-      visible &&
-      !gallery &&
-      !gallery_status.loading &&
-      !gallery_status.error &&
-      gallery_url &&
-      load_gallery(gallery_url),
-  )}
+  {@attach in_view((visible) => visible && !gallery && !gallery_error && load_gallery())}
 >
-  {#if gallery_status.error && gallery_url}
+  {#if gallery_error}
     <p class="error">
-      Could not load the gallery volume: {gallery_status.error}
-      <button onclick={() => gallery_url && load_gallery(gallery_url)}>Retry</button>
+      Could not load the gallery volume: {gallery_error}
+      <button onclick={load_gallery}>Retry</button>
     </p>
   {/if}
   {#each gallery_cells as { finish, depth_cue }, idx (idx)}

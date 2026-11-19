@@ -124,7 +124,15 @@ export async function wait_for_renderer(renderer: WebGPURenderer): Promise<void>
   await with_timeout(() => renderer.init(), device_timeout_ms, `GPU initialization`)
 }
 
-const max_texture_dimension = (renderer: WebGPURenderer): number => {
+// The capture's pixel size and the GPU's per-dimension texture limit, checked before resizing:
+// an oversized drawing buffer can invalidate the live viewer.
+function validate_capture_size(
+  renderer: WebGPURenderer,
+  size: Vector2,
+  pixel_ratio: number,
+): { width: number; height: number; max_dimension: number } {
+  const width = Math.floor(size.width * pixel_ratio)
+  const height = Math.floor(size.height * pixel_ratio)
   const context = renderer.getContext() as GPUCanvasContext | WebGL2RenderingContext
   const max_dimension =
     `getConfiguration` in context
@@ -134,22 +142,11 @@ const max_texture_dimension = (renderer: WebGPURenderer): number => {
           context.getParameter(context.MAX_RENDERBUFFER_SIZE),
         )
   if (!max_dimension) throw new Error(`GPU canvas is not configured for export`)
-  return max_dimension
-}
-
-// Check before resizing: an oversized drawing buffer can invalidate the live viewer.
-function validate_capture_size(
-  renderer: WebGPURenderer,
-  size: Vector2,
-  pixel_ratio: number,
-): void {
-  const width = Math.floor(size.width * pixel_ratio)
-  const height = Math.floor(size.height * pixel_ratio)
-  const max_dimension = max_texture_dimension(renderer)
   if (width > max_dimension || height > max_dimension)
     throw new Error(
       `Export resolution ${width}×${height} exceeds this GPU's ${max_dimension}px limit per dimension. Select a lower resolution or resize the viewer.`,
     )
+  return { width, height, max_dimension }
 }
 
 // GPU PNG exports render at up to this multiple of their pixel size (as far as the GPU's
@@ -199,11 +196,8 @@ export async function canvas_to_png_blob(
     const view = scene_registry.get(canvas)
     const orig_pixel_ratio = renderer.getPixelRatio()
     const orig_size = renderer.getSize(new Vector2())
-    validate_capture_size(renderer, orig_size, scale)
-    const [width, height] = [orig_size.width, orig_size.height].map((side) =>
-      Math.floor(side * scale),
-    )
-    const fits = Math.floor(max_texture_dimension(renderer) / Math.max(width, height))
+    const { width, height, max_dimension } = validate_capture_size(renderer, orig_size, scale)
+    const fits = Math.floor(max_dimension / Math.max(width, height))
     const fits_budget = Math.floor(Math.sqrt(PNG_SUPERSAMPLE_PIXELS / (width * height)))
     const factor = clamp(Math.min(fits, fits_budget), 1, supersample)
     const render_ratio = scale * factor

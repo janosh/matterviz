@@ -196,21 +196,11 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // A translucent mirrored pair gives every lobe of both signs one sort priority, so Three
-  // orders them back to front for the current camera. Every surface is split into lobes
-  // (a few ms for a 2x2x2 tiled 64^3 orbital), so opacity never re-meshes it.
-  const sorts_lobes = (layer: ResolvedLayer): boolean =>
-    layer.opacity < 1 && layer.show_negative && layer.isovalue !== 0
-
   // window_key covers halo and supercell, so the geometry identity needs no other inputs
-  const geometry_key = (layer: ResolvedLayer, sign: 1 | -1) =>
-    value_key([
-      layer.volume_id,
-      vol_id(layer.volume),
-      sign * layer.isovalue,
-      window_key(layer.volume),
-    ])
+  const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
+    value_key([volume_id, vol_id(volume), sign * isovalue, window_key(volume)])
 
+  type BuiltSurface = Pick<MeshEntry, `geometry` | `lobes`>
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
     volume: VolumetricData
@@ -234,24 +224,26 @@
   function ingest_geometry_result(
     response: GeometryResult,
     worker: boolean,
-  ): Map<string, Pick<MeshEntry, `geometry` | `lobes`>> {
-    const geometries = new Map<string, Pick<MeshEntry, `geometry` | `lobes`>>()
-    for (const surface_result of response.surfaces) {
-      record_stage(`marching_cubes`, surface_result.marching_cubes_ms, {
+  ): Map<string, BuiltSurface> {
+    const geometries = new Map<string, BuiltSurface>()
+    for (const {
+      token,
+      positions,
+      indices,
+      normals,
+      lobes,
+      marching_cubes_ms,
+    } of response.surfaces) {
+      record_stage(`marching_cubes`, marching_cubes_ms, {
         worker,
-        vertices: surface_result.positions.length / 3,
+        vertices: positions.length / 3,
       })
-      const geometry = build_geometry(
-        surface_result.positions,
-        surface_result.indices,
-        surface_result.normals,
-      )
-      if (geometry) {
-        const lobes = surface_result.lobes
-          ? draw_range_views(geometry, surface_result.lobes)
-          : []
-        geometries.set(surface_result.token, { geometry, lobes })
-      }
+      const geometry = build_geometry(positions, indices, normals)
+      if (geometry)
+        geometries.set(token, {
+          geometry,
+          lobes: lobes ? draw_range_views(geometry, lobes) : [],
+        })
     }
     return geometries
   }
@@ -295,7 +287,7 @@
       }
     }
 
-    let geometries = new Map<string, Pick<MeshEntry, `geometry` | `lobes`>>()
+    let geometries = new Map<string, BuiltSurface>()
     const jobs = geometry_jobs(pending)
     if (use_geometry_worker(jobs)) {
       const abort = new AbortController()
@@ -587,8 +579,9 @@
           blending; opaque ones need a single double-sided pass. A mirrored transparent pair
           gives every lobe of both signs one sort priority, so Three orders them back to
           front by their own bounds for the current camera (back-face pass first at a tie, as
-          its meshes are created first). Each pass's material is shared by its lobes. -->
-        {@const sort_lobes = sorts_lobes(layer)}
+          its meshes are created first). Each pass's material is shared by its lobes. Every
+          surface is pre-split into lobes, so opacity changes never re-mesh it. -->
+        {@const sort_lobes = layer.opacity < 1 && layer.show_negative && layer.isovalue !== 0}
         {@const layer_order = Math.min(
           ...active_entries
             .filter((other) => other.layer_idx === entry.layer_idx)

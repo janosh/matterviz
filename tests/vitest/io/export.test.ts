@@ -379,10 +379,9 @@ describe(`canvas_to_png_blob`, () => {
       expect((await read_png(png)).dpi).toBeCloseTo(dpi, 1)
       // the drawing buffer is cleared after present, so even same-size captures re-render,
       // then render again so the viewer never keeps showing the capture frame
-      expect(renderer.render.mock.calls).toEqual([
-        [view.scene, view.camera],
-        [view.scene, view.camera],
-      ])
+      expect(renderer.render.mock.calls).toEqual(
+        Array.from({ length: 2 }, () => [view.scene, view.camera]),
+      )
       const resize = Math.abs(render_ratio - display_ratio) > 1e-6
       expect(renderer.setDrawingBufferSize.mock.calls).toEqual(
         resize
@@ -401,6 +400,15 @@ describe(`canvas_to_png_blob`, () => {
     },
   )
 
+  // a 0.3 depth cue on the scene registered for `canvas`
+  const register_depth_cue = (canvas: HTMLCanvasElement, background: Color | null) => {
+    const cue = create_depth_cue()
+    cue.strength.value = 0.3
+    const scene = { background } as unknown as Scene
+    depth_cues.set(scene, cue)
+    scene_registry.set(canvas, { scene, camera: {} as Camera })
+    return cue
+  }
   test.each([
     [`transparent`, 0, null, 0],
     [`opaque clear color`, 1, null, 0.3],
@@ -410,11 +418,7 @@ describe(`canvas_to_png_blob`, () => {
     async (_desc, clear_alpha, background, captured) => {
       const { canvas, renderer } = make_canvas_with_renderer()
       renderer.getClearAlpha.mockReturnValue(clear_alpha)
-      const cue = create_depth_cue()
-      cue.strength.value = 0.3
-      const scene = { background } as unknown as Scene
-      depth_cues.set(scene, cue)
-      scene_registry.set(canvas, { scene, camera: {} as Camera })
+      const cue = register_depth_cue(canvas, background)
       const strengths: number[] = []
       renderer.render.mockImplementation(
         () => void strengths.push(cue.strength.value * cue.shown.value),
@@ -429,11 +433,7 @@ describe(`canvas_to_png_blob`, () => {
     const { canvas } = make_canvas_with_renderer((callback) => {
       finish_encode = () => callback(png_blob())
     })
-    const cue = create_depth_cue()
-    cue.strength.value = 0.3
-    const scene = { background: null } as unknown as Scene
-    depth_cues.set(scene, cue)
-    scene_registry.set(canvas, { scene, camera: {} as Camera })
+    const cue = register_depth_cue(canvas, null)
     // one encode only: a supersampled capture would also encode its downscale
     const pending = canvas_to_png_blob(canvas, 72, 1)
     await vi.waitFor(() => expect(canvas.toBlob).toHaveBeenCalled())
@@ -504,10 +504,9 @@ describe(`canvas_to_png_blob`, () => {
       if (outcome === `resolves`) {
         ready.resolve(undefined)
         await capture
-        expect(renderer.render.mock.calls).toEqual([
-          [scene, camera],
-          [scene, camera],
-        ])
+        expect(renderer.render.mock.calls).toEqual(
+          Array.from({ length: 2 }, () => [scene, camera]),
+        )
       } else {
         ready.reject(new Error(`viewer unmounted`))
         await expect(capture).rejects.toThrow(`viewer unmounted`)

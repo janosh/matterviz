@@ -24,6 +24,9 @@ import {
 import { make_phase, png_blob } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
+// the bound probe_composition of a click-to-probe test
+type ProbeState = { probe_composition: Record<string, number> | null }
+
 beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
@@ -822,9 +825,7 @@ describe(`convex hull replacement state`, () => {
   test(`empty ternary canvas click probes the composition under the cursor`, async () => {
     const draw_edges = vi.spyOn(canvas_draw, `draw_dashed_edges`)
     const entries = [`Li`, `O`, `Na`].map((element) => make_phase({ [element]: 1 }))
-    const state: { probe_composition: Record<string, number> | null } = {
-      probe_composition: null,
-    }
+    const state: ProbeState = { probe_composition: null }
     const target = await mount_hull(bind_props({ entries }, state))
     await vi.waitFor(() => expect(draw_edges).toHaveBeenCalled())
     const project = draw_edges.mock.calls.at(-1)?.[2] as canvas_draw.ProjectPoint
@@ -1027,9 +1028,7 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
       { ...compound({ O: 1 }, `ref-o`, 0), e_form_per_atom: 0 },
       { ...compound({ Li: 1, O: 1 }, `lio`, 0), e_form_per_atom: -0.6 },
     ]
-    const state: { probe_composition: Record<string, number> | null } = {
-      probe_composition: null,
-    }
+    const state: ProbeState = { probe_composition: null }
     const plot = await mount_sized(ConvexHull, bind_props({ entries }, state), {
       selector: `.scatter`,
       on_mount: track_component,

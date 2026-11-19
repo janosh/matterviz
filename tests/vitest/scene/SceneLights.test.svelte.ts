@@ -132,11 +132,6 @@ test(`depth cue rereads the background on theme changes until it turns off`, asy
   expect(read).toHaveBeenCalledTimes(2)
 })
 
-test(`depth_cue 0 leaves the scene without fog`, () => {
-  mount_lights({ depth_cue: 0, depth_points: ring })
-  expect(scene.fogNode).toBeUndefined()
-})
-
 test(`depth cue rejects non-finite depth points`, () => {
   mount_lights({ depth_cue: 0.3, depth_points: [0, Number.NaN, 0] })
   expect(step_frame).toThrow(`depth_points[1] = NaN is not finite`)

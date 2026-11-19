@@ -328,18 +328,9 @@ describe(`split_lobes`, () => {
     [`more lobes than MAX_SORTED_LOBES`, MAX_SORTED_LOBES + 1],
   ])(`returns null and keeps the indices for %s`, (_desc, n_lobes) => {
     // n_lobes disjoint triangles along x, listed back to front
+    // oxfmt-ignore
     const positions = new Float32Array(
-      Array.from({ length: n_lobes }, (_, lobe) => [
-        lobe,
-        0,
-        0,
-        lobe,
-        1,
-        0,
-        lobe,
-        0,
-        1,
-      ]).flat(),
+      Array.from({ length: n_lobes }, (_, lobe) => [lobe, 0, 0, lobe, 1, 0, lobe, 0, 1]).flat(),
     )
     const indices = Uint32Array.from(
       { length: 3 * n_lobes },

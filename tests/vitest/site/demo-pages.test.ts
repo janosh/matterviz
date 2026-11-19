@@ -22,7 +22,6 @@ import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+pa
 import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
 import { quaternary_files } from '#site/convex-hull/index.js'
 import { volumetric_files } from '#site/isosurfaces.js'
-
 import { all_phase_diagram_files, binary_diagrams } from '#site/phase-diagrams.js'
 import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
 import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'

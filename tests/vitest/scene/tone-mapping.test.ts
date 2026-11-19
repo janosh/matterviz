@@ -19,21 +19,14 @@ const mul = (columns: Columns, vec: Vec3): Vec3 =>
   ) as Vec3
 const each = (vec: Vec3, fn: (val: number) => number): Vec3 => vec.map(fn) as Vec3
 const clamp01 = (val: number) => Math.min(Math.max(val, 0), 1)
-const contrast = (val: number) =>
-  15.5 * val ** 6 -
-  40.14 * val ** 5 +
-  31.96 * val ** 4 -
-  6.868 * val ** 3 +
-  0.4298 * val ** 2 +
-  0.1191 * val -
-  0.00232
-const slope = (val: number) =>
-  93 * val ** 5 -
-  200.7 * val ** 4 +
-  127.84 * val ** 3 -
-  20.604 * val ** 2 +
-  0.8596 * val +
-  0.1191
+// ascending-power polynomial by Horner's rule
+const poly = (coefs: number[], val: number) =>
+  coefs.reduceRight((acc, coef) => acc * val + coef, 0)
+// agxDefaultContrastApprox and its derivative
+const contrast_coefs = [-0.00232, 0.1191, 0.4298, -6.868, 31.96, -40.14, 15.5]
+const contrast = (val: number) => poly(contrast_coefs, val)
+const slope_coefs = contrast_coefs.slice(1).map((coef, power) => coef * (power + 1))
+const slope = (val: number) => poly(slope_coefs, val)
 // three's agxToneMapping (r187)
 const srgb_to_rec2020: Columns = [
   [0.6274, 0.0691, 0.0164],
@@ -77,7 +70,7 @@ const untone = (display: Vec3, exposure: number): Vec3 => {
     (val) => Math.max(val, 0) ** (1 / 2.2),
   )
   const stops = each(mul(inv_outset, power), (target) => {
-    let root = clamp01(UNTONE_GUESS.reduceRight((acc, coef) => acc * target + coef, 0))
+    let root = clamp01(poly(UNTONE_GUESS, target))
     for (let step = 0; step < UNTONE_NEWTON_STEPS; step++)
       root = clamp01(root - (contrast(root) - target) / slope(root))
     return root * (MAX_EV - MIN_EV) + MIN_EV
