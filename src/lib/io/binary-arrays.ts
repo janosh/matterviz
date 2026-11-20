@@ -119,3 +119,30 @@ export function checked_array(
   }
   return array
 }
+
+// A plot series whose numeric columns (x, y, color_values, size_values, ...) travel as binary
+// arrays: envelope kind `plot-series`, every array 1D and of one length, the remaining JSON
+// fields (label, markers, styles, ...) spread back onto the series
+export function series_from_binary(value: unknown): Record<string, unknown> {
+  const { arrays, fields } = decode_binary_envelope(value, `plot-series`)
+  const columns = Object.entries(arrays).map(([name, { values, shape }]) => {
+    if (shape.length !== 1) {
+      throw new TypeError(
+        `Binary plot-series array '${name}' must be 1D, got shape [${shape.join(`, `)}]`,
+      )
+    }
+    return [name, values] as const
+  })
+  const shadowed = columns.map(([name]) => name).filter((name) => Object.hasOwn(fields, name))
+  if (shadowed.length) {
+    throw new TypeError(
+      `Binary plot-series fields ${shadowed.join(`, `)} are sent both as arrays and as JSON`,
+    )
+  }
+  const lengths = new Set(columns.map(([, values]) => values.length))
+  if (lengths.size > 1) {
+    const sizes = columns.map(([name, values]) => `${name}=${values.length}`).join(`, `)
+    throw new RangeError(`Binary plot-series arrays must share one length, got ${sizes}`)
+  }
+  return { ...fields, ...Object.fromEntries(columns) }
+}

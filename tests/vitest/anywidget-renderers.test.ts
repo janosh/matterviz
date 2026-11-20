@@ -383,6 +383,32 @@ describe(`widget config wiring`, () => {
     expect(`cutaway` in props).toBe(false)
   })
 
+  // large series arrive as binary plot-series envelopes and reach the component as typed
+  // arrays next to their JSON series and fields; plain JSON series pass through unchanged
+  test.each([
+    `scatter_plot`,
+    `binned_scatter_plot`,
+    `bar_plot`,
+    `histogram`,
+    `box_plot`,
+    `scatter_plot_3d`,
+    `ternary_plot`,
+  ] as const)(`%s decodes binary series`, (widget_type) => {
+    const x = Float64Array.of(1, 2, 3)
+    const binary = {
+      format: `matterviz-binary-v1`,
+      kind: `plot-series`,
+      arrays: { x: { dtype: `float64`, shape: [3], data: new DataView(x.buffer) } },
+      label: `big`,
+    }
+    const json = { x: [0], y: [1], label: `small` }
+    const props = run_widget(
+      widget_type,
+      new MockModel({ widget_type, series: [binary, json] }),
+    ).read()
+    expect(props.series).toEqual([{ label: `big`, x }, json])
+  })
+
   // binned_scatter_plot has no settings pane, so no controls traits
   test.each([
     [

@@ -44,7 +44,7 @@ import {
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
-import { is_binary_envelope } from 'matterviz/io'
+import { is_binary_envelope, series_from_binary } from 'matterviz/io'
 import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
@@ -134,8 +134,21 @@ const merged_prop = (target: string, sub_key: string, source: string): DrivenPro
     merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
   )
 
+// Plot series as JSON, or (for large ones) binary `plot-series` envelopes whose numeric
+// columns arrive as typed arrays (readme)
+const series_prop = derived_prop(`series`, [`series`], (model) => {
+  const series = get_prop(model, `series`)
+  if (is_binary_envelope(series)) {
+    throw new TypeError(`series must be a list of series; wrap a binary plot-series in a list`)
+  }
+  return Array.isArray(series)
+    ? series.map((srs) => (is_binary_envelope(srs) ? series_from_binary(srs) : srs))
+    : series
+})
+
 const plot_common_drive: readonly DrivenProp[] = [
-  ...drive_props(`series display legend ref_lines padding range_padding`),
+  series_prop,
+  ...drive_props(`display legend ref_lines padding range_padding`),
   ...words(`x x2 y y2`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
 ]
 // Every plot component (the generic plots and the Bands/Dos/XrdPlot/RdfPlot wrappers alike)
@@ -421,14 +434,17 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   scatter_plot_3d: {
     component: ScatterPlot3D,
-    drive:
-      with_plot_controls(`series surfaces ref_lines ref_planes x_axis y_axis z_axis display
-      styles show_legend color_scale size_scale legend camera_projection point_tween`),
+    drive: [
+      series_prop,
+      ...with_plot_controls(`surfaces ref_lines ref_planes x_axis y_axis z_axis display styles
+        show_legend color_scale size_scale legend camera_projection point_tween`),
+    ],
   },
   binned_scatter_plot: {
     component: BinnedScatterPlot,
     drive: [
-      ...drive_props(`series size_scale density overlays padding range_padding title point_labels
+      series_prop,
+      ...drive_props(`size_scale density overlays padding range_padding title point_labels
         selected_point_id marginals annotation fullscreen_toggle`),
       // x_range/y_range fold into the axes like the other cartesian plots'
       ...words(`x y`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
@@ -589,7 +605,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   ternary_plot: {
     component: TernaryPlot,
     drive: [
-      ...with_plot_controls(`series labels grid_step show_grid show_ticks tick_format color_scale
+      series_prop,
+      ...with_plot_controls(`labels grid_step show_grid show_ticks tick_format color_scale
         padding legend show_legend fullscreen_toggle`),
       nullable_prop(`color_bar`),
     ],

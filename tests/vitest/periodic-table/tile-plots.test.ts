@@ -97,6 +97,13 @@ describe(`tile_plot_marks`, () => {
     expect(tile_plot_marks(...args).marks).toEqual(expected)
   })
 
+  test(`pre-binned counts draw the same bars and axes as binning the values`, () => {
+    const config = { bins: 4, x_range: [0, 4] as [number, number], log_y: true }
+    const from_values = tile_plot_marks({ Fe: { values: [0.5, 1.5, 1.5, 3.9] } }, config)
+    const from_counts = tile_plot_marks({ Fe: { counts: [1, 2, 0, 1] } }, config)
+    expect(from_counts).toEqual(from_values)
+  })
+
   test(`axes: shared x, per-tile histogram max shared by its overlaid series`, () => {
     const { marks, axes } = tile_plot_marks(
       {
@@ -241,6 +248,38 @@ describe(`tile_plot_marks`, () => {
       `use one kind per table`,
     ],
     [`more bins than grid columns`, [{ Fe: { values: [1] } }, { bins: 1001 }], `got 1001`],
+    [
+      `counts without an explicit x_range`,
+      [{ Fe: { counts: [1, 2] } }, { bins: 2, x_range: [0, null] }],
+      `need tile_plot_config.x_range [lo, hi]`,
+    ],
+    [
+      `counts not matching bins`,
+      [{ Fe: { counts: [1, 2] } }, { bins: 3, x_range: [0, 1] }],
+      `counts must have tile_plot_config.bins=3 entries, got 2`,
+    ],
+    ...(
+      [
+        [`negative`, -2],
+        [`infinite`, Infinity],
+        [`NaN`, NaN],
+        [`null`, null],
+      ] as const
+    ).map(([name, bad]): [string, Args, string] => [
+      `${name} counts`,
+      [{ Fe: { counts: [1, bad] as never } }, { bins: 2, x_range: [0, 1] }],
+      `counts must be finite and non-negative, got counts[1] = ${String(bad)}`,
+    ]),
+    [
+      `x/y next to counts`,
+      [{ Fe: { x: [1], y: [1], counts: [1] } }],
+      `each series needs { values }, { counts } or { x, y }`,
+    ],
+    [
+      `both values and counts`,
+      [{ Fe: { values: [1], counts: [1] } }],
+      `each series needs { values }, { counts } or { x, y }`,
+    ],
     [`null series in a list`, [{ Fe: [null] as never }], `got null`],
     [`x/y length mismatch`, [{ Fe: { x: [1, 2], y: [1] } }], `lengths differ (2,1,0)`],
     [`collapsed range`, [{ Fe: { values: [1] } }, { x_range: [2, 2] }], `lo < hi, got [2, 2]`],

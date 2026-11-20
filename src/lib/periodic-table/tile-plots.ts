@@ -12,6 +12,9 @@ type Range = readonly [number | null, number | null]
 // `color` overrides the series color (default: the tile's text color).
 export type TilePlotSeries =
   | { values: Numbers; color?: string }
+  // pre-binned histogram: one count per bin over the explicit x_range (e.g. binned in
+  // Python, so only counts cross the wire)
+  | { counts: Numbers; color?: string }
   | { x: Numbers; y: Numbers; color_values?: Numbers; color?: string }
 // One element's mini plot: a series or several (e.g. one line per dataset)
 export type TilePlotData = TilePlotSeries | readonly TilePlotSeries[]
@@ -47,7 +50,7 @@ export type TilePlotMarks = {
   ramp: Ramp | null // the shared color scale, null without one or without finite color data
 }
 
-type HistSeries = Extract<TilePlotSeries, { values: Numbers }>
+type HistSeries = Extract<TilePlotSeries, { values: Numbers } | { counts: Numbers }>
 type XySeries = Extract<TilePlotSeries, { x: Numbers }>
 type Entry<Series> = [ElementSymbol, Series]
 
@@ -60,13 +63,13 @@ const parse_series = (plots: Partial<Record<string, TilePlotData | null>>) => {
       throw new Error(`tile_plots keys must be element symbols, got ${symbol}`)
     for (const series of Array.isArray(data) ? data : [data]) {
       const keys = series == null ? [] : Object.keys(series)
-      if (keys.includes(`values`) && !keys.includes(`x`))
-        hists.push([symbol, series as HistSeries])
-      else if (keys.includes(`x`) && keys.includes(`y`) && !keys.includes(`values`))
+      const n_hist_keys = [`values`, `counts`].filter((key) => keys.includes(key)).length
+      if (n_hist_keys === 1 && !keys.includes(`x`)) hists.push([symbol, series as HistSeries])
+      else if (keys.includes(`x`) && keys.includes(`y`) && !n_hist_keys)
         xys.push([symbol, series as XySeries])
       else {
         throw new Error(
-          `tile_plots.${symbol}: each series needs { values } or { x, y }, got ${JSON.stringify(series)}`,
+          `tile_plots.${symbol}: each series needs { values }, { counts } or { x, y }, got ${JSON.stringify(series)}`,
         )
       }
     }
@@ -328,15 +331,39 @@ export function tile_plot_marks(
   const [marks, axes]: [TilePlotMarks[`marks`], TilePlotMarks[`axes`]] = [{}, {}]
 
   if (hists.length) {
+    // pre-binned counts carry no values to range over, so their bins need explicit edges
+    const prebinned = hists.some(([, srs]) => `counts` in srs)
+    if (prebinned && !(x_range?.[0] != null && x_range[1] != null)) {
+      throw new Error(`tile_plots with { counts } need tile_plot_config.x_range [lo, hi]`)
+    }
     const x = resolve_range(
       `x_range`,
       x_range,
-      hists.map(([, { values }]) => values),
+      hists.flatMap(([, srs]) => (`values` in srs ? [srs.values] : [])),
     )
+    const series_counts = ([symbol, srs]: Entry<HistSeries>): number[] => {
+      if (`values` in srs) return bin_counts(srs.values, x, bins)
+      const counts = Array.from(srs.counts)
+      if (counts.length !== bins) {
+        throw new Error(
+          `tile_plots.${symbol}: counts must have tile_plot_config.bins=${bins} entries, got ${counts.length}`,
+        )
+      }
+      // typeof also rejects null (which compares like 0) and numeric strings
+      const bad_idx = counts.findIndex(
+        (count) => typeof count !== `number` || !Number.isFinite(count) || count < 0,
+      )
+      if (bad_idx !== -1) {
+        throw new Error(
+          `tile_plots.${symbol}: counts must be finite and non-negative, got counts[${bad_idx}] = ${String(counts[bad_idx])}`,
+        )
+      }
+      return counts
+    }
     // a tile's series share its tallest bin, so overlaid histograms compare
     const tiles = [...Map.groupBy(hists, ([sym]) => sym)]
       .map(([symbol, entries]) => {
-        const counts = entries.map(([, { values }]) => bin_counts(values, x, bins))
+        const counts = entries.map(series_counts)
         return { symbol, entries, counts, max_count: Math.max(...counts.flat()) }
       })
       .filter(({ max_count }) => max_count > 0)
