@@ -737,14 +737,11 @@
     clearance: 12,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
-    // annotation_deco is read lazily, once both exist
-    sibling_revision: () => colorbar.size_revision + annotation_deco.size_revision,
   })
   const annotation_deco = create_annotation_decoration({
     enabled: () => Boolean(annotation) && width > 0 && height > 0,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
-    sibling_revision: () => colorbar.size_revision + size_legend_deco.size_revision,
   })
 
   // InternalPoints built once per data change, picked by range on each pan/zoom frame

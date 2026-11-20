@@ -451,6 +451,15 @@ describe(`PeriodicTable`, () => {
     expect(tile(`Co`).querySelector(`.name`)?.textContent?.trim()).toBe(`Cobalt`)
     expect(document.querySelectorAll(`.tile-plot`)).toHaveLength(1)
     document.body.innerHTML = ``
+    // one table has one color bar: a heatmap beside a tile color scale fails fast
+    expect(() =>
+      mount_table({
+        heatmap_values: { Fe: 1 },
+        tile_plots: { Fe: { values: [1] } },
+        tile_plot_config: { color_scale: `interpolateViridis` },
+      }),
+    ).toThrow(`heatmap_values or tile_plot_config.color_scale, not both`)
+    document.body.innerHTML = ``
     // tile_props.show_name: false hides labels on plot tiles too
     mount_table({
       tile_plots: { Cu: { x: [1], y: [1] } },

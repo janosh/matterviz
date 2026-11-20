@@ -51,8 +51,6 @@ export function create_placed_decoration(opts: {
   clearance: number // default axis_clearance
   dims: () => { width: number; height: number }
   decoration_solution: () => DecorationSolution
-  // Re-place when a sibling decoration this one routes around changes size
-  sibling_revision?: () => number
 }) {
   let element = $state<HTMLDivElement | undefined>()
   let size_revision = $state(0)
@@ -94,8 +92,7 @@ export function create_placed_decoration(opts: {
     element: () => element,
     tween: () => opts.config()?.tween,
     on_element_resize: () => (size_revision += 1),
-    placement_revision: () =>
-      `${decoration_placement_revision(placement)}:${opts.sibling_revision?.() ?? ``}`,
+    placement_revision: () => decoration_placement_revision(placement),
   })
 
   return {
@@ -134,7 +131,7 @@ export function create_placed_decoration(opts: {
 export const create_annotation_decoration = (
   opts: Pick<
     Parameters<typeof create_placed_decoration>[0],
-    `enabled` | `dims` | `decoration_solution` | `sibling_revision`
+    `enabled` | `dims` | `decoration_solution`
   >,
 ): PlacedDecoration =>
   create_placed_decoration({

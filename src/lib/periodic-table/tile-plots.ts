@@ -16,11 +16,11 @@ export type TilePlotSeries =
 // One element's mini plot: a series or several (e.g. one line per dataset)
 export type TilePlotData = TilePlotSeries | readonly TilePlotSeries[]
 export type TilePlotConfig = {
-  bins?: number // histogram bin count (integer >= 1); edges are shared by all tiles (default 20)
+  bins?: number // histogram bin count (integer in [1, 1000]); edges shared by all tiles (default 20)
   mode?: `markers` | `line` | `line+markers` // how x/y pairs are drawn (default markers)
   color?: string // CSS color of every series without its own (default: the tile's text color)
   // Colors histogram bars by bin position, or markers and lines by color_values; shared by all
-  // tiles and shown in the auto color bar when the table has no heatmap_values. Values a log
+  // tiles and shown in the auto color bar (so not combinable with heatmap_values). Values a log
   // scale can't map (<= 0) keep the series color.
   color_scale?: ColorScale
   log_y?: boolean // histogram bar heights on a log(1 + count) scale
@@ -30,7 +30,12 @@ export type TilePlotConfig = {
   y_range?: Range
 }
 
-// One SVG path in the tile's 100x100 box (y down); no color paints the series/tile color
+// Side of the square box marks are drawn in (viewBox 0 0 1000 1000, y down): integer
+// coordinates there stay sub-pixel at any size a tile or its enlarged copy renders
+export const TILE_PLOT_GRID = 1000
+// Colors a color scale is quantized to: one path per step, never per bar, segment or point
+const COLOR_STEPS = 64
+// One SVG path in the TILE_PLOT_GRID box; no color paints the series/tile color
 export type TileMark = { kind: `bars` | `line` | `markers`; d: string; color?: string }
 type Ramp = ReturnType<typeof resolve_color_scale>
 // A tile's data ranges along its plot box: x/y spans, for histograms y is [0, tallest count]
@@ -45,7 +50,6 @@ export type TilePlotMarks = {
 type HistSeries = Extract<TilePlotSeries, { values: Numbers }>
 type XySeries = Extract<TilePlotSeries, { x: Numbers }>
 type Entry<Series> = [ElementSymbol, Series]
-type Segment = { d: string; color?: string }
 
 // Every series of every tile by kind, failing fast on a bad key or a shape of neither kind
 const parse_series = (plots: Partial<Record<string, TilePlotData | null>>) => {
@@ -95,15 +99,39 @@ const resolve_range = (name: string, range: Range | undefined, data: Numbers[]):
   return [lo, hi]
 }
 
-const fmt = (num: number): string => num.toFixed(2)
-const to_pct = ([lo, hi]: Vec2, val: number): number => (100 * (val - lo)) / (hi - lo)
-
-// One mark per distinct color, so a color scale costs a path per color, not per bar or point
-const group_by_color = (kind: TileMark[`kind`], segments: Segment[]): TileMark[] => {
-  const by_color = new Map<string | undefined, string>()
-  for (const { d, color } of segments) by_color.set(color, (by_color.get(color) ?? ``) + d)
-  return [...by_color].map(([color, d]) => (color ? { kind, d, color } : { kind, d }))
+// Collects path data per color: a segment starting where its color's path ended continues it
+// (`L`) rather than restarting (`M`), so runs of one color stay one polyline
+class PathsByColor {
+  readonly #paths = new Map<string | undefined, { parts: string[]; end: string }>()
+  add(color: string | undefined, start: string, rest: string, end = start): void {
+    let path = this.#paths.get(color)
+    if (!path) this.#paths.set(color, (path = { parts: [], end: `` }))
+    path.parts.push(path.end === start ? rest : `M${start}${rest}`)
+    path.end = end
+  }
+  marks(kind: TileMark[`kind`]): TileMark[] {
+    return [...this.#paths].map(([color, { parts }]) => {
+      const d = parts.join(``)
+      return color ? { kind, d, color } : { kind, d }
+    })
+  }
 }
+
+// Value -> one of COLOR_STEPS palette colors by its place on the scale, undefined where the
+// scale can't map it (NaN, <= 0 on log)
+const quantized_colors = (ramp: Ramp | null) => {
+  if (!ramp) return null
+  const palette = Array.from({ length: COLOR_STEPS }, (_, idx) =>
+    ramp.color_at(idx / (COLOR_STEPS - 1)),
+  )
+  const color_of_position = (frac: number): string | undefined =>
+    Number.isFinite(frac) ? palette[Math.round(frac * (COLOR_STEPS - 1))] : undefined
+  return {
+    color_of_position,
+    color_of: (value: number) => color_of_position(ramp.position(value)),
+  }
+}
+type Colors = ReturnType<typeof quantized_colors>
 
 // Bin index of `val` among `n_bins` equal bins over [lo, hi], or -1 outside. Like numpy, a
 // value on an inner edge belongs to the bin above and hi to the last bin; the index is nudged
@@ -135,71 +163,106 @@ const bar_marks = (
   [lo, hi]: Vec2,
   max_count: number,
   log_y: boolean,
-  ramp: Ramp | null,
+  colors: Colors,
 ): TileMark[] => {
   const height = (count: number): number => (log_y ? Math.log1p(count) : count)
-  const n_bins = counts.length
-  const bar_w = 100 / n_bins
-  const bin_center = (idx: number): number => lo + ((hi - lo) * (idx + 0.5)) / n_bins
-  return group_by_color(
-    `bars`,
-    counts.flatMap((count, idx) =>
-      count
-        ? [
-            {
-              d: `M${fmt(idx * bar_w)} 100V${fmt(100 - (100 * height(count)) / height(max_count))}h${fmt(bar_w)}V100Z`,
-              color: color ?? ramp?.color_fn(bin_center(idx)) ?? undefined,
-            },
-          ]
-        : [],
-    ),
-  )
+  const [n_bins, max_height] = [counts.length, height(max_count)]
+  const edge = (idx: number): number => Math.round((TILE_PLOT_GRID * idx) / n_bins)
+  const paths = new PathsByColor()
+  for (let idx = 0; idx < n_bins; idx++) {
+    if (!counts[idx]) continue
+    const top = Math.round(TILE_PLOT_GRID * (1 - height(counts[idx]) / max_height))
+    const bin_center = lo + ((hi - lo) * (idx + 0.5)) / n_bins
+    const bar_color = color ?? colors?.color_of(bin_center)
+    const rest = `V${top}H${edge(idx + 1)}V${TILE_PLOT_GRID}Z`
+    paths.add(bar_color, `${edge(idx)} ${TILE_PLOT_GRID}`, rest, ``)
+  }
+  return paths.marks(`bars`)
 }
+
+// A line skips points within LINE_TOLERANCE grid units (0.2% of the box) of the last drawn one,
+// which add nothing visible (each run's end is kept). Markers drop repeats within one
+// DEDUPE_CELL-unit cell of the same color step, well under a marker's diameter.
+const LINE_TOLERANCE = 2
+const DEDUPE_CELL = 5
+type LinePoint = { px: number; py: number; pos: number }
 
 const xy_marks = (
   [symbol, { x, y, color_values, color }]: Entry<XySeries>,
-  x_range: Vec2,
-  y_range: Vec2,
+  [x_lo, x_hi]: Vec2,
+  [y_lo, y_hi]: Vec2,
   mode: NonNullable<TilePlotConfig[`mode`]>,
   ramp: Ramp | null,
+  colors: Colors,
 ): TileMark[] => {
   if (x.length !== y.length || (color_values && color_values.length !== x.length)) {
     const lengths = [x, y, color_values ?? []].map((arr) => arr.length)
     throw new Error(`tile_plots.${symbol}: x, y and color_values lengths differ (${lengths})`)
   }
-  // null (Python None) would compare as 0, so finiteness is checked first
-  const in_range = (val: number, [lo, hi]: Vec2): boolean =>
-    Number.isFinite(val) && val >= lo && val <= hi
-  const value_color = (value: number | undefined): string | undefined =>
-    color ?? (value === undefined ? undefined : (ramp?.color_fn(value) ?? undefined))
-  // with a scale and color_values, each line segment blends its endpoint colors (in color
-  // space, so any scale type maps right); a non-finite end leaves it the series color
-  const gradient = Boolean(ramp && color_values && !color)
-  const blend = (color_a?: string, color_b?: string): string | undefined =>
-    color_a && color_b ? `color-mix(in srgb, ${color_a}, ${color_b})` : undefined
-  const [line, markers]: Segment[][] = [[], []]
-  let prev: { point: string; value?: number } | null = null
+  const [x_scale, y_scale] = [TILE_PLOT_GRID / (x_hi - x_lo), TILE_PLOT_GRID / (y_hi - y_lo)]
+  // with a scale and color_values, markers take their value's color and line segments the
+  // color at the midpoint of their ends' places on the scale (right for log scales too)
+  const by_value = ramp && colors && color_values && !color ? colors : null
+  const [line, markers] = [new PathsByColor(), new PathsByColor()]
+  const seen_cells = new Set<number>()
+  // last drawn line point, and the latest point skipped since (drawn if its run ends there)
+  let [prev, skipped]: (LinePoint | null)[] = [null, null]
+  const draw_segment = (from: LinePoint, to: LinePoint): void => {
+    const seg_color = by_value ? by_value.color_of_position((from.pos + to.pos) / 2) : color
+    const end = `${to.px} ${to.py}`
+    line.add(seg_color, `${from.px} ${from.py}`, `L${end}`, end)
+  }
+  const end_run = (): void => {
+    if (prev && skipped) draw_segment(prev, skipped)
+    ;[prev, skipped] = [null, null]
+  }
   for (let idx = 0; idx < x.length; idx++) {
-    // a point outside the ranges (or non-finite) is dropped and breaks the line
-    if (!in_range(x[idx], x_range) || !in_range(y[idx], y_range)) {
-      prev = null
+    const [x_val, y_val] = [x[idx], y[idx]]
+    // null (Python None) would compare as 0, so finiteness is checked first. A point outside
+    // the ranges (or non-finite) is dropped and breaks the line.
+    if (
+      !Number.isFinite(x_val) ||
+      !Number.isFinite(y_val) ||
+      x_val < x_lo ||
+      x_val > x_hi ||
+      y_val < y_lo ||
+      y_val > y_hi
+    ) {
+      end_run()
       continue
     }
-    const point = `${fmt(to_pct(x_range, x[idx]))} ${fmt(100 - to_pct(y_range, y[idx]))}`
-    const value = color_values?.[idx]
-    if (!gradient) line.push({ d: `${prev ? `L` : `M`}${point}`, color })
-    else if (prev) {
-      const seg_color = blend(value_color(prev.value), value_color(value))
-      line.push({ d: `M${prev.point}L${point}`, color: seg_color })
+    const px = Math.round((x_val - x_lo) * x_scale)
+    const py = Math.round(TILE_PLOT_GRID - (y_val - y_lo) * y_scale)
+    const pos = by_value ? (ramp?.position(color_values?.[idx] ?? NaN) ?? NaN) : NaN
+    if (mode !== `markers`) {
+      const point = { px, py, pos }
+      const near_prev =
+        prev &&
+        Math.abs(px - prev.px) <= LINE_TOLERANCE &&
+        Math.abs(py - prev.py) <= LINE_TOLERANCE
+      if (!prev) prev = point
+      else if (near_prev) skipped = point
+      else {
+        draw_segment(prev, point)
+        ;[prev, skipped] = [point, null]
+      }
     }
-    // a zero-length segment with round caps draws an undistorted dot
-    markers.push({ d: `M${point}h0`, color: value_color(value) })
-    prev = { point, value }
+    if (mode !== `line`) {
+      // keyed on cell and color step, so overlapping dots of other colors all stay
+      const color_step = Number.isFinite(pos)
+        ? Math.round(pos * (COLOR_STEPS - 1))
+        : COLOR_STEPS
+      const cell =
+        (Math.round(px / DEDUPE_CELL) * 1024 + Math.round(py / DEDUPE_CELL)) * 128 + color_step
+      if (seen_cells.has(cell)) continue
+      seen_cells.add(cell)
+      // a zero-length segment with round caps draws an undistorted dot
+      const marker_color = by_value ? by_value.color_of_position(pos) : color
+      markers.add(marker_color, `${px} ${py}`, `h0`, ``)
+    }
   }
-  return [
-    ...(mode === `markers` ? [] : group_by_color(`line`, line)),
-    ...(mode === `line` ? [] : group_by_color(`markers`, markers)),
-  ]
+  end_run()
+  return [...line.marks(`line`), ...markers.marks(`markers`)]
 }
 
 // Marks and axes for every element's mini plot, on axes and a color scale shared across tiles.
@@ -216,8 +279,11 @@ export function tile_plot_marks(
   }: TilePlotConfig = {},
 ): TilePlotMarks {
   const { hists, xys } = parse_series(plots)
-  if (!Number.isInteger(bins) || bins < 1)
-    throw new Error(`tile_plot_config.bins must be an integer >= 1, got ${bins}`)
+  // more bins than grid columns would round bars to zero width
+  if (!Number.isInteger(bins) || bins < 1 || bins > TILE_PLOT_GRID)
+    throw new Error(
+      `tile_plot_config.bins must be an integer in [1, ${TILE_PLOT_GRID}], got ${bins}`,
+    )
   if (hists.length && xys.length)
     throw new Error(
       `tile_plots mixes histogram { values } and x/y series, use one kind per table`,
@@ -231,13 +297,14 @@ export function tile_plot_marks(
       hists.map(([, { values }]) => values),
     )
     const ramp = color_scale ? resolve_color_scale(color_scale, x) : null
+    const colors = quantized_colors(ramp)
     // a tile's series share its tallest bin, so overlaid histograms compare
     for (const [symbol, entries] of Map.groupBy(hists, ([sym]) => sym)) {
       const counts = entries.map(([, { values }]) => bin_counts(values, x, bins))
       const max_count = Math.max(...counts.flat())
       if (!max_count) continue
       marks[symbol] = entries.flatMap(([, { color }], idx) =>
-        bar_marks(counts[idx], color, x, max_count, log_y, ramp),
+        bar_marks(counts[idx], color, x, max_count, log_y, colors),
       )
       axes[symbol] = { x, y: [0, max_count], log_y }
     }
@@ -260,8 +327,9 @@ export function tile_plot_marks(
   )
   const ramp =
     color_scale && color_range ? resolve_color_scale(color_scale, color_range) : null
+  const colors = quantized_colors(ramp)
   for (const entry of xys) {
-    const new_marks = xy_marks(entry, x, y, mode, ramp)
+    const new_marks = xy_marks(entry, x, y, mode, ramp, colors)
     if (!new_marks.length) continue
     ;(marks[entry[0]] ??= []).push(...new_marks)
     axes[entry[0]] = { x, y, log_y: false }

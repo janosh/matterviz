@@ -436,7 +436,6 @@
     enabled: () => Boolean(annotation) && has_plot_size,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
-    sibling_revision: () => colorbar.size_revision,
   })
 
   // Switch to individual markers once few enough points are visible (unless disabled)

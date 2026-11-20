@@ -879,6 +879,10 @@ export function resolve_color_scale(
   auto_range: Vec2 | (() => Vec2),
 ): {
   color_fn: (value: number) => string
+  // A value's place along the palette in [0, 1] (NaN where the scale can't map it, e.g. <= 0
+  // on log), and the color at such a place, e.g. to quantize colors into a few steps
+  position: (value: number) => number
+  color_at: (fraction: number) => string
   color_scale: ColorScaleConfig & { value_range: Vec2 }
 } {
   const config = to_color_scale_config(color_scale)
@@ -886,15 +890,24 @@ export function resolve_color_scale(
   const interpolate = color_interpolator(config)
   const type_name = get_scale_type_name(config.type)
   let color_fn: (value: number) => string
+  let position: (value: number) => number
   if (type_name === `log`) {
-    color_fn = scaleSequentialLog(interpolate)
-      .domain(log_color_domain(value_range))
-      .clamp(true)
+    const domain = log_color_domain(value_range)
+    color_fn = scaleSequentialLog(interpolate).domain(domain).clamp(true)
+    // clamp would pull <= 0 into the domain before the log, so those stay unmapped (NaN)
+    const log_position = scaleLog().domain(domain).clamp(true).unknown(NaN)
+    position = (value) => (value > 0 ? log_position(value) : NaN)
   } else if (type_name === `arcsinh`) {
-    const position = scale_arcsinh(get_arcsinh_threshold(config.type)).domain(value_range)
-    color_fn = (value) => interpolate(clamp01(position(value)))
-  } else color_fn = scaleSequential(interpolate).domain(value_range).clamp(true)
-  return { color_fn, color_scale: { ...config, value_range } }
+    const arcsinh_position = scale_arcsinh(get_arcsinh_threshold(config.type)).domain(
+      value_range,
+    )
+    position = (value) => clamp01(arcsinh_position(value))
+    color_fn = (value) => interpolate(position(value))
+  } else {
+    color_fn = scaleSequential(interpolate).domain(value_range).clamp(true)
+    position = scaleLinear().domain(value_range).clamp(true).unknown(NaN)
+  }
+  return { color_fn, position, color_at: interpolate, color_scale: { ...config, value_range } }
 }
 
 export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {

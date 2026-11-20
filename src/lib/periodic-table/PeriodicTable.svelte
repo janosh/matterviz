@@ -35,6 +35,7 @@
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
   import {
+    TILE_PLOT_GRID,
     type TileMark,
     tile_plot_marks,
     type TilePlotConfig,
@@ -188,7 +189,14 @@
         : first_interactive_symbol),
   )
   // throws on keys that aren't element symbols and malformed series (see tile_plot_marks)
-  let tile_plot_result = $derived(tile_plot_marks(tile_plots, tile_plot_config))
+  // and on a tile color scale beside heatmap_values: two scales would need two color bars
+  let tile_plot_result = $derived.by(() => {
+    if (tile_plot_config.color_scale && heat_nums.length)
+      throw new Error(
+        `PeriodicTable takes heatmap_values or tile_plot_config.color_scale, not both`,
+      )
+    return tile_plot_marks(tile_plots, tile_plot_config)
+  })
   // Tiles behind plots share one neutral fill instead of category colors that would compete
   // with the plots (heatmap values and color_overrides still win). A CSS var, so tile text
   // inherits the page color in either theme.
@@ -469,7 +477,7 @@
   {#snippet plot_marks(marks: TileMark[], attrs: SVGAttributes<SVGSVGElement>)}
     <svg
       {...attrs}
-      viewBox="0 0 100 100"
+      viewBox="0 0 {TILE_PLOT_GRID} {TILE_PLOT_GRID}"
       preserveAspectRatio="none"
       style:color={tile_plot_config.color}
     >
