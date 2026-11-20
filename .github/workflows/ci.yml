@@ -75,6 +75,7 @@ jobs:
   publint:
     name: Validate npm package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -83,12 +84,21 @@ jobs:
         uses: ./.github/actions/setup
         with:
           test-cache: package
+          extensions: anywidget
+          build-package: 'false' # built below
 
       # publint checks that every export target exists, so build dist/ first
       - name: Build and validate package exports and types
         run: |
           pnpm package:dist
           pnpm run publint
+      # otherwise only gh-pages.yml (main) and publish.yml build it, so a broken build would
+      # surface as a failed docs deploy after merge
+      - name: Build anywidget bundle
+        run: |
+          pnpm -C extensions/anywidget run build
+          cd extensions/anywidget/build
+          test -s matterviz.js && test -s split/matterviz.js && test -s widget-model-keys.json
       - name: Test package exports and check unused code
         run: |
           pnpm exec vitest run tests/vitest/package-exports.test.ts --fsModuleCache --fsModuleCachePath=.cache/vitest

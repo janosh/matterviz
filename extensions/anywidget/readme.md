@@ -4,13 +4,9 @@ A prebuilt [anywidget](https://anywidget.dev) bundle that renders MatterViz
 components in notebook environments (Jupyter, marimo, VS Code) and anywhere an
 ESM module can be loaded.
 
-`anywidget.ts` is the entry point: it dispatches on a `widget_type` string to the
-matching MatterViz Svelte component, mounts it into the host element, and forwards
-the widget's traitlet values as props. The build is a single self-contained ESM
-file (`build/matterviz.js`) plus its CSS (`build/matterviz.css`), with all
-dependencies (matterviz components, Svelte runtime, three.js, ...) inlined.
+`anywidget.ts` dispatches on a `widget_type` string to the matching MatterViz Svelte component, mounts it into the host element, and forwards the widget's traitlet values as props. The build entry `index.ts` loads it lazily and exports `render`, an async `export_svg(element, png_dpi?)` and `widget_model_keys()`. It builds twice: a single self-contained ESM file (`build/matterviz.js`) with all dependencies (matterviz components, Svelte runtime, three.js, ...) inlined, plus its CSS (`build/matterviz.css`), and a code-split `build/split/`.
 
-`build/split/` holds the same bundle code-split: an entry `matterviz.js` that loads each widget's component and its dependencies as chunks on first render, so a 2D plot fetches ~1.2 MB (~0.45 MB gzip) instead of all 5.8 MB, skipping three.js. Its chunks load relative to the entry's URL, so it only works imported by URL (jsDelivr, the docs site); hosts that load the bundle as text (a local build synced to the notebook, marimo virtual files, headless or inline HTML export) use the single file. `build/matterviz.css` styles both.
+`build/split/` has a tiny entry `matterviz.js` (anywidget fails a widget whose `_esm` module takes over 2 s to import) that loads the widget code, each widget's component and its dependencies as chunks on first render, so a 2D plot fetches ~1.2 MB (~0.45 MB gzip) instead of all 5.8 MB, skipping three.js. Its chunks load relative to the entry's URL, so it only works imported by URL (jsDelivr, the docs site); hosts that load the bundle as text (a local build synced to the notebook, marimo virtual files, headless or inline HTML export) use the single file. `build/matterviz.css` styles both. The docs site's copy (pymatviz's `main`) replaces its chunks on each deploy, so a notebook page loaded before a deploy may need a reload; pinned npm versions are immutable.
 
 This is a peer of `extensions/vscode`: a framework adapter
 that wraps the MatterViz component library for a specific host runtime.

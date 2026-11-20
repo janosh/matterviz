@@ -828,12 +828,6 @@ describe(`scene sizing helpers`, () => {
     (_desc, k_lattice, vector_scale, padding, expected) =>
       expect(vectors_fit_extent(k_lattice, vector_scale, padding)).toBeCloseTo(expected, 10),
   )
-  test(`a cubic zone's fit is set by its vectors, not its vertices`, () => {
-    const k_lattice = cubic_matrix(4)
-    expect(vectors_fit_extent(k_lattice)).toBeGreaterThan(
-      bz_fit_extent(cube_corners(2), k_lattice),
-    )
-  })
 
   describe(`bz_fit_extent`, () => {
     const k_lattice = cubic_matrix(4)

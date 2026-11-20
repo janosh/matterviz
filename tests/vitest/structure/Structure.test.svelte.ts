@@ -771,7 +771,7 @@ const live_volume = (identifier: string, value: number, label = identifier) =>
     { id: identifier, label },
   )
 const scene_layer_ids = () =>
-  scene_stub.props?.isosurface_settings?.layers?.map(
+  scene_stub.props?.isosurface_settings?.layers.map(
     (layer: IsosurfaceLayer) => layer.volume_id,
   )
 const volume_labels = (volumes: VolumetricData[]) => volumes.map(({ label }) => label)

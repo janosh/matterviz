@@ -48,12 +48,10 @@ export const inline_workers: Plugin = {
 // bare input/button rules and :root color-scheme would restyle the whole notebook page)
 export const widget_scope = `.matterviz-widget`
 
-// Writes build/widget-model-keys.json, the bundle's WIDGET_MODEL_KEYS trait contract, so Python
-// wrappers can test their widget traits against it without a browser. Evaluates the built bundle
-// itself (what ships is what's described), with happy-dom's DOM globals (window, document,
-// Element, ...) installed for the import, since module-level code reads them. An output plugin
-// of the single-file build only: the split entry runs the same code, described once
-export const emit_widget_model_keys: Rolldown.Plugin = {
+// Writes build/widget-model-keys.json (WIDGET_MODEL_KEYS) so Python wrappers can test their traits
+// without a browser. Imports the built single file itself (what ships is what's described), with
+// happy-dom's DOM globals installed since module-level code reads them
+const emit_widget_model_keys: Rolldown.Plugin = {
   name: `emit-widget-model-keys`,
   async writeBundle({ dir }) {
     if (!dir) throw new Error(`emit-widget-model-keys: build has no output dir`)
@@ -66,8 +64,8 @@ export const emit_widget_model_keys: Rolldown.Plugin = {
     try {
       // import() caches by URL, so a watch rebuild needs a fresh one to read the new bundle
       const bundle_url = `${pathToFileURL(`${dir}/matterviz.js`).href}?build=${Date.now()}`
-      const { WIDGET_MODEL_KEYS } = await import(bundle_url)
-      const json = `${JSON.stringify(WIDGET_MODEL_KEYS, null, 2)}\n`
+      const { widget_model_keys } = await import(bundle_url)
+      const json = `${JSON.stringify(await widget_model_keys(), null, 2)}\n`
       writeFileSync(`${dir}/widget-model-keys.json`, json)
     } finally {
       for (const key of [...added, `window`]) delete globals[key]
@@ -83,6 +81,8 @@ const drop_css: Rolldown.Plugin = {
     for (const file of Object.keys(bundle)) if (file.endsWith(`.css`)) delete bundle[file]
   },
 }
+
+const minified = { minify: true, comments: false } as const
 
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
@@ -132,25 +132,18 @@ export default defineConfig({
     ...config.build, // keep shared cssTarget: esnext (for light-dark())
     outDir: `build`,
     lib: {
-      entry: resolve(import.meta.dirname, `anywidget.ts`),
+      entry: resolve(import.meta.dirname, `index.ts`),
       fileName: `matterviz`,
       cssFileName: `matterviz`,
     },
     rolldownOptions: {
-      // Vite's ES lib builds keep whitespace and pure annotations for the consumer's bundler to
-      // tree-shake with; nothing bundles these files again, so minify them fully. Two outputs:
-      // build/matterviz.js, one self-contained file for hosts loading the bundle as text (local
-      // builds, marimo virtual files, headless and inline HTML export), and build/split/, its
-      // entry plus chunks for hosts importing it by URL, where a widget loads only its own
-      // component's chunks (a 2D plot skips three.js)
+      // Nothing bundles these files again, so minify fully (Vite's ES lib builds keep whitespace
+      // and pure annotations for a consumer's tree-shaking). build/matterviz.js is one file for
+      // hosts loading the bundle as text, build/split/ an entry + per-widget chunks for hosts
+      // importing it by URL (a 2D plot skips three.js)
       output: [
-        {
-          codeSplitting: false,
-          minify: true,
-          comments: false,
-          plugins: [emit_widget_model_keys],
-        },
-        { dir: `build/split`, minify: true, comments: false, plugins: [drop_css] },
+        { ...minified, codeSplitting: false, plugins: [emit_widget_model_keys] },
+        { ...minified, dir: `build/split`, plugins: [drop_css] },
       ],
     },
   },

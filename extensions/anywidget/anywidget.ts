@@ -273,9 +273,8 @@ type WidgetSpec = {
   // Model traits written by interaction callbacks (not derivable from drive specs);
   // listed so WIDGET_MODEL_KEYS reflects the full Python<->JS trait contract.
   interaction_model_keys?: readonly string[]
-  // Selector of a figure built from HTML (CSS grids, side-by-side panels), which SVG export
-  // redraws as SVG rather than serializing one <svg>: the element the component's own Export
-  // pane exports, so both paths give the same file
+  // Selector of an HTML-built figure (CSS grids, side-by-side panels) export_svg redraws as SVG:
+  // the element the component's own Export pane exports, so both give the same file
   html_figure?: string
 }
 
@@ -285,7 +284,7 @@ const driven_props = ({ no_style, drive }: WidgetSpec): readonly DrivenProp[] =>
 // Viewers with a drop zone: file drops are off in notebooks
 const no_file_drop = { allow_file_drop: false }
 
-// Mount a widget's component with its spec: build a two-way reactive $state props object (Python
+// Mount a widget's component: build a two-way reactive $state props object (Python
 // trait changes -> live view, component interaction -> model). Returns the teardown that
 // unregisters the model listeners, stops the writeback effects and unmounts the component.
 // Exported so tests can mount a single widget's wiring directly.
@@ -540,7 +539,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   heatmap_matrix: {
-    html_figure: `.grid`,
+    // not the controls pane's SettingsSection (class `settings-section grid`)
+    html_figure: `.heatmap > .grid`,
     drive: [
       ...drive_props(`show_controls x_items y_items values color_scale missing x_axis y_axis
         tile_size gap show_values label_style`),
@@ -635,32 +635,27 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
   }),
 )
 
-// Keys of every Python widget that no spec has to read: widget_type picks the spec, style and
-// show_controls are base traits some components have nowhere to put
-const BASE_MODEL_KEYS = new Set([`widget_type`, `style`, `show_controls`])
-
 // Hosts list their widget's synced traits in _synced_keys (the anywidget model can't enumerate
 // its keys). A trait no spec reads would be silently dropped, so name it rather than render a
-// partial widget. Either side can be the stale one: a Python package newer than the bundle, or
-// a saved notebook's state older than the URL-synced bundle it now loads.
-const VERSION_MISMATCH =
-  `Python wrapper and bundle versions differ: re-run the cell with the Python package ` +
-  `version this bundle matches, or load the bundle version matching the Python package.`
-export const check_synced_keys = (model: AnyModel, widget_type: string): void => {
+// partial widget. Either side can be stale: a Python package newer than the bundle, or a saved
+// notebook's state older than the URL-synced bundle it now loads. widget_type, style and
+// show_controls are base traits no spec has to read.
+const check_synced_keys = (model: AnyModel, widget_type: string): void => {
   const synced_keys = get_prop(model, `_synced_keys`)
-  if (!Array.isArray(synced_keys)) {
-    throw new Error(
-      `_synced_keys must be a list of trait names, got ${typeof synced_keys}. ${VERSION_MISMATCH}`,
+  let problem = `_synced_keys must be a list of trait names, got ${typeof synced_keys}`
+  if (Array.isArray(synced_keys)) {
+    const read_keys = new Set(WIDGET_MODEL_KEYS[widget_type])
+    const base_keys = [`widget_type`, `style`, `show_controls`]
+    const unknown = synced_keys.filter(
+      (key) => !read_keys.has(key) && !base_keys.includes(key),
     )
+    if (!unknown.length) return
+    problem = `this matterviz-anywidget bundle doesn't read ${widget_type} trait(s) ${unknown.join(`, `)}`
   }
-  const read_keys = new Set(WIDGET_MODEL_KEYS[widget_type])
-  const unknown = synced_keys.filter((key) => !read_keys.has(key) && !BASE_MODEL_KEYS.has(key))
-  if (unknown.length) {
-    throw new Error(
-      `this matterviz-anywidget bundle doesn't read ${widget_type} trait(s) ${unknown.join(`, `)}. ` +
-        VERSION_MISMATCH,
-    )
-  }
+  throw new Error(
+    `${problem}. Python wrapper and bundle versions differ: re-run the cell with the Python ` +
+      `package version this bundle matches, or load the bundle version matching the Python package.`,
+  )
 }
 
 // Detect widget type and render
@@ -691,11 +686,14 @@ const render: Render = async (props) => {
   const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
   // a cleanup while the component loads (the element rendering again) cancels this render
   let cancelled = false
-  cleanups.set(element, () => {
+  let unmount_widget = (): void => {}
+  const cleanup = (): void => {
     cancelled = true
+    rendered_types.delete(element)
     stop_theme()
-  })
-  let unmount_widget: () => void
+    unmount_widget()
+  }
+  cleanups.set(element, cleanup)
   try {
     if (!widget_type || !spec)
       throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
@@ -717,22 +715,15 @@ const render: Render = async (props) => {
     }
     throw error
   }
-  cleanups.set(element, () => {
-    rendered_types.delete(element)
-    stop_theme()
-    unmount_widget()
-  })
-  return () => cleanup_element(element)
+  // a stale disposer (the element since rendered again) leaves the later widget mounted
+  return () => {
+    if (cleanups.get(element) === cleanup) cleanup_element(element)
+  }
 }
 
-// Smallest rendered size of an <svg> that can be the figure (smaller ones are icons) and of a
-// <canvas> that holds chart content (smaller ones are decorative)
-const MIN_FIGURE_SVG_PX = 20
-const MIN_FIGURE_CANVAS_PX = 50
-
 // Standalone SVG file content of a rendered widget, through the same serializer as the in-app
-// SVG export: HTML figures redrawn as SVG, else the largest <svg>. Throws for figures with a
-// chart-sized canvas outside that SVG (3D viewers, canvas charts), which have no vector form.
+// SVG export: HTML figures redrawn as SVG, else the largest <svg> (under 20px: an icon). Throws
+// for a chart-sized (50px+) canvas outside that SVG (3D viewers, canvas charts): no vector form.
 export function export_svg(element: HTMLElement, png_dpi?: number): string {
   const widget_type = rendered_types.get(element)
   if (!widget_type) throw new Error(`No rendered MatterViz widget to export`)
@@ -741,19 +732,14 @@ export function export_svg(element: HTMLElement, png_dpi?: number): string {
     const { width, height } = node.getBoundingClientRect()
     return width >= min_px && height >= min_px ? width * height : 0
   }
-  let figure: Element | null = html_figure ? element.querySelector(html_figure) : null
-  if (!html_figure) {
-    let best_area = 0
-    for (const svg of element.querySelectorAll(`svg`)) {
-      const svg_area = area(svg, MIN_FIGURE_SVG_PX)
-      if (svg_area > best_area) [figure, best_area] = [svg, svg_area]
-    }
-  }
+  const figure = html_figure
+    ? element.querySelector(html_figure)
+    : ([...element.querySelectorAll(`svg`)]
+        .filter((svg) => area(svg, 20))
+        .toSorted((svg_a, svg_b) => area(svg_b, 0) - area(svg_a, 0))[0] ?? null)
   // canvases in an SVG's <foreignObject> (canvas markers) export as images, HTML redraws drop them
   const canvas = [...element.querySelectorAll(`canvas`)].find(
-    (node) =>
-      area(node, MIN_FIGURE_CANVAS_PX) > 0 &&
-      !(figure instanceof SVGElement && figure.contains(node)),
+    (node) => area(node, 50) && !(figure instanceof SVGElement && figure.contains(node)),
   )
   if (canvas || !figure) {
     const content = canvas ? `canvas content` : `no ${html_figure ?? `<svg>`} figure`
@@ -761,8 +747,10 @@ export function export_svg(element: HTMLElement, png_dpi?: number): string {
       `MatterViz ${widget_type} renders ${content}, which has no vector form: export PNG or PDF instead`,
     )
   }
-  const svg = figure instanceof SVGElement ? figure : html_to_svg(figure as HTMLElement)
-  return svg_to_string(svg, png_dpi)
+  return svg_to_string(
+    figure instanceof SVGElement ? figure : html_to_svg(figure as HTMLElement),
+    png_dpi,
+  )
 }
 
 export default { render }

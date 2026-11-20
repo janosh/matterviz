@@ -425,7 +425,7 @@
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
     // Loaded volumetric datasets for isosurface rendering
     volumetric_data?: VolumetricData[]
-    isosurface_settings?: Partial<IsosurfaceSettings> // Isosurface rendering settings
+    isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     slice_polygon?: Vec3[] // where a 2D volume slice cuts the cell (see slice_cell_polygon)
     // Displayed lattice = this integer matrix x the base cell's (identity until a supercell
     // lands). Diagonal ones tile the cell grid, isosurfaces and symmetry elements; others draw

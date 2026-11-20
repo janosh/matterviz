@@ -117,97 +117,100 @@
     type={error_msg ? `error` : `info`}
     style={error_msg ? `` : `border: none`}
   />
-{:else if result}
-  {@const summary = result}
-  {#snippet panel_plot(
-    series: DataSeries[],
-    x_label: string,
-    y_label: string,
-    controls_open: boolean,
-    set_controls_open: (value: boolean) => void,
-  )}
-    <ScatterPlot
-      {...rest}
-      {show_controls}
-      bind:controls_open={() => controls_open, set_controls_open}
-      {series}
-      x_axis={{ label: x_label, ...rest.x_axis }}
-      y_axis={{ label: y_label, ...rest.y_axis }}
-      styles={{ show_lines: true, show_points: false, ...rest.styles }}
-      style={plot_style}
-      {...series_hover_props(curve_hover, rest)}
-    />
-  {/snippet}
-  {#if show_vacf}
-    {@render panel_plot(
-      vacf_series,
-      summary.x_label,
-      `VACF / VACF(0)`,
-      vacf_controls_open,
-      (value) => (vacf_controls_open = value),
+{:else}
+  <!-- keyed on the result: when it clears, svelte 5.59 updates this block's markup before
+  the {#if} above removes it, so the markup must never read an undefined result -->
+  {#each result ? [result] : [] as summary (summary)}
+    {#snippet panel_plot(
+      series: DataSeries[],
+      x_label: string,
+      y_label: string,
+      controls_open: boolean,
+      set_controls_open: (value: boolean) => void,
     )}
-  {/if}
-  {#if show_vdos}
-    {@render panel_plot(
-      vdos_series,
-      summary.frequency_label,
-      `VDOS (arb. units)`,
-      vdos_controls_open,
-      (value) => (vdos_controls_open = value),
-    )}
-  {/if}
-  {#if show_summary}
-    <AnalysisSummary
-      headers={[`Species`, `Atoms`, `VACF(0)`, `Peak`]}
-      downloads={[
-        {
-          label: `VACF CSV`,
-          filename: `vacf.csv`,
-          columns: () => ({
-            lag_frames: summary.lags,
-            [`lag_time_${summary.time_unit}`]: summary.times,
-            ...Object.fromEntries(
-              summary.curves.flatMap(({ label, vacf, vacf_normalized }) => [
-                [`vacf_${label}`, vacf],
-                [`vacf_normalized_${label}`, vacf_normalized],
-              ]),
-            ),
-          }),
-        },
-        {
-          label: `VDOS CSV`,
-          filename: `vdos.csv`,
-          columns: () => ({
-            [`frequency_${summary.frequency_unit}`]: summary.frequencies,
-            ...Object.fromEntries(
-              summary.curves.map(({ label, vdos }) => [`vdos_${label}`, vdos]),
-            ),
-          }),
-        },
-      ]}
-    >
-      {#each summary.curves as { label, n_atoms, vacf, peak_frequency } (label)}
-        <tr>
-          <td>{label}</td>
-          <td>{n_atoms}</td>
-          <td>{format_num(vacf[0], `.3~e`)} {summary.velocity_unit}</td>
-          <td>
-            {format_num(peak_frequency, `.4~g`)}
-            {@html frequency_unit_label(summary.frequency_unit)}
-          </td>
-        </tr>
-      {/each}
-      {#snippet note()}
-        {summary.n_frames} velocity frames × {summary.n_atoms} atoms
-        {#if summary.frame_stride > 1}· 1 in {summary.frame_stride} source frames{/if}
-        · {summary.velocity_source === `stored`
-          ? `velocities read from the file`
-          : `central differences of ${summary.unwrapped ? `unwrapped` : `raw`} positions`}
-        · {summary.window} window
-        {#if summary.frequency_unit === `1/frame`}
-          · no timestep supplied, so frequencies are per collected frame
-        {/if}
-      {/snippet}
-    </AnalysisSummary>
-  {/if}
+      <ScatterPlot
+        {...rest}
+        {show_controls}
+        bind:controls_open={() => controls_open, set_controls_open}
+        {series}
+        x_axis={{ label: x_label, ...rest.x_axis }}
+        y_axis={{ label: y_label, ...rest.y_axis }}
+        styles={{ show_lines: true, show_points: false, ...rest.styles }}
+        style={plot_style}
+        {...series_hover_props(curve_hover, rest)}
+      />
+    {/snippet}
+    {#if show_vacf}
+      {@render panel_plot(
+        vacf_series,
+        summary.x_label,
+        `VACF / VACF(0)`,
+        vacf_controls_open,
+        (value) => (vacf_controls_open = value),
+      )}
+    {/if}
+    {#if show_vdos}
+      {@render panel_plot(
+        vdos_series,
+        summary.frequency_label,
+        `VDOS (arb. units)`,
+        vdos_controls_open,
+        (value) => (vdos_controls_open = value),
+      )}
+    {/if}
+    {#if show_summary}
+      <AnalysisSummary
+        headers={[`Species`, `Atoms`, `VACF(0)`, `Peak`]}
+        downloads={[
+          {
+            label: `VACF CSV`,
+            filename: `vacf.csv`,
+            columns: () => ({
+              lag_frames: summary.lags,
+              [`lag_time_${summary.time_unit}`]: summary.times,
+              ...Object.fromEntries(
+                summary.curves.flatMap(({ label, vacf, vacf_normalized }) => [
+                  [`vacf_${label}`, vacf],
+                  [`vacf_normalized_${label}`, vacf_normalized],
+                ]),
+              ),
+            }),
+          },
+          {
+            label: `VDOS CSV`,
+            filename: `vdos.csv`,
+            columns: () => ({
+              [`frequency_${summary.frequency_unit}`]: summary.frequencies,
+              ...Object.fromEntries(
+                summary.curves.map(({ label, vdos }) => [`vdos_${label}`, vdos]),
+              ),
+            }),
+          },
+        ]}
+      >
+        {#each summary.curves as { label, n_atoms, vacf, peak_frequency } (label)}
+          <tr>
+            <td>{label}</td>
+            <td>{n_atoms}</td>
+            <td>{format_num(vacf[0], `.3~e`)} {summary.velocity_unit}</td>
+            <td>
+              {format_num(peak_frequency, `.4~g`)}
+              {@html frequency_unit_label(summary.frequency_unit)}
+            </td>
+          </tr>
+        {/each}
+        {#snippet note()}
+          {summary.n_frames} velocity frames × {summary.n_atoms} atoms
+          {#if summary.frame_stride > 1}· 1 in {summary.frame_stride} source frames{/if}
+          · {summary.velocity_source === `stored`
+            ? `velocities read from the file`
+            : `central differences of ${summary.unwrapped ? `unwrapped` : `raw`} positions`}
+          · {summary.window} window
+          {#if summary.frequency_unit === `1/frame`}
+            · no timestep supplied, so frequencies are per collected frame
+          {/if}
+        {/snippet}
+      </AnalysisSummary>
+    {/if}
+  {/each}
 {/if}
