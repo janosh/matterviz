@@ -40,7 +40,7 @@ export type TileMark = { kind: `bars` | `line` | `markers`; d: string; color?: s
 type Ramp = ReturnType<typeof resolve_color_scale>
 // A tile's data ranges along its plot box: x/y spans, for histograms y is [0, tallest count]
 // with bar heights on a log(1 + count) scale when log_y
-export type TileAxes = { x: Vec2; y: Vec2; log_y: boolean }
+type TileAxes = { x: Vec2; y: Vec2; log_y: boolean }
 export type TilePlotMarks = {
   marks: Partial<Record<ElementSymbol, TileMark[]>>
   axes: Partial<Record<ElementSymbol, TileAxes>> // per plotted tile, e.g. to draw its axes
