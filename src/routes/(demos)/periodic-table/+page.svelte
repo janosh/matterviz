@@ -37,7 +37,8 @@
 
   // Tile plots: a histogram per element of noisy samples around its electronegativity
   // (deterministic LCG noise so the page renders the same every time), and a line per element
-  // of its successive ionization energies on a log scale
+  // of its successive ionization energies on a log scale, colored by energy. Elements list
+  // from 2 to 30 ionizations, so x is the fraction of listed ionizations to span every tile.
   let seed = 1
   const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 1.2
   const hist_tile_plots = Object.fromEntries(
@@ -59,8 +60,9 @@
       .map(({ symbol, ionization_energies }) => [
         symbol,
         {
-          x: ionization_energies.map((_, idx) => idx + 1),
+          x: ionization_energies.map((_, idx) => idx / (ionization_energies.length - 1)),
           y: ionization_energies.map(Math.log10),
+          color_values: ionization_energies.map(Math.log10),
         },
       ]),
   )
@@ -268,15 +270,20 @@
   tiles compare at a glance; <code>tile_plot</code> sets bins, mode, color and fixed ranges.
 </p>
 
-<LazyDemo label="Electronegativity sample histograms" height="500px">
-  <PeriodicTable
-    tile_plots={hist_tile_plots}
-    tile_plot={{ bins: 16, color_scale: `interpolateViridis` }}
-  />
-</LazyDemo>
-<LazyDemo label="Log ionization energies" height="500px">
-  <PeriodicTable tile_plots={line_tile_plots} tile_plot={{ mode: `line` }} />
-</LazyDemo>
+<div style="display: grid; gap: 3em">
+  <LazyDemo label="Electronegativity sample histograms" height="500px">
+    <PeriodicTable
+      tile_plots={hist_tile_plots}
+      tile_plot={{ bins: 16, color_scale: `interpolateViridis` }}
+    />
+  </LazyDemo>
+  <LazyDemo label="Log ionization energies" height="500px">
+    <PeriodicTable
+      tile_plots={line_tile_plots}
+      tile_plot={{ mode: `line`, color_scale: `interpolateWarm` }}
+    />
+  </LazyDemo>
+</div>
 
 <h2 id="2-2-grid-layout">2×2 Grid Layout</h2>
 

@@ -8,8 +8,8 @@ type Numbers = ArrayLike<number> & Iterable<number>
 // [min, max], where null (Python None) leaves that end to the data
 type Range = readonly [number | null, number | null]
 // Raw `values` bin into a histogram; `x`/`y` pairs draw markers and/or a line, with optional
-// `color_values` coloring each marker through `tile_plot.color_scale`. `color` overrides the
-// series color (default: the tile's text color).
+// `color_values` coloring each marker and line segment through `tile_plot.color_scale`.
+// `color` overrides the series color (default: the tile's text color).
 export type TilePlotSeries =
   | { values: Numbers; color?: string }
   | { x: Numbers; y: Numbers; color_values?: Numbers; color?: string }
@@ -19,9 +19,9 @@ export type TilePlotConfig = {
   bins?: number // histogram bin count (integer >= 1); edges are shared by all tiles (default 20)
   mode?: `markers` | `line` | `line+markers` // how x/y pairs are drawn (default markers)
   color?: string // CSS color of every series without its own (default: the tile's text color)
-  // Colors histogram bars by bin position, or markers by their color_values (not both kinds in
-  // one table); shared by all tiles and shown in the auto color bar when the table has no
-  // heatmap_values. Values a log scale can't map (<= 0) keep the series color.
+  // Colors histogram bars by bin position, or markers and lines by color_values (not both
+  // kinds in one table); shared by all tiles and shown in the auto color bar when the table has
+  // no heatmap_values. Values a log scale can't map (<= 0) keep the series color.
   color_scale?: ColorScale
   log_y?: boolean // histogram bar heights on a log(1 + count) scale
   // Axis ranges shared by all tiles so they compare at a glance; unset ends span every tile's
@@ -154,27 +154,36 @@ const xy_marks = (
     throw new Error(`tile_plots.${symbol}: x, y and color_values lengths differ (${lengths})`)
   }
   const in_range = (val: number, [lo, hi]: Vec2): boolean => val >= lo && val <= hi
-  let [line, pen_down] = [``, false]
-  const markers: Segment[] = []
+  const value_color = (value: number | undefined): string | undefined =>
+    color ?? (value === undefined ? undefined : (ramp?.color_fn(value) ?? undefined))
+  // with a scale and color_values, each line segment blends its endpoint colors (in color
+  // space, so any scale type maps right); a non-finite end leaves it the series color
+  const gradient = Boolean(ramp && color_values && !color)
+  const blend = (color_a?: string, color_b?: string): string | undefined =>
+    color_a && color_b ? `color-mix(in srgb, ${color_a}, ${color_b})` : undefined
+  const [line, markers]: Segment[][] = [[], []]
+  let prev: { point: string; value?: number } | null = null
   for (let idx = 0; idx < x.length; idx++) {
     // a point outside the ranges (or non-finite) is dropped and breaks the line
     if (!in_range(x[idx], x_range) || !in_range(y[idx], y_range)) {
-      pen_down = false
+      prev = null
       continue
     }
     const point = `${fmt(to_pct(x_range, x[idx]))} ${fmt(100 - to_pct(y_range, y[idx]))}`
-    line += `${pen_down ? `L` : `M`}${point}`
-    pen_down = true
-    // a zero-length segment with round caps draws an undistorted dot
     const value = color_values?.[idx]
-    const marker_color = value === undefined ? undefined : ramp?.color_fn(value)
-    markers.push({ d: `M${point}h0`, color: color ?? marker_color ?? undefined })
+    if (!gradient) line.push({ d: `${prev ? `L` : `M`}${point}`, color })
+    else if (prev) {
+      const seg_color = blend(value_color(prev.value), value_color(value))
+      line.push({ d: `M${prev.point}L${point}`, color: seg_color })
+    }
+    // a zero-length segment with round caps draws an undistorted dot
+    markers.push({ d: `M${point}h0`, color: value_color(value) })
+    prev = { point, value }
   }
-  const marks: TileMark[] = []
-  if (line && mode !== `markers`)
-    marks.push(color ? { kind: `line`, d: line, color } : { kind: `line`, d: line })
-  if (mode !== `line`) marks.push(...group_by_color(`markers`, markers))
-  return marks
+  return [
+    ...(mode === `markers` ? [] : group_by_color(`line`, line)),
+    ...(mode === `line` ? [] : group_by_color(`markers`, markers)),
+  ]
 }
 
 // Marks for every element's mini plot, on axes and a color scale shared across tiles

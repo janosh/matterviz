@@ -113,6 +113,24 @@ describe(`tile_plot_marks`, () => {
       { kind: `markers`, d: `M100.00 0.00h0`, color: ramp?.color_fn(10) },
     ])
     expect(marks.Na).toEqual([{ kind: `markers`, d: `M0.00 100.00h0`, color: `red` }])
+    // line segments blend their endpoint colors and break at dropped points; a lone point
+    // after a break draws no segment; a series color wins over color_values
+    const lines = tile_plot_marks(
+      {
+        Li: { x: [0, 1, 2, 3, 4], y: [0, 1, 2, NaN, 4], color_values: [0, 4, 8, 9, 10] },
+        Na: { x: [0, 4], y: [0, 4], color_values: [0, 10], color: `red` },
+      },
+      { ...config, mode: `line` },
+    )
+    const blend = (val_a: number, val_b: number) =>
+      `color-mix(in srgb, ${lines.ramp?.color_fn(val_a)}, ${lines.ramp?.color_fn(val_b)})`
+    expect(lines.marks.Li).toEqual([
+      { kind: `line`, d: `M0.00 100.00L25.00 75.00`, color: blend(0, 4) },
+      { kind: `line`, d: `M25.00 75.00L50.00 50.00`, color: blend(4, 8) },
+    ])
+    expect(lines.marks.Na).toEqual([
+      { kind: `line`, d: `M0.00 100.00L100.00 0.00`, color: `red` },
+    ])
     const no_data = tile_plot_marks({ Li: { x: [0], y: [0], color_values: [NaN] } }, config)
     expect(no_data.ramp).toBeNull()
     expect(no_data.marks.Li).toEqual([{ kind: `markers`, d: `M50.00 50.00h0` }])

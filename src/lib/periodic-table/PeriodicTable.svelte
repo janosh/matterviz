@@ -114,8 +114,8 @@
     // auto color bar shown when heatmap_values is provided; null hides it
     color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
     // Mini plot per element keyed by symbol: `{ values }` bins into a histogram, `{ x, y }` draws
-    // markers and/or a line (a list overlays several series). Tiles share axes; the element name
-    // gives way to the plot, a `labels` entry or heatmap value moves to the top-right corner.
+    // markers and/or a line (a list overlays several series). Tiles share axes; the symbol moves
+    // to the top-right corner, a `labels` entry or heatmap value under it, the element name hides.
     tile_plots?: Partial<Record<ElementSymbol, TilePlotData | null>>
     // Bin count, x/y drawing mode, colors, log heights and shared axis ranges of the tile plots
     tile_plot?: TilePlotConfig
@@ -592,13 +592,13 @@
     width: 90%;
     line-height: 1.2;
   }
-  /* The plot fills the tile's lower half above split-heatmap segments; the symbol shrinks to
-     sit between it and the number, a label or value moves to the top-right corner */
+  /* Number and symbol share the top row (left and right corners), a label or value sits
+     under the symbol, and the plot fills the rest above split-heatmap segments */
   .tile-plot {
     position: absolute;
     inset: auto 6cqw 6cqw;
     width: 88cqw;
-    height: 42cqw;
+    height: 58cqw;
     overflow: visible;
     z-index: 2;
     fill: none;
@@ -617,18 +617,25 @@
       stroke-width: max(3px, 6cqw);
     }
   }
+  /* a label or value under the symbol pushes the plot top down */
+  .periodic-table
+    :global(.element-tile:has(> span.name, > span.value:not(.multi-value)) > .tile-plot) {
+    height: 50cqw;
+  }
   .periodic-table :global(.element-tile:has(> .tile-plot)) {
     :global(.symbol) {
-      align-self: flex-start;
-      margin-top: 28cqw; /* below the number */
-      font-size: var(--elem-symbol-font-size, 26cqw);
+      position: absolute;
+      top: 6cqw;
+      right: 6cqw;
+      /* capped: a larger symbol would run into the number */
+      font-size: min(var(--elem-symbol-font-size, 24cqw), 24cqw);
     }
     :global(span.name),
     :global(span.value:not(.multi-value)) {
-      top: 6cqw;
+      top: 31cqw;
       right: 6cqw;
       bottom: auto;
-      font-size: 14cqw;
+      font-size: 12cqw;
     }
   }
   div.spacer {
