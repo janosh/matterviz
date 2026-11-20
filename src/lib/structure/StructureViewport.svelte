@@ -180,7 +180,7 @@
     >
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     volumetric_data?: VolumetricData[]
-    isosurface_settings?: IsosurfaceSettings
+    isosurface_settings?: Partial<IsosurfaceSettings>
     property_colors?: AtomPropertyColors | null
     active_sites?: number[]
     camera_direction?: Vec3

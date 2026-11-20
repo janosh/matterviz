@@ -17,5 +17,5 @@
       "svelte/*": ["../../node_modules/svelte/*"]
     }
   },
-  "include": ["anywidget.ts", "reactive.svelte.ts", "h5wasm-stub.ts"]
+  "include": ["anywidget.ts", "reactive.svelte.ts", "h5wasm-stub.ts", "virtual.d.ts"]
 }

@@ -5,6 +5,7 @@ import { DATA_PROPS } from '../../extensions/anywidget/reactive.svelte'
 import { flushSync } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { inline_workers, widget_scope } from '../../extensions/anywidget/vite.config'
+import { widget_components } from '../../src/vite-plugins'
 import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
@@ -49,6 +50,18 @@ vi.mock(`matterviz`, async () => {
     normalize_dos: spectral_doc,
   }
 })
+// The build's per-widget loaders (widget_components), resolving each widget_type's stubbed
+// registry component. Tests add loaders for their probe widget types
+const load_component = vi.hoisted(
+  (): Record<string, () => Promise<{ default: unknown }>> => ({}),
+)
+vi.mock(`virtual:matterviz-widget-components`, async () => {
+  const stubs = await vi.importMock<Record<string, unknown>>(`matterviz`)
+  for (const [widget_type, path] of Object.entries(COMPONENTS)) {
+    load_component[widget_type] = async () => ({ default: stubs[component_name(path)] })
+  }
+  return { default: load_component }
+})
 vi.mock(`matterviz/workers`, () => ({ check_blob_workers }))
 vi.stubGlobal(`SCOPED_APP_CSS`, ``) // vite.config.ts defines it as the scoped app.css
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
@@ -84,6 +97,28 @@ test(`anywidget inline_workers rewrites new Worker(new URL(...), options) to an 
   ).toThrow(/unmatched new Worker/)
 })
 
+// each widget loads its own registry component (its own chunk in the split build), and one
+// for every spec, so no widget mounts another's component or none
+test(`widget_components loads each widget_type's registry component from lib_dir`, () => {
+  const load = widget_components(`/lib`).load as (id: string) => string | null
+  expect(load(`virtual:matterviz-widget-components`)).toBeNull() // only the resolved \0 id
+  const code = load(`\0virtual:matterviz-widget-components`) ?? ``
+  // "<widget_type>": () => import("<path>") per loader, whatever the surrounding formatting
+  const loaders = [
+    ...code.matchAll(/"(?<widget_type>\w+)":\s*\(\)\s*=>\s*import\("(?<file>[^"]+)"\)/g),
+  ].map(({ groups }) => [groups?.widget_type, groups?.file])
+  expect(Object.fromEntries(loaders)).toEqual(
+    Object.fromEntries(
+      Object.entries(COMPONENTS).map(([widget_type, path]) => [
+        widget_type,
+        `/lib/${path}.svelte`,
+      ]),
+    ),
+  )
+  expect(loaders).toHaveLength(Object.keys(COMPONENTS).length) // no duplicate keys
+  expect(new Set(Object.keys(COMPONENTS))).toEqual(new Set(Object.keys(WIDGETS)))
+})
+
 const as_model = (mock: MockModel) => mock as unknown as Parameters<typeof mount_spec>[0]
 const listener_count = (model: MockModel) =>
   Object.values(model.listeners).reduce((sum, set) => sum + set.size, 0)
@@ -93,7 +128,9 @@ const run_widget = (widget_type: string, model: MockModel) => {
   reset_stub() // clear any prior stub so a failed mount throws instead of returning stale
   const element = document.createElement(`div`)
   document.body.append(element)
-  mount_spec(as_model(model), element, WIDGETS[widget_type])
+  const component =
+    matterviz[component_name(COMPONENTS[widget_type as keyof typeof COMPONENTS])]
+  mount_spec(as_model(model), element, WIDGETS[widget_type], component as never)
   flushSync() // settle the initial writeback effects (all no-ops)
   return renderer_stub()
 }
@@ -174,8 +211,6 @@ test(`scoped_app_css leaves only zero-specificity theme tokens outside the widge
 test.each(Object.entries(WIDGETS))(
   `%s mounts its registry component, seeds, re-drives on every dep change and gets allow_file_drop iff it has a drop zone`,
   (widget_type, spec) => {
-    const path = COMPONENTS[widget_type as keyof typeof COMPONENTS]
-    expect(spec.component).toBe(matterviz[component_name(path)])
     const model = seeded_model(widget_type, spec)
     const stub = run_widget(widget_type, model)
     expect(stub.read().allow_file_drop).toBe(
@@ -566,17 +601,17 @@ describe(`writeback wiring`, () => {
 describe(`render() lifecycle`, () => {
   // via the real entry point, so cleanup_element + cleanups wiring is covered too
   // and hands a host-served moyo WASM to the main thread, which inline workers can't see
-  test(`the render() disposer unregisters all model listeners`, () => {
+  test(`the render() disposer unregisters all model listeners`, async () => {
     const model = new MockModel({ widget_type: `structure` })
     const element = document.createElement(`div`)
     document.body.append(element)
     vi.stubGlobal(`matterviz_moyo_wasm_url`, `http://localhost/moyo.wasm`)
     // as never: RenderProps also wants signal/host/experimental, unused here
     // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
-    const dispose = anywidget_module.default.render({
+    const dispose = (await anywidget_module.default.render({
       model: as_model(model),
       el: element,
-    } as never) as () => void
+    } as never)) as () => void
     vi.unstubAllGlobals()
     expect(set_moyo_wasm_source).toHaveBeenCalledExactlyOnceWith(`http://localhost/moyo.wasm`)
     flushSync()
@@ -592,20 +627,24 @@ describe(`render() lifecycle`, () => {
 
   // regression: a mount throwing on a malformed trait leaked every model listener, and
   // render() left the theme watcher running and the partial DOM in place
-  test(`a throwing mount unregisters the model listeners it added`, () => {
-    const model = new MockModel({ widget_type: `throwing`, series: [] })
+  test(`a throwing mount unregisters the model listeners it added`, async () => {
+    const model = new MockModel({ widget_type: `throwing`, series: [], _synced_keys: [] })
     const element = document.createElement(`div`)
     const component = () => {
       element.append(document.createElement(`span`))
       throw new Error(`bad trait`)
     }
-    WIDGETS.throwing = { ...WIDGETS.scatter_plot, component }
-    expect(() => mount_spec(as_model(model), element, WIDGETS.throwing)).toThrow(`bad trait`)
+    WIDGETS.throwing = WIDGETS.scatter_plot
+    load_component.throwing = async () => ({ default: component })
+    expect(() =>
+      mount_spec(as_model(model), element, WIDGETS.throwing, component as never),
+    ).toThrow(`bad trait`)
     expect(listener_count(model)).toBe(0)
     stop_theme.mockClear()
     const render_props = { model: as_model(model), el: element } as never
-    expect(() => anywidget_module.default.render(render_props)).toThrow(`bad trait`)
+    await expect(anywidget_module.default.render(render_props)).rejects.toThrow(`bad trait`)
     delete WIDGETS.throwing
+    delete load_component.throwing
     expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
     // the partial DOM gives way to the error: anywidget itself only logs it, leaving a blank cell
     expect(element.querySelector(`span`)).toBeNull()
@@ -614,7 +653,7 @@ describe(`render() lifecycle`, () => {
       model: as_model(new MockModel({ widget_type: `toString` })),
       el: element,
     }
-    expect(() => anywidget_module.default.render(unknown as never)).toThrow(
+    await expect(anywidget_module.default.render(unknown as never)).rejects.toThrow(
       `Unknown or missing`,
     )
     expect(element.textContent).toBe(
@@ -622,24 +661,76 @@ describe(`render() lifecycle`, () => {
     )
   })
 
+  // a wrapper/bundle version mismatch names the traits the bundle would silently drop and
+  // both fixes, since either side can be the stale one
+  test.each([
+    [[`series`, `widget_type`, `style`, `show_controls`, `x_axis`], null],
+    [
+      [`series`, `ghost_trait`, `other_ghost`],
+      `scatter_plot trait(s) ghost_trait, other_ghost. Python wrapper and bundle versions differ`,
+    ],
+    [`series`, `_synced_keys must be a list of trait names, got string`],
+    [undefined, `_synced_keys must be a list of trait names, got undefined`],
+  ])(`render() checks _synced_keys %j against the spec`, async (synced_keys, error) => {
+    const model = new MockModel({ widget_type: `scatter_plot`, _synced_keys: synced_keys })
+    const element = document.createElement(`div`)
+    const render_props = { model: as_model(model), el: element } as never
+    if (error === null) {
+      const dispose = (await anywidget_module.default.render(render_props)) as () => void
+      dispose()
+      return
+    }
+    await expect(anywidget_module.default.render(render_props)).rejects.toThrow(error)
+    expect(element.textContent).toMatch(/^MatterViz scatter_plot: /)
+    expect(element.textContent).toContain(error)
+    expect(element.textContent).toMatch(
+      /with the Python package version this bundle matches, or load the bundle version matching the Python package\.$/,
+    )
+    expect(listener_count(model)).toBe(0) // thrown before mount added any
+  })
+
   // the view no longer reflects Python's state, so it gives way to the error instead of
   // the change handler's exception reaching only the console
-  test(`a malformed trait update tears the widget down and shows the error`, () => {
+  test(`a malformed trait update tears the widget down and shows the error`, async () => {
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     const model = new MockModel({ widget_type: `trajectory` })
     const element = document.createElement(`div`)
     stop_theme.mockClear()
-    void anywidget_module.default.render({ model: as_model(model), el: element } as never)
+    await anywidget_module.default.render({ model: as_model(model), el: element } as never)
     model.push_from_python(`trajectory`, `malformed`)
     expect(element.textContent).toBe(`MatterViz trajectory: malformed trajectory`)
     expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
     expect(console_error).toHaveBeenCalledOnce()
+  })
+
+  // the component loads asynchronously (its own chunks in the split build), so an element
+  // rendered again meanwhile must mount only the later widget
+  test(`rendering an element again while its component loads cancels the first render`, async () => {
+    const element = document.createElement(`div`)
+    const [first, second] = [`structure`, `scatter_plot`].map(
+      (widget_type) => new MockModel({ widget_type }),
+    )
+    stop_theme.mockClear()
+    const renders = [first, second].map((model) =>
+      anywidget_module.default.render({ model: as_model(model), el: element } as never),
+    )
+    const [first_cleanup, second_cleanup] = [
+      await renders[0],
+      await renders[1],
+    ] as (() => void)[]
+    expect([listener_count(first), listener_count(second) > 0]).toEqual([0, true])
+    expect(stop_theme).toHaveBeenCalledOnce() // the cancelled render's theme watcher
+    first_cleanup() // a no-op: the later widget stays mounted
+    expect(listener_count(second)).toBeGreaterThan(0)
+    second_cleanup()
+    expect([listener_count(second), stop_theme.mock.calls.length]).toEqual([0, 2])
   })
 })
 
 describe(`export_svg`, () => {
   afterEach(() => {
     delete WIDGETS.export_probe
+    delete load_component.export_probe
   })
   // happy-dom lays nothing out, so each node reports the size its `size` attribute names
   const sized = (tag: string, size: [number, number], ns = `http://www.w3.org/2000/svg`) => {
@@ -648,24 +739,21 @@ describe(`export_svg`, () => {
     node.getBoundingClientRect = () => new DOMRect(0, 0, width, height)
     return node
   }
-  const render_with = (spec_extra: object, build: (element: HTMLElement) => void) => {
+  const render_with = async (spec_extra: object, build: (element: HTMLElement) => void) => {
     const element = document.createElement(`div`)
     document.body.append(element)
-    WIDGETS.export_probe = {
-      ...WIDGETS.scatter_plot,
-      ...spec_extra,
-      component: () => build(element),
-    }
-    const model = new MockModel({ widget_type: `export_probe`, series: [] })
-    const dispose = anywidget_module.default.render({
+    WIDGETS.export_probe = { ...WIDGETS.scatter_plot, ...spec_extra }
+    load_component.export_probe = async () => ({ default: () => build(element) })
+    const model = new MockModel({ widget_type: `export_probe`, series: [], _synced_keys: [] })
+    const dispose = await anywidget_module.default.render({
       model: as_model(model),
       el: element,
     } as never)
     return { element, dispose: dispose as () => void }
   }
 
-  test(`serializes the largest SVG, not icons, through the in-app serializer`, () => {
-    const { element, dispose } = render_with({}, (root) => {
+  test(`serializes the largest SVG, not icons, through the in-app serializer`, async () => {
+    const { element, dispose } = await render_with({}, (root) => {
       const icon = sized(`svg`, [12, 12])
       icon.setAttribute(`id`, `icon`)
       const chart = sized(`svg`, [200, 100])
@@ -690,8 +778,8 @@ describe(`export_svg`, () => {
   })
 
   const html_ns = `http://www.w3.org/1999/xhtml`
-  test(`HTML figures are redrawn as SVG`, () => {
-    const { element } = render_with({ html_figure: `.figure` }, (root) => {
+  test(`HTML figures are redrawn as SVG`, async () => {
+    const { element } = await render_with({ html_figure: `.figure` }, (root) => {
       // a tile-sized inset SVG must not be taken for the figure, nor a sibling the
       // component's own Export pane leaves out
       const grid = sized(`div`, [300, 200], html_ns)
@@ -728,8 +816,8 @@ describe(`export_svg`, () => {
       () => [in_node(chart(), in_node(sized(`foreignObject`, [200, 100]), canvas()))],
       null,
     ],
-  ])(`%s`, (_label, spec_extra, build, message) => {
-    const { element } = render_with(spec_extra, (root) => root.append(...build()))
+  ])(`%s`, async (_label, spec_extra, build, message) => {
+    const { element } = await render_with(spec_extra, (root) => root.append(...build()))
     const exported = () => anywidget_module.export_svg(element)
     if (message) expect(exported).toThrow(`MatterViz export_probe renders ${message}`)
     else expect(exported()).toContain(`<svg`)

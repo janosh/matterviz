@@ -649,6 +649,24 @@ test.each([
     ])
 })
 
+// partial settings (e.g. from Python) fill in from the defaults instead of crashing on .layers
+test.each([{}, { wireframe: true, halo: 0.4 }])(
+  `partial isosurface_settings %j keep the defaults through a volume import`,
+  async (partial) => {
+    const state = $state<{ isosurface_settings: Partial<IsosurfaceSettings> }>({
+      isosurface_settings: partial,
+    })
+    await mount_settled(bind_props({}, state))
+    drop_file(SAMPLE_CHGCAR_CONTENT, `a.CHGCAR`)
+    await vi.waitFor(() => expect(state.isosurface_settings.layers).toHaveLength(1))
+    expect(state.isosurface_settings).toEqual({
+      ...DEFAULT_ISOSURFACE_SETTINGS,
+      ...partial,
+      layers: [expect.objectContaining({ volume_id: expect.any(String) })],
+    })
+  },
+)
+
 test(`multi-file drops continue after failures and report one batch error`, async () => {
   mock_gpu()
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
@@ -753,7 +771,7 @@ const live_volume = (identifier: string, value: number, label = identifier) =>
     { id: identifier, label },
   )
 const scene_layer_ids = () =>
-  scene_stub.props?.isosurface_settings?.layers.map(
+  scene_stub.props?.isosurface_settings?.layers?.map(
     (layer: IsosurfaceLayer) => layer.volume_id,
   )
 const volume_labels = (volumes: VolumetricData[]) => volumes.map(({ label }) => label)
@@ -1423,7 +1441,7 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
   const reordered = fields.toReversed().map((field) => ({ ...field }))
   flushSync(() => next.on_overlay({ volumes: reordered }))
   expect(first.signal.aborted).toBe(true)
-  expect(state.isosurface_settings?.layers[0]).toMatchObject({
+  expect(state.isosurface_settings?.layers?.[0]).toMatchObject({
     volume_id: `density`,
     color_volume_id: `potential`,
     color: `#123456`,
@@ -3021,7 +3039,7 @@ test(`per-pane settings inherit viewer defaults, respect hidden volumes and surv
     bond_thickness: 0.3,
     isosurface_settings: { surface_finish: `satin`, wireframe: true },
   })
-  expect(second.isosurface_settings?.layers[0].opacity).toBe(
+  expect(second.isosurface_settings?.layers?.[0].opacity).toBe(
     auto_volume_layer(density).opacity,
   )
   flushSync(() => tool.set_overlay_visible(false))

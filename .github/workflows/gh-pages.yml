@@ -41,8 +41,9 @@ jobs:
       - name: Build site
         run: pnpm run build:site
 
-      # Serves main's widget bundle at /anywidget/matterviz.{js,css}: pymatviz's main branch
-      # loads it (MATTERVIZ_ANYWIDGET_VERSION = "main") until an npm release pins a version
+      # Serves main's widget bundle at /anywidget/matterviz.{js,css} and its split build at
+      # /anywidget/split/: pymatviz's main branch loads it (MATTERVIZ_ANYWIDGET_VERSION = "main")
+      # until an npm release pins a version
       - name: Build anywidget bundle into the site
         run: |
           pnpm -C extensions/anywidget run build

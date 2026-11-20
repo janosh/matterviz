@@ -246,7 +246,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           pnpm run build
-          test -s build/matterviz.js && test -s build/matterviz.css
+          test -s build/matterviz.js && test -s build/matterviz.css && test -s build/split/matterviz.js
           js_bytes=$(wc -c < build/matterviz.js)
           test "$js_bytes" -gt 1000000 || {
             echo "bundle too small ($js_bytes B)"; exit 1; }

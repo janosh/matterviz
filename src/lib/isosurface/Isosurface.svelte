@@ -27,21 +27,21 @@
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes, MAX_CUBIC_GRID_POINTS } from './types'
+  import { index_volumes, MAX_CUBIC_GRID_POINTS, with_isosurface_defaults } from './types'
   import { cubic_surface_volume } from './spline'
   import SurfaceMaterial from './SurfaceMaterial.svelte'
 
   let {
     volumes = [],
-    settings = DEFAULT_ISOSURFACE_SETTINGS,
+    settings: settings_input = {},
     supercell = IDENTITY_3X3,
     on_error,
     building = $bindable(false),
   }: {
     // Volumetric fields (charge density, ESP, ...) that layers pick their geometry and color sources from, matched by volume id.
     volumes?: VolumetricData[]
-    // Layers (isovalue, color, opacity, source volumes), wireframe toggle, halo and display range; defaults to DEFAULT_ISOSURFACE_SETTINGS.
-    settings?: IsosurfaceSettings
+    // Layers (isovalue, color, opacity, source volumes), wireframe toggle, halo and display range; missing keys take DEFAULT_ISOSURFACE_SETTINGS.
+    settings?: Partial<IsosurfaceSettings>
     // Integer supercell matrix periodic surfaces span (color sampling wraps the original volume)
     supercell?: Matrix3x3
     // Geometry worker failures; defaults to the host's set_isosurface_error_handler
@@ -50,6 +50,7 @@
     // so a scene snapshot can wait for them (large grids mesh in a worker)
     building?: boolean
   } = $props()
+  const settings = $derived(with_isosurface_defaults(settings_input))
 
   // Context is read once at init: Structure registers its handler before the scene mounts
   const context_on_error = get_isosurface_error_handler()

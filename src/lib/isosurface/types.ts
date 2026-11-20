@@ -239,6 +239,15 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   halo: 0,
 }
 
+// Fills partial settings (e.g. from Python or a custom element) from the defaults, so
+// `{ wireframe: true }` keeps the default layers, finish and halo. Unset/null keys count as missing.
+export const with_isosurface_defaults = (
+  settings: Partial<IsosurfaceSettings> = {},
+): IsosurfaceSettings => ({
+  ...DEFAULT_ISOSURFACE_SETTINGS,
+  ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value != null)),
+})
+
 // [isovalue fraction of abs_max, opacity] for the nth shell auto-added to a volume: the usual
 // 20% envelope, then alternating inner/outer steps so shells never coincide, inner ones more
 // opaque so every shell stays visible. Cycles past 6.

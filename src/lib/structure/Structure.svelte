@@ -50,9 +50,9 @@
   } from '#lib/isosurface/types.js'
   import VolumeSliceView from '#lib/isosurface/VolumeSliceView.svelte'
   import {
-    DEFAULT_ISOSURFACE_SETTINGS,
     normalize_active_volume_id,
     index_volumes,
+    with_isosurface_defaults,
   } from '#lib/isosurface/types.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
@@ -227,9 +227,7 @@
 
     symmetry_settings = $bindable(symmetry.default_sym_settings),
     volumetric_data = $bindable<VolumetricData[] | undefined>(),
-    isosurface_settings = $bindable<IsosurfaceSettings>({
-      ...DEFAULT_ISOSURFACE_SETTINGS,
-    }),
+    isosurface_settings = $bindable<Partial<IsosurfaceSettings>>({}),
     slice_settings = $bindable<Partial<VolumeSliceSettings>>({}),
     display_mode = $bindable<StructureDisplayMode>(`structure`),
     active_volume_id = $bindable<string | undefined>(),
@@ -388,8 +386,9 @@
     // isosurface_settings itself. A volumetric file import adds its fields only when the ordered
     // atoms, species and lattice match the current structure, else replaces scene and fields.
     volumetric_data?: VolumetricData[]
-    // Isosurface rendering settings (iso value, opacity, ...) for `volumetric_data`.
-    isosurface_settings?: IsosurfaceSettings
+    // Isosurface rendering settings (iso value, opacity, ...) for `volumetric_data`; missing
+    // keys take DEFAULT_ISOSURFACE_SETTINGS.
+    isosurface_settings?: Partial<IsosurfaceSettings>
     // Sampling and rendering settings of the 2D cross-section of `volumetric_data`.
     slice_settings?: Partial<VolumeSliceSettings>
     display_mode?: StructureDisplayMode // 3D structure/isosurface, 2D cross-section or both side by side
@@ -406,6 +405,9 @@
     // Called with the reset camera pose when the camera is reset to fit the structure.
     on_camera_reset?: EventHandler
   } = $props()
+
+  // isosurface_settings with defaults filled in, what every read and the controls see
+  const iso_settings = $derived(with_isosurface_defaults(isosurface_settings))
 
   const has_scene_content = $derived(
     site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0,
@@ -427,7 +429,7 @@
         loaded_structure = prediction.input
       } else {
         const { document, notice } = apply_structure_material(
-          { structure, volumetric_data, isosurface_settings, active_volume_id },
+          { structure, volumetric_data, isosurface_settings: iso_settings, active_volume_id },
           opened,
         )
         loaded_structure = document.structure
@@ -645,7 +647,7 @@
       : `Prediction density is hidden in standardized cells. Select the original cell to align it with the atoms.`
   })
   const pane_isosurfaces = (overrides?: Partial<IsosurfaceSettings>): IsosurfaceSettings => {
-    const settings = overrides ? { ...isosurface_settings, ...overrides } : isosurface_settings
+    const settings = overrides ? { ...iso_settings, ...overrides } : iso_settings
     return hidden_volume_ids.size > 0
       ? {
           ...settings,
@@ -727,11 +729,11 @@
     )
     const incoming_ids = new Set(incoming.map(({ id: identifier }) => identifier))
     const returning = (layer: IsosurfaceLayer) => incoming_ids.has(layer.volume_id)
-    const layers = [...isosurface_settings.layers, ...parked_tool_layers.filter(returning)]
+    const layers = [...iso_settings.layers, ...parked_tool_layers.filter(returning)]
     parked_tool_layers = [
       ...parked_tool_layers.filter((layer) => !returning(layer)),
       ...(overlay?.transient
-        ? isosurface_settings.layers.filter(
+        ? iso_settings.layers.filter(
             (layer) => owned_volume_set.has(layer.volume_id) && !returning(layer),
           )
         : []),
@@ -743,7 +745,7 @@
       incoming,
     )
     volumetric_data = result.volumes
-    isosurface_settings = { ...isosurface_settings, layers: result.layers }
+    isosurface_settings = { ...iso_settings, layers: result.layers }
     owned_volume_ids = incoming.map(({ id: identifier }) => identifier)
     active_volume_id = normalize_active_volume_id(
       incoming.length
@@ -820,7 +822,7 @@
     tool_controller.clear()
     tool_overlay_visible = true
     volumetric_data = []
-    isosurface_settings = { ...isosurface_settings, layers: [] }
+    isosurface_settings = { ...iso_settings, layers: [] }
     active_volume_id = undefined
     // The file's run_id came from another session and may equal a live run's.
     apply_tool_overlay({ ...snapshot, run_id: tool_controller.reserve_run_id() })
@@ -831,9 +833,9 @@
   })
   const reset_prediction_surfaces = (): void => {
     isosurface_settings = {
-      ...isosurface_settings,
+      ...iso_settings,
       layers: tool_surface(
-        isosurface_settings.layers.filter((layer) => !owned_volume_set.has(layer.volume_id)),
+        iso_settings.layers.filter((layer) => !owned_volume_set.has(layer.volume_id)),
         owned_volume_ids.flatMap((identifier) => volume_by_id.get(identifier) ?? []),
       ),
     }
@@ -1683,7 +1685,9 @@
                 bind:atom_color_config
                 bind:cell_type
                 bind:volumetric_data
-                bind:isosurface_settings
+                bind:isosurface_settings={
+                  () => iso_settings, (value) => (isosurface_settings = value)
+                }
                 bind:slice_settings
                 bind:active_volume_id
                 {display_mode}

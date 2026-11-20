@@ -5,44 +5,13 @@
 import { is_plain_object } from 'svelte-widgets/utils'
 import type { AnyModel, Render } from 'anywidget/types'
 import {
-  Bands,
-  BandsAndDos,
-  BarPlot,
-  BinnedScatterPlot,
-  BoxPlot,
-  BrillouinZone,
-  ChemPotDiagram,
-  Composition,
-  ConvexHull,
-  CoordinationBarPlot,
-  Dos,
-  EosPlot,
-  FermiSurface,
-  HeatmapMatrix,
-  Histogram,
-  IsobaricBinaryPhaseDiagram,
-  IsobaricTernaryPhaseDiagram,
-  NebPlot,
   normalize_band_structure,
   normalize_dos,
-  PeriodicTable,
-  PhononModeExplorer,
-  RdfPlot,
-  Sankey,
-  ScatterPlot,
-  ScatterPlot3D,
   set_moyo_wasm_source,
-  SpacegroupBarPlot,
-  Structure,
-  Sunburst,
-  TernaryPlot,
   trajectory_from_binary,
   trajectory_from_json,
-  Trajectory,
-  Treemap,
   volume_from_binary,
   volume_from_json,
-  XrdPlot,
 } from 'matterviz'
 import {
   html_to_svg,
@@ -53,7 +22,8 @@ import {
 import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
-import { mount, unmount } from 'svelte'
+import { type Component, mount, unmount } from 'svelte'
+import load_component from 'virtual:matterviz-widget-components'
 import type { COMPONENTS } from '../../src/elements/components'
 import type { DrivenProp } from './reactive.svelte'
 import {
@@ -286,10 +256,10 @@ const scatter_interactions = (model: AnyModel) => {
   }
 }
 
-// Declarative description of one widget: the component, its reactive props (drive /
-// derived / writeback), and optional interaction callbacks + teardown.
+// Declarative description of one widget: its reactive props (drive / derived / writeback) and
+// optional interaction callbacks + teardown. Its component is COMPONENTS' entry for the same
+// widget_type, loaded on first render (vite.config.ts's widget_components)
 type WidgetSpec = {
-  component: unknown
   drive: readonly DrivenProp[]
   // style is the notebook wrapper, driven unless the component has nowhere to put it
   no_style?: true
@@ -315,7 +285,7 @@ const driven_props = ({ no_style, drive }: WidgetSpec): readonly DrivenProp[] =>
 // Viewers with a drop zone: file drops are off in notebooks
 const no_file_drop = { allow_file_drop: false }
 
-// Mount a widget from its spec: build a two-way reactive $state props object (Python
+// Mount a widget's component with its spec: build a two-way reactive $state props object (Python
 // trait changes -> live view, component interaction -> model). Returns the teardown that
 // unregisters the model listeners, stops the writeback effects and unmounts the component.
 // Exported so tests can mount a single widget's wiring directly.
@@ -323,6 +293,7 @@ export const mount_spec = (
   model: AnyModel,
   element: HTMLElement,
   spec: WidgetSpec,
+  component: Component<Record<string, unknown>>,
   on_update_error?: (error: unknown) => void,
 ): (() => void) => {
   element.style.boxSizing = `border-box`
@@ -342,7 +313,7 @@ export const mount_spec = (
     if (instance) void unmount(instance)
   }
   try {
-    instance = mount(spec.component as Parameters<typeof mount>[0], { target: element, props })
+    instance = mount(component, { target: element, props })
   } catch (error) {
     teardown() // a mount throwing on a malformed trait must not leave model listeners behind
     throw error
@@ -355,7 +326,6 @@ export const mount_spec = (
 // Exported so tests can exercise each widget's drive/writeback/derived wiring.
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
-    component: Structure,
     static_props: no_file_drop,
     drive: [
       // show_site_labels/show_site_indices are delivered via scene_props (see scene_pick_keys),
@@ -388,7 +358,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   trajectory: {
-    component: Trajectory,
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls layout fullscreen_toggle auto_play step_labels
@@ -429,7 +398,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   scatter_plot: {
-    component: ScatterPlot,
     // selected_point drives the highlight from Python; active_point/hovered_point are
     // written back via the interaction callbacks.
     drive: [
@@ -444,7 +412,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     interaction_model_keys: [`active_point`, `hovered_point`],
   },
   scatter_plot_3d: {
-    component: ScatterPlot3D,
     drive: [
       series_prop,
       ...with_plot_controls(`surfaces ref_lines ref_planes x_axis y_axis z_axis display styles
@@ -452,7 +419,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   binned_scatter_plot: {
-    component: BinnedScatterPlot,
     drive: [
       series_prop,
       ...drive_props(`size_scale density overlays padding range_padding title point_labels
@@ -465,38 +431,32 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   bar_plot: {
-    component: BarPlot,
     drive: cartesian_plot_drive(
       `show_legend orientation mode bar line color_scale size_scale`,
     ),
   },
   histogram: {
-    component: Histogram,
     drive: [
       ...cartesian_plot_drive(`show_legend bins mode bar`),
       writeback_prop(`selected_series_idx`, 0),
     ],
   },
   composition: {
-    component: Composition,
     drive: drive_props(`composition mode show_percentages color_scheme patterns`),
   },
   convex_hull: {
-    component: ConvexHull,
     static_props: no_file_drop,
     drive: drive_props(`show_controls entries show_stable show_unstable show_hull_faces
       hull_face_opacity show_stable_labels show_unstable_labels max_hull_dist_show_labels
       max_hull_dist_show_phases temperature`),
   },
   band_structure: {
-    component: Bands,
     drive: [
       band_structs_prop,
       ...with_plot_controls(`show_legend fermi_level reference_frequency`),
     ],
   },
   dos: {
-    component: Dos,
     drive: [
       doses_prop,
       ...with_plot_controls(`stack sigma normalize orientation show_legend spin_mode`),
@@ -506,7 +466,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
     // The parent owns the shared Fermi reference; hover frequency and DOS orientation
     // are controlled internally.
-    component: BandsAndDos,
     html_figure: `.bands-and-dos`,
     drive: [
       // structure adds its Brillouin zone beside the bands, configured by bz_props
@@ -521,7 +480,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   fermi_surface: {
-    component: FermiSurface,
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls fermi_data band_data mu color_property color_scale
@@ -531,24 +489,20 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   brillouin_zone: {
-    component: BrillouinZone,
     static_props: no_file_drop,
     drive:
       drive_props(`show_controls structure bz_data surface_color surface_opacity edge_color
       edge_width show_vectors show_ibz ibz_color ibz_opacity camera_projection`),
   },
   phase_diagram: {
-    component: IsobaricBinaryPhaseDiagram,
     static_props: no_file_drop,
     drive: drive_props(`show_controls data`),
   },
   xrd: {
-    component: XrdPlot,
     static_props: no_file_drop,
     drive: with_plot_controls(`patterns`),
   },
   periodic_table: {
-    component: PeriodicTable,
     html_figure: `.periodic-table`,
     drive: [
       ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
@@ -571,7 +525,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   rdf_plot: {
-    component: RdfPlot,
     static_props: no_file_drop,
     drive:
       with_plot_controls(`patterns structures mode show_reference_line cutoff n_bins x_axis
@@ -579,7 +532,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   coordination_bar_plot: {
     // Computes its CN series from the structures, so the shared `series` trait has no place here
-    component: CoordinationBarPlot,
     static_props: no_file_drop,
     drive: [
       ...with_plot_controls(`structures strategy split_mode orientation show_legend display
@@ -588,7 +540,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   heatmap_matrix: {
-    component: HeatmapMatrix,
     html_figure: `.grid`,
     drive: [
       ...drive_props(`show_controls x_items y_items values color_scale missing x_axis y_axis
@@ -597,41 +548,34 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   spacegroup_bar: {
-    component: SpacegroupBarPlot,
     drive: drive_props(`show_controls data show_counts show_legend orientation x_axis y_axis`),
   },
   chem_pot_diagram: {
     // ChemPotDiagram sizes itself through width/height and spreads no rest props, so the
     // notebook wrapper `style` has nowhere to go: size it with the width/height traits
-    component: ChemPotDiagram,
     no_style: true,
     drive: drive_props(`entries config temperature width height`),
   },
   treemap: {
-    component: Treemap,
     drive:
       hierarchy_drive(`padding_inner padding_top padding_outer label_fit label_min_font_size
       label_max_font_size parent_label_font_size`),
   },
   sunburst: {
-    component: Sunburst,
     drive: hierarchy_drive(`shape inner_radius pad_angle label_rotation`),
   },
   sankey: {
-    component: Sankey,
     drive: with_plot_controls(`data orientation node_width node_padding node_align min_fraction
       max_links iterations link_opacity link_color_mode show_node_labels value_format padding
       legend show_legend fullscreen_toggle`),
   },
   box_plot: {
-    component: BoxPlot,
     drive: cartesian_plot_drive(`show_legend orientation title box whisker median_style
       sample_style whisker_mode whisker_range whisker_percentiles show_outliers show_mean points
       show_value_labels value_label_stat value_label_format kind side bandwidth violin_width
       violin_style kde_clip point_side`),
   },
   ternary_plot: {
-    component: TernaryPlot,
     drive: [
       series_prop,
       ...with_plot_controls(`labels grid_step show_grid show_ticks tick_format color_scale
@@ -640,7 +584,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   ternary_phase_diagram: {
-    component: IsobaricTernaryPhaseDiagram,
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls entries options temperature display free_energy_mode t_range
@@ -651,7 +594,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   neb_plot: {
-    component: NebPlot,
     drive: [
       ...with_plot_controls(`paths coord_options coord_mode energy_reference show_spline
         annotate_barrier x_axis y_axis`),
@@ -661,7 +603,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   eos_plot: {
-    component: EosPlot,
     drive: [
       ...with_plot_controls(`volumes energies kinds show_fit_params data_label x_axis y_axis`),
       // Output only: the fitted E0, V0, B0, B0' and RMSE per successful kind
@@ -670,7 +611,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   phonon_mode_explorer: {
     // No show_controls prop: the explorer's panes carry their own chrome
-    component: PhononModeExplorer,
     drive: [
       ...drive_props(`phonons spectrum_kind amplitude supercell n_frames fps show_vectors
         vector_thickness vector_color auto_play pane_ratio show_bz_inset band_coloring
@@ -695,8 +635,36 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
   }),
 )
 
+// Keys of every Python widget that no spec has to read: widget_type picks the spec, style and
+// show_controls are base traits some components have nowhere to put
+const BASE_MODEL_KEYS = new Set([`widget_type`, `style`, `show_controls`])
+
+// Hosts list their widget's synced traits in _synced_keys (the anywidget model can't enumerate
+// its keys). A trait no spec reads would be silently dropped, so name it rather than render a
+// partial widget. Either side can be the stale one: a Python package newer than the bundle, or
+// a saved notebook's state older than the URL-synced bundle it now loads.
+const VERSION_MISMATCH =
+  `Python wrapper and bundle versions differ: re-run the cell with the Python package ` +
+  `version this bundle matches, or load the bundle version matching the Python package.`
+export const check_synced_keys = (model: AnyModel, widget_type: string): void => {
+  const synced_keys = get_prop(model, `_synced_keys`)
+  if (!Array.isArray(synced_keys)) {
+    throw new Error(
+      `_synced_keys must be a list of trait names, got ${typeof synced_keys}. ${VERSION_MISMATCH}`,
+    )
+  }
+  const read_keys = new Set(WIDGET_MODEL_KEYS[widget_type])
+  const unknown = synced_keys.filter((key) => !read_keys.has(key) && !BASE_MODEL_KEYS.has(key))
+  if (unknown.length) {
+    throw new Error(
+      `this matterviz-anywidget bundle doesn't read ${widget_type} trait(s) ${unknown.join(`, `)}. ` +
+        VERSION_MISMATCH,
+    )
+  }
+}
+
 // Detect widget type and render
-const render: Render = (props) => {
+const render: Render = async (props) => {
   const { model, el: element } = props
   const widget_type = get_prop(model, `widget_type`) as string | undefined
   // anywidget only logs a throwing render or change handler, which leaves a blank or silently
@@ -721,20 +689,32 @@ const render: Render = (props) => {
   // before mount so the first paint already has it; a throwing mount stops it and replaces the
   // partial DOM with the error.
   const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
+  // a cleanup while the component loads (the element rendering again) cancels this render
+  let cancelled = false
+  cleanups.set(element, () => {
+    cancelled = true
+    stop_theme()
+  })
   let unmount_widget: () => void
   try {
     if (!widget_type || !spec)
       throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
+    check_synced_keys(model, widget_type)
+    // its own chunks in the split build, already inlined in the single-file one
+    const { default: component } = await load_component[widget_type]()
+    if (cancelled) return () => {}
     // A malformed update tears the widget down: it no longer reflects the Python state
-    unmount_widget = mount_spec(model, element, spec, (error) => {
+    unmount_widget = mount_spec(model, element, spec, component, (error) => {
       cleanup_element(element)
       show_error(error)
       console.error(`MatterViz ${widget_type}: trait update failed`, error)
     })
     rendered_types.set(element, widget_type)
   } catch (error) {
-    stop_theme()
-    show_error(error)
+    if (!cancelled) {
+      cleanup_element(element)
+      show_error(error)
+    }
     throw error
   }
   cleanups.set(element, () => {

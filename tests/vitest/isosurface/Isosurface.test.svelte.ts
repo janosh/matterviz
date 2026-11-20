@@ -354,6 +354,24 @@ describe(`Isosurface`, () => {
     expect(materials()[0].props.color).toBe(`#112233`)
   })
 
+  // partial settings (e.g. from Python) fill in from DEFAULT_ISOSURFACE_SETTINGS
+  test.each([
+    [{}, 0, 0],
+    [{ wireframe: true }, 0, 0],
+    [{ layers: [layer(0.3, { opacity: 1 })] }, 1, 0],
+    [{ layers: [layer(0.3, { opacity: 1 })], wireframe: true }, 0, 1],
+  ])(
+    `partial settings %j render %i surface and %i wireframe`,
+    async (settings, n_surfaces, n_wire) => {
+      // Isosurface takes Partial<IsosurfaceSettings>; Props keeps the full type for other tests
+      mount_isosurface({ settings: settings as IsosurfaceSettings })
+      await settle()
+      const surface_nodes = materials().filter(({ tag }) => tag !== `MeshBasicMaterial`)
+      expect(surface_nodes).toHaveLength(n_surfaces)
+      expect(materials().filter(({ tag }) => tag === `MeshBasicMaterial`)).toHaveLength(n_wire)
+    },
+  )
+
   test(`outer shells render before inner shells`, async () => {
     mount_isosurface({
       settings: with_layers([layer(0.6, { opacity: 1 }), layer(0.2, { opacity: 1 })]),

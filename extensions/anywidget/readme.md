@@ -10,6 +10,8 @@ the widget's traitlet values as props. The build is a single self-contained ESM
 file (`build/matterviz.js`) plus its CSS (`build/matterviz.css`), with all
 dependencies (matterviz components, Svelte runtime, three.js, ...) inlined.
 
+`build/split/` holds the same bundle code-split: an entry `matterviz.js` that loads each widget's component and its dependencies as chunks on first render, so a 2D plot fetches ~1.2 MB (~0.45 MB gzip) instead of all 5.8 MB, skipping three.js. Its chunks load relative to the entry's URL, so it only works imported by URL (jsDelivr, the docs site); hosts that load the bundle as text (a local build synced to the notebook, marimo virtual files, headless or inline HTML export) use the single file. `build/matterviz.css` styles both.
+
 This is a peer of `extensions/vscode`: a framework adapter
 that wraps the MatterViz component library for a specific host runtime.
 
@@ -116,6 +118,7 @@ The bundle has no URL of its own to load worker files from (anywidget imports it
 - Any Python (or JS) wrapper can mount the bundle: call its default export's
   `render({ model, el })` with an anywidget-compatible model exposing
   `get(key)` for the widget's `widget_type` and props.
+- `build/widget-model-keys.json` (the exported `WIDGET_MODEL_KEYS`) lists, per `widget_type`, every model key the bundle reads or writes, so wrappers can test their traits against it without a browser. A model must carry `_synced_keys`, the list of its synced trait names (the anywidget model can't enumerate them): `render()` throws when it's missing, and names any key the widget doesn't read besides `widget_type`, `style` and `show_controls`, i.e. when wrapper and bundle versions differ.
 
 ## Build
 
@@ -125,7 +128,7 @@ The bundle has no URL of its own to load worker files from (anywidget imports it
 pnpm install && pnpm package:dist
 
 pnpm install:anywidget             # standalone install, no lockfile or pnpm-workspace.yaml
-pnpm -C extensions/anywidget build # -> build/matterviz.js + build/matterviz.css
+pnpm -C extensions/anywidget build # -> build/matterviz.{js,css}, build/split/ + build/widget-model-keys.json
 ```
 
 ### Building from a matterviz checkout in downstream CI
@@ -163,6 +166,7 @@ CORS and a JavaScript MIME type via jsDelivr/unpkg, e.g.:
 
 ```txt
 https://cdn.jsdelivr.net/npm/matterviz-anywidget@<version>/build/matterviz.js
+https://cdn.jsdelivr.net/npm/matterviz-anywidget@<version>/build/split/matterviz.js
 ```
 
 `build/` is gitignored; the bundle never enters version control. See the

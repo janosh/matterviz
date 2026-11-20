@@ -14,6 +14,7 @@ import {
   snap_isovalue,
   surface_isovalue_band,
   volume_from_json,
+  with_isosurface_defaults,
 } from '#lib/isosurface/types.js'
 import type { VolumetricData } from '#lib/isosurface/types.js'
 import { flatten_grid } from '#lib/isosurface/grid.js'
@@ -147,6 +148,24 @@ test.each([`geometry`, `color`, `unrelated`])(`remove_volume keeps ids (%s)`, (r
       : [{ ...layer, color_volume_id: removed === `color` ? undefined : `color` }],
   )
 })
+
+test.each([
+  [undefined, DEFAULT_ISOSURFACE_SETTINGS],
+  [{}, DEFAULT_ISOSURFACE_SETTINGS],
+  [
+    { wireframe: true, layers: undefined },
+    { ...DEFAULT_ISOSURFACE_SETTINGS, wireframe: true },
+  ],
+  [
+    { halo: 0.3, display_range: null },
+    { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.3 },
+  ],
+])(
+  `with_isosurface_defaults(%j) fills missing keys from the defaults`,
+  (partial, expected) => {
+    expect(with_isosurface_defaults(partial as never)).toStrictEqual(expected)
+  },
+)
 
 describe(`label_file_volumes`, () => {
   const vol = (label?: string): VolumetricData =>
