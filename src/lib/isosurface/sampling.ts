@@ -277,7 +277,8 @@ export type VolumeWindow = { range: DisplayRange; frame?: Matrix3x3 }
 // [0, S] is resampled to N*S + 1 points (same spacing, closed final interval). A diagonal
 // supercell is that box in base fractions, any other [0, 1]³ in its own frame. The halo pads
 // each outer face by `halo` base cells (halo / |M_i| frame fractions). An explicit
-// display_range (base fractions) wins over the supercell; finite volumes get only that, unpadded.
+// display_range (base fractions) wins over the supercell; finite volumes get only a real crop of
+// it, unpadded (a full [0, 1]³ range resolves to no window).
 export function resolve_volume_window(
   volume: VolumetricData,
   {
@@ -290,7 +291,9 @@ export function resolve_volume_window(
   const pad = Math.max(0, halo)
   if (display_range) {
     const range = sanitize_display_range(display_range, volume.periodic)
-    if (!volume.periodic) return { range }
+    // A full finite window crops nothing: no window keeps the surface-specific cubic frame.
+    if (!volume.periodic)
+      return range.every(([lower, upper]) => lower === 0 && upper === 1) ? null : { range }
     return { range: range.map(([lower, upper]) => [lower - pad, upper + pad]) as DisplayRange }
   }
   const tiling = diagonal_scaling(supercell)

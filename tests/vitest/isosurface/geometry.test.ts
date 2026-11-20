@@ -14,6 +14,7 @@ import {
   type DisplayRange,
   extract_volume_range,
   prepare_geometry_grid,
+  resolve_volume_window,
   UNIT_CELL_RANGE,
 } from '#lib/isosurface/sampling.js'
 import { cubic_surface_volume } from '#lib/isosurface/spline.js'
@@ -21,6 +22,7 @@ import {
   make_volume as make_flat_volume,
   MAX_CUBIC_GRID_POINTS,
   MAX_GRID_POINTS,
+  type VolumetricData,
 } from '#lib/isosurface/types.js'
 import { cross_3d, dot, IDENTITY_3X3, type Matrix3x3, subtract, type Vec3 } from '#lib/math.js'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
@@ -176,6 +178,10 @@ describe(`compute_isosurface_geometries`, () => {
     expect(fine.dims[0] - 1).toBe(fine.lattice[0][0] * 4) // four samples per native interval
     expect(fine.origin).not.toEqual(volume.origin)
     expect(cubic_surface_volume(volume, 0.901)).toBe(fine)
+    // Interleaved levels A, B, A reuse A's grid, so one rebuild submits it once.
+    const wider = cubic_surface_volume(volume, 0.3)
+    expect(wider.dims).not.toEqual(fine.dims)
+    expect(cubic_surface_volume(volume, 0.9)).toBe(fine)
     const sample = create_volume_sampler(fine)
     // The first lobe rises above 0.9 strictly between the two 0.84 native samples.
     const at_knot = (coord_x: number): Vec3 => [2 + coord_x + 25 / 2, -4 + 25 + 22 / 4, 9 + 22]
@@ -200,6 +206,132 @@ describe(`compute_isosurface_geometries`, () => {
     expect(surfaces[0].lobes?.offsets).toHaveLength(3) // two disconnected positive lobes
     expect(surfaces[1].indices.length).toBeGreaterThan(0)
     expect(cubic_surface_volume(volume, 0)).toBe(cubic_surface_volume(volume))
+  })
+
+  // Mirrors Isosurface.svelte's prepared_grid: a window keeps the original frame (level 0).
+  const cubic_mesh = (volume: VolumetricData, isovalue: number, range?: DisplayRange) => {
+    const window = range ? resolve_volume_window(volume, { display_range: range }) : null
+    const source = cubic_surface_volume(volume, window ? 0 : Math.abs(isovalue))
+    const prepared = prepare_geometry_grid(source, window, MAX_CUBIC_GRID_POINTS)
+    const [surface] = compute_isosurface_geometries({
+      volumes: [{ ...prepared, surfaces: [{ token: `level`, isovalue }] }],
+    }).surfaces
+    return { prepared, surface }
+  }
+  const unit_lattice = (scales: Vec3): Matrix3x3 => [
+    [scales[0], 0, 0],
+    [0, scales[1], 0],
+    [0, 0, scales[2]],
+  ]
+
+  // A full [0, 1]³ display range forced the coarse 2× grid, which stepped over the
+  // between-knot crossing the focused grid finds near x = 10.25.
+  test.each([undefined, UNIT_CELL_RANGE])(`finite crossing kept with range=%j`, (range) => {
+    const values = new Float64Array(33 * 4)
+    for (const [idx_x, value] of [
+      [10, 1],
+      [11, 0.8],
+      [28, 2],
+    ])
+      values.fill(value, idx_x * 4, idx_x * 4 + 4)
+    const volume = make_flat_volume(values, [33, 2, 2], {
+      id: `ridge`,
+      origin: [0, 0, 0],
+      lattice: unit_lattice([32, 1, 1]),
+      periodic: false,
+      units: null,
+    })
+    const { positions } = cubic_mesh(volume, 1.09, range).surface
+    const near_ridge = positions.filter((coord, idx) => idx % 3 === 0 && coord < 15)
+    expect(near_ridge.length).toBeGreaterThan(0)
+    for (const coord of near_ridge) expect(Math.abs(coord - 10.29)).toBeLessThan(0.07)
+  })
+
+  // Clamping the z pass's 1.25 overshoot to the data max before refining x moved the nodal
+  // surface: the x midpoint read (1 - 1.1) / 2 = -0.05 instead of (1.25 - 1.1) / 2 = 0.075.
+  test(`cubic passes clamp only after the last spline pass`, () => {
+    const lines = [
+      [0, 1, 1, 0],
+      [-1.1, -1.1, -1.1, -1.1],
+    ]
+    const values = Float64Array.from({ length: 16 }, (_, idx) => lines[idx >> 3][idx % 4])
+    const volume = make_flat_volume(values, [2, 2, 4], {
+      id: `nodal`,
+      origin: [0, 0, 0],
+      lattice: unit_lattice([1, 1, 30]), // widest z spacing: refined first
+      periodic: false,
+      units: null,
+    })
+    const fine = cubic_surface_volume(volume, 0)
+    expect(fine.dims).toEqual([3, 3, 7])
+    const sample = create_volume_sampler(fine)
+    expect(sample([0, 0, 15])).toBe(1) // the final pass still clamps to the data range
+    expect(sample([0.5, 0, 15])).toBeCloseTo(0.075, 12)
+  })
+
+  // Finite z-fastest field from a function of the native sample indices.
+  const finite_field = (size: number, fn: (...coords: Vec3) => number, id = `field`) => {
+    const values = new Float64Array(size ** 3)
+    let idx = 0
+    for (let idx_x = 0; idx_x < size; idx_x++)
+      for (let idx_y = 0; idx_y < size; idx_y++)
+        for (let idx_z = 0; idx_z < size; idx_z++) values[idx++] = fn(idx_x, idx_y, idx_z)
+    return make_flat_volume(values, [size, size, size], {
+      id,
+      origin: [0, 0, 0],
+      lattice: unit_lattice([1, 1, 1]),
+      periodic: false,
+      units: null,
+    })
+  }
+  const time_ms = (fn: () => unknown): number => {
+    const start = performance.now()
+    fn()
+    return performance.now() - start
+  }
+
+  // An over-budget finite source returned before focusing, so geometry preparation coarsened
+  // x to 90 samples (max 0.438) and the 0.9 surface around the lone peak vanished.
+  test(`over-budget finite source focuses on a lone peak`, () => {
+    const volume = finite_field(101, (...coords) => Number(coords.every((idx) => idx === 50)))
+    const { prepared, surface } = cubic_mesh(volume, 0.9)
+    expect(prepared.grid.dims).toEqual([25, 25, 25]) // planes 47..53 at 4 samples per interval
+    expect(Math.max(...prepared.grid.values)).toBe(1)
+    expect(surface.indices.length).toBeGreaterThan(0)
+  })
+
+  // A focus whose native-sample crop already misses the budget must skip the whole-source
+  // spline-coefficient pass, which costs ~10x a native plane scan.
+  test(`failed focus on an over-budget source skips the coefficient scan`, () => {
+    const size = 125
+    const peak = finite_field(size, (...coords) => Number(coords.every((idx) => idx === 62)))
+    const broad = finite_field(size, (...coords) =>
+      Math.exp(-coords.reduce((sum, idx) => sum + (idx - 62) ** 2, 0) / 2000),
+    )
+    const focused_ms = time_ms(() => expect(cubic_surface_volume(peak, 0.9).dims[0]).toBe(25))
+    const failed_ms = time_ms(() => expect(cubic_surface_volume(broad, 0.05)).toBe(broad))
+    expect(failed_ms).toBeLessThan(focused_ms / 4)
+  })
+
+  // Focused grids are kept by total size: re-reading A makes B least recently used, so
+  // adding C (913k + 531k + 754k > 2M points) evicts B rather than A.
+  test(`focused grid cache evicts the least recently used grid`, () => {
+    const volume = finite_field(51, (...coords) =>
+      Math.exp(-coords.reduce((sum, idx) => sum + (idx - 25) ** 2, 0) / 50),
+    )
+    const [grid_a, grid_b] = [0.1, 0.2].map((level) => cubic_surface_volume(volume, level))
+    expect([grid_a.dims, grid_b.dims]).toEqual([
+      [97, 97, 97],
+      [81, 81, 81],
+    ])
+    expect(cubic_surface_volume(volume, 0.1)).toBe(grid_a)
+    const grid_c = cubic_surface_volume(volume, 0.02)
+    expect(grid_c.dims).toEqual([91, 91, 91])
+    expect(cubic_surface_volume(volume, 0.1)).toBe(grid_a)
+    expect(cubic_surface_volume(volume, 0.02)).toBe(grid_c)
+    const rebuilt_b = cubic_surface_volume(volume, 0.2)
+    expect(rebuilt_b).not.toBe(grid_b)
+    expect(rebuilt_b.values).toEqual(grid_b.values)
   })
 
   // Fractional resampling under the budget missed the native peak, erasing its entire surface.
