@@ -8,6 +8,7 @@
     k_space_size,
     PolyhedronMesh,
     ReciprocalVectors,
+    vectors_fit_extent,
   } from '#lib/brillouin/index.js'
   import type { Point2D, Vec3 } from '#lib/math.js'
   import { resolve_value_range } from '#lib/plot/core/scales.js'
@@ -248,7 +249,10 @@
   // Tiling replicates by point-group symmetry, which maps the zone onto itself, so it does not
   // widen the fitted extent
   const fit_extent = $derived(
-    fermi_fit_extent(bz_data?.vertices, fermi_data?.k_lattice, fermi_data?.reciprocal_cell),
+    Math.max(
+      fermi_fit_extent(bz_data?.vertices, fermi_data?.k_lattice, fermi_data?.reciprocal_cell),
+      show_vectors ? vectors_fit_extent(fermi_data?.k_lattice) : 0,
+    ),
   )
   // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
   // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in

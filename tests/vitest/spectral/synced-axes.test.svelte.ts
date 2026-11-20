@@ -180,10 +180,10 @@ test(`padding floor only rises at one size, ignores sub-pixel creep and undefine
 })
 
 // Both panels get PlotAxis' tick-size formula evaluated once for the pair's smaller side: each
-// plot's own cqmin put a narrow side DOS at the 9px floor beside 0.8em bands ticks
+// plot's own cqmin put a narrow side DOS at the 12px floor beside 0.8em bands ticks
 test.each([
-  [[800, 600], `clamp(9px, calc(0.03 * 600px), 0.8em)`],
-  [[1000, 250], `clamp(9px, calc(0.03 * 250px), 0.8em)`],
+  [[800, 600], `clamp(12px, calc(0.03 * 600px), 0.8em)`],
+  [[1000, 250], `clamp(12px, calc(0.03 * 250px), 0.8em)`],
   [[0, 900], undefined], // unmeasured: PlotAxis's own default
 ] satisfies [Vec2, string | undefined][])(
   `a %j pair shares tick_font_size %s`,

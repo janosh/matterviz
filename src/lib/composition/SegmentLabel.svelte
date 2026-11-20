@@ -27,9 +27,9 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
   dominant-baseline="central"
   style:fill={segment.text_color}
 >
-  <tspan style:font-size="{14 * font_scale}px" font-weight="700">{segment.element}</tspan>
+  <tspan style:font-size="{14 * font_scale}px" font-weight="500">{segment.element}</tspan>
   {#if suffix}
-    <tspan style:font-size="{8 * font_scale}px" font-weight="500" dx="1" dy="5">{suffix}</tspan
+    <tspan style:font-size="{8 * font_scale}px" font-weight="400" dx="1" dy="5">{suffix}</tspan
     >
   {/if}
 </text>

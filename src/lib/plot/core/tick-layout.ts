@@ -15,9 +15,10 @@ import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import type { AxisConfig, TickAutoLayoutConfig } from '#lib/plot/core/types.js'
 
 // Tick label font size: 3% of the frame's smaller side (`min_side`, e.g. `100cqmin` or a
-// linked panels' joint size in px), between 9px and 0.8em
+// linked panels' joint size in px), between 12px (smaller is hard to read on 300px-tall
+// charts) and 0.8em
 export const tick_font_size = (min_side: string): string =>
-  `clamp(9px, calc(0.03 * ${min_side}), 0.8em)`
+  `clamp(12px, calc(0.03 * ${min_side}), 0.8em)`
 
 // Default single-line tick label height (DEFAULT_FONT_SPEC line height) used to size label bands
 export const TICK_LABEL_HEIGHT = 16

@@ -205,6 +205,22 @@ export const k_cell_fit_extent = (
   return extent > 0 ? extent : Math.sqrt(3) * k_space_size(undefined) * padding
 }
 
+// Reciprocal vector labels sit this far along their arrows (ReciprocalVectors)
+export const VECTOR_LABEL_OFFSET = 1.15
+
+// Padded diameter of the origin-centered sphere reaching the reciprocal vector labels: arrows
+// longer than the zone's half-width (every cubic lattice) poke out of a zone-only fit
+export const vectors_fit_extent = (
+  k_lattice: Matrix3x3 | undefined,
+  vector_scale = 1,
+  padding = FIT_PADDING,
+): number =>
+  2 *
+  VECTOR_LABEL_OFFSET *
+  vector_scale *
+  Math.max(0, ...(k_lattice ?? []).map((row) => Math.hypot(...row))) *
+  padding
+
 // Padded diameter of the sphere enclosing the zone, in the same "fit to the shorter viewport
 // edge" currency as structure_fit_frame, so ortho_zoom_for_extent can frame it. Falls back to
 // the cell the zone is inscribed in, which for a cubic lattice is the same 92% framing the

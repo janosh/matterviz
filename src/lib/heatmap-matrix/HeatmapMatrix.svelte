@@ -1117,10 +1117,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    border-radius: var(
-      --heatmap-cell-border-radius,
-      calc(var(--tile-size, 6px) * var(--heatmap-cell-radius-ratio, 0.12))
-    );
+    border-radius: var(--heatmap-cell-border-radius, 0);
     overflow: hidden;
     display: flex;
     align-items: center;
