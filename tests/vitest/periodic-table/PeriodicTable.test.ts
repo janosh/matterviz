@@ -414,7 +414,10 @@ describe(`PeriodicTable`, () => {
         path.style.color,
       ])
     const scale = { color: `blue`, color_scale: `interpolateViridis` } as const
-    mount_table({ tile_plots: { Fe: { values: [1, 2, 2] }, Ni: null }, tile_plot: scale })
+    mount_table({
+      tile_plots: { Fe: { values: [1, 2, 2] }, Ni: null },
+      tile_plot_config: scale,
+    })
     expect(tile(`Fe`).querySelector<SVGElement>(`.tile-plot`)?.style.color).toBe(`blue`)
     // bars colored by bin position through the scale: 2 non-empty bins, 2 colors
     const fe_paths = paths(`Fe`)
@@ -434,7 +437,7 @@ describe(`PeriodicTable`, () => {
           { x: [1, 2], y: [2, 3], color_values: [0, 10] },
         ],
       },
-      tile_plot: scale,
+      tile_plot_config: scale,
       labels: { Cu: `n=4` },
     })
     // a series color wins; color_values map each marker through the scale
@@ -447,7 +450,70 @@ describe(`PeriodicTable`, () => {
     expect(tile(`Co`).querySelector(`.tile-plot`)).toBeNull()
     expect(tile(`Co`).querySelector(`.name`)?.textContent?.trim()).toBe(`Cobalt`)
     expect(document.querySelectorAll(`.tile-plot`)).toHaveLength(1)
+    document.body.innerHTML = ``
+    // tile_props.show_name: false hides labels on plot tiles too
+    mount_table({
+      tile_plots: { Cu: { x: [1], y: [1] } },
+      labels: { Cu: `n=4` },
+      tile_props: { show_name: false },
+    })
+    expect(tile(`Cu`).querySelector(`.name`)).toBeNull()
   })
+
+  // the enlarged plot lays out from its measured size: unmeasured (0x0) shows only the hint
+  test.each([
+    // 250x266px plot box: about one tick per 60px on x and 40px on y
+    [
+      `line`,
+      300,
+      { Fe: { x: [0, 10], y: [0, 5] } },
+      {},
+      [`0`, `2`, `4`, `6`, `8`, `10`],
+      [`0`, `1`, `2`, `3`, `4`, `5`],
+    ],
+    // log_y: 0 and powers of ten up to the tallest count; at 100px, 1 sits 9px above 0 and drops
+    [
+      `log histogram`,
+      100,
+      { Fe: { values: [...Array(150).fill(1), 2] } },
+      { log_y: true },
+      null,
+      [`0`, `10`, `100`],
+    ],
+    [`unmeasured`, 0, { Fe: { x: [0, 10], y: [0, 5] } }, {}, null, null],
+  ] as const)(
+    `hovering a plot tile enlarges it in the inset: %s`,
+    (_name, size, tile_plots, config, x_labels, y_labels) => {
+      vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(size)
+      vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(size)
+      mount_table({ tile_plots, tile_plot_config: { mode: `line`, ...config } })
+      const zoom = doc_query(`.auto-colorbar-inset .tile-zoom`)
+      const hint = `Hover or tap a tile to enlarge its plot`
+      expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
+      doc_query(`[data-element-symbol="Fe"]`).dispatchEvent(mouseenter)
+      flushSync()
+      if (!size) {
+        expect(zoom.querySelector(`svg`)).toBeNull()
+        expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
+        return
+      }
+      expect(zoom.querySelector(`svg[role="img"] .title`)?.textContent).toBe(`26 Iron`)
+      expect(zoom.querySelector(`.marks path`)?.getAttribute(`d`)).toBe(
+        doc_query(`[data-element-symbol="Fe"] .tile-plot path`).getAttribute(`d`),
+      )
+      const tick_labels = (anchor: string) =>
+        [...zoom.querySelectorAll(`g text[text-anchor="${anchor}"]`)].map(
+          (text) => text.textContent,
+        )
+      if (x_labels) expect(tick_labels(`middle`)).toEqual(x_labels)
+      if (y_labels) expect(tick_labels(`end`)).toEqual(y_labels)
+      // a tile without a plot shows the hint again
+      doc_query(`[data-element-symbol="Co"]`).dispatchEvent(mouseenter)
+      flushSync()
+      expect(zoom.querySelector(`.title`)).toBeNull()
+      expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
+    },
+  )
 
   test.each([`lanthanide`, `transition metal`] satisfies ElementCategory[])(
     `active_category=%s highlights every tile of that category`,

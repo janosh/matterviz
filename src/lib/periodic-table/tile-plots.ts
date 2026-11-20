@@ -8,7 +8,7 @@ type Numbers = ArrayLike<number> & Iterable<number>
 // [min, max], where null (Python None) leaves that end to the data
 type Range = readonly [number | null, number | null]
 // Raw `values` bin into a histogram; `x`/`y` pairs draw markers and/or a line, with optional
-// `color_values` coloring each marker and line segment through `tile_plot.color_scale`.
+// `color_values` coloring each marker and line segment through `tile_plot_config.color_scale`.
 // `color` overrides the series color (default: the tile's text color).
 export type TilePlotSeries =
   | { values: Numbers; color?: string }
@@ -19,9 +19,9 @@ export type TilePlotConfig = {
   bins?: number // histogram bin count (integer >= 1); edges are shared by all tiles (default 20)
   mode?: `markers` | `line` | `line+markers` // how x/y pairs are drawn (default markers)
   color?: string // CSS color of every series without its own (default: the tile's text color)
-  // Colors histogram bars by bin position, or markers and lines by color_values (not both
-  // kinds in one table); shared by all tiles and shown in the auto color bar when the table has
-  // no heatmap_values. Values a log scale can't map (<= 0) keep the series color.
+  // Colors histogram bars by bin position, or markers and lines by color_values; shared by all
+  // tiles and shown in the auto color bar when the table has no heatmap_values. Values a log
+  // scale can't map (<= 0) keep the series color.
   color_scale?: ColorScale
   log_y?: boolean // histogram bar heights on a log(1 + count) scale
   // Axis ranges shared by all tiles so they compare at a glance; unset ends span every tile's
@@ -33,8 +33,12 @@ export type TilePlotConfig = {
 // One SVG path in the tile's 100x100 box (y down); no color paints the series/tile color
 export type TileMark = { kind: `bars` | `line` | `markers`; d: string; color?: string }
 type Ramp = ReturnType<typeof resolve_color_scale>
+// A tile's data ranges along its plot box: x/y spans, for histograms y is [0, tallest count]
+// with bar heights on a log(1 + count) scale when log_y
+export type TileAxes = { x: Vec2; y: Vec2; log_y: boolean }
 export type TilePlotMarks = {
   marks: Partial<Record<ElementSymbol, TileMark[]>>
+  axes: Partial<Record<ElementSymbol, TileAxes>> // per plotted tile, e.g. to draw its axes
   ramp: Ramp | null // the shared color scale, null without one or without finite color data
 }
 
@@ -84,7 +88,10 @@ const finite_extent = (arrays: Iterable<number>[]): Vec2 | null => {
 const resolve_range = (name: string, range: Range | undefined, data: Numbers[]): Vec2 => {
   const auto = finite_extent(data) ?? [0, 1]
   const [lo, hi] = [range?.[0] ?? auto[0], range?.[1] ?? auto[1]]
-  if (!(lo < hi)) throw new Error(`tile_plot.${name} must span lo < hi, got [${lo}, ${hi}]`)
+  if (!(Number.isFinite(lo) && Number.isFinite(hi) && lo < hi))
+    throw new Error(
+      `tile_plot_config.${name} must be finite numbers lo < hi, got [${lo}, ${hi}]`,
+    )
   return [lo, hi]
 }
 
@@ -102,7 +109,8 @@ const group_by_color = (kind: TileMark[`kind`], segments: Segment[]): TileMark[]
 // value on an inner edge belongs to the bin above and hi to the last bin; the index is nudged
 // against the exact edges since (val - lo) / width can round across one (0.3 in [0, 1] / 10).
 const bin_index = (val: number, [lo, hi]: Vec2, n_bins: number): number => {
-  if (!(val >= lo && val <= hi)) return -1 // NaN, ±Inf and out-of-range values
+  // null (Python None) would compare as 0, so finiteness is checked first
+  if (!Number.isFinite(val) || val < lo || val > hi) return -1
   const edge = (idx: number): number => lo + ((hi - lo) * idx) / n_bins
   let idx = Math.min(n_bins - 1, Math.floor(((val - lo) / (hi - lo)) * n_bins))
   if (val < edge(idx)) idx--
@@ -110,21 +118,27 @@ const bin_index = (val: number, [lo, hi]: Vec2, n_bins: number): number => {
   return idx
 }
 
-const hist_marks = (
-  { values, color }: HistSeries,
-  [lo, hi]: Vec2,
-  n_bins: number,
-  log_y: boolean | undefined,
-  ramp: Ramp | null,
-): TileMark[] => {
+// Counts of `values` in `n_bins` equal bins over `range`
+const bin_counts = (values: Numbers, range: Vec2, n_bins: number): number[] => {
   const counts = Array.from({ length: n_bins }, () => 0)
   for (const val of values) {
-    const idx = bin_index(val, [lo, hi], n_bins)
+    const idx = bin_index(val, range, n_bins)
     if (idx >= 0) counts[idx]++
   }
+  return counts
+}
+
+// Bars of one series' counts, scaled so `max_count` (the tile's tallest bin) fills the box
+const bar_marks = (
+  counts: number[],
+  color: string | undefined,
+  [lo, hi]: Vec2,
+  max_count: number,
+  log_y: boolean,
+  ramp: Ramp | null,
+): TileMark[] => {
   const height = (count: number): number => (log_y ? Math.log1p(count) : count)
-  const max_height = height(Math.max(...counts))
-  if (!max_height) return []
+  const n_bins = counts.length
   const bar_w = 100 / n_bins
   const bin_center = (idx: number): number => lo + ((hi - lo) * (idx + 0.5)) / n_bins
   return group_by_color(
@@ -133,7 +147,7 @@ const hist_marks = (
       count
         ? [
             {
-              d: `M${fmt(idx * bar_w)} 100V${fmt(100 - (100 * height(count)) / max_height)}h${fmt(bar_w)}V100Z`,
+              d: `M${fmt(idx * bar_w)} 100V${fmt(100 - (100 * height(count)) / height(max_count))}h${fmt(bar_w)}V100Z`,
               color: color ?? ramp?.color_fn(bin_center(idx)) ?? undefined,
             },
           ]
@@ -153,7 +167,9 @@ const xy_marks = (
     const lengths = [x, y, color_values ?? []].map((arr) => arr.length)
     throw new Error(`tile_plots.${symbol}: x, y and color_values lengths differ (${lengths})`)
   }
-  const in_range = (val: number, [lo, hi]: Vec2): boolean => val >= lo && val <= hi
+  // null (Python None) would compare as 0, so finiteness is checked first
+  const in_range = (val: number, [lo, hi]: Vec2): boolean =>
+    Number.isFinite(val) && val >= lo && val <= hi
   const value_color = (value: number | undefined): string | undefined =>
     color ?? (value === undefined ? undefined : (ramp?.color_fn(value) ?? undefined))
   // with a scale and color_values, each line segment blends its endpoint colors (in color
@@ -186,52 +202,69 @@ const xy_marks = (
   ]
 }
 
-// Marks for every element's mini plot, on axes and a color scale shared across tiles
+// Marks and axes for every element's mini plot, on axes and a color scale shared across tiles.
+// A table holds one kind: histograms or x/y plots.
 export function tile_plot_marks(
   plots: Partial<Record<string, TilePlotData | null>>,
-  { bins = 20, mode = `markers`, color_scale, log_y, x_range, y_range }: TilePlotConfig = {},
+  {
+    bins = 20,
+    mode = `markers`,
+    color_scale,
+    log_y = false,
+    x_range,
+    y_range,
+  }: TilePlotConfig = {},
 ): TilePlotMarks {
   const { hists, xys } = parse_series(plots)
   if (!Number.isInteger(bins) || bins < 1)
-    throw new Error(`tile_plot.bins must be an integer >= 1, got ${bins}`)
-  if (color_scale && hists.length && xys.length)
+    throw new Error(`tile_plot_config.bins must be an integer >= 1, got ${bins}`)
+  if (hists.length && xys.length)
     throw new Error(
-      `tile_plot.color_scale colors histograms or x/y plots, not both in one table`,
+      `tile_plots mixes histogram { values } and x/y series, use one kind per table`,
     )
+  const [marks, axes]: [TilePlotMarks[`marks`], TilePlotMarks[`axes`]] = [{}, {}]
 
-  const hist_x_range = hists.length
-    ? resolve_range(
-        `x_range`,
-        x_range,
-        hists.map(([, { values }]) => values),
-      )
-    : null
-  const color_range =
-    hist_x_range ??
-    finite_extent(xys.flatMap(([, { color_values }]) => (color_values ? [color_values] : [])))
-  const ramp =
-    color_scale && color_range ? resolve_color_scale(color_scale, color_range) : null
-
-  const marks: TilePlotMarks[`marks`] = {}
-  const add = (symbol: ElementSymbol, new_marks: TileMark[]): void => {
-    if (new_marks.length) (marks[symbol] ??= []).push(...new_marks)
-  }
-  if (hist_x_range) {
-    for (const [symbol, srs] of hists)
-      add(symbol, hist_marks(srs, hist_x_range, bins, log_y, ramp))
-  }
-  if (xys.length) {
-    const xy_x_range = resolve_range(
+  if (hists.length) {
+    const x = resolve_range(
       `x_range`,
       x_range,
-      xys.map(([, { x }]) => x),
+      hists.map(([, { values }]) => values),
     )
-    const xy_y_range = resolve_range(
-      `y_range`,
-      y_range,
-      xys.map(([, { y }]) => y),
-    )
-    for (const entry of xys) add(entry[0], xy_marks(entry, xy_x_range, xy_y_range, mode, ramp))
+    const ramp = color_scale ? resolve_color_scale(color_scale, x) : null
+    // a tile's series share its tallest bin, so overlaid histograms compare
+    for (const [symbol, entries] of Map.groupBy(hists, ([sym]) => sym)) {
+      const counts = entries.map(([, { values }]) => bin_counts(values, x, bins))
+      const max_count = Math.max(...counts.flat())
+      if (!max_count) continue
+      marks[symbol] = entries.flatMap(([, { color }], idx) =>
+        bar_marks(counts[idx], color, x, max_count, log_y, ramp),
+      )
+      axes[symbol] = { x, y: [0, max_count], log_y }
+    }
+    return { marks, axes, ramp }
   }
-  return { marks, ramp }
+
+  const x = resolve_range(
+    `x_range`,
+    x_range,
+    xys.map(([, srs]) => srs.x),
+  )
+  const y = resolve_range(
+    `y_range`,
+    y_range,
+    xys.map(([, srs]) => srs.y),
+  )
+  // wrapped, since flatMap would not flatten typed arrays
+  const color_range = finite_extent(
+    xys.flatMap(([, srs]) => (srs.color_values ? [srs.color_values] : [])),
+  )
+  const ramp =
+    color_scale && color_range ? resolve_color_scale(color_scale, color_range) : null
+  for (const entry of xys) {
+    const new_marks = xy_marks(entry, x, y, mode, ramp)
+    if (!new_marks.length) continue
+    ;(marks[entry[0]] ??= []).push(...new_marks)
+    axes[entry[0]] = { x, y, log_y: false }
+  }
+  return { marks, axes, ramp }
 }

@@ -51,6 +51,20 @@ describe(`tile_plot_marks`, () => {
       },
     ],
     [
+      // Python None arrives as null, which compares like 0: dropped, not binned or drawn at 0
+      `null values on ranges spanning 0`,
+      [{ H: { values: [null, null, -1, 1] as never }, He: { values: [-1] } }, { bins: 2 }],
+      {
+        H: [{ kind: `bars`, d: bar(`0.00`, `0.00`, `50.00`) + bar(`50.00`, `0.00`, `50.00`) }],
+        He: [{ kind: `bars`, d: bar(`0.00`, `0.00`, `50.00`) }],
+      },
+    ],
+    [
+      `null x/y points dropped`,
+      [{ Li: { x: [null, -1, 1] as never, y: [0.5, -1, 1] } }, {}],
+      { Li: [{ kind: `markers`, d: `M0.00 100.00h0M100.00 0.00h0` }] },
+    ],
+    [
       `markers on shared axes`,
       [{ Li: { x: [0, 1], y: [0, NaN] }, Na: { x: [2], y: [4] } }, {}],
       {
@@ -80,13 +94,30 @@ describe(`tile_plot_marks`, () => {
     expect(tile_plot_marks(...args).marks).toEqual(expected)
   })
 
-  test(`no color scale: no ramp and one uncolored path per kind`, () => {
-    const { marks, ramp } = tile_plot_marks({ H: { values: [1, 5] } })
-    expect(ramp).toBeNull()
-    expect(marks.H).toEqual([{ kind: `bars`, d: expect.any(String) }])
+  test(`axes: shared x, per-tile histogram max shared by its overlaid series`, () => {
+    const { marks, axes } = tile_plot_marks(
+      {
+        H: [{ values: [0, 0, 1] }, { values: [1], color: `red` }],
+        He: { values: [1] },
+        Li: { values: [NaN] }, // nothing to draw: no marks, no axes
+      },
+      { bins: 2, log_y: true },
+    )
+    expect(axes).toEqual({
+      H: { x: [0, 1], y: [0, 2], log_y: true },
+      He: { x: [0, 1], y: [0, 1], log_y: true },
+    })
+    // the red series' single count sits at log1p(1) / log1p(2) of H's tallest bin
+    const top = (100 - (100 * Math.log1p(1)) / Math.log1p(2)).toFixed(2)
+    expect(marks.H?.[1]).toEqual({ kind: `bars`, d: bar(`50.00`, top, `50.00`), color: `red` })
+    const xy = tile_plot_marks({ Na: { x: [0, 2], y: [1, 3] } }, { y_range: [0, null] })
+    expect(xy.axes).toEqual({ Na: { x: [0, 2], y: [0, 3], log_y: false } })
   })
 
-  test(`histogram bars take the scale color of their bin center over the shared x range`, () => {
+  test(`histogram bars take the scale color of their bin center, none without a scale`, () => {
+    const plain = tile_plot_marks({ H: { values: [1, 5] } })
+    expect(plain.ramp).toBeNull()
+    expect(plain.marks.H).toEqual([{ kind: `bars`, d: expect.any(String) }])
     const { marks, ramp } = tile_plot_marks(
       { H: { values: [1, 5] } },
       { color_scale: `interpolateViridis` },
@@ -151,13 +182,18 @@ describe(`tile_plot_marks`, () => {
       `integer >= 1, got null`,
     ],
     [
-      `a color scale over histograms and x/y plots`,
-      [{ H: { values: [1] }, Li: { x: [0], y: [0] } }, { color_scale: `interpolateViridis` }],
-      `not both in one table`,
+      `histograms and x/y plots in one table`,
+      [{ H: { values: [1] }, Li: [{ x: [0], y: [0] }] }],
+      `use one kind per table`,
     ],
     [`null series in a list`, [{ Fe: [null] as never }], `got null`],
     [`x/y length mismatch`, [{ Fe: { x: [1, 2], y: [1] } }], `lengths differ (2,1,0)`],
     [`collapsed range`, [{ Fe: { values: [1] } }, { x_range: [2, 2] }], `lo < hi, got [2, 2]`],
+    [
+      `a non-numeric range end`,
+      [{ Fe: { values: [1] } }, { x_range: [`0` as never, 3] }],
+      `finite numbers`,
+    ],
     [
       `partial range past the data`,
       [{ Fe: { values: [1] } }, { x_range: [5, null] }],

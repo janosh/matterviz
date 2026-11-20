@@ -267,20 +267,20 @@
 <p>
   <code>tile_plots</code> draws a mini histogram (<code>{`{ values }`}</code>) or scatter/line
   plot (<code>{`{ x, y }`}</code>) inside each element's tile. All tiles share their axes, so
-  tiles compare at a glance; <code>tile_plot</code> sets bins, mode, color and fixed ranges.
+  tiles compare at a glance; <code>tile_plot_config</code> sets bins, mode, color and fixed ranges.
 </p>
 
 <div style="display: grid; gap: 3em">
   <LazyDemo label="Electronegativity sample histograms" height="500px">
     <PeriodicTable
       tile_plots={hist_tile_plots}
-      tile_plot={{ bins: 16, color_scale: `interpolateViridis` }}
+      tile_plot_config={{ bins: 16, color_scale: `interpolateViridis` }}
     />
   </LazyDemo>
   <LazyDemo label="Log ionization energies" height="500px">
     <PeriodicTable
       tile_plots={line_tile_plots}
-      tile_plot={{ mode: `line`, color_scale: `interpolateWarm` }}
+      tile_plot_config={{ mode: `line`, color_scale: `interpolateWarm` }}
     />
   </LazyDemo>
 </div>

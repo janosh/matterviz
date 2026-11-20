@@ -523,7 +523,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: PeriodicTable,
     drive: [
       ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
-        tile_plot`),
+        tile_plot_config`),
       nullable_prop(`color_bar`),
     ],
   },

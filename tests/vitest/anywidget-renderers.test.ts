@@ -271,7 +271,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       expect.arrayContaining([`series`, `annotation`, `render_mode`, `color_bar`, `x_range`]),
     )
     expect(WIDGET_MODEL_KEYS.periodic_table).toEqual(
-      expect.arrayContaining([`tile_plots`, `tile_plot`]),
+      expect.arrayContaining([`tile_plots`, `tile_plot_config`]),
     )
     // computes its own series from the structures
     expect(WIDGET_MODEL_KEYS.coordination_bar_plot).toEqual(
