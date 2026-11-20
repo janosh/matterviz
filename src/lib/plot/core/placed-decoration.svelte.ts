@@ -130,6 +130,22 @@ export function create_placed_decoration(opts: {
   }
 }
 
+// A plot's free annotation badge (PlotAnnotationBadge): no config, auto-placed only
+export const create_annotation_decoration = (
+  opts: Pick<
+    Parameters<typeof create_placed_decoration>[0],
+    `enabled` | `dims` | `decoration_solution` | `sibling_revision`
+  >,
+): PlacedDecoration =>
+  create_placed_decoration({
+    id: `free-annotation`,
+    kind: () => ({ kind: `free-annotation` }),
+    config: () => null,
+    fallback_footprint: () => ({ width: 120, height: 50 }),
+    clearance: 12,
+    ...opts,
+  })
+
 // Colorbar flavor: its orientation picks the solver item shape and the footprint estimate
 // (with room for tick labels) until the bar renders. Render it with ColorBarDecoration.svelte.
 export function create_colorbar_decoration(opts: {

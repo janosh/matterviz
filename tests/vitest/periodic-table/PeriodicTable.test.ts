@@ -406,6 +406,49 @@ describe(`PeriodicTable`, () => {
     expect(doc_query(`.periodic-table`).style.gap).toBe(``)
   })
 
+  test(`tile_plots draw in their tiles, color by scale with a color bar, keep labels`, () => {
+    const tile = (symbol: string) => doc_query(`[data-element-symbol="${symbol}"]`)
+    const paths = (symbol: string) =>
+      [...tile(symbol).querySelectorAll<SVGPathElement>(`.tile-plot path`)].map((path) => [
+        path.getAttribute(`class`)?.split(` `)[0],
+        path.style.color,
+      ])
+    const scale = { color: `blue`, color_scale: `interpolateViridis` } as const
+    mount_table({ tile_plots: { Fe: { values: [1, 2, 2] }, Ni: null }, tile_plot: scale })
+    expect(tile(`Fe`).querySelector<SVGElement>(`.tile-plot`)?.style.color).toBe(`blue`)
+    // bars colored by bin position through the scale: 2 non-empty bins, 2 colors
+    const fe_paths = paths(`Fe`)
+    expect(fe_paths.map(([kind]) => kind)).toEqual([`bars`, `bars`])
+    expect(new Set(fe_paths.map(([, color]) => color)).size).toBe(2)
+    // no heatmap: the auto color bar shows the tile color scale
+    expect(document.querySelector(`.auto-colorbar-inset .colorbar`)).not.toBeNull()
+    // one neutral fill for every tile (no category colors competing with the plots)
+    const fills = new Set(all_tiles().map((tile_el) => tile_el.style.backgroundColor))
+    expect([...fills]).toEqual([expect.stringContaining(`--ptable-plot-tile-bg`)])
+    document.body.innerHTML = ``
+
+    mount_table({
+      tile_plots: {
+        Cu: [
+          { x: [1, 2], y: [1, 4], color: `red` },
+          { x: [1, 2], y: [2, 3], color_values: [0, 10] },
+        ],
+      },
+      tile_plot: scale,
+      labels: { Cu: `n=4` },
+    })
+    // a series color wins; color_values map each marker through the scale
+    const cu_paths = paths(`Cu`)
+    expect(cu_paths.map(([kind]) => kind)).toEqual([`markers`, `markers`, `markers`])
+    expect(cu_paths[0][1]).toBe(`red`)
+    expect(cu_paths[1][1]).not.toBe(cu_paths[2][1])
+    // the label survives on a plot tile; other tiles keep their names
+    expect(tile(`Cu`).querySelector(`.name`)?.textContent?.trim()).toBe(`n=4`)
+    expect(tile(`Co`).querySelector(`.tile-plot`)).toBeNull()
+    expect(tile(`Co`).querySelector(`.name`)?.textContent?.trim()).toBe(`Cobalt`)
+    expect(document.querySelectorAll(`.tile-plot`)).toHaveLength(1)
+  })
+
   test.each([`lanthanide`, `transition metal`] satisfies ElementCategory[])(
     `active_category=%s highlights every tile of that category`,
     (active_category) => {

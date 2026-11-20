@@ -3,6 +3,7 @@ import type { ColorScale } from '#lib/plot/core/types.js'
 export { default as PeriodicTable } from './PeriodicTable.svelte'
 export { default as PropertySelect } from './PropertySelect.svelte'
 export { default as TableInset } from './TableInset.svelte'
+export type { TilePlotConfig, TilePlotData, TilePlotSeries } from './tile-plots'
 
 export type ScaleContext = {
   min: number

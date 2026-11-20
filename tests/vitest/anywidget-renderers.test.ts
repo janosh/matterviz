@@ -143,7 +143,7 @@ test(`no widget prop binds defaulted data or shadows the DOM`, async () => {
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
 const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram
-  ternary_phase_diagram xrd rdf_plot`
+  ternary_phase_diagram xrd rdf_plot coordination_bar_plot`
 const drop_zone_widgets = new Set(drop_zones.split(/\s+/))
 
 // The stylesheet the bundle injects into the notebook page
@@ -267,8 +267,20 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       ]),
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
+    expect(WIDGET_MODEL_KEYS.binned_scatter_plot).toEqual(
+      expect.arrayContaining([`series`, `annotation`, `render_mode`, `color_bar`, `x_range`]),
+    )
+    expect(WIDGET_MODEL_KEYS.periodic_table).toEqual(
+      expect.arrayContaining([`tile_plots`, `tile_plot`]),
+    )
+    // computes its own series from the structures
+    expect(WIDGET_MODEL_KEYS.coordination_bar_plot).toEqual(
+      expect.arrayContaining([`structures`, `split_mode`, `mode`]),
+    )
+    expect(WIDGET_MODEL_KEYS.coordination_bar_plot).not.toContain(`series`)
     const plot_widgets = `scatter_plot scatter_plot_3d bar_plot histogram treemap band_structure
-      dos rdf_plot xrd bands_and_dos sunburst sankey box_plot ternary_plot neb_plot eos_plot`
+      dos rdf_plot xrd bands_and_dos sunburst sankey box_plot ternary_plot neb_plot eos_plot
+      coordination_bar_plot`
     for (const widget_type of plot_widgets.split(/\s+/)) {
       expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
         expect.arrayContaining(Object.keys(controls_traits)),
@@ -371,25 +383,27 @@ describe(`widget config wiring`, () => {
     expect(`cutaway` in props).toBe(false)
   })
 
+  // binned_scatter_plot has no settings pane, so no controls traits
   test.each([
-    [`scatter_plot`, `x`, { show_legend: false, marker_renderer: `canvas` }],
-    [`bar_plot`, `y`, {}],
-    [`histogram`, `y`, {}],
+    [
+      `scatter_plot`,
+      `x`,
+      { show_legend: false, marker_renderer: `canvas`, ...controls_traits },
+    ],
+    [`bar_plot`, `y`, controls_traits],
+    [`histogram`, `y`, controls_traits],
+    [`binned_scatter_plot`, `x`, { annotation: `MAE = 0.1` }],
   ] as const)(`%s maps the %s range trait into axis config`, (widget_type, axis, extra) => {
     const model = new MockModel({
       widget_type,
       series: [],
       [`${axis}_axis`]: { label: `Count` },
       [`${axis}_range`]: [1, 5],
-      ...controls_traits,
       ...extra,
     })
     const props = run_widget(widget_type, model).read()
     expect(props[`${axis}_axis`]).toEqual({ label: `Count`, range: [1, 5] })
-    expect(pick(props, { ...controls_traits, ...extra })).toEqual({
-      ...controls_traits,
-      ...extra,
-    })
+    expect(pick(props, extra)).toEqual(extra)
     expect(`${axis}_range` in props).toBe(false)
     expect(`controls` in props).toBe(false)
   })

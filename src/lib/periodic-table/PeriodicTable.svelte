@@ -33,6 +33,7 @@
   import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
+  import { tile_plot_marks, type TilePlotConfig, type TilePlotData } from './tile-plots'
 
   // a tile's heat value: scalar or 1-4-segment array of numbers/colors
   type HeatValue = number | string | (number | string)[]
@@ -60,6 +61,8 @@
     missing = {},
     split_layout = undefined,
     color_bar = {},
+    tile_plots = {},
+    tile_plot = {},
     inset,
     tooltip,
     on_activate,
@@ -110,6 +113,12 @@
     split_layout?: SplitLayout
     // auto color bar shown when heatmap_values is provided; null hides it
     color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
+    // Mini plot per element keyed by symbol: `{ values }` bins into a histogram, `{ x, y }` draws
+    // markers and/or a line (a list overlays several series). Tiles share axes; the element name
+    // gives way to the plot, a `labels` entry or heatmap value moves to the top-right corner.
+    tile_plots?: Partial<Record<ElementSymbol, TilePlotData | null>>
+    // Bin count, x/y drawing mode, colors, log heights and shared axis ranges of the tile plots
+    tile_plot?: TilePlotConfig
     // Content for the empty grid area above the d-block (columns 3-12, top rows); replaces the auto color bar. Receives the active element.
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     // Hover tooltip: a snippet replaces the default, false disables it. Clicking a tile without link or on_activate pins it.
@@ -171,6 +180,16 @@
       (active_element && element_is_interactive(active_element)
         ? active_element.symbol
         : first_interactive_symbol),
+  )
+  // throws on keys that aren't element symbols and malformed series (see tile_plot_marks)
+  let tile_plot_result = $derived(tile_plot_marks(tile_plots, tile_plot))
+  // Tiles behind plots share one neutral fill instead of category colors that would compete
+  // with the plots (heatmap values and color_overrides still win). A CSS var, so tile text
+  // inherits the page color in either theme.
+  let plot_tile_bg = $derived(
+    Object.keys(tile_plot_result.marks).length > 0
+      ? `var(--ptable-plot-tile-bg, color-mix(in srgb, currentColor 12%, transparent))`
+      : null,
   )
   // Keys that aren't element symbols (`fe`, `FE`, `Xx`) match no tile, so they're ignored
   $effect(() => {
@@ -351,6 +370,7 @@
     if (is_color(value)) return value // already a color string
 
     const num = to_heat_num(value)
+    if (!heat_values.length && plot_tile_bg) return plot_tile_bg
     if (!heat_values.length || num === null) {
       const category_color = colors.category[element.category] || `#cccccc`
       if (missing.color === `element-category`) return category_color
@@ -378,7 +398,9 @@
     }))
   }
 
-  let should_show_color_bar = $derived(color_bar && !inset && heat_nums.length > 0)
+  // the auto color bar explains the heatmap, else the tile plots' color scale
+  let color_bar_ramp = $derived(heat_nums.length > 0 ? ramp : tile_plot_result.ramp)
+  let should_show_color_bar = $derived(color_bar && !inset && color_bar_ramp)
   // Resolve the shared surface once rather than installing a theme observer per tile.
   let table_node = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => table_node)
@@ -399,7 +421,7 @@
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
-        color_scale={ramp.color_scale}
+        color_scale={color_bar_ramp?.color_scale}
         tick_labels={3}
         tick_side="primary"
         bar_style="width: 100%;"
@@ -418,6 +440,7 @@
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
     {@const interactive = Boolean(href || on_activate)}
     {@const active = is_active(element)}
+    {@const marks = tile_plot_result.marks[symbol]}
     {@const style = `grid-column: ${column}; grid-row: ${row};${
       tile_props?.style ? ` ${tile_props.style}` : ``
     }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
@@ -454,7 +477,22 @@
             handle_tile_click(data, interactive, tile_activation)
         : tile_props?.onclick}
       {split_layout}
-    />
+      show_name={marks ? labels[symbol] !== undefined : tile_props?.show_name}
+    >
+      {#if marks}
+        <svg
+          class="tile-plot"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+          style:color={tile_plot.color}
+        >
+          {#each marks as { kind, d, color }, idx (idx)}
+            <path class={kind} {d} style:color />
+          {/each}
+        </svg>
+      {/if}
+    </ElementTile>
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
   {#each lanth_act_tiles as lanth_act_element, idx (lanth_act_element.symbol)}
@@ -467,6 +505,7 @@
       onmouseenter={() => (active_category = lanth_act_element.category)}
       onmouseleave={() => (active_category = null)}
       symbol_style="font-size: 30cqw;"
+      segments={plot_tile_bg ? [{ color: plot_tile_bg }] : undefined}
     />
   {/each}
   <!-- vertical offset between the main block and the lanthanide/actinide rows -->
@@ -552,6 +591,45 @@
   .periodic-table :global(.auto-colorbar-inset .colorbar) {
     width: 90%;
     line-height: 1.2;
+  }
+  /* The plot fills the tile's lower half above split-heatmap segments; the symbol shrinks to
+     sit between it and the number, a label or value moves to the top-right corner */
+  .tile-plot {
+    position: absolute;
+    inset: auto 6cqw 6cqw;
+    width: 88cqw;
+    height: 42cqw;
+    overflow: visible;
+    z-index: 2;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: max(1.5px, 3cqw);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    path {
+      vector-effect: non-scaling-stroke;
+    }
+    .bars {
+      fill: currentColor;
+      stroke: none;
+    }
+    .markers {
+      stroke-width: max(3px, 6cqw);
+    }
+  }
+  .periodic-table :global(.element-tile:has(> .tile-plot)) {
+    :global(.symbol) {
+      align-self: flex-start;
+      margin-top: 28cqw; /* below the number */
+      font-size: var(--elem-symbol-font-size, 26cqw);
+    }
+    :global(span.name),
+    :global(span.value:not(.multi-value)) {
+      top: 6cqw;
+      right: 6cqw;
+      bottom: auto;
+      font-size: 14cqw;
+    }
   }
   div.spacer {
     grid-row: 8;

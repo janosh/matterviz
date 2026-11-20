@@ -26,6 +26,7 @@
     LabelPlacementConfig,
     LabelStyle,
     LayerZIndex,
+    PlotAnnotation,
     PlotConfig,
     PointStyle,
     ScatterHandlerEvent,
@@ -54,9 +55,11 @@
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
+  import PlotAnnotationBadge from '#lib/plot/core/components/PlotAnnotationBadge.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import {
+    create_annotation_decoration,
     create_colorbar_decoration,
     create_placed_decoration,
   } from '#lib/plot/core/placed-decoration.svelte.js'
@@ -227,6 +230,7 @@
     fullscreen_toggle = true,
     children,
     header_controls,
+    annotation,
     export_sources: extra_export_sources = {},
     controls_extra,
     shortcut_scopes,
@@ -247,6 +251,8 @@
       series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
       children?: Snippet<[UserContentProps]>
+      // Badge (e.g. MAE/R² stats) auto-placed in the plot area where it overlaps the least data
+      annotation?: PlotAnnotation
       // Bindable settings-pane overrides: show_points/show_lines and point.symbol_type (fallback
       // symbol) for every series, other point and line styles for the selected series only
       styles?: StyleOverrides
@@ -533,7 +539,11 @@
     legend_visible: () => should_show_legend,
     legend_items: () => legend_track_items,
     legend_footprint_fallback: { width: 120, height: 80 },
-    decorations: () => [...colorbar.items, ...size_legend_deco.items],
+    decorations: () => [
+      ...colorbar.items,
+      ...size_legend_deco.items,
+      ...annotation_deco.items,
+    ],
     exclusion_rects: () => [...colorbar.pinned_rects, ...size_legend_deco.pinned_rects],
     marginals: () => resolved_marginals,
     ref_lines: () => ref_lines,
@@ -727,7 +737,14 @@
     clearance: 12,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
-    sibling_revision: () => colorbar.size_revision,
+    // annotation_deco is read lazily, once both exist
+    sibling_revision: () => colorbar.size_revision + annotation_deco.size_revision,
+  })
+  const annotation_deco = create_annotation_decoration({
+    enabled: () => Boolean(annotation) && width > 0 && height > 0,
+    dims: () => ({ width, height }),
+    decoration_solution: () => frame.decoration_solution,
+    sibling_revision: () => colorbar.size_revision + size_legend_deco.size_revision,
   })
 
   // InternalPoints built once per data change, picked by range on each pan/zoom frame
@@ -2220,6 +2237,16 @@
           font_size={size_legend.font_size}
         />
       </div>
+    {/if}
+
+    {#if annotation && width > 0 && height > 0}
+      <PlotAnnotationBadge
+        decoration={annotation_deco}
+        {annotation}
+        {height}
+        {width}
+        {fullscreen}
+      />
     {/if}
 
     <PlotLegendLayer

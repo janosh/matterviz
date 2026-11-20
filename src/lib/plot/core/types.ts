@@ -492,6 +492,12 @@ export interface LegendItem {
   }
 }
 
+// Badge auto-placed in the plot area where it overlaps the least data (e.g. MAE/R² stats):
+// plain text (newlines break lines) or a snippet receiving the plot size
+export type PlotAnnotation =
+  | string
+  | Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+
 export type UserContentProps = {
   height: number
   width: number

@@ -13,14 +13,15 @@
   import type { Point2D, Vec2 } from '#lib/math.js'
   import { create_pulse_animation } from '#lib/effects.svelte.js'
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
+  import PlotAnnotationBadge from '#lib/plot/core/components/PlotAnnotationBadge.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
   import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import {
+    create_annotation_decoration,
     create_colorbar_decoration,
-    create_placed_decoration,
   } from '#lib/plot/core/placed-decoration.svelte.js'
   import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte.js'
   import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
@@ -64,6 +65,7 @@
     BasePlotProps,
     InternalPoint,
     PanConfig,
+    PlotAnnotation,
     ScatterHandlerProps,
   } from '#lib/plot/core/types.js'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
@@ -177,7 +179,7 @@
       // Extra header buttons rendered next to the fullscreen toggle
       header_controls?: Snippet<[OverlayContext]>
       // Badge (e.g. MAE/R² stats) auto-placed in the plot area where it overlaps the least data
-      annotation?: Snippet<[OverlayContext]>
+      annotation?: PlotAnnotation
       // Marginal distribution plots along the plot edges: true, a type, or a per-side map
       marginals?: MarginalsProp
       // Layout context a FacetGrid passes to a child plot so panels share padding and axis ranges
@@ -430,13 +432,8 @@
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
   })
-  const annotation_deco = create_placed_decoration({
-    id: `free-annotation`,
-    kind: () => ({ kind: `free-annotation` }),
+  const annotation_deco = create_annotation_decoration({
     enabled: () => Boolean(annotation) && has_plot_size,
-    config: () => null,
-    fallback_footprint: () => ({ width: 120, height: 50 }),
-    clearance: 12,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
     sibling_revision: () => colorbar.size_revision,
@@ -971,14 +968,13 @@
     {/if}
 
     {#if has_plot_size && annotation}
-      <div
-        bind:this={annotation_deco.element}
-        class="annotation"
-        {...annotation_deco.data_attrs}
-        style={annotation_deco.style}
-      >
-        {@render annotation({ height, width, fullscreen })}
-      </div>
+      <PlotAnnotationBadge
+        decoration={annotation_deco}
+        {annotation}
+        {height}
+        {width}
+        {fullscreen}
+      />
     {/if}
 
     {#if tooltip !== false && (hovered_bin || hovered_point)}
@@ -1073,10 +1069,5 @@
     left: 0;
     top: 0;
     transform: none;
-  }
-  .annotation {
-    pointer-events: none;
-    position: absolute;
-    width: max-content;
   }
 </style>

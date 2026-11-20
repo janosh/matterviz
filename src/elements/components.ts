@@ -8,6 +8,7 @@ export const COMPONENTS = {
   composition: `composition/Composition`,
   scatter_plot: `plot/scatter/ScatterPlot`,
   scatter_plot_3d: `plot/scatter-3d/ScatterPlot3D`,
+  binned_scatter_plot: `plot/scatter/BinnedScatterPlot`,
   bar_plot: `plot/bar/BarPlot`,
   spacegroup_bar: `plot/bar/SpacegroupBarPlot`,
   histogram: `plot/histogram/Histogram`,
@@ -29,6 +30,7 @@ export const COMPONENTS = {
   chem_pot_diagram: `chempot-diagram/ChemPotDiagram`,
   xrd: `xrd/XrdPlot`,
   rdf_plot: `rdf/RdfPlot`,
+  coordination_bar_plot: `coordination/CoordinationBarPlot`,
   neb_plot: `neb/NebPlot`,
   eos_plot: `eos/EosPlot`,
 } as const

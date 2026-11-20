@@ -8,11 +8,13 @@ import {
   Bands,
   BandsAndDos,
   BarPlot,
+  BinnedScatterPlot,
   BoxPlot,
   BrillouinZone,
   ChemPotDiagram,
   Composition,
   ConvexHull,
+  CoordinationBarPlot,
   Dos,
   EosPlot,
   FermiSurface,
@@ -409,7 +411,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       ...cartesian_plot_drive(`styles show_legend marker_renderer color_scale size_scale
         density_contours fill_regions error_bands hover_config label_placement_config
-        point_tween line_tween selected_point`),
+        point_tween line_tween selected_point annotation`),
       // None hides these, {} keeps the defaults
       nullable_prop(`color_bar`),
       nullable_prop(`size_legend`),
@@ -422,6 +424,18 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive:
       with_plot_controls(`series surfaces ref_lines ref_planes x_axis y_axis z_axis display
       styles show_legend color_scale size_scale legend camera_projection point_tween`),
+  },
+  binned_scatter_plot: {
+    component: BinnedScatterPlot,
+    drive: [
+      ...drive_props(`series size_scale density overlays padding range_padding title point_labels
+        selected_point_id marginals annotation fullscreen_toggle`),
+      // x_range/y_range fold into the axes like the other cartesian plots'
+      ...words(`x y`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
+      // Switches between density bins and points as the user zooms (density.auto_point_mode)
+      writeback_prop(`render_mode`, `density`),
+      nullable_prop(`color_bar`),
+    ],
   },
   bar_plot: {
     component: BarPlot,
@@ -508,7 +522,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   periodic_table: {
     component: PeriodicTable,
     drive: [
-      ...drive_props(`heatmap_values color_scale color_overrides labels gap missing`),
+      ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
+        tile_plot`),
       nullable_prop(`color_bar`),
     ],
   },
@@ -518,6 +533,16 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive:
       with_plot_controls(`patterns structures mode show_reference_line cutoff n_bins x_axis
       y_axis`),
+  },
+  coordination_bar_plot: {
+    // Computes its CN series from the structures, so the shared `series` trait has no place here
+    component: CoordinationBarPlot,
+    static_props: no_file_drop,
+    drive: [
+      ...with_plot_controls(`structures strategy split_mode orientation show_legend display
+        legend padding x_axis y_axis`),
+      writeback_prop(`mode`, `grouped`),
+    ],
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
