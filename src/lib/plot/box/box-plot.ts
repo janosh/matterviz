@@ -57,6 +57,7 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   violin_width?: number // fraction of the category slot
   clip?: [number | null, number | null] // hard KDE bounds (e.g. [0, null] for RMSD)
   points?: BoxPointMode // per-series override of the component's `points`
+  point_side?: ViolinSide // per-series override of the component's `point_side`
   // Series sharing a `category` occupy the same slot (for split/grouped violins).
   // When omitted, each series gets its own slot (default box/violin behavior).
   category?: string

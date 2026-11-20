@@ -2,6 +2,7 @@ import { format_num } from 'svelte-widgets/format'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
 import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
+import { plot_color } from '#lib/colors/index.js'
 import type { BarHandlerProps, BarSeries } from '#lib/plot/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -145,6 +146,38 @@ describe(`BarPlot`, () => {
       )
     },
   )
+
+  // uncolored series cycle the plot palette like Histogram's, a lone one keeps the bar color
+  test.each([
+    [`one series`, [{ x: [1], y: [1] }], [`bar`]],
+    [
+      `two series`,
+      [
+        { x: [1], y: [1] },
+        { x: [2], y: [2] },
+      ],
+      [plot_color(0), plot_color(1)],
+    ],
+    [
+      `explicit color wins`,
+      [
+        { x: [1], y: [1], color: `red` },
+        { x: [2], y: [2] },
+      ],
+      [`red`, plot_color(1)],
+    ],
+  ])(`series fill colors: %s`, async (_name, series, expected) => {
+    const plot = await mount_sized_bar_plot({ series, bar: { color: `bar` } })
+    const fills = [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((bar) =>
+      bar.getAttribute(`fill`),
+    )
+    expect(fills).toEqual(expected)
+    // legend swatches show the same colors as the bars
+    const swatches = [...plot.querySelectorAll(`.legend-item path[fill]`)].map((path) =>
+      path.getAttribute(`fill`),
+    )
+    if (series.length > 1) expect(swatches).toEqual(expected)
+  })
 
   test.each([`vertical`, `horizontal`] as const)(
     `only mounts bars crossing the %s viewport and keeps source indices`,

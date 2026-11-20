@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { clamp } from 'svelte-widgets/utils'
+  import { plot_color } from '#lib/colors/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
@@ -220,7 +221,16 @@
     },
     (srs) => (vertical ? srs.y_axis : srs.x_axis),
   )
-  let series: BarSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
+  // Uncolored series cycle the plot palette like Histogram's; a lone one keeps the configured
+  // bar or line color (see series_color). Applied here so bars and legend agree; hidden series
+  // stay in the list, so palette indices don't shift when one is toggled.
+  let series: BarSeries<Metadata>[] = $derived(
+    legend_vis
+      .resolve(series_in)
+      .map((srs, idx, all) =>
+        srs.color || all.length < 2 ? srs : { ...srs, color: plot_color(idx) },
+      ),
+  )
 
   const vertical = $derived(orientation === `vertical`)
   let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })

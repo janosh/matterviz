@@ -369,6 +369,32 @@ describe(`BoxPlot`, () => {
       },
     )
 
+    // point_side places the samples independently of the violin, opposite it for a raincloud;
+    // a per-series value wins over the component's, unset follows a half violin's side
+    test.each([
+      [`component`, `strip`, {}, { point_side: `negative` }, -1],
+      [`component swarm`, `swarm`, {}, { point_side: `negative` }, -1],
+      [`series wins`, `strip`, { point_side: `positive` }, { point_side: `negative` }, 1],
+      [`unset follows the violin`, `strip`, {}, {}, 1],
+    ] as const)(
+      `point_side %s puts points on their side`,
+      async (_name, mode, srs_opt, props, sign) => {
+        const plot = await mount_sized_box_plot(
+          {
+            series: [{ y: dist(60, 0, 1), label: `A`, side: `positive`, ...srs_opt }],
+            kind: `violin`,
+            points: mode,
+            ...props,
+          },
+          { width: 400, height: 400 },
+        )
+        const center = box_center(plot, `vertical`)
+        const offsets = sample_points(plot).map((pt) => sign * (pt.x - center))
+        expect(offsets).toHaveLength(60)
+        expect(Math.min(...offsets)).toBeGreaterThanOrEqual(0)
+      },
+    )
+
     // A pan along either axis only translates the samples, so it reuses their packing; a
     // zoom rescales the value px and re-packs them
     test(`pans move swarms rigidly without re-packing, a zoom re-packs`, async () => {

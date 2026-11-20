@@ -124,6 +124,7 @@
     value_label_format = ``,
     kind = $bindable(DEFAULTS.box.kind),
     side = $bindable(DEFAULTS.box.side),
+    point_side,
     bandwidth = DEFAULTS.box.bandwidth,
     violin_width = DEFAULTS.box.violin_width,
     violin_style = {},
@@ -192,6 +193,9 @@
       kind?: ViolinKind
       // Which half of its slot a violin fills: `both`, `positive` or `negative` (split violins)
       side?: ViolinSide
+      // Which half of its slot the sample points fill; unset follows a half violin's `side`.
+      // A raincloud puts the violin on `positive` and its points ("rain") on `negative`.
+      point_side?: ViolinSide
       bandwidth?: BandwidthOption // violin KDE; a number is in decades on a log value axis
       // Violin width as a fraction of its category slot
       violin_width?: number
@@ -435,7 +439,10 @@
         radius: sample_state.radius,
         half_width: Math.abs((frame.px_per_unit[vertical ? `x` : `y`] * spread) / 2),
         // Half violins keep their samples on their own half (split violins share a slot)
-        side: draws_violin(srs) ? to_screen_side(srs.side ?? side) : `both`,
+        // unless point_side places them, e.g. opposite the violin for a raincloud
+        side: to_screen_side(
+          srs.point_side ?? point_side ?? (draws_violin(srs) ? (srs.side ?? side) : `both`),
+        ),
         seed: idx + 1,
       })
       map.set(idx, { values, offsets })

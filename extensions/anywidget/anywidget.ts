@@ -523,7 +523,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: PeriodicTable,
     drive: [
       ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
-        tile_plot_config`),
+        tile_plot_config split_layout tile_props`),
       nullable_prop(`color_bar`),
     ],
   },
@@ -584,7 +584,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: cartesian_plot_drive(`show_legend orientation title box whisker median_style
       sample_style whisker_mode whisker_range whisker_percentiles show_outliers show_mean points
       show_value_labels value_label_stat value_label_format kind side bandwidth violin_width
-      violin_style kde_clip`),
+      violin_style kde_clip point_side`),
   },
   ternary_plot: {
     component: TernaryPlot,
