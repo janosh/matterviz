@@ -28,6 +28,24 @@ describe(`series_from_binary`, () => {
     expect(series.y).toBeInstanceOf(Float32Array)
   })
 
+  test(`zips metadata.<key> columns into per-point metadata, non-finite as null`, () => {
+    const [x, threshold, f1] = [
+      Float64Array.of(1, 2),
+      Float64Array.of(Infinity, 0.5),
+      Float64Array.of(0.25, NaN),
+    ]
+    const series = series_from_binary(
+      envelope({ x: arr(x), 'metadata.threshold': arr(threshold), 'metadata.f1': arr(f1) }),
+    )
+    expect(series).toEqual({
+      x,
+      metadata: [
+        { threshold: null, f1: 0.25 },
+        { threshold: 0.5, f1: null },
+      ],
+    })
+  })
+
   test.each([
     [`2D column`, envelope({ x: square }), `'x' must be 1D, got shape [2, 2]`],
     [`mismatched lengths`, envelope({ x: len_2, y: len_1 }), `share one length, got x=2, y=1`],
@@ -35,6 +53,16 @@ describe(`series_from_binary`, () => {
       `field sent as array and JSON`,
       envelope({ x: len_1 }, { x: [5] }),
       `fields x are sent both as arrays and as JSON`,
+    ],
+    [
+      `metadata sent as columns and JSON`,
+      envelope({ 'metadata.a': len_1, 'metadata.b': len_1 }, { metadata: [{}] }),
+      `fields metadata are sent both as arrays and as JSON`,
+    ],
+    [
+      `metadata column of another length`,
+      envelope({ x: len_2, 'metadata.a': len_1 }),
+      `share one length, got x=2, metadata.a=1`,
     ],
     [
       `another payload kind`,

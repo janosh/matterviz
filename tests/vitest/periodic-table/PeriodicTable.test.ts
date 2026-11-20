@@ -496,6 +496,30 @@ describe(`PeriodicTable`, () => {
     })
     nickel.dispatchEvent(press)
     expect(press.defaultPrevented).toBe(true)
+    // clicking pins the enlarged plot like the tooltip: it outlasts mouseleave and other
+    // hovers until the tile is clicked again
+    nickel.blur()
+    iron.dispatchEvent(mouse(`mouseenter`))
+    iron.dispatchEvent(mouse(`click`))
+    iron.dispatchEvent(mouse(`mouseleave`))
+    flushSync()
+    expect(title()).toBe(`26 Iron`)
+    nickel.dispatchEvent(mouse(`mouseenter`))
+    flushSync()
+    expect(title()).toBe(`26 Iron`)
+    nickel.dispatchEvent(mouse(`mouseleave`))
+    iron.dispatchEvent(mouse(`mouseenter`))
+    iron.dispatchEvent(mouse(`click`))
+    iron.dispatchEvent(mouse(`mouseleave`))
+    flushSync()
+    expect(title()).toBeUndefined()
+    // a pinned tile without a plot leaves hovered plot tiles their inset
+    cobalt.dispatchEvent(mouse(`mouseenter`))
+    cobalt.dispatchEvent(mouse(`click`))
+    cobalt.dispatchEvent(mouse(`mouseleave`))
+    nickel.dispatchEvent(mouse(`mouseenter`))
+    flushSync()
+    expect(title()).toBe(`28 Nickel`)
     // without a tooltip or click handler a click does nothing, so it is no button
     document.body.innerHTML = ``
     mount_table({ tile_plots: { Fe: { x: [0, 1], y: [0, 1] } }, tooltip: false })

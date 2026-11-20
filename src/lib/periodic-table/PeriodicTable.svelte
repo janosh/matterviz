@@ -416,15 +416,19 @@
     }))
   }
 
-  // The active (hovered or focused) tile's plot, enlarged with axes in the auto inset: its plot
+  // The pinned (clicked) tile's plot, else the active (hovered or focused) one's, enlarged with
+  // axes in the auto inset, so it persists on mouseleave like the pinned tooltip (a pinned tile
+  // without a plot doesn't block hovered ones): its plot
   // box in px (at most 2.5x wider than tall, centered, so wide insets don't flatten it) and
   // ticks as [px, label], about one per 60px on x and 40px on y
   let zoom_size = $state({ width: 0, height: 0 })
   let zoom = $derived.by(() => {
-    const symbol = active_element?.symbol
-    const marks = symbol && tile_plot_result.marks[symbol]
-    const axes = symbol && tile_plot_result.axes[symbol]
-    if (!active_element || !marks || !axes) return null
+    const element = [pin.value?.element, active_element].find(
+      (elem) => elem && tile_plot_result.marks[elem.symbol],
+    )
+    const marks = element && tile_plot_result.marks[element.symbol]
+    const axes = element && tile_plot_result.axes[element.symbol]
+    if (!element || !marks || !axes) return null
     const pad = { left: 40, right: 10, top: 16, bottom: 18 }
     const height = Math.max(0, zoom_size.height - pad.top - pad.bottom)
     const width = Math.max(0, Math.min(zoom_size.width - pad.left - pad.right, 2.5 * height))
@@ -451,7 +455,7 @@
         )
       : ticks(y_lo, y_hi, height, 40)
     return {
-      element: active_element,
+      element,
       marks,
       box: { left, top: pad.top, width, height },
       x_ticks: ticks(x_lo, x_hi, width, 60).map((val) =>

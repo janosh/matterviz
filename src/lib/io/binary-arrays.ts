@@ -122,7 +122,9 @@ export function checked_array(
 
 // A plot series whose numeric columns (x, y, color_values, size_values, ...) travel as binary
 // arrays: envelope kind `plot-series`, every array 1D and of one length, the remaining JSON
-// fields (label, markers, styles, ...) spread back onto the series
+// fields (label, markers, styles, ...) spread back onto the series. Arrays named
+// `metadata.<key>` become per-point `metadata` objects, non-finite values as null (as JSON
+// metadata would carry them), so large curves keep their hover data without per-point JSON
 export function series_from_binary(value: unknown): Record<string, unknown> {
   const { arrays, fields } = decode_binary_envelope(value, `plot-series`)
   const columns = Object.entries(arrays).map(([name, { values, shape }]) => {
@@ -133,7 +135,16 @@ export function series_from_binary(value: unknown): Record<string, unknown> {
     }
     return [name, values] as const
   })
-  const shadowed = columns.map(([name]) => name).filter((name) => Object.hasOwn(fields, name))
+  const meta_prefix = `metadata.`
+  const data_cols = columns.filter(([name]) => !name.startsWith(meta_prefix))
+  const meta_cols = columns
+    .filter(([name]) => name.startsWith(meta_prefix))
+    .map(([name, values]) => [name.slice(meta_prefix.length), values] as const)
+  const field_names = [
+    ...data_cols.map(([name]) => name),
+    ...(meta_cols.length ? [`metadata`] : []),
+  ]
+  const shadowed = field_names.filter((name) => Object.hasOwn(fields, name))
   if (shadowed.length) {
     throw new TypeError(
       `Binary plot-series fields ${shadowed.join(`, `)} are sent both as arrays and as JSON`,
@@ -144,5 +155,16 @@ export function series_from_binary(value: unknown): Record<string, unknown> {
     const sizes = columns.map(([name, values]) => `${name}=${values.length}`).join(`, `)
     throw new RangeError(`Binary plot-series arrays must share one length, got ${sizes}`)
   }
-  return { ...fields, ...Object.fromEntries(columns) }
+  const series: Record<string, unknown> = { ...fields, ...Object.fromEntries(data_cols) }
+  if (meta_cols.length) {
+    series.metadata = Array.from({ length: meta_cols[0][1].length }, (_, point_idx) => {
+      const meta: Record<string, number | null> = {}
+      for (const [key, values] of meta_cols) {
+        const num = values[point_idx]
+        meta[key] = Number.isFinite(num) ? num : null
+      }
+      return meta
+    })
+  }
+  return series
 }
