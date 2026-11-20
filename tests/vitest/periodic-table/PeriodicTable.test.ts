@@ -469,6 +469,40 @@ describe(`PeriodicTable`, () => {
     expect(tile(`Cu`).querySelector(`.name`)).toBeNull()
   })
 
+  test(`plot tiles take keyboard focus, enlarge their plot, and arrows skip plotless tiles`, async () => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(300)
+    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(300)
+    mount_table({ tile_plots: { Fe: { x: [0, 1], y: [0, 1] }, Ni: { x: [0, 1], y: [1, 0] } } })
+    const [iron, cobalt, nickel] = [`Fe`, `Co`, `Ni`].map((symbol) =>
+      doc_query(`[data-element-symbol="${symbol}"]`),
+    )
+    expect([iron.getAttribute(`role`), iron.tabIndex, nickel.tabIndex]).toEqual([
+      `button`,
+      0,
+      -1,
+    ])
+    expect(cobalt.hasAttribute(`tabindex`)).toBe(false)
+    const title = () => document.querySelector(`.tile-zoom .title`)?.textContent
+    iron.focus()
+    flushSync()
+    expect(title()).toBe(`26 Iron`)
+    iron.dispatchEvent(keydown(`ArrowRight`))
+    await tick()
+    expect(document.activeElement).toBe(nickel)
+    expect(title()).toBe(`28 Nickel`)
+    // a mouse press doesn't focus it (the enlarged plot would stick after the pointer leaves)
+    const press = Object.assign(mouse(`pointerdown`, { cancelable: true }), {
+      pointerType: `mouse`,
+    })
+    nickel.dispatchEvent(press)
+    expect(press.defaultPrevented).toBe(true)
+    // without a tooltip or click handler a click does nothing, so it is no button
+    document.body.innerHTML = ``
+    mount_table({ tile_plots: { Fe: { x: [0, 1], y: [0, 1] } }, tooltip: false })
+    const fe_tile = doc_query(`[data-element-symbol="Fe"]`)
+    expect([fe_tile.getAttribute(`role`), fe_tile.tabIndex]).toEqual([null, 0])
+  })
+
   // the enlarged plot lays out from its measured size: unmeasured (0x0) shows only the hint
   test.each([
     // 250x266px plot box: about one tick per 60px on x and 40px on y
@@ -497,7 +531,7 @@ describe(`PeriodicTable`, () => {
       vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(size)
       mount_table({ tile_plots, tile_plot_config: { mode: `line`, ...config } })
       const zoom = doc_query(`.auto-colorbar-inset .tile-zoom`)
-      const hint = `Hover or tap a tile to enlarge its plot`
+      const hint = `Hover, tap or focus a tile to enlarge its plot`
       expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
       doc_query(`[data-element-symbol="Fe"]`).dispatchEvent(mouseenter)
       flushSync()

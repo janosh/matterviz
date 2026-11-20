@@ -168,6 +168,9 @@
         : links[element.symbol]
   const element_is_interactive = (element: ChemicalElement): boolean =>
     Boolean(element_href(element) || on_activate)
+  // tiles with a plot also take keyboard focus, which enlarges their plot in the inset
+  const element_is_focusable = (element: ChemicalElement): boolean =>
+    element_is_interactive(element) || Boolean(tile_plot_result.marks[element.symbol])
   let active_symbols = $derived(
     new Set(active_elements.map((elem) => (typeof elem === `string` ? elem : elem.symbol))),
   )
@@ -179,14 +182,14 @@
     pin.is({ element }) ||
     active_symbols.has(element.symbol)
   let focused_symbol = $state<ElementSymbol | null>(null)
-  let first_interactive_symbol = $derived(
-    element_data.find(element_is_interactive)?.symbol ?? null,
+  let first_focusable_symbol = $derived(
+    element_data.find(element_is_focusable)?.symbol ?? null,
   )
   let roving_symbol = $derived(
     focused_symbol ??
-      (active_element && element_is_interactive(active_element)
+      (active_element && element_is_focusable(active_element)
         ? active_element.symbol
-        : first_interactive_symbol),
+        : first_focusable_symbol),
   )
   // throws on keys that aren't element symbols and malformed series (see tile_plot_marks)
   // and on a tile color scale beside heatmap_values: two scales would need two color bars
@@ -236,6 +239,10 @@
   // unaffected. Plain (non-state) flag: it's consumed by the click of the same tap.
   let tap_is_preview = false
   const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
+    // a plot tile is focusable for keyboards only: a mouse focus would hold its enlarged plot
+    // (end_hover restores the focused tile) after the pointer moves on. The click still runs.
+    if (event.pointerType === `mouse` && !element_is_interactive(element))
+      event.preventDefault()
     tap_is_preview =
       event.pointerType === `touch` && !disabled && active_element?.symbol !== element.symbol
     // select here rather than relying on the compat mouseenter a tap usually emits: without
@@ -292,7 +299,7 @@
         (element) =>
           element.column === target_col &&
           element.row === target_row &&
-          element_is_interactive(element),
+          element_is_focusable(element),
       )
       if (target_element) {
         focused_symbol = target_element.symbol
@@ -515,7 +522,7 @@
               {@render plot_marks(marks, { class: `marks`, x: left, y: top, width, height })}
             </svg>
           {:else}
-            <figcaption>Hover or tap a tile to enlarge its plot</figcaption>
+            <figcaption>Hover, tap or focus a tile to enlarge its plot</figcaption>
           {/if}
         </figure>
       {/if}
@@ -542,6 +549,8 @@
     {@const interactive = Boolean(href || on_activate)}
     {@const active = is_active(element)}
     {@const marks = tile_plot_result.marks[symbol]}
+    {@const focusable = interactive || Boolean(marks)}
+    {@const clickable = interactive || tooltip !== false || Boolean(tile_props?.onclick)}
     {@const label = labels[symbol] ?? (tile_missing ? missing.label : undefined)}
     {@const style = `grid-column: ${column}; grid-row: ${row};${
       tile_props?.style ? ` ${tile_props.style}` : ``
@@ -571,8 +580,12 @@
         set_active_element(null)
         tooltip_hover = null
       }}
-      role={tile_activation ? `button` : href ? `link` : tile_props?.role}
-      tabindex={interactive ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
+      role={href
+        ? `link`
+        : tile_activation || (marks && clickable)
+          ? `button`
+          : tile_props?.role}
+      tabindex={focusable ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
       onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
       onclick={interactive || tooltip !== false
         ? (data: { element: ChemicalElement; event: MouseEvent }) =>

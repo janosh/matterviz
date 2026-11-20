@@ -242,6 +242,26 @@ describe(`BarPlot`, () => {
     },
   )
 
+  // its value-axis zero line is a default the caller's display settings override (the
+  // anywidget display trait reaches it this way)
+  test.each([
+    [`default`, undefined, 1],
+    [`caller hides it`, { y_zero_line: false }, 0],
+  ] as const)(`StructureBarPlot zero line: %s`, async (_name, display, n_lines) => {
+    const plot = await mount_sized(
+      StructureBarPlot,
+      {
+        series: [basic],
+        primary_axis: { label: `Angle` },
+        value_axis: { label: `Count` },
+        subject: `angles`,
+        display,
+      },
+      { selector: `.bar-plot` },
+    )
+    expect(plot.querySelectorAll(`.zero-line`)).toHaveLength(n_lines)
+  })
+
   // Bars and line-series markers alike; on_bar_click/on_point_click would claim the click.
   // Bars have no hover look, markers keep theirs while pinned.
   test.each([

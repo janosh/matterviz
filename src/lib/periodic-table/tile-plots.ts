@@ -99,15 +99,44 @@ const resolve_range = (name: string, range: Range | undefined, data: Numbers[]):
   return [lo, hi]
 }
 
-// Collects path data per color: a segment starting where its color's path ended continues it
-// (`L`) rather than restarting (`M`), so runs of one color stay one polyline
+// Collects path data per color. A segment starting where its color's path ended extends that
+// polyline instead of moving the pen, so runs of one color stay one line. Each line step and
+// pen move is written absolute or relative (`l`, `m`), whichever is shorter. Pen positions
+// are compared as numbers.
+type ColorPath = { parts: string[]; x: number; y: number; open: boolean }
+// the shorter of an absolute and a relative command (relative wins only for nearby points)
+const shorter = (absolute: string, relative: string): string =>
+  relative.length < absolute.length ? relative : absolute
 class PathsByColor {
-  readonly #paths = new Map<string | undefined, { parts: string[]; end: string }>()
-  add(color: string | undefined, start: string, rest: string, end = start): void {
+  readonly #paths = new Map<string | undefined, ColorPath>()
+  #path(color: string | undefined): ColorPath {
     let path = this.#paths.get(color)
-    if (!path) this.#paths.set(color, (path = { parts: [], end: `` }))
-    path.parts.push(path.end === start ? rest : `M${start}${rest}`)
-    path.end = end
+    if (!path) this.#paths.set(color, (path = { parts: [], x: NaN, y: NaN, open: false }))
+    return path
+  }
+  segment(color: string | undefined, x0: number, y0: number, x1: number, y1: number): void {
+    const path = this.#path(color)
+    const continues = path.open && path.x === x0 && path.y === y0
+    const step = shorter(`L${x1} ${y1}`, `l${x1 - x0} ${y1 - y0}`)
+    path.parts.push(continues ? step : `${this.#move(path, x0, y0)}${step}`)
+    Object.assign(path, { x: x1, y: y1, open: true })
+  }
+  // a zero-length segment with round caps draws an undistorted dot
+  dot(color: string | undefined, x: number, y: number): void {
+    const path = this.#path(color)
+    path.parts.push(`${this.#move(path, x, y)}h0`)
+    Object.assign(path, { x, y })
+  }
+  // pen move to (x, y), relative to the path's last point when that is shorter
+  #move(path: ColorPath, x: number, y: number): string {
+    const absolute = `M${x} ${y}`
+    return path.parts.length ? shorter(absolute, `m${x - path.x} ${y - path.y}`) : absolute
+  }
+  // a closed shape, not continued by what follows
+  shape(color: string | undefined, d: string): void {
+    const path = this.#path(color)
+    path.parts.push(d)
+    path.open = false
   }
   marks(kind: TileMark[`kind`]): TileMark[] {
     return [...this.#paths].map(([color, { parts }]) => {
@@ -175,7 +204,7 @@ const bar_marks = (
     const bin_center = lo + ((hi - lo) * (idx + 0.5)) / n_bins
     const bar_color = color ?? colors?.color_of(bin_center)
     const rest = `V${top}H${edge(idx + 1)}V${TILE_PLOT_GRID}Z`
-    paths.add(bar_color, `${edge(idx)} ${TILE_PLOT_GRID}`, rest, ``)
+    paths.shape(bar_color, `M${edge(idx)} ${TILE_PLOT_GRID}${rest}`)
   }
   return paths.marks(`bars`)
 }
@@ -205,16 +234,22 @@ const xy_marks = (
   const by_value = ramp && colors && color_values && !color ? colors : null
   const [line, markers] = [new PathsByColor(), new PathsByColor()]
   const seen_cells = new Set<number>()
-  // last drawn line point, and the latest point skipped since (drawn if its run ends there)
+  // last drawn line point, the latest point skipped since (drawn if its run ends there) and
+  // whether the current run drew a segment yet
   let [prev, skipped]: (LinePoint | null)[] = [null, null]
+  let run_drawn = false
   const draw_segment = (from: LinePoint, to: LinePoint): void => {
     const seg_color = by_value ? by_value.color_of_position((from.pos + to.pos) / 2) : color
-    const end = `${to.px} ${to.py}`
-    line.add(seg_color, `${from.px} ${from.py}`, `L${end}`, end)
+    line.segment(seg_color, from.px, from.py, to.px, to.py)
+    run_drawn = true
   }
   const end_run = (): void => {
     if (prev && skipped) draw_segment(prev, skipped)
-    ;[prev, skipped] = [null, null]
+    // a lone point has no segment to draw: in line mode it shows as a dot so its data stays
+    // visible (line+markers already marks it)
+    else if (prev && !run_drawn && mode === `line`)
+      markers.dot(by_value ? by_value.color_of_position(prev.pos) : color, prev.px, prev.py)
+    ;[prev, skipped, run_drawn] = [null, null, false]
   }
   for (let idx = 0; idx < x.length; idx++) {
     const [x_val, y_val] = [x[idx], y[idx]]
@@ -233,7 +268,11 @@ const xy_marks = (
     }
     const px = Math.round((x_val - x_lo) * x_scale)
     const py = Math.round(TILE_PLOT_GRID - (y_val - y_lo) * y_scale)
-    const pos = by_value ? (ramp?.position(color_values?.[idx] ?? NaN) ?? NaN) : NaN
+    // non-finite color data (NaN, null, ±Inf, which a clamped scale would pin to an end
+    // color) leaves the marker and its segments the series color
+    const color_value = color_values?.[idx] ?? NaN
+    const pos =
+      by_value && ramp && Number.isFinite(color_value) ? ramp.position(color_value) : NaN
     if (mode !== `markers`) {
       const point = { px, py, pos }
       const near_prev =
@@ -256,9 +295,7 @@ const xy_marks = (
         (Math.round(px / DEDUPE_CELL) * 1024 + Math.round(py / DEDUPE_CELL)) * 128 + color_step
       if (seen_cells.has(cell)) continue
       seen_cells.add(cell)
-      // a zero-length segment with round caps draws an undistorted dot
-      const marker_color = by_value ? by_value.color_of_position(pos) : color
-      markers.add(marker_color, `${px} ${py}`, `h0`, ``)
+      markers.dot(by_value ? by_value.color_of_position(pos) : color, px, py)
     }
   }
   end_run()
@@ -296,13 +333,17 @@ export function tile_plot_marks(
       x_range,
       hists.map(([, { values }]) => values),
     )
-    const ramp = color_scale ? resolve_color_scale(color_scale, x) : null
-    const colors = quantized_colors(ramp)
     // a tile's series share its tallest bin, so overlaid histograms compare
-    for (const [symbol, entries] of Map.groupBy(hists, ([sym]) => sym)) {
-      const counts = entries.map(([, { values }]) => bin_counts(values, x, bins))
-      const max_count = Math.max(...counts.flat())
-      if (!max_count) continue
+    const tiles = [...Map.groupBy(hists, ([sym]) => sym)]
+      .map(([symbol, entries]) => {
+        const counts = entries.map(([, { values }]) => bin_counts(values, x, bins))
+        return { symbol, entries, counts, max_count: Math.max(...counts.flat()) }
+      })
+      .filter(({ max_count }) => max_count > 0)
+    // no bars, no scale: a color bar would explain nothing
+    const ramp = color_scale && tiles.length ? resolve_color_scale(color_scale, x) : null
+    const colors = quantized_colors(ramp)
+    for (const { symbol, entries, counts, max_count } of tiles) {
       marks[symbol] = entries.flatMap(([, { color }], idx) =>
         bar_marks(counts[idx], color, x, max_count, log_y, colors),
       )

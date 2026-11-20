@@ -81,14 +81,14 @@ describe(`tile_plot_marks`, () => {
       // 3rd, ends the run so it is kept
       `line skips sub-pixel steps but keeps each run's end`,
       [{ Li: { x: [0, 0.001, 0.998, 1], y: [0, 0, 1, 1] } }, { mode: `line` }],
-      { Li: [{ kind: `line`, d: `M0 1000L998 0L1000 0` }] },
+      { Li: [{ kind: `line`, d: `M0 1000L998 0l2 0` }] },
     ],
     [
       `line+markers with a series color; single-value ranges padded`,
       [{ Li: [{ x: [1, 1], y: [2, 2], color: `red` }] }, { mode: `line+markers` }],
       {
         Li: [
-          { kind: `line`, d: `M500 500L500 500`, color: `red` },
+          { kind: `line`, d: `M500 500l0 0`, color: `red` },
           { kind: `markers`, d: `M500 500h0`, color: `red` },
         ],
       },
@@ -148,13 +148,36 @@ describe(`tile_plot_marks`, () => {
       { kind: `markers`, d: `M1000 0h0`, color: step_color(ramp, 1) },
     ])
     expect(marks.Na).toEqual([{ kind: `markers`, d: `M0 1000h0`, color: `red` }])
+    // interleaved colors: each color's pen continues from that color's previous dot, and a
+    // nearby dot moves relative to it when that is shorter (m10 -5 vs M10 995)
+    const mixed = tile_plot_marks(
+      { Li: { x: [0, 0.5, 0.005], y: [0, 1, 0.005], color_values: [0, 10, 0] } },
+      config,
+    )
+    expect(mixed.marks.Li?.map(({ d }) => d)).toEqual([`M0 1000h0m10 -5h0`, `M1000 0h0`])
+    // ±Inf color data counts as missing (a clamped scale would pin it to an end color):
+    // its marker and both adjacent segments keep the series color
+    const inf = tile_plot_marks(
+      { Li: { x: [0, 1, 2], y: [0, 1, 2], color_values: [0, Infinity, 10] } },
+      { ...config, mode: `line+markers` },
+    )
+    expect(inf.marks.Li?.map(({ kind, color }) => [kind, color])).toEqual([
+      [`line`, undefined],
+      [`markers`, step_color(inf.ramp, 0)],
+      [`markers`, undefined],
+      [`markers`, step_color(inf.ramp, 1)],
+    ])
+    // histograms with nothing to draw get no scale, so no color bar explaining nothing
+    const empty_hists = tile_plot_marks({ H: { values: [] }, He: { values: [NaN] } }, config)
+    expect([empty_hists.ramp, empty_hists.marks]).toEqual([null, {}])
     const no_data = tile_plot_marks({ Li: { x: [0], y: [0], color_values: [NaN] } }, config)
     expect(no_data.ramp).toBeNull()
     expect(no_data.marks.Li).toEqual([{ kind: `markers`, d: `M500 500h0` }])
   })
 
   test(`line segments take the palette step of their ends' mean scale position`, () => {
-    // the 3rd point is followed by a gap and the lone 5th point draws nothing
+    // the 3rd point is followed by a gap; the lone 5th point has no segment, so it shows as a
+    // dot in its own color rather than disappearing
     const lines = tile_plot_marks(
       {
         Li: { x: [0, 1, 2, 3, 4], y: [0, 1, 2, NaN, 4], color_values: [0, 4, 8, 9, 10] },
@@ -165,10 +188,11 @@ describe(`tile_plot_marks`, () => {
     expect(lines.marks.Li).toEqual([
       { kind: `line`, d: `M0 1000L250 750`, color: step_color(lines.ramp, 0.2) },
       { kind: `line`, d: `M250 750L500 500`, color: step_color(lines.ramp, 0.6) },
+      { kind: `markers`, d: `M1000 0h0`, color: step_color(lines.ramp, 1) },
     ])
     // one color: consecutive segments continue one polyline
     expect(lines.marks.Na).toEqual([
-      { kind: `line`, d: `M0 1000L500 0L1000 1000`, color: `red` },
+      { kind: `line`, d: `M0 1000L500 0l500 1000`, color: `red` },
     ])
     // on a log scale 1 -> 100 meets midway at 10 (position 0.5), not at their mean 50.5
     const log = tile_plot_marks(
