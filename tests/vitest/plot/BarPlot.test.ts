@@ -99,6 +99,26 @@ describe(`BarPlot`, () => {
     },
   )
 
+  test(`space-group bars take pre-counted { space_group: count } data`, async () => {
+    const bar_labels = (plot: HTMLElement) =>
+      [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((bar) =>
+        bar.getAttribute(`aria-label`),
+      )
+    // symbols and numeric keys merge, unparsable keys and zero counts add no bars
+    const plot = await mount_sized(
+      SpacegroupBarPlot,
+      { data: { 225: 3, 'Fm-3m': 2, 2: 4, 999: 7, 62: 0 } },
+      { selector: `.bar-plot` },
+    )
+    expect(bar_labels(plot)).toEqual([`bar 1 of triclinic: 4`, `bar 1 of cubic: 5`])
+  })
+
+  test.each([-1, 1.5, Number.NaN])(`space-group count %s throws`, async (count) => {
+    await expect(
+      mount_sized(SpacegroupBarPlot, { data: { 225: count } }, { selector: `.bar-plot` }),
+    ).rejects.toThrow(`count must be a non-negative integer, got ${count}`)
+  })
+
   // Count annotations stack into rows by their rendered x: the auto-padded frame scale
   // and the edge clamp, not the default-padding estimate (labels then overlapped)
   test.each([
