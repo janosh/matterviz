@@ -3,6 +3,7 @@
   import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
   import type { ChemicalElement, SplitLayout, TileSegment } from '#lib/element/index.js'
   import { colors } from '#lib/state.svelte.js'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -21,8 +22,9 @@
     split_layout = undefined, // auto-determined from segment count
     onclick,
     onkeydown,
+    children,
     ...rest
-  }: Omit<HTMLAttributes<HTMLElement>, `onclick`> & {
+  }: Omit<HTMLAttributes<HTMLElement>, `onclick` | `children`> & {
     // Element whose number, symbol, name and category color the tile shows.
     element: ChemicalElement
     // 0 segments paints the category color, 1 paints a solid tile, 2-4 split it. Each
@@ -51,6 +53,8 @@
     split_layout?: SplitLayout
     // Called with the element and click event.
     onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
+    // Extra content drawn inside the tile, e.g. a mini plot.
+    children?: Snippet
   } = $props()
 
   // Segment and value-label CSS classes for every split, grouped by segment count. Sole
@@ -208,6 +212,9 @@
       {label ?? element.name}
     </span>
   {/if}
+
+  <!-- Extra tile content, e.g. a PeriodicTable mini plot -->
+  {@render children?.()}
 
   <!-- Split backgrounds, one div per segment -->
   {#if layout_config && has_split_background}

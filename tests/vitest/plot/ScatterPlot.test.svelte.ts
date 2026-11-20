@@ -705,14 +705,26 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelector(`.size-legend-wrapper`)).toBeNull()
     })
 
-    test(`placed clear of the colorbar`, async () => {
+    test(`size legend and text annotation are placed clear of the colorbar and each other`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [bubbles([1, 4, 9, 16, 25], { color_values: [1, 2, 3, 4, 5] })],
+        annotation: `MAE = 0.12 eV\nR² = 0.98`,
       })
-      const size_rect = solved_decoration_rect(query(plot, `.size-legend-wrapper`))
-      const colorbar_rect = solved_decoration_rect(query(plot, `.colorbar-wrapper`))
+      const anno = query(plot, `.plot-annotation`)
+      expect(anno.textContent?.trim()).toBe(`MAE = 0.12 eV\nR² = 0.98`)
+      const [size_rect, colorbar_rect, anno_rect] = [
+        `.size-legend-wrapper`,
+        `.colorbar-wrapper`,
+        `.plot-annotation`,
+      ].map((selector) => solved_decoration_rect(query(plot, selector)))
       expect(size_rect.width).toBeGreaterThan(0)
-      expect(rects_overlap(size_rect, colorbar_rect)).toBe(false)
+      expect(anno_rect.width).toBeGreaterThan(0)
+      for (const [rect_a, rect_b] of [
+        [size_rect, colorbar_rect],
+        [anno_rect, colorbar_rect],
+        [anno_rect, size_rect],
+      ])
+        expect(rects_overlap(rect_a, rect_b)).toBe(false)
     })
 
     test(`a CSS-hidden legend leaves its corner to the size legend`, async () => {

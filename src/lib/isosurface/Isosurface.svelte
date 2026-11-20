@@ -27,7 +27,8 @@
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes, MAX_CUBIC_GRID_POINTS } from './types'
+  import { cubic_surface_volume } from './spline'
   import SurfaceMaterial from './SurfaceMaterial.svelte'
 
   let {
@@ -87,26 +88,34 @@
     })
 
   // === Prepared geometry grids ===
-  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The window
-  // fully determines it (it encodes supercell and halo, which finite volumes ignore).
+  // A volume's marching-cubes grid, cached across isovalue changes.
   type PreparedGrid = ReturnType<typeof prepare_geometry_grid> & { key: string }
   // Keyed by volume object so removed/replaced volumes release their grids to GC
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
-  const window_key = (vol: VolumetricData): string => JSON.stringify(effective_window(vol))
+  const grid_key = (vol: VolumetricData): string =>
+    JSON.stringify([effective_window(vol), settings.interpolation ?? `linear`])
 
   // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
   // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
-  const prepared_grid = (vol: VolumetricData): PreparedGrid => {
-    const key = window_key(vol)
-    const cached = prepared_cache.get(vol)
+  const prepared_grid = (vol: VolumetricData, isovalue: number): PreparedGrid => {
+    const start = performance.now()
+    const key = grid_key(vol)
+    const window = effective_window(vol)
+    const cubic = settings.interpolation === `cubic`
+    // A requested window has coordinates in the original volume. Only a whole finite
+    // field may use a smaller, surface-specific frame.
+    const source = cubic ? cubic_surface_volume(vol, window ? 0 : Math.abs(isovalue)) : vol
+    const cached = prepared_cache.get(source)
     if (cached?.key === key) return cached
-    const prepared = time_stage(
-      `prepare_geometry`,
-      () => ({ key, ...prepare_geometry_grid(vol, effective_window(vol)) }),
-      ({ grid }) => ({ output_points: grid.values.length }),
-    )
-    prepared_cache.set(vol, prepared)
+    const prepared = {
+      key,
+      ...prepare_geometry_grid(source, window, cubic ? MAX_CUBIC_GRID_POINTS : undefined),
+    }
+    record_stage(`prepare_geometry`, performance.now() - start, {
+      output_points: prepared.grid.values.length,
+    })
+    prepared_cache.set(source, prepared)
     return prepared
   }
 
@@ -196,9 +205,8 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // window_key covers halo and supercell, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    value_key([volume_id, vol_id(volume), sign * isovalue, window_key(volume)])
+    value_key([volume_id, vol_id(volume), sign * isovalue, grid_key(volume)])
 
   type BuiltSurface = Pick<MeshEntry, `geometry` | `lobes`>
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
@@ -206,12 +214,14 @@
     volume: VolumetricData
   }
 
-  // One job per volume on its prepared grid
+  // Levels using the same field region share one worker input, including mirrored lobes.
   const geometry_jobs = (pending: PendingSurface[]): GeometryInput[`volumes`] =>
-    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
-      ...prepared_grid(vol),
-      surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
-    }))
+    [...Map.groupBy(pending, ({ volume, isovalue }) => prepared_grid(volume, isovalue))].map(
+      ([prepared, surfaces]) => ({
+        ...prepared,
+        surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
+      }),
+    )
 
   // Large outputs go to the geometry worker; small ones are cheaper on the main thread than a
   // round trip. A periodic grid is one unit cell, tiled over its window's cells.

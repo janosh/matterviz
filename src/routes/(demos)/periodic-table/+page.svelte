@@ -35,6 +35,41 @@
 
   let window_width: number = $state(0)
 
+  // Tile plots: a histogram per element of noisy samples around its electronegativity
+  // (deterministic LCG noise so the page renders the same every time), and a line per element
+  // of its successive ionization energies on a log scale, colored by energy. Elements list
+  // from 1 to 30 ionizations, so x is the fraction of listed ionizations to span every tile;
+  // the data has only the first for H (one electron), Fr and the heavy elements, drawn as a dot.
+  let seed = 1
+  const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 1.2
+  const hist_tile_plots = Object.fromEntries(
+    element_data
+      .filter(({ electronegativity }) => electronegativity)
+      .map(({ symbol, electronegativity }) => [
+        symbol,
+        {
+          values: Array.from(
+            { length: 300 },
+            () => (electronegativity ?? 0) + noise() + noise(),
+          ),
+        },
+      ]),
+  )
+  const line_tile_plots = Object.fromEntries(
+    element_data
+      .filter(({ ionization_energies }) => ionization_energies.length > 0)
+      .map(({ symbol, ionization_energies }) => [
+        symbol,
+        {
+          x: ionization_energies.map(
+            (_, idx) => idx / Math.max(1, ionization_energies.length - 1),
+          ),
+          y: ionization_energies.map(Math.log10),
+          color_values: ionization_energies.map(Math.log10),
+        },
+      ]),
+  )
+
   // Missing color demo periodic table
   let missing_color: string = $state(`#666666`)
   let missing_use_category: boolean = $state(false)
@@ -228,6 +263,31 @@
       />
     </LazyDemo>
   {/each}
+</div>
+
+<h2 id="tile-plots">Tile Plots</h2>
+
+<p>
+  <code>tile_plots</code> draws a mini histogram (<code>{`{ values }`}</code>) or scatter/line
+  plot (<code>{`{ x, y }`}</code>) inside each element's tile. All tiles share their axes, so
+  tiles compare at a glance; <code>tile_plot_config</code> sets bins, mode, color and fixed ranges.
+</p>
+
+<div style="display: grid; gap: 3em">
+  <LazyDemo label="Electronegativity sample histograms" height="500px">
+    <PeriodicTable
+      tile_plots={hist_tile_plots}
+      tile_plot_config={{ bins: 16, color_scale: `interpolateViridis` }}
+      color_bar={{ title: `Electronegativity (Pauling)` }}
+    />
+  </LazyDemo>
+  <LazyDemo label="Log ionization energies" height="500px">
+    <PeriodicTable
+      tile_plots={line_tile_plots}
+      tile_plot_config={{ mode: `line`, color_scale: `interpolateWarm` }}
+      color_bar={{ title: `Ionization energy (log₁₀ kJ/mol)` }}
+    />
+  </LazyDemo>
 </div>
 
 <h2 id="2-2-grid-layout">2×2 Grid Layout</h2>

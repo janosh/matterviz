@@ -248,7 +248,8 @@ test.each([
 
 // A periodic diagonal supercell becomes an endpoint-inclusive base-fraction box, any other
 // supercell [0, 1]³ in its own frame (halo / |M_i| per axis); an explicit range overrides the
-// supercell and adds the halo; finite volumes ignore the supercell but crop to [0, 1]
+// supercell and adds the halo; finite volumes ignore the supercell but crop to [0, 1] (a full
+// [0, 1]³ crop is none, so cubic meshes keep their surface-specific grid)
 const diag_2_3_1 = diagonal_matrix([2, 3, 1])
 const sheared: Matrix3x3 = [
   [1, 1, 0],
@@ -263,6 +264,7 @@ test.each([
   [`periodic sheared supercell + halo`, true, { supercell: sheared, halo: 0.1 }, { range: [[-sheared_pad, 1 + sheared_pad], [-sheared_pad, 1 + sheared_pad], [-0.1, 1.1]], frame: sheared }],
   [`periodic explicit range + halo`, true, { display_range: [[-0.15, 2.15], [0, 1], [0.25, 0.75]], supercell: sheared, halo: 0.1 }, { range: [[-0.25, 2.25], [-0.1, 1.1], [0.15, 0.85]] }],
   [`finite supercell`, false, { supercell: diag_2_3_1 }, null],
+  [`finite full range is no crop`, false, { display_range: [[-1, 2], [0, 1], [0, 1]] }, null],
   [`finite explicit crop`, false, { display_range: [[-1, 0.8], [0.2, 2], [0, 1]], supercell: sheared, halo: 0.1 }, { range: [[0, 0.8], [0.2, 1], [0, 1]] }],
 ] as [string, boolean, Parameters<typeof resolve_volume_window>[1], ReturnType<typeof resolve_volume_window>][])(`resolve_volume_window: %s`, (_label, periodic, options, expected) => {
   const volume = linear_volume(periodic ? 10 : 11, cubic, periodic)
@@ -550,6 +552,29 @@ describe(`extract_volume_range`, () => {
       expect(open_off_faces).toEqual([])
     },
   )
+
+  test.each([
+    [[2, 100, 100], 8],
+    [[1, 1, 71], 64],
+    [[3, 4, 9], 108],
+  ] satisfies [Vec3, number][])(
+    `periodic grid %j fits a %i-point budget`,
+    (dims, max_points) => {
+      const volume = make_volume(make_grid(...dims, (_idx_x, _idx_y, idx_z) => idx_z))
+      const { grid } = prepare_geometry_grid(volume, null, max_points)
+      expect(Math.min(...grid.dims)).toBeGreaterThanOrEqual(2)
+      expect(grid.values.length).toBeLessThanOrEqual(max_points)
+      if (volume.values.length === max_points) expect(grid.values).toBe(volume.values)
+      expect(grid.values[0]).toBe(0)
+      expect(grid.values[1]).toBeCloseTo(dims[2] / grid.dims[2], 12)
+    },
+  )
+
+  test.each([7, NaN])(`rejects an invalid mesh grid budget %s`, (max_points) => {
+    const volume = periodic_vol()
+    expect(() => prepare_geometry_grid(volume, null, max_points)).toThrow(RangeError)
+    expect(() => range_sample_counts(volume, UNIT_CELL_RANGE, max_points)).toThrow(RangeError)
+  })
 
   test(`a window too wide to count is rejected, not looped on`, () => {
     // oxfmt-ignore

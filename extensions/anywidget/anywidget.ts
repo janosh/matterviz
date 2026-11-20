@@ -8,11 +8,13 @@ import {
   Bands,
   BandsAndDos,
   BarPlot,
+  BinnedScatterPlot,
   BoxPlot,
   BrillouinZone,
   ChemPotDiagram,
   Composition,
   ConvexHull,
+  CoordinationBarPlot,
   Dos,
   EosPlot,
   FermiSurface,
@@ -42,7 +44,7 @@ import {
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
-import { is_binary_envelope } from 'matterviz/io'
+import { is_binary_envelope, series_from_binary } from 'matterviz/io'
 import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
@@ -132,8 +134,21 @@ const merged_prop = (target: string, sub_key: string, source: string): DrivenPro
     merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
   )
 
+// Plot series as JSON, or (for large ones) binary `plot-series` envelopes whose numeric
+// columns arrive as typed arrays (readme)
+const series_prop = derived_prop(`series`, [`series`], (model) => {
+  const series = get_prop(model, `series`)
+  if (is_binary_envelope(series)) {
+    throw new TypeError(`series must be a list of series; wrap a binary plot-series in a list`)
+  }
+  return Array.isArray(series)
+    ? series.map((srs) => (is_binary_envelope(srs) ? series_from_binary(srs) : srs))
+    : series
+})
+
 const plot_common_drive: readonly DrivenProp[] = [
-  ...drive_props(`series display legend ref_lines padding range_padding`),
+  series_prop,
+  ...drive_props(`display legend ref_lines padding range_padding`),
   ...words(`x x2 y y2`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
 ]
 // Every plot component (the generic plots and the Bands/Dos/XrdPlot/RdfPlot wrappers alike)
@@ -409,7 +424,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       ...cartesian_plot_drive(`styles show_legend marker_renderer color_scale size_scale
         density_contours fill_regions error_bands hover_config label_placement_config
-        point_tween line_tween selected_point`),
+        point_tween line_tween selected_point annotation`),
       // None hides these, {} keeps the defaults
       nullable_prop(`color_bar`),
       nullable_prop(`size_legend`),
@@ -419,9 +434,24 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   scatter_plot_3d: {
     component: ScatterPlot3D,
-    drive:
-      with_plot_controls(`series surfaces ref_lines ref_planes x_axis y_axis z_axis display
-      styles show_legend color_scale size_scale legend camera_projection point_tween`),
+    drive: [
+      series_prop,
+      ...with_plot_controls(`surfaces ref_lines ref_planes x_axis y_axis z_axis display styles
+        show_legend color_scale size_scale legend camera_projection point_tween`),
+    ],
+  },
+  binned_scatter_plot: {
+    component: BinnedScatterPlot,
+    drive: [
+      series_prop,
+      ...drive_props(`size_scale density overlays padding range_padding title point_labels
+        selected_point_id marginals annotation fullscreen_toggle`),
+      // x_range/y_range fold into the axes like the other cartesian plots'
+      ...words(`x y`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
+      // Switches between density bins and points as the user zooms (density.auto_point_mode)
+      writeback_prop(`render_mode`, `density`),
+      nullable_prop(`color_bar`),
+    ],
   },
   bar_plot: {
     component: BarPlot,
@@ -508,7 +538,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   periodic_table: {
     component: PeriodicTable,
     drive: [
-      ...drive_props(`heatmap_values color_scale color_overrides labels gap missing`),
+      ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
+        tile_plot_config split_layout tile_props`),
       nullable_prop(`color_bar`),
     ],
   },
@@ -518,6 +549,16 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive:
       with_plot_controls(`patterns structures mode show_reference_line cutoff n_bins x_axis
       y_axis`),
+  },
+  coordination_bar_plot: {
+    // Computes its CN series from the structures, so the shared `series` trait has no place here
+    component: CoordinationBarPlot,
+    static_props: no_file_drop,
+    drive: [
+      ...with_plot_controls(`structures strategy split_mode orientation show_legend display
+        legend padding x_axis y_axis`),
+      writeback_prop(`mode`, `grouped`),
+    ],
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
@@ -559,12 +600,13 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: cartesian_plot_drive(`show_legend orientation title box whisker median_style
       sample_style whisker_mode whisker_range whisker_percentiles show_outliers show_mean points
       show_value_labels value_label_stat value_label_format kind side bandwidth violin_width
-      violin_style kde_clip`),
+      violin_style kde_clip point_side`),
   },
   ternary_plot: {
     component: TernaryPlot,
     drive: [
-      ...with_plot_controls(`series labels grid_step show_grid show_ticks tick_format color_scale
+      series_prop,
+      ...with_plot_controls(`labels grid_step show_grid show_ticks tick_format color_scale
         padding legend show_legend fullscreen_toggle`),
       nullable_prop(`color_bar`),
     ],

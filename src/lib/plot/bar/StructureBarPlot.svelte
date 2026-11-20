@@ -45,6 +45,7 @@
     on_bar_change,
     bar_sites,
     on_sites_hover,
+    display: display_prop = {},
     ...rest
   }: Omit<BarPlotOptions, `tooltip`> & {
     // Not generic over the metadata type: BarPlot's snippet prop is invariant in it, so a
@@ -86,7 +87,12 @@
 
   let dragover = $state(false)
   const is_horizontal = $derived(orientation === `horizontal`)
-  let display = $derived({ x_zero_line: is_horizontal, y_zero_line: !is_horizontal })
+  // the zero line along the value axis by default; the caller's display settings win
+  let display = $derived({
+    x_zero_line: is_horizontal,
+    y_zero_line: !is_horizontal,
+    ...display_prop,
+  })
 
   // The latest drop's recoverable parse warnings, one dismissible notice
   let parse_warning_msg = $state<string>()

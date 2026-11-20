@@ -277,7 +277,8 @@ export type VolumeWindow = { range: DisplayRange; frame?: Matrix3x3 }
 // [0, S] is resampled to N*S + 1 points (same spacing, closed final interval). A diagonal
 // supercell is that box in base fractions, any other [0, 1]³ in its own frame. The halo pads
 // each outer face by `halo` base cells (halo / |M_i| frame fractions). An explicit
-// display_range (base fractions) wins over the supercell; finite volumes get only that, unpadded.
+// display_range (base fractions) wins over the supercell; finite volumes get only a real crop of
+// it, unpadded (a full [0, 1]³ range resolves to no window).
 export function resolve_volume_window(
   volume: VolumetricData,
   {
@@ -290,7 +291,9 @@ export function resolve_volume_window(
   const pad = Math.max(0, halo)
   if (display_range) {
     const range = sanitize_display_range(display_range, volume.periodic)
-    if (!volume.periodic) return { range }
+    // A full finite window crops nothing: no window keeps the surface-specific cubic frame.
+    if (!volume.periodic)
+      return range.every(([lower, upper]) => lower === 0 && upper === 1) ? null : { range }
     return { range: range.map(([lower, upper]) => [lower - pad, upper + pad]) as DisplayRange }
   }
   const tiling = diagonal_scaling(supercell)
@@ -303,6 +306,20 @@ export function resolve_volume_window(
   return { range, frame: supercell }
 }
 
+const validate_grid_budget = (max_points: number): void => {
+  if (!Number.isSafeInteger(max_points) || max_points < 8)
+    throw new RangeError(`max_points must allow at least a 2×2×2 grid, got ${max_points}`)
+}
+
+// Counts already include marching cubes' minimum two points on each axis.
+const fit_grid_counts = (counts: Vec3, max_points: number): Vec3 => {
+  while (counts[0] * counts[1] * counts[2] > max_points) {
+    const largest = counts.indexOf(Math.max(...counts))
+    counts[largest] = Math.max(2, Math.floor(counts[largest] * 0.9))
+  }
+  return counts
+}
+
 // Endpoint-inclusive sample counts per axis for a (sanitized) fractional window, at most
 // max_points in all. Periodic volumes have n intervals per cell, finite ones n - 1. Over budget,
 // the largest axis shrinks first. A window too wide to count (e.g. [0, 1e308]) throws.
@@ -311,6 +328,7 @@ export function range_sample_counts(
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
 ): Vec3 {
+  validate_grid_budget(max_points)
   const intervals = volume.dims.map((dim) => (volume.periodic ? dim : Math.max(dim - 1, 1)))
   const counts = range.map(([lower, upper], axis) =>
     Math.max(2, Math.round((upper - lower) * intervals[axis]) + 1),
@@ -320,12 +338,7 @@ export function range_sample_counts(
       `Volume window ${JSON.stringify(range)} needs ${counts.join(` x `)} samples at the source density`,
     )
   }
-  const fits = () => counts[0] * counts[1] * counts[2] <= Math.max(max_points, 8)
-  while (!fits()) {
-    const largest = counts.indexOf(Math.max(...counts))
-    counts[largest] = Math.max(2, Math.floor(counts[largest] * 0.9))
-  }
-  return counts
+  return fit_grid_counts(counts, max_points)
 }
 
 interface AxisInterpolation {
@@ -501,9 +514,9 @@ function window_cells(frame: Matrix3x3, range: DisplayRange): Vec3[] {
   return cells
 }
 
-// Whether voxel index spans [lo, hi] (inclusive) hold at most MAX_GRID_POINTS
-const voxels_fit = (voxels: number[][]): boolean =>
-  voxels.reduce((prod, [lower, upper]) => prod * (upper - lower + 1), 1) <= MAX_GRID_POINTS
+// Whether the inclusive voxel spans fit the extraction budget
+const voxels_fit = (voxels: number[][], max_points: number): boolean =>
+  voxels.reduce((prod, [lower, upper]) => prod * (upper - lower + 1), 1) <= max_points
 
 // A periodic grid trilinearly resampled to `dims` points per axis (z-fastest)
 export function resample_periodic(grid: ScalarGrid3D, dims: Vec3): ScalarGrid3D<Float64Array> {
@@ -533,9 +546,11 @@ export function resample_periodic(grid: ScalarGrid3D, dims: Vec3): ScalarGrid3D<
 export function prepare_geometry_grid(
   volume: VolumeGrid,
   window: VolumeWindow | null,
+  max_points = MAX_GRID_POINTS,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3; clip?: SurfaceClip } {
+  validate_grid_budget(max_points)
   const { values, dims, order, lattice, origin, periodic } = volume
-  const in_budget = values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2)
+  const in_budget = values.length <= max_points && dims.every((dim) => dim >= 2)
   if (periodic) {
     const { range, frame = IDENTITY_3X3 } = window ?? { range: UNIT_CELL_RANGE }
     // An over-budget source in a box window that fits at its own spacing (a crop) keeps its
@@ -548,11 +563,11 @@ export function prepare_geometry_grid(
       Math.floor(lower * dims[axis]) - 1,
       Math.ceil(upper * dims[axis]) + 2,
     ])
-    if (!in_budget && !window?.frame && voxels_fit(voxels)) {
+    if (!in_budget && !window?.frame && voxels_fit(voxels, max_points)) {
       const box = voxels.map((bounds, axis) =>
         bounds.map((idx) => idx / dims[axis]),
       ) as DisplayRange
-      const block = extract_volume_range(volume, box)
+      const block = extract_volume_range(volume, box, max_points)
       const counts = block.dims
       const cell_range = range.map(([lower, upper], axis) =>
         [lower, upper].map((bound) => (bound * dims[axis] - voxels[axis][0]) / counts[axis]),
@@ -569,16 +584,19 @@ export function prepare_geometry_grid(
     }
     // read off the volume once: per-sample reads through a $state proxy are far slower
     const source = { values, dims: [...dims] as Vec3, order }
-    const scale = Math.min(Math.cbrt(MAX_GRID_POINTS / values.length), 1)
+    const scale = Math.min(Math.cbrt(max_points / values.length), 1)
     const grid = in_budget
       ? source
       : resample_periodic(
           source,
-          dims.map((dim) => Math.max(2, Math.floor(dim * scale))) as Vec3,
+          fit_grid_counts(
+            dims.map((dim) => Math.max(2, Math.floor(dim * scale))) as Vec3,
+            max_points,
+          ),
         )
     return { grid, lattice, origin, clip: { frame, range, cells: window_cells(frame, range) } }
   }
   if (!window && in_budget) return { grid: volume, lattice, origin }
-  const extracted = extract_volume_range(volume, window?.range ?? UNIT_CELL_RANGE)
+  const extracted = extract_volume_range(volume, window?.range ?? UNIT_CELL_RANGE, max_points)
   return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

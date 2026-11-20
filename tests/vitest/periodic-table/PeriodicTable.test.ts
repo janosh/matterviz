@@ -406,6 +406,182 @@ describe(`PeriodicTable`, () => {
     expect(doc_query(`.periodic-table`).style.gap).toBe(``)
   })
 
+  test(`tile_plots draw in their tiles, color by scale with a color bar, keep labels`, () => {
+    const tile = (symbol: string) => doc_query(`[data-element-symbol="${symbol}"]`)
+    const paths = (symbol: string) =>
+      [...tile(symbol).querySelectorAll<SVGPathElement>(`.tile-plot path`)].map((path) => [
+        path.getAttribute(`class`)?.split(` `)[0],
+        path.style.color,
+      ])
+    const scale = { color: `blue`, color_scale: `interpolateViridis` } as const
+    mount_table({
+      tile_plots: { Fe: { values: [1, 2, 2] }, Ni: null },
+      tile_plot_config: scale,
+    })
+    expect(tile(`Fe`).querySelector<SVGElement>(`.tile-plot`)?.style.color).toBe(`blue`)
+    // bars colored by bin position through the scale: 2 non-empty bins, 2 colors
+    const fe_paths = paths(`Fe`)
+    expect(fe_paths.map(([kind]) => kind)).toEqual([`bars`, `bars`])
+    expect(new Set(fe_paths.map(([, color]) => color)).size).toBe(2)
+    // no heatmap: the auto color bar shows the tile color scale
+    expect(document.querySelector(`.auto-colorbar-inset .colorbar`)).not.toBeNull()
+    // one neutral fill for every tile (no category colors competing with the plots)
+    const fills = new Set(all_tiles().map((tile_el) => tile_el.style.backgroundColor))
+    expect([...fills]).toEqual([expect.stringContaining(`--ptable-plot-tile-bg`)])
+    document.body.innerHTML = ``
+
+    mount_table({
+      tile_plots: {
+        Cu: [
+          { x: [1, 2], y: [1, 4], color: `red` },
+          { x: [1, 2], y: [2, 3], color_values: [0, 10] },
+        ],
+      },
+      tile_plot_config: scale,
+      labels: { Cu: `n=4` },
+    })
+    // a series color wins; color_values map each marker through the scale
+    const cu_paths = paths(`Cu`)
+    expect(cu_paths.map(([kind]) => kind)).toEqual([`markers`, `markers`, `markers`])
+    expect(cu_paths[0][1]).toBe(`red`)
+    expect(cu_paths[1][1]).not.toBe(cu_paths[2][1])
+    // the label survives on a plot tile; other tiles keep their names
+    expect(tile(`Cu`).querySelector(`.name`)?.textContent?.trim()).toBe(`n=4`)
+    expect(tile(`Co`).querySelector(`.tile-plot`)).toBeNull()
+    expect(tile(`Co`).querySelector(`.name`)?.textContent?.trim()).toBe(`Cobalt`)
+    expect(document.querySelectorAll(`.tile-plot`)).toHaveLength(1)
+    document.body.innerHTML = ``
+    // one table has one color bar: a heatmap beside a tile color scale fails fast
+    expect(() =>
+      mount_table({
+        heatmap_values: { Fe: 1 },
+        tile_plots: { Fe: { values: [1] } },
+        tile_plot_config: { color_scale: `interpolateViridis` },
+      }),
+    ).toThrow(`heatmap_values or tile_plot_config.color_scale, not both`)
+    document.body.innerHTML = ``
+    // tile_props.show_name: false hides labels on plot tiles too
+    mount_table({
+      tile_plots: { Cu: { x: [1], y: [1] } },
+      labels: { Cu: `n=4` },
+      tile_props: { show_name: false },
+    })
+    expect(tile(`Cu`).querySelector(`.name`)).toBeNull()
+  })
+
+  test(`plot tiles take keyboard focus, enlarge their plot, and arrows skip plotless tiles`, async () => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(300)
+    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(300)
+    mount_table({ tile_plots: { Fe: { x: [0, 1], y: [0, 1] }, Ni: { x: [0, 1], y: [1, 0] } } })
+    const [iron, cobalt, nickel] = [`Fe`, `Co`, `Ni`].map((symbol) =>
+      doc_query(`[data-element-symbol="${symbol}"]`),
+    )
+    expect([iron.getAttribute(`role`), iron.tabIndex, nickel.tabIndex]).toEqual([
+      `button`,
+      0,
+      -1,
+    ])
+    expect(cobalt.hasAttribute(`tabindex`)).toBe(false)
+    const title = () => document.querySelector(`.tile-zoom .title`)?.textContent
+    iron.focus()
+    flushSync()
+    expect(title()).toBe(`26 Iron`)
+    iron.dispatchEvent(keydown(`ArrowRight`))
+    await tick()
+    expect(document.activeElement).toBe(nickel)
+    expect(title()).toBe(`28 Nickel`)
+    // a mouse press doesn't focus it (the enlarged plot would stick after the pointer leaves)
+    const press = Object.assign(mouse(`pointerdown`, { cancelable: true }), {
+      pointerType: `mouse`,
+    })
+    nickel.dispatchEvent(press)
+    expect(press.defaultPrevented).toBe(true)
+    // clicking pins the enlarged plot like the tooltip: it outlasts mouseleave and other
+    // hovers until the tile is clicked again
+    nickel.blur()
+    iron.dispatchEvent(mouse(`mouseenter`))
+    iron.dispatchEvent(mouse(`click`))
+    iron.dispatchEvent(mouse(`mouseleave`))
+    flushSync()
+    expect(title()).toBe(`26 Iron`)
+    nickel.dispatchEvent(mouse(`mouseenter`))
+    flushSync()
+    expect(title()).toBe(`26 Iron`)
+    nickel.dispatchEvent(mouse(`mouseleave`))
+    iron.dispatchEvent(mouse(`mouseenter`))
+    iron.dispatchEvent(mouse(`click`))
+    iron.dispatchEvent(mouse(`mouseleave`))
+    flushSync()
+    expect(title()).toBeUndefined()
+    // a pinned tile without a plot leaves hovered plot tiles their inset
+    cobalt.dispatchEvent(mouse(`mouseenter`))
+    cobalt.dispatchEvent(mouse(`click`))
+    cobalt.dispatchEvent(mouse(`mouseleave`))
+    nickel.dispatchEvent(mouse(`mouseenter`))
+    flushSync()
+    expect(title()).toBe(`28 Nickel`)
+    // without a tooltip or click handler a click does nothing, so it is no button
+    document.body.innerHTML = ``
+    mount_table({ tile_plots: { Fe: { x: [0, 1], y: [0, 1] } }, tooltip: false })
+    const fe_tile = doc_query(`[data-element-symbol="Fe"]`)
+    expect([fe_tile.getAttribute(`role`), fe_tile.tabIndex]).toEqual([null, 0])
+  })
+
+  // the enlarged plot lays out from its measured size: unmeasured (0x0) shows only the hint
+  test.each([
+    // 250x266px plot box: about one tick per 60px on x and 40px on y
+    [
+      `line`,
+      300,
+      { Fe: { x: [0, 10], y: [0, 5] } },
+      {},
+      [`0`, `2`, `4`, `6`, `8`, `10`],
+      [`0`, `1`, `2`, `3`, `4`, `5`],
+    ],
+    // log_y: 0 and powers of ten up to the tallest count; at 100px, 1 sits 9px above 0 and drops
+    [
+      `log histogram`,
+      100,
+      { Fe: { values: [...Array(150).fill(1), 2] } },
+      { log_y: true },
+      null,
+      [`0`, `10`, `100`],
+    ],
+    [`unmeasured`, 0, { Fe: { x: [0, 10], y: [0, 5] } }, {}, null, null],
+  ] as const)(
+    `hovering a plot tile enlarges it in the inset: %s`,
+    (_name, size, tile_plots, config, x_labels, y_labels) => {
+      vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(size)
+      vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(size)
+      mount_table({ tile_plots, tile_plot_config: { mode: `line`, ...config } })
+      const zoom = doc_query(`.auto-colorbar-inset .tile-zoom`)
+      const hint = `Hover, tap or focus a tile to enlarge its plot`
+      expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
+      doc_query(`[data-element-symbol="Fe"]`).dispatchEvent(mouseenter)
+      flushSync()
+      if (!size) {
+        expect(zoom.querySelector(`svg`)).toBeNull()
+        expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
+        return
+      }
+      expect(zoom.querySelector(`svg[role="img"] .title`)?.textContent).toBe(`26 Iron`)
+      expect(zoom.querySelector(`.marks path`)?.getAttribute(`d`)).toBe(
+        doc_query(`[data-element-symbol="Fe"] .tile-plot path`).getAttribute(`d`),
+      )
+      const tick_labels = (anchor: string) =>
+        [...zoom.querySelectorAll(`g text[text-anchor="${anchor}"]`)].map(
+          (text) => text.textContent,
+        )
+      if (x_labels) expect(tick_labels(`middle`)).toEqual(x_labels)
+      if (y_labels) expect(tick_labels(`end`)).toEqual(y_labels)
+      // a tile without a plot shows the hint again
+      doc_query(`[data-element-symbol="Co"]`).dispatchEvent(mouseenter)
+      flushSync()
+      expect(zoom.querySelector(`.title`)).toBeNull()
+      expect(zoom.querySelector(`figcaption`)?.textContent).toBe(hint)
+    },
+  )
+
   test.each([`lanthanide`, `transition metal`] satisfies ElementCategory[])(
     `active_category=%s highlights every tile of that category`,
     (active_category) => {

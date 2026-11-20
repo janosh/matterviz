@@ -18,6 +18,7 @@
   } from '#lib/element/index.js'
   import { ELEM_SYMBOLS } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
+  import { ticks as d3_ticks } from 'd3-array'
   import { ColorBar } from '#lib/plot/index.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { beside_rect, clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
@@ -29,10 +30,17 @@
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { HTMLAttributes, SVGAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
+  import {
+    TILE_PLOT_GRID,
+    type TileMark,
+    tile_plot_marks,
+    type TilePlotConfig,
+    type TilePlotData,
+  } from './tile-plots'
 
   // a tile's heat value: scalar or 1-4-segment array of numbers/colors
   type HeatValue = number | string | (number | string)[]
@@ -60,6 +68,8 @@
     missing = {},
     split_layout = undefined,
     color_bar = {},
+    tile_plots = {},
+    tile_plot_config = {},
     inset,
     tooltip,
     on_activate,
@@ -110,6 +120,12 @@
     split_layout?: SplitLayout
     // auto color bar shown when heatmap_values is provided; null hides it
     color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
+    // Mini plot per element keyed by symbol: `{ values }` bins into a histogram, `{ x, y }` draws
+    // markers and/or a line (a list overlays several series). Tiles share axes; the symbol moves
+    // to the top-right corner, a `labels` entry or heatmap value under it, the element name hides.
+    tile_plots?: Partial<Record<ElementSymbol, TilePlotData | null>>
+    // Bin count, x/y drawing mode, colors, log heights and shared axis ranges of the tile plots
+    tile_plot_config?: TilePlotConfig
     // Content for the empty grid area above the d-block (columns 3-12, top rows); replaces the auto color bar. Receives the active element.
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     // Hover tooltip: a snippet replaces the default, false disables it. Clicking a tile without link or on_activate pins it.
@@ -152,6 +168,9 @@
         : links[element.symbol]
   const element_is_interactive = (element: ChemicalElement): boolean =>
     Boolean(element_href(element) || on_activate)
+  // tiles with a plot also take keyboard focus, which enlarges their plot in the inset
+  const element_is_focusable = (element: ChemicalElement): boolean =>
+    element_is_interactive(element) || Boolean(tile_plot_result.marks[element.symbol])
   let active_symbols = $derived(
     new Set(active_elements.map((elem) => (typeof elem === `string` ? elem : elem.symbol))),
   )
@@ -163,15 +182,29 @@
     pin.is({ element }) ||
     active_symbols.has(element.symbol)
   let focused_symbol = $state<ElementSymbol | null>(null)
-  let first_interactive_symbol = $derived(
-    element_data.find(element_is_interactive)?.symbol ?? null,
+  let first_focusable_symbol = $derived(
+    element_data.find(element_is_focusable)?.symbol ?? null,
   )
   let roving_symbol = $derived(
     focused_symbol ??
-      (active_element && element_is_interactive(active_element)
+      (active_element && element_is_focusable(active_element)
         ? active_element.symbol
-        : first_interactive_symbol),
+        : first_focusable_symbol),
   )
+  // throws on keys that aren't element symbols and malformed series (see tile_plot_marks)
+  // and on a tile color scale beside heatmap_values: two scales would need two color bars
+  let tile_plot_result = $derived.by(() => {
+    if (tile_plot_config.color_scale && heat_nums.length)
+      throw new Error(
+        `PeriodicTable takes heatmap_values or tile_plot_config.color_scale, not both`,
+      )
+    return tile_plot_marks(tile_plots, tile_plot_config)
+  })
+  // Tiles behind plots share one neutral fill instead of category colors that would compete
+  // with the plots (heatmap values and color_overrides still win). A CSS var, so tile text
+  // inherits the page color in either theme.
+  const plot_tile_bg = `var(--ptable-plot-tile-bg, color-mix(in srgb, currentColor 12%, transparent))`
+  let has_tile_plots = $derived(Object.keys(tile_plot_result.marks).length > 0)
   // Keys that aren't element symbols (`fe`, `FE`, `Xx`) match no tile, so they're ignored
   $effect(() => {
     const keyed = { heatmap_values, color_overrides, labels, links }
@@ -206,6 +239,10 @@
   // unaffected. Plain (non-state) flag: it's consumed by the click of the same tap.
   let tap_is_preview = false
   const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
+    // a plot tile is focusable for keyboards only: a mouse focus would hold its enlarged plot
+    // (end_hover restores the focused tile) after the pointer moves on. The click still runs.
+    if (event.pointerType === `mouse` && !element_is_interactive(element))
+      event.preventDefault()
     tap_is_preview =
       event.pointerType === `touch` && !disabled && active_element?.symbol !== element.symbol
     // select here rather than relying on the compat mouseenter a tap usually emits: without
@@ -262,7 +299,7 @@
         (element) =>
           element.column === target_col &&
           element.row === target_row &&
-          element_is_interactive(element),
+          element_is_focusable(element),
       )
       if (target_element) {
         focused_symbol = target_element.symbol
@@ -351,6 +388,7 @@
     if (is_color(value)) return value // already a color string
 
     const num = to_heat_num(value)
+    if (!heat_values.length && has_tile_plots) return plot_tile_bg
     if (!heat_values.length || num === null) {
       const category_color = colors.category[element.category] || `#cccccc`
       if (missing.color === `element-category`) return category_color
@@ -378,7 +416,58 @@
     }))
   }
 
-  let should_show_color_bar = $derived(color_bar && !inset && heat_nums.length > 0)
+  // The pinned (clicked) tile's plot, else the active (hovered or focused) one's, enlarged with
+  // axes in the auto inset, so it persists on mouseleave like the pinned tooltip (a pinned tile
+  // without a plot doesn't block hovered ones): its plot
+  // box in px (at most 2.5x wider than tall, centered, so wide insets don't flatten it) and
+  // ticks as [px, label], about one per 60px on x and 40px on y
+  let zoom_size = $state({ width: 0, height: 0 })
+  let zoom = $derived.by(() => {
+    const element = [pin.value?.element, active_element].find(
+      (elem) => elem && tile_plot_result.marks[elem.symbol],
+    )
+    const marks = element && tile_plot_result.marks[element.symbol]
+    const axes = element && tile_plot_result.axes[element.symbol]
+    if (!element || !marks || !axes) return null
+    const pad = { left: 40, right: 10, top: 16, bottom: 18 }
+    const height = Math.max(0, zoom_size.height - pad.top - pad.bottom)
+    const width = Math.max(0, Math.min(zoom_size.width - pad.left - pad.right, 2.5 * height))
+    if (!width || !height) return null // unmeasured: every tick would land on one px
+    const left = (zoom_size.width - width + pad.left - pad.right) / 2
+    const {
+      x: [x_lo, x_hi],
+      y: [y_lo, y_hi],
+      log_y,
+    } = axes
+    const ticks = (lo: number, hi: number, length: number, px_per_tick: number) =>
+      d3_ticks(lo, hi, Math.max(2, Math.floor(length / px_per_tick)))
+    const tick = (val: number, px: number) => ({ val, px, text: format_num(val) })
+    const y_frac = (val: number): number =>
+      log_y ? Math.log1p(val) / Math.log1p(y_hi) : (val - y_lo) / (y_hi - y_lo)
+    // log_y histograms tick 0 and powers of ten on their log(1 + count) heights, skipping
+    // any closer than 12px to the tick below so labels don't collide
+    const y_values = log_y
+      ? [
+          0,
+          ...Array.from({ length: Math.floor(Math.log10(y_hi)) + 1 }, (_, exp) => 10 ** exp),
+        ].filter(
+          (val, idx, all) => !idx || height * (y_frac(val) - y_frac(all[idx - 1])) >= 12,
+        )
+      : ticks(y_lo, y_hi, height, 40)
+    return {
+      element,
+      marks,
+      box: { left, top: pad.top, width, height },
+      x_ticks: ticks(x_lo, x_hi, width, 60).map((val) =>
+        tick(val, left + (width * (val - x_lo)) / (x_hi - x_lo)),
+      ),
+      y_ticks: y_values.map((val) => tick(val, pad.top + height * (1 - y_frac(val)))),
+    }
+  })
+
+  // the auto color bar explains the heatmap, else the tile plots' color scale
+  let color_bar_ramp = $derived(heat_nums.length > 0 ? ramp : tile_plot_result.ramp)
+  let should_show_color_bar = $derived(color_bar && !inset && color_bar_ramp)
   // Resolve the shared surface once rather than installing a theme observer per tile.
   let table_node = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => table_node)
@@ -396,15 +485,60 @@
       pin.unpin()
   }}
 >
-  {#if should_show_color_bar}
-    <TableInset class="auto-colorbar-inset">
-      <ColorBar
-        color_scale={ramp.color_scale}
-        tick_labels={3}
-        tick_side="primary"
-        bar_style="width: 100%;"
-        {...color_bar}
-      />
+  {#snippet plot_marks(marks: TileMark[], attrs: SVGAttributes<SVGSVGElement>)}
+    <svg
+      {...attrs}
+      viewBox="0 0 {TILE_PLOT_GRID} {TILE_PLOT_GRID}"
+      preserveAspectRatio="none"
+      style:color={tile_plot_config.color}
+    >
+      {#each marks as { kind, d, color }, idx (idx)}
+        <path class={kind} {d} style:color />
+      {/each}
+    </svg>
+  {/snippet}
+  {#if should_show_color_bar || (has_tile_plots && !inset)}
+    <TableInset class={[`auto-colorbar-inset`, has_tile_plots && `with-tile-plots`]}>
+      {#if has_tile_plots}
+        <figure
+          class="tile-zoom"
+          bind:clientWidth={zoom_size.width}
+          bind:clientHeight={zoom_size.height}
+        >
+          {#if zoom}
+            {@const { element, marks, box, x_ticks, y_ticks } = zoom}
+            {@const { left, top, width, height } = box}
+            <svg role="img" aria-label="{element.name} tile plot">
+              <text class="title" x={left} y={top - 8}>{element.number} {element.name}</text>
+              <path class="frame" d="M{left} {top}V{top + height}H{left + width}" />
+              {#each x_ticks as { val, px, text } (val)}
+                <g transform="translate({px} {top + height})">
+                  <line y2="4" />
+                  <text y="15" text-anchor="middle">{text}</text>
+                </g>
+              {/each}
+              {#each y_ticks as { val, px, text } (val)}
+                <g transform="translate({left} {px})">
+                  <line x2="-4" />
+                  <text x="-7" dy="0.35em" text-anchor="end">{text}</text>
+                </g>
+              {/each}
+              {@render plot_marks(marks, { class: `marks`, x: left, y: top, width, height })}
+            </svg>
+          {:else}
+            <figcaption>Hover, tap or focus a tile to enlarge its plot</figcaption>
+          {/if}
+        </figure>
+      {/if}
+      {#if should_show_color_bar}
+        <ColorBar
+          color_scale={color_bar_ramp?.color_scale}
+          tick_labels={3}
+          tick_side="primary"
+          bar_style="width: 100%;"
+          {...color_bar}
+        />
+      {/if}
     </TableInset>
   {:else}
     {@render inset?.({ active_element })}
@@ -418,6 +552,10 @@
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
     {@const interactive = Boolean(href || on_activate)}
     {@const active = is_active(element)}
+    {@const marks = tile_plot_result.marks[symbol]}
+    {@const focusable = interactive || Boolean(marks)}
+    {@const clickable = interactive || tooltip !== false || Boolean(tile_props?.onclick)}
+    {@const label = labels[symbol] ?? (tile_missing ? missing.label : undefined)}
     {@const style = `grid-column: ${column}; grid-row: ${row};${
       tile_props?.style ? ` ${tile_props.style}` : ``
     }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
@@ -429,7 +567,7 @@
       data-element-symbol={symbol}
       segments={tile_segments(value, element, override, tile_missing)}
       {active}
-      label={labels[symbol] ?? (tile_missing ? missing.label : undefined)}
+      {label}
       {style}
       onmouseenter={(event: MouseEvent) => {
         set_active_element(element)
@@ -446,15 +584,24 @@
         set_active_element(null)
         tooltip_hover = null
       }}
-      role={tile_activation ? `button` : href ? `link` : tile_props?.role}
-      tabindex={interactive ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
+      role={href
+        ? `link`
+        : tile_activation || (marks && clickable)
+          ? `button`
+          : tile_props?.role}
+      tabindex={focusable ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
       onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
       onclick={interactive || tooltip !== false
         ? (data: { element: ChemicalElement; event: MouseEvent }) =>
             handle_tile_click(data, interactive, tile_activation)
         : tile_props?.onclick}
       {split_layout}
-    />
+      show_name={(tile_props?.show_name ?? true) && (!marks || label !== undefined)}
+    >
+      {#if marks}
+        {@render plot_marks(marks, { class: `tile-plot marks`, 'aria-hidden': `true` })}
+      {/if}
+    </ElementTile>
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
   {#each lanth_act_tiles as lanth_act_element, idx (lanth_act_element.symbol)}
@@ -467,6 +614,7 @@
       onmouseenter={() => (active_category = lanth_act_element.category)}
       onmouseleave={() => (active_category = null)}
       symbol_style="font-size: 30cqw;"
+      segments={has_tile_plots ? [{ color: plot_tile_bg }] : undefined}
     />
   {/each}
   <!-- vertical offset between the main block and the lanthanide/actinide rows -->
@@ -552,6 +700,100 @@
   .periodic-table :global(.auto-colorbar-inset .colorbar) {
     width: 90%;
     line-height: 1.2;
+  }
+  /* Paint of the tile plots and their enlarged copy: bars filled, markers and lines stroked */
+  .marks {
+    overflow: visible;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: var(--stroke);
+    path {
+      vector-effect: non-scaling-stroke;
+    }
+    .markers {
+      stroke-width: calc(2 * var(--stroke));
+    }
+    .bars {
+      fill: currentColor;
+      stroke: none;
+    }
+  }
+  .tile-plot {
+    position: absolute;
+    inset: auto 6cqw 6cqw;
+    width: 88cqw;
+    height: 58cqw;
+    z-index: 2;
+    --stroke: max(1.5px, 3cqw);
+  }
+  /* With tile plots the enlarged plot takes the inset's full height beside the color bar */
+  .periodic-table :global(.auto-colorbar-inset.with-tile-plots) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    place-items: center stretch;
+    gap: 1em;
+  }
+  .tile-zoom {
+    position: relative;
+    align-self: stretch;
+    margin: 0;
+    min-height: 0;
+    &:only-child {
+      grid-column: 1 / -1;
+    }
+    font-size: 11px;
+    > svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .marks {
+      --stroke: 2.5px;
+    }
+    .frame,
+    line {
+      fill: none;
+      stroke: currentColor;
+      opacity: 0.5;
+    }
+    text {
+      fill: currentColor;
+    }
+    .title {
+      font-weight: 600;
+    }
+    figcaption {
+      display: grid;
+      place-items: center;
+      height: 100%;
+      opacity: 0.6;
+    }
+  }
+  /* a label or value under the symbol pushes the plot top down */
+  .periodic-table
+    :global(.element-tile:has(> span.name, > span.value:not(.multi-value)) > .tile-plot) {
+    height: 50cqw;
+  }
+  /* Number and symbol share the top row (left and right corners), a label or value sits
+     under the symbol, and the plot fills the rest above split-heatmap segments */
+  .periodic-table :global(.element-tile:has(> .tile-plot)) {
+    :global(.symbol) {
+      position: absolute;
+      top: 6cqw;
+      right: 6cqw;
+      /* capped: a larger symbol would run into the number */
+      font-size: min(var(--elem-symbol-font-size, 24cqw), 24cqw);
+    }
+    :global(span.name),
+    :global(span.value:not(.multi-value)) {
+      top: 31cqw;
+      right: 6cqw;
+      bottom: auto;
+      font-size: 12cqw;
+    }
   }
   div.spacer {
     grid-row: 8;

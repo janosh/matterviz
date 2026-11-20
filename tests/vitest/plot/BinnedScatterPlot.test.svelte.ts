@@ -375,9 +375,9 @@ describe(`BinnedScatterPlot`, () => {
       ...density_mode_with_colorbar(),
       annotation: overlay_snippet(`custom-annotation`),
     })
-    const anno_wrapper = doc_query(`.binned-scatter .annotation`)
+    const anno_wrapper = doc_query(`.binned-scatter .plot-annotation`)
     expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
-    const anno_rect = decoration_rect(`.binned-scatter .annotation`)
+    const anno_rect = decoration_rect(`.binned-scatter .plot-annotation`)
     const bar_rect = decoration_rect(`.binned-scatter .colorbar-wrapper`)
     for (const rect of [anno_rect, bar_rect]) {
       expect(Object.values(rect).every(Number.isFinite), JSON.stringify(rect)).toBe(true)
@@ -425,15 +425,19 @@ describe(`BinnedScatterPlot`, () => {
     expect({ left: colorbar.style.left, top: colorbar.style.top }).toEqual(initial_position)
   })
 
-  test(`renders annotation in point mode (no colorbar) and skips wrapper when absent`, async () => {
-    const annotation = overlay_snippet(`custom-annotation`)
-    await mount_plot({ ...diagonal(), ...point_mode(), annotation })
+  test(`renders snippet or text annotation in point mode and skips wrapper when absent`, async () => {
+    await mount_plot({ ...diagonal(), ...point_mode(), annotation: overlay_snippet(`custom`) })
     expect(document.querySelector(`.colorbar-wrapper`)).toBeNull()
-    const anno_wrapper = doc_query(`.annotation`)
+    const anno_wrapper = doc_query(`.plot-annotation`)
     expect(anno_wrapper.style.left).toMatch(/px$/)
     expect(anno_wrapper.style.top).toMatch(/px$/)
+    // text renders as is (not HTML) with newlines kept as line breaks
+    await mount_plot({ ...diagonal(), ...point_mode(), annotation: `MAE = 0.1\n<b>R²</b>` })
+    expect(doc_query(`.plot-annotation`).textContent?.trim()).toBe(`MAE = 0.1\n<b>R²</b>`)
+    expect(document.querySelector(`.plot-annotation b`)).toBeNull()
+    expect(doc_query(`.plot-annotation`).classList.contains(`text`)).toBe(true)
     await mount_plot({ ...diagonal(), ...point_mode() })
-    expect(document.querySelector(`.annotation`)).toBeNull()
+    expect(document.querySelector(`.plot-annotation`)).toBeNull()
   })
 
   // Both cases also re-check the clip path, which the reference-line group must point at

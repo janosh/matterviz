@@ -44,7 +44,7 @@ interface HullSelectionInputs {
   allow_file_drop: () => boolean
   on_point_click: () => ((entry: ConvexHullEntry) => void) | undefined
   // Probe the composition with these fractions of the plot's corners (a click on empty space)
-  set_probe: (fractions: number[]) => void
+  set_probe: (fractions: number[], event: MouseEvent) => void
   on_point_hover: () => ((data: HoverData3D | null) => void) | undefined
   on_file_load: () => ((data: PhaseEntriesLoadData) => void) | undefined
   // Categorical classification config (for category line in copied entry text)
@@ -393,7 +393,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     const rect = inputs.canvas()?.getBoundingClientRect()
     const pointer = rect && { x: event.clientX - rect.left, y: event.clientY - rect.top }
     const fractions = pointer && strategy.composition_at?.(inputs.project_point(), pointer)
-    if (fractions) selection.set_probe(fractions)
+    if (fractions) selection.set_probe(fractions, event)
   }
 
   const handle_double_click = (event: MouseEvent) => {

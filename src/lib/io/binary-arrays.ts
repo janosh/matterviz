@@ -119,3 +119,58 @@ export function checked_array(
   }
   return array
 }
+
+// A plot series whose numeric columns (x, y, color_values, size_values, ...) travel as binary
+// arrays: envelope kind `plot-series`, every array 1D and of one length, the remaining JSON
+// fields (label, markers, styles, ...) spread back onto the series. Arrays named
+// `metadata.<key>` become per-point `metadata` objects, non-finite values as null (as JSON
+// metadata would carry them), so large curves keep their hover data without per-point JSON
+export function series_from_binary(value: unknown): Record<string, unknown> {
+  const { arrays, fields } = decode_binary_envelope(value, `plot-series`)
+  const columns = Object.entries(arrays).map(([name, { values, shape }]) => {
+    if (shape.length !== 1) {
+      throw new TypeError(
+        `Binary plot-series array '${name}' must be 1D, got shape [${shape.join(`, `)}]`,
+      )
+    }
+    return [name, values] as const
+  })
+  const meta_prefix = `metadata.`
+  const data_cols = columns.filter(([name]) => !name.startsWith(meta_prefix))
+  const meta_cols = columns
+    .filter(([name]) => name.startsWith(meta_prefix))
+    .map(([name, values]) => [name.slice(meta_prefix.length), values] as const)
+  const field_names = [
+    ...data_cols.map(([name]) => name),
+    ...(meta_cols.length ? [`metadata`] : []),
+  ]
+  const shadowed = field_names.filter((name) => Object.hasOwn(fields, name))
+  if (shadowed.length) {
+    throw new TypeError(
+      `Binary plot-series fields ${shadowed.join(`, `)} are sent both as arrays and as JSON`,
+    )
+  }
+  const lengths = new Set(columns.map(([, values]) => values.length))
+  if (lengths.size > 1) {
+    const sizes = columns.map(([name, values]) => `${name}=${values.length}`).join(`, `)
+    throw new RangeError(`Binary plot-series arrays must share one length, got ${sizes}`)
+  }
+  const series: Record<string, unknown> = { ...fields, ...Object.fromEntries(data_cols) }
+  if (meta_cols.length) {
+    // indexed column loops: ~1.5x faster than Array.from + for-of over columns at 1e6
+    // points (per-point objects stay eager, as ScatterPlot materializes every point anyway)
+    const keys = meta_cols.map(([key]) => key)
+    const columns_by_key = meta_cols.map(([, vals]) => vals)
+    const metadata: Record<string, number | null>[] = []
+    for (let point_idx = 0; point_idx < columns_by_key[0].length; point_idx++) {
+      const meta: Record<string, number | null> = {}
+      for (let col = 0; col < keys.length; col++) {
+        const num = columns_by_key[col][point_idx]
+        meta[keys[col]] = Number.isFinite(num) ? num : null
+      }
+      metadata.push(meta)
+    }
+    series.metadata = metadata
+  }
+  return series
+}

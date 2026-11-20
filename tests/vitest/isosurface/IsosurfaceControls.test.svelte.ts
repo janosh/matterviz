@@ -199,6 +199,7 @@ describe(`IsosurfaceControls`, () => {
   test.each([`initial`, `layer edit`, `new volume`])(`reset after %s`, async (scenario) => {
     const volumes = two_volumes()
     const settings = auto_isosurface_settings(volumes[0])
+    settings.interpolation = `cubic`
     if (scenario === `initial`) settings.layers[0].opacity = 0.2
     const props = mount_controls({ volumes, settings })
     if (scenario === `new volume`) props.volumes = [make_volume({ id: `new` })]
@@ -206,7 +207,10 @@ describe(`IsosurfaceControls`, () => {
       props.settings = { ...props.settings, layers: [make_layer(`0`, { opacity: 0.2 })] }
     flushSync()
     await reset_section(`isosurface`)
-    expect(props.settings).toEqual(auto_isosurface_settings(props.volumes[0]))
+    expect(props.settings).toEqual({
+      ...auto_isosurface_settings(props.volumes[0]),
+      interpolation: `cubic`,
+    })
   })
 
   test(`cross-section reset restores the first volume and authored nondefault settings`, async () => {

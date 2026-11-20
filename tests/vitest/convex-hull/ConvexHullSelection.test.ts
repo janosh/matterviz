@@ -17,6 +17,7 @@ import {
   doc_query,
   expect_shortcuts_in_pane,
   marker_fill,
+  mock_clipboard_write,
   mock_parse_worker,
   mount_sized,
   set_input,
@@ -26,6 +27,14 @@ import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 // the bound probe_composition of a click-to-probe test
 type ProbeState = { probe_composition: Record<string, number> | null }
+
+// Let the plot render between the clicks, including a probe marker that may change hit testing.
+function plot_click(target: Element, clientX: number, clientY: number, detail = 1) {
+  const init = { bubbles: true, clientX, clientY, detail }
+  if (detail === 2) flushSync()
+  target.dispatchEvent(new MouseEvent(`click`, init))
+  if (detail === 2) target.dispatchEvent(new MouseEvent(`dblclick`, init))
+}
 
 beforeEach(mock_parse_worker)
 
@@ -836,8 +845,7 @@ describe(`convex hull replacement state`, () => {
     const { x: clientX, y: clientY } = project(coord_x, coord_y, 0)
     const canvas = target.querySelector(`canvas`)
     if (!canvas) throw new Error(`no hull canvas`)
-    const click = () =>
-      canvas.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX, clientY }))
+    const click = (detail = 1) => plot_click(canvas, clientX, clientY, detail)
     click() // the hit-test mock resolves this to an entry
     expect(state.probe_composition).toBeNull()
     const find_entry = vi.spyOn(canvas_draw, `find_hull_entry_at_mouse`).mockReturnValue(null)
@@ -849,6 +857,28 @@ describe(`convex hull replacement state`, () => {
     elements.forEach((element, idx) =>
       expect(state.probe_composition?.[element]).toBeCloseTo(fractions[idx], 12),
     )
+    // A host may replace the bound probe between the two clicks.
+    const host_probe = { ...state.probe_composition }
+    state.probe_composition = host_probe
+    click(2)
+    expect(state.probe_composition).toBe(host_probe)
+    click()
+    expect(state.probe_composition).not.toBe(host_probe)
+    click(2)
+    expect(state.probe_composition).toBe(host_probe)
+    // Hosts can also edit, add or delete a bound fraction in place.
+    for (const [key, value] of [
+      [`Li`, 1],
+      [`Fe`, 1],
+      [`O`, undefined],
+    ] as const) {
+      click()
+      const edited = state.probe_composition
+      if (key === `O`) delete edited.O
+      else edited[key] = value
+      click(2)
+      expect(state.probe_composition).toBe(edited)
+    }
     // a drag (which rotates the view) ending in a click, or a click outside the triangle
     state.probe_composition = null
     canvas.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
@@ -1022,7 +1052,7 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
   })
 
   // A plot click off every entry probes the composition at its x; an entry click selects it
-  test(`empty binary plot click probes the composition at the cursor's x`, async () => {
+  test(`binary plot clicks probe empty space and double-clicks copy the same entry`, async () => {
     const entries: PhaseData[] = [
       { ...compound({ Li: 1 }, `ref-li`, 0), e_form_per_atom: 0 },
       { ...compound({ O: 1 }, `ref-o`, 0), e_form_per_atom: 0 },
@@ -1038,26 +1068,40 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     const [x_0, x_1] = guides.map((line) => Number(line.getAttribute(`x1`)))
     const [y_start, y_end] = [`y1`, `y2`].map((attr) => Number(guides[0].getAttribute(attr)))
     const svg = doc_query(`.scatter svg[role="application"]`)
-    const click_at = (fraction: number, clientY: number) =>
-      svg.dispatchEvent(
-        new MouseEvent(`click`, {
-          bubbles: true,
-          clientX: x_0 + fraction * (x_1 - x_0),
-          clientY,
-        }),
-      )
-    // LiO's marker, at x = 0.5
-    const marker_y = [...plot.querySelectorAll(`g[transform] > path.marker`)]
-      .map((path) => (path.parentElement?.getAttribute(`transform`) ?? ``).match(/[-\d.]+/g))
-      .map((coords) => (coords ?? []).map(Number))
-      .find(([coord_x]) => Math.abs(coord_x - (x_0 + x_1) / 2) < 1)?.[1]
-    if (marker_y === undefined) throw new Error(`no LiO marker`)
-    click_at(0.5, marker_y)
+    const click_at = (fraction: number, clientY: number, detail = 1) =>
+      plot_click(svg, x_0 + fraction * (x_1 - x_0), clientY, detail)
+    const write_text = mock_clipboard_write()
+    const marker_x = (x_0 + x_1) / 2 // LiO
+    const marker = [...plot.querySelectorAll(`g[transform] > path.marker`)].find((path) => {
+      const coords = path.parentElement?.getAttribute(`transform`)?.match(/[-\d.]+/g)
+      return coords && Math.abs(Number(coords[0]) - marker_x) < 1
+    })
+    if (!marker) throw new Error(`no LiO marker`)
+    const click_entry = (detail = 1) => plot_click(marker, marker_x, y_end, detail)
+    click_entry()
+    click_entry() // two independent clicks in quick succession
+    expect(write_text).not.toHaveBeenCalled()
     // the top padding above the plot area (axis title, labels) probes nothing either
     click_at(0.25, 1)
     expect(state.probe_composition).toBeNull()
-    click_at(0.25, (y_start + y_end) / 2)
+    const middle = (y_start + y_end) / 2
+    click_at(0.25, middle)
     expect(state.probe_composition).toEqual({ Li: 0.75, O: 0.25 })
+    // The first click hit empty space. A second click that hits an entry cannot copy it.
+    click_entry(2)
+    expect(write_text).not.toHaveBeenCalled()
+    click_at(0.25, middle)
+    const before_entry = state.probe_composition
+    // A double-click on the same entry copies it without changing the most recent probe.
+    click_entry()
+    click_entry(2)
+    expect(write_text).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(`ID: lio`))
+    expect(state.probe_composition).toBe(before_entry)
+    // A double-click on empty space resets zoom and undoes its own first click.
+    click_at(0.75, middle)
+    expect(state.probe_composition).not.toBe(before_entry)
+    click_at(0.75, middle, 2)
+    expect(state.probe_composition).toBe(before_entry)
   })
 
   // Linked views: a selected entry above the hull is tied by dashed lines to the stable phases

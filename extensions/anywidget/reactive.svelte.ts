@@ -157,7 +157,7 @@ const as_state = <T>(value: T): T => {
 // Structure widget 10x slower
 export const DATA_PROPS = new Set(
   words(`structure structures series surfaces entries patterns x_items y_items values phonons
-    band_structs doses fermi_data band_data bz_data trajectory volumetric_data paths`),
+    band_structs doses fermi_data band_data bz_data trajectory volumetric_data paths tile_plots`),
 )
 
 export interface ReactiveWidget {

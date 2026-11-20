@@ -72,6 +72,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* below the first pane's view label */
+  .multi-view > & {
+    top: 1.5em;
+  }
 }
 /* Plot beside structure viewer, stacked once there is no room for two columns */
 .demo-2col {

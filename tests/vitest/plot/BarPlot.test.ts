@@ -2,6 +2,7 @@ import { format_num } from 'svelte-widgets/format'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
 import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
+import { plot_color } from '#lib/colors/index.js'
 import type { BarHandlerProps, BarSeries } from '#lib/plot/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -98,6 +99,26 @@ describe(`BarPlot`, () => {
     },
   )
 
+  test(`space-group bars take pre-counted { space_group: count } data`, async () => {
+    const bar_labels = (plot: HTMLElement) =>
+      [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((bar) =>
+        bar.getAttribute(`aria-label`),
+      )
+    // symbols and numeric keys merge, unparsable keys and zero counts add no bars
+    const plot = await mount_sized(
+      SpacegroupBarPlot,
+      { data: { 225: 3, 'Fm-3m': 2, 2: 4, 999: 7, 62: 0 } },
+      { selector: `.bar-plot` },
+    )
+    expect(bar_labels(plot)).toEqual([`bar 1 of triclinic: 4`, `bar 1 of cubic: 5`])
+  })
+
+  test.each([-1, 1.5, Number.NaN])(`space-group count %s throws`, async (count) => {
+    await expect(
+      mount_sized(SpacegroupBarPlot, { data: { 225: count } }, { selector: `.bar-plot` }),
+    ).rejects.toThrow(`count must be a non-negative integer, got ${count}`)
+  })
+
   // Count annotations stack into rows by their rendered x: the auto-padded frame scale
   // and the edge clamp, not the default-padding estimate (labels then overlapped)
   test.each([
@@ -145,6 +166,38 @@ describe(`BarPlot`, () => {
       )
     },
   )
+
+  // uncolored series cycle the plot palette like Histogram's, a lone one keeps the bar color
+  test.each([
+    [`one series`, [{ x: [1], y: [1] }], [`bar`]],
+    [
+      `two series`,
+      [
+        { x: [1], y: [1] },
+        { x: [2], y: [2] },
+      ],
+      [plot_color(0), plot_color(1)],
+    ],
+    [
+      `explicit color wins`,
+      [
+        { x: [1], y: [1], color: `red` },
+        { x: [2], y: [2] },
+      ],
+      [`red`, plot_color(1)],
+    ],
+  ])(`series fill colors: %s`, async (_name, series, expected) => {
+    const plot = await mount_sized_bar_plot({ series, bar: { color: `bar` } })
+    const fills = [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((bar) =>
+      bar.getAttribute(`fill`),
+    )
+    expect(fills).toEqual(expected)
+    // legend swatches show the same colors as the bars
+    const swatches = [...plot.querySelectorAll(`.legend-item path[fill]`)].map((path) =>
+      path.getAttribute(`fill`),
+    )
+    if (series.length > 1) expect(swatches).toEqual(expected)
+  })
 
   test.each([`vertical`, `horizontal`] as const)(
     `only mounts bars crossing the %s viewport and keeps source indices`,
@@ -241,6 +294,26 @@ describe(`BarPlot`, () => {
       expect(on_sites_hover.mock.calls).toEqual(with_sites ? [[[]], [null]] : [])
     },
   )
+
+  // its value-axis zero line is a default the caller's display settings override (the
+  // anywidget display trait reaches it this way)
+  test.each([
+    [`default`, undefined, 1],
+    [`caller hides it`, { y_zero_line: false }, 0],
+  ] as const)(`StructureBarPlot zero line: %s`, async (_name, display, n_lines) => {
+    const plot = await mount_sized(
+      StructureBarPlot,
+      {
+        series: [basic],
+        primary_axis: { label: `Angle` },
+        value_axis: { label: `Count` },
+        subject: `angles`,
+        display,
+      },
+      { selector: `.bar-plot` },
+    )
+    expect(plot.querySelectorAll(`.zero-line`)).toHaveLength(n_lines)
+  })
 
   // Bars and line-series markers alike; on_bar_click/on_point_click would claim the click.
   // Bars have no hover look, markers keep theirs while pinned.

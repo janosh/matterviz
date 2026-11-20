@@ -1387,17 +1387,18 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       await expect(multi_stage).toHaveCount(0)
       const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
 
-      await select_structure_layout(structure_div, `3D 2×2 grid`)
+      await select_structure_layout(structure_div, `3D multi-view grid`)
 
-      // The primary perspective pane stays unlabeled so the global filename can use
-      // the top-left corner; the three fixed-direction panes retain their labels.
       await expect(structure_div).toHaveClass(/multi-view/)
       await expect(multi_stage).toBeVisible()
       await expect(cells).toHaveCount(4)
       await expect(multi_stage.locator(`canvas`)).toHaveCount(4)
-      const labels = structure_div.locator(`.viewport-label`)
-      await expect(labels).toHaveCount(3)
-      await expect(labels.nth(0)).toHaveText(`Front`)
+      await expect(structure_div.locator(`.viewport-label`)).toHaveText([
+        `Perspective`,
+        `Front`,
+        `Top`,
+        `Right`,
+      ])
 
       // Each pane occupies roughly a quarter of the viewer (clearly smaller than full width)
       const wrapper_box = await require_bbox(structure_div, `structure wrapper`)
@@ -1435,7 +1436,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
   }) => {
     const webgpu_errors = collect_webgpu_errors(page)
     const structure_div = page.locator(`#test-structure`)
-    await select_structure_layout(structure_div, `3D 2×2 grid`)
+    await select_structure_layout(structure_div, `3D multi-view grid`)
     // elementFromPoint only sees the viewport, and the legend row sits below the fold
     await structure_div.evaluate((element) => element.scrollIntoView({ block: `center` }))
     const cells = structure_div.locator(`.viewport-cell`)
@@ -1478,7 +1479,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
     await test.step(`repeated toggling settles on the right canvas count without leaking contexts`, async () => {
       for (let cycle = 0; cycle < 3; cycle++) {
-        await select_structure_layout(structure_div, `3D 2×2 grid`)
+        await select_structure_layout(structure_div, `3D multi-view grid`)
         await expect(cells).toHaveCount(4)
         await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4)
         await select_structure_layout(structure_div, `3D single view`)
@@ -1516,7 +1517,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
         name: /^View layout:/,
       })
       await expect(layout_button).toBeVisible()
-      await select_structure_layout(structure_div, `3D 2×2 grid`)
+      await select_structure_layout(structure_div, `3D multi-view grid`)
       await expect(structure_div).toHaveClass(/multi-view/)
 
       await set_viewer_size(structure_div, 599, 399)

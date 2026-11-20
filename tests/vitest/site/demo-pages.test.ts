@@ -19,7 +19,8 @@ import PhaseDiagramPage from '#root/src/routes/(demos)/phase-diagram/+page.svelt
 import TernaryPage from '#root/src/routes/(demos)/phase-diagram/ternary/+page.svelte'
 import IsosurfacePage from '#root/src/routes/(demos)/structure/isosurface/+page.svelte'
 import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+page.svelte'
-import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
+import { auto_isosurface_settings, type IsosurfaceSettings } from '#lib/isosurface/types.js'
+import type { StructureView } from '#lib/structure/index.js'
 import { quaternary_files } from '#site/convex-hull/index.js'
 import { volumetric_files } from '#site/isosurfaces.js'
 import { all_phase_diagram_files, binary_diagrams } from '#site/phase-diagrams.js'
@@ -33,12 +34,10 @@ import { routes } from '#site/state.svelte.js'
 import { type Component, flushSync, mount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { trigger_intersection } from '../environment'
-import { latest_stub, reset_stub } from '../reactive-renderer-registry'
-import { create_drop_event, doc_query, set_input, set_select, settle } from '../setup'
+import { renderer_stub, reset_stub } from '../reactive-renderer-registry'
+import { create_drop_event, doc_query, query, set_input, set_select, settle } from '../setup'
 import { make_crystal, make_grid, make_molecule, make_volume } from '../test-fixtures'
 import { globSync, readFileSync } from 'node:fs'
-
-const gallery_url = volumetric_files.find((file) => file.name === `caffeine-LUMO.cube.gz`)?.url
 
 const { stub } = vi.hoisted(() => ({
   stub: async () => (await import(`../reactive-renderer-stub.svelte`)).default,
@@ -160,7 +159,7 @@ test.each<LoadRace>([
       return fermi_result(`first`)
     },
     pick: click_other_file,
-    read: () => latest_stub().read().fermi_data,
+    read: () => renderer_stub().read().fermi_data,
     newer: expect.objectContaining({ label: `second` }),
   },
   {
@@ -168,7 +167,7 @@ test.each<LoadRace>([
     page: IsosurfacePage,
     setup: stub_open,
     pick: click_other_file,
-    read: () => latest_stub().read().structure,
+    read: () => renderer_stub(0).read().structure, // the render-mode gallery mounts after it
     newer: expect.objectContaining({ id: `second` }),
   },
   {
@@ -176,7 +175,7 @@ test.each<LoadRace>([
     page: MultiVolumePage,
     setup: stub_open,
     pick: () => document.querySelectorAll<HTMLElement>(`.scenario-card`)[1].click(),
-    read: () => latest_stub().read().structure,
+    read: () => renderer_stub().read().structure,
     newer: expect.objectContaining({ id: `second` }),
   },
   {
@@ -191,7 +190,7 @@ test.each<LoadRace>([
       return [{}]
     },
     pick: click_other_file,
-    read: () => latest_stub().read().title,
+    read: () => renderer_stub().read().title,
     newer: expect.stringMatching(/ · 0 entries$/),
   },
   {
@@ -245,7 +244,7 @@ test.each([`.cif`, `.poscar`])(`picking a %s fixture loads it into the BZ viewer
   if (!item) throw new Error(`no ${ext} fixture in the picker`)
   item.click()
   flushSync()
-  expect(latest_stub().read().structure).toMatchObject({ lattice: expect.any(Object) })
+  expect(renderer_stub().read().structure).toMatchObject({ lattice: expect.any(Object) })
 })
 
 // an abandoned system's load failure replaced the new one's planner and ended its spinner
@@ -349,7 +348,7 @@ test(`fermi surface loads write ?file= only for site fixtures`, () => {
   vi.spyOn(lib, `open_material`).mockReturnValue(new Promise(() => {}))
   mount(FermiSurfaceDemo, { target: document.body, props: { sync_url: true } })
   flushSync()
-  const { on_file_load } = latest_stub().read()
+  const { on_file_load } = renderer_stub().read()
   if (typeof on_file_load !== `function`)
     throw new TypeError(`FermiSurface got no on_file_load`)
   on_file_load({ source_filename: `mine.bxsf`, file: new File([`x`], `mine.bxsf`) })
@@ -375,19 +374,19 @@ test(`a file dropped on the demo hull leaves the cached system intact`, async ()
   )
   load.mockResolvedValue({ default: fixture })
   mount(ConvexHullDemo, { target: document.body })
-  await vi.waitFor(() => expect(latest_stub().read().entries).toEqual(fixture))
-  const { on_file_load } = latest_stub().read()
+  await vi.waitFor(() => expect(renderer_stub().read().entries).toEqual(fixture))
+  const { on_file_load } = renderer_stub().read()
   if (typeof on_file_load !== `function`) throw new TypeError(`ConvexHull got no on_file_load`)
   const dropped = [{ composition: { Li: 1 }, energy: 0 }]
   on_file_load({ entries: dropped, filename: `mine.json` })
   flushSync()
-  expect(latest_stub().read()).toMatchObject({
+  expect(renderer_stub().read()).toMatchObject({
     entries: dropped,
     controls: { title: `mine.json` },
   })
   expect(document.querySelector(`.file-item[aria-current]`)).toBeNull()
   click_file((name) => name.includes(`Li-Co-Ni-O`)) // re-pick the system dropped onto
-  await vi.waitFor(() => expect(latest_stub().read().entries).toEqual(fixture))
+  await vi.waitFor(() => expect(renderer_stub().read().entries).toEqual(fixture))
   expect(load).toHaveBeenCalledOnce() // from the cache, not loaded again
 })
 
@@ -399,40 +398,65 @@ test.each([
 ])(
   `isosurface ?file=%s loads the first fixture, applying ?isovalue: %s`,
   async (file, applied) => {
-    // the render-mode gallery's own load stays pending, so the main viewer is the latest stub
-    const open = vi
-      .spyOn(open_module, `open_material`)
-      .mockImplementation((url) =>
-        url === gallery_url ? new Promise(() => {}) : Promise.resolve(volume_result(`x`)),
-      )
+    const open = vi.spyOn(open_module, `open_material`).mockResolvedValue(volume_result(`x`))
     Object.assign(page, { url: new URL(`http://localhost/?file=${file}&isovalue=0.123`) })
     mount(IsosurfacePage, { target: document.body })
     flushSync()
     expect(open).toHaveBeenCalledWith(volumetric_files[0].url)
     await settle()
-    const { isosurface_settings } = latest_stub().read() as {
+    const { isosurface_settings } = renderer_stub(0).read() as {
       isosurface_settings: IsosurfaceSettings
     }
+    expect(isosurface_settings.interpolation).toBe(`cubic`)
     expect(isosurface_settings.layers[0].isovalue === 0.123).toBe(applied)
   },
 )
 
-// a failed gallery load left six empty cells with no message or way to recover
-test(`the isosurface render-mode gallery reports a failed load and retries it`, async () => {
-  let fail = true
-  const open = vi.spyOn(open_module, `open_material`).mockImplementation(async (url) => {
-    if (url === gallery_url && fail) throw new Error(`network down`)
-    return volume_result(`x`)
-  })
+// the render-mode gallery is one multi-view viewer of the caffeine LUMO, mounted once in view
+test(`the isosurface render-mode gallery is one lazily mounted multi-view viewer`, async () => {
+  vi.spyOn(open_module, `open_material`).mockResolvedValue(volume_result(`x`))
   mount(IsosurfacePage, { target: document.body })
+  flushSync()
+  const gallery = doc_query(`[aria-label="Caffeine LUMO render modes"]`)
+  expect(gallery.querySelector(`.placeholder`)).not.toBeNull()
   await settle()
-  const error = document.querySelector<HTMLElement>(`.render-modes .error`)
-  expect(error?.textContent).toContain(`network down`)
-  fail = false
-  error?.querySelector(`button`)?.click()
-  await settle()
-  expect(open.mock.calls.filter(([url]) => url === gallery_url)).toHaveLength(2)
-  expect(document.querySelector(`.render-modes .error`)).toBeNull()
+  expect(gallery.querySelector(`.placeholder`)).toBeNull()
+  const viewer = renderer_stub(1)
+  expect(viewer.read()).toMatchObject({
+    source: `/isosurfaces/caffeine-LUMO.cube.gz`,
+    isosurface_settings: { interpolation: `cubic` },
+    multi_view: true,
+  })
+  const volume = make_volume(make_grid(2, 2, 2, 1))
+  viewer.write(`isosurface_settings`, auto_isosurface_settings(volume))
+  flushSync()
+  const views = viewer.read().views as StructureView[]
+  expect(
+    views.every((view) => view.projection === undefined && view.direction === undefined),
+  ).toBe(true)
+  expect(
+    views.map(({ scene_props, isosurface_settings }) => [
+      isosurface_settings?.surface_finish,
+      scene_props?.depth_cue,
+      isosurface_settings?.layers?.map(({ opacity, volume_id }) => [opacity, volume_id]),
+    ]),
+  ).toEqual([
+    [`satin`, 0, [[1, volume.id]]],
+    [`translucent_shell`, 0, [[0.5, volume.id]]],
+    [`chalk`, 0, [[1, volume.id]]],
+    [`satin`, 0.65, [[1, volume.id]]],
+    [`translucent_shell`, 0.65, [[0.5, volume.id]]],
+    [`chalk`, 0.65, [[1, volume.id]]],
+  ])
+  const { on_error, source } = viewer.read()
+  if (typeof on_error !== `function`) throw new TypeError(`Gallery has no error handler`)
+  on_error({ source_url: source, error_msg: `Volume unavailable` })
+  flushSync()
+  expect(gallery.querySelector(`[role=alert]`)?.textContent).toContain(`Volume unavailable`)
+  query(gallery, `button`, HTMLButtonElement).click()
+  flushSync()
+  expect(gallery.querySelector(`[role=alert]`)).toBeNull()
+  expect(renderer_stub(2).read().source).toBe(source)
 })
 
 // dropped local files wrote ?file=<their name>, so a reload asked for a missing fixture
@@ -442,7 +466,7 @@ test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () 
   flushSync()
   const last_url = () => String(vi.mocked(goto).mock.lastCall?.[0])
   expect(last_url()).toContain(`file=`)
-  const { on_file_load } = latest_stub().read()
+  const { on_file_load } = renderer_stub().read()
   if (typeof on_file_load !== `function`) throw new TypeError(`Structure got no on_file_load`)
   on_file_load({ source_filename: `mine.cube`, file: new File([`x`], `mine.cube`) })
   flushSync()

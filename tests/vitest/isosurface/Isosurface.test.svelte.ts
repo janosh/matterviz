@@ -367,7 +367,7 @@ describe(`Isosurface`, () => {
     expect(outer).toBeGreaterThan(inner)
   })
 
-  test(`color-only changes reuse geometry; isovalue changes rebuild it`, async () => {
+  test(`color-only changes reuse geometry; isovalue and interpolation rebuild it`, async () => {
     // mirrored, so crossing opacity 1 turns on lobe sorting, which must not re-mesh either
     const props = mount_isosurface({
       settings: with_layers([layer(0.3, { opacity: 1, show_negative: true })]),
@@ -387,6 +387,13 @@ describe(`Isosurface`, () => {
     await settle()
     expect(geometry_of(meshes()[0])).not.toBe(geometry)
     expect(dispose).toHaveBeenCalledTimes(1)
+    const native_count = geometry_of(meshes()[0]).getIndex()?.count ?? 0
+    props.settings.interpolation = `cubic`
+    await settle()
+    expect(geometry_of(meshes()[0]).getIndex()?.count).toBeGreaterThan(3 * native_count)
+    props.settings.interpolation = `linear`
+    await settle()
+    expect(geometry_of(meshes()[0]).getIndex()?.count).toBe(native_count)
   })
 
   // A slider drag changes the isovalue every frame; a trailing debounce never fired until the
@@ -500,6 +507,43 @@ describe(`Isosurface`, () => {
     ])
     for (const { grid } of jobs)
       expect(grid.values.length).toBeLessThanOrEqual(MAX_GRID_POINTS)
+  })
+
+  test(`cubic worker meshes share mirrored levels, keep nodal and explicit windows in their own frame`, async () => {
+    const pending = hold_worker_jobs()
+    const volume = make_volume(
+      make_grid(56, 49, 32, (idx_x, idx_y, idx_z) =>
+        Math.exp(-((idx_x - 28) ** 2 + (idx_y - 24) ** 2 + (idx_z - 16) ** 2) / 64),
+      ),
+      { periodic: false },
+    )
+    const props = mount_isosurface({
+      volumes: [volume],
+      settings: with_layers([layer(0.3, { show_negative: true }), layer(0)], {
+        interpolation: `cubic`,
+      }),
+    })
+    await settle()
+    const [[job]] = compute_geometries_async.mock.calls
+    expect(job.volumes).toHaveLength(2)
+    const [focused, nodal] = job.volumes
+    expect(focused.surfaces.map(({ isovalue }: { isovalue: number }) => isovalue)).toEqual([
+      0.3, -0.3,
+    ])
+    expect(focused.origin[0]).toBeGreaterThan(0)
+    expect(nodal.grid.dims).toEqual([111, 97, 63])
+    expect(nodal.origin).toEqual(volume.origin)
+    props.settings.display_range = [
+      [0.25, 1],
+      [0, 1],
+      [0, 1],
+    ]
+    pending[0].resolve({ surfaces: [] })
+    await settle()
+    const [cropped] = compute_geometries_async.mock.calls[1]
+    expect(cropped.volumes).toHaveLength(1)
+    expect(cropped.volumes[0].origin).toEqual([1.25, 0, 0])
+    expect(cropped.volumes[0].surfaces).toHaveLength(3)
   })
 
   test(`large grids stay on the main thread where workers are disabled`, async () => {

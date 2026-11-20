@@ -3,7 +3,9 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol, element_data } from '#lib/element/index.js'
 import type { FileLoadData } from '#lib/io/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
 import type { CameraProjection } from '#lib/settings.js'
+import type { StructureSettings } from './settings'
 import type { Pbc } from './pbc'
 import { numeric_sites } from './site'
 import { shortcut_title } from '#lib/shortcuts.js'
@@ -91,13 +93,20 @@ export type StructureDisplayMode = `structure` | `slice` | `split`
 // The one floating pane a Structure viewer has open
 export type StructurePane = `controls` | `info` | `export` | `flight`
 
-// A single viewport definition for the multi-side (2x2) view. `direction` is the
-// camera offset direction from the structure center (target-relative); `projection`
-// chooses perspective vs orthographic; `label` is shown in the viewport corner.
+// A multi-view pane's camera, label and rendering overrides. The direction is relative
+// to the structure center. Lighting and isosurface settings inherit from the viewer,
+// with an explicit layers array replacing its layers for this pane.
 export type StructureView = {
   label?: string
   projection?: CameraProjection
   direction?: Vec3
+  scene_props?: Partial<
+    Pick<
+      StructureSettings,
+      `depth_cue` | `ambient_occlusion` | `ambient_light` | `directional_light`
+    >
+  >
+  isosurface_settings?: Partial<IsosurfaceSettings>
 }
 
 // Ovito-like default 2x2 view set: one perspective + three orthographic axis views.

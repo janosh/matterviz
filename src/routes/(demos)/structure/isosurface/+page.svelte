@@ -5,12 +5,14 @@
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import FilePicker from '#lib/FilePicker.svelte'
+  import { humanize } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
   import { file_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
   import type {
     AnyStructure,
     IsosurfaceSettings,
     StructureDisplayMode,
+    StructureView,
     VolumetricData,
   } from 'matterviz'
   import {
@@ -20,16 +22,17 @@
     format_data_value,
     Structure,
   } from 'matterviz'
-  import type { SurfaceFinish } from '#lib/settings.js'
   import { onMount } from 'svelte'
-  import { in_view } from 'svelte-widgets/attachments'
+  import LazyDemo from '#site/LazyDemo.svelte'
   import { to_error } from 'svelte-widgets/utils'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state.raw<VolumetricData[] | undefined>()
-  let isosurface_settings = $state<IsosurfaceSettings>({
+  const demo_settings: IsosurfaceSettings = {
     ...DEFAULT_ISOSURFACE_SETTINGS,
-  })
+    interpolation: `cubic`,
+  }
+  let isosurface_settings = $state<IsosurfaceSettings>({ ...demo_settings })
   let active_volume_id = $state<string>()
   let display_mode = $state<StructureDisplayMode>(`structure`)
   let active_file = $state<string | undefined>()
@@ -57,7 +60,7 @@
     volumetric_data = parsed.volumes
     active_volume_id = undefined
     const volume = parsed.volumes[0]
-    if (volume) isosurface_settings = auto_isosurface_settings(volume)
+    if (volume) isosurface_settings = auto_isosurface_settings(volume, demo_settings)
   }
 
   function update_url() {
@@ -115,51 +118,26 @@
     return is_current()
   }
 
-  // Render-mode gallery: one caffeine LUMO volume shared by every cell, each a GPU context
-  // mounted only once scrolled into view
-  const gallery_cells: { finish: SurfaceFinish; depth_cue: number }[] = [
-    ...([`satin`, `translucent_shell`, `chalk`, `unlit`] as const).map((finish) => ({
-      finish,
-      depth_cue: 0,
-    })),
-    { finish: `translucent_shell`, depth_cue: 0.3 },
-    { finish: `satin`, depth_cue: 0.3 },
-  ]
-  let gallery = $state.raw<{ structure: AnyStructure; volumes: VolumetricData[] }>()
-  let gallery_seen = $state(gallery_cells.map(() => false))
-  const gallery_url = volumetric_files.find(
-    (file) => file.name === `caffeine-LUMO.cube.gz`,
-  )?.url
-  // `gallery_loading` keeps repeated in-view callbacks from starting a second load; a failure
-  // shows its error with a retry instead of six silently empty cells
+  // All panes share the caffeine volume and camera direction. Only their rendering differs.
+  const gallery_source = `/isosurfaces/caffeine-LUMO.cube.gz`
   let gallery_error = $state<string>()
-  let gallery_loading = false
-  const load_gallery = async () => {
-    if (!gallery_url || gallery_loading) return
-    gallery_loading = true
-    gallery_error = undefined
-    try {
-      const opened = await open_material(gallery_url)
-      opened.dispose()
-      if (opened.type !== `isosurface`)
-        throw new Error(`${gallery_url} holds no volumetric data`)
-      const { structure: gallery_structure, volumes } = opened.data
-      gallery = { structure: gallery_structure as AnyStructure, volumes }
-    } catch (error) {
-      gallery_error = String(error)
-    } finally {
-      gallery_loading = false
-    }
-  }
-  const gallery_settings = (volumes: VolumetricData[], surface_finish: SurfaceFinish) => {
-    const auto = auto_isosurface_settings(volumes[0])
-    const opacity = surface_finish === `translucent_shell` ? 0.5 : 1
-    return {
-      ...auto,
-      surface_finish,
-      layers: auto.layers.map((layer) => ({ ...layer, opacity })),
-    }
-  }
+  const gallery_finishes = [`satin`, `translucent_shell`, `chalk`] as const
+  let gallery_settings = $state<IsosurfaceSettings>({ ...demo_settings })
+  const render_mode_views: StructureView[] = $derived(
+    [0, 0.65].flatMap((depth_cue) =>
+      gallery_finishes.map((surface_finish) => ({
+        label: `${humanize(surface_finish)} · depth cue ${depth_cue || `off`}`,
+        scene_props: { depth_cue },
+        isosurface_settings: {
+          surface_finish,
+          layers: gallery_settings.layers.map((layer) => ({
+            ...layer,
+            opacity: surface_finish === `translucent_shell` ? 0.5 : 1,
+          })),
+        },
+      })),
+    ),
+  )
 
   // The active-file guard makes the initial pre-load effect a no-op.
   $effect(update_url)
@@ -261,55 +239,57 @@
 {/if}
 
 <h2>Render modes</h2>
-<div
-  class="render-modes"
-  {@attach in_view((visible) => visible && !gallery && !gallery_error && load_gallery())}
->
-  {#if gallery_error}
-    <p class="error">
-      Could not load the gallery volume: {gallery_error}
-      <button onclick={load_gallery}>Retry</button>
-    </p>
-  {/if}
-  {#each gallery_cells as { finish, depth_cue }, idx (idx)}
-    <figure {@attach in_view((visible) => visible && (gallery_seen[idx] = true))}>
-      {#if gallery && gallery_seen[idx]}
-        <Structure
-          structure={gallery.structure}
-          volumetric_data={gallery.volumes}
-          isosurface_settings={gallery_settings(gallery.volumes, finish)}
-          scene_props={{ depth_cue }}
-          show_controls="never"
-          style="flex: 1; min-height: 0"
-        />
-      {/if}
-      <figcaption>
-        <code>{finish}{depth_cue ? `, depth_cue: ${depth_cue}` : ``}</code>
-      </figcaption>
-    </figure>
-  {/each}
+<p>
+  Compare each finish with and without depth cueing. The cue fades the more distant lobes and
+  atoms toward the background.
+</p>
+<div class="render-modes bleed-1400">
+  <LazyDemo label="Caffeine LUMO render modes" height="var(--struct-height)">
+    {#if gallery_error}
+      <p class="demo-error-message" role="alert">
+        {gallery_error}
+        <button onclick={() => (gallery_error = undefined)}>Retry</button>
+      </p>
+    {:else}
+      <Structure
+        source={gallery_source}
+        on_error={({ error_msg, source_url }) => {
+          if (source_url === gallery_source) gallery_error = error_msg
+        }}
+        bind:isosurface_settings={gallery_settings}
+        multi_view
+        views={render_mode_views}
+        show_controls={{
+          mode: `always`,
+          hidden: [
+            `multi-view`,
+            `view-mode`,
+            `measure-mode`,
+            `controls`,
+            `info-pane`,
+            `export-pane`,
+            `site-table`,
+          ],
+        }}
+      />
+    {/if}
+  </LazyDemo>
 </div>
 
 <style>
   .render-modes {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1em;
-    margin-block: 1em;
-    --struct-min-width: 0;
-    figure {
-      margin: 0;
-      height: 260px;
-      display: flex;
-      flex-direction: column;
-    }
-    figcaption {
-      text-align: center;
+    container-type: inline-size;
+    --struct-height: 600px;
+  }
+  /* Give every row space when the six panes wrap to two or one per row. */
+  @container (width < 904px) {
+    .render-modes > :global(.lazy-demo) {
+      --struct-height: 780px;
     }
   }
-  @media (max-width: 700px) {
-    .render-modes {
-      grid-template-columns: 1fr;
+  @container (width < 603px) {
+    .render-modes > :global(.lazy-demo) {
+      --struct-height: 1560px;
     }
   }
   h1 {

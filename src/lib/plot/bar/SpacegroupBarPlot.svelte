@@ -40,22 +40,29 @@
     | `controls_pane_props`
     | `user_content`
   > & {
-    // Space groups to count, as numbers (1-230), Hermann-Mauguin symbols or numeric strings; unparsable entries are dropped
-    data: (number | string)[]
+    // Space groups to count, as numbers (1-230), Hermann-Mauguin symbols or numeric strings
+    // (unparsable entries are dropped), or pre-counted as { space_group: count }, which keeps
+    // large datasets' payloads at one entry per space group
+    data: (number | string)[] | Record<string, number>
     // Annotates each crystal system region with its total count
     show_counts?: boolean
   } = $props()
 
-  const normalized_data = $derived(
-    data
-      .map(spg.normalize_spacegroup)
-      .filter((space_group): space_group is number => space_group !== null),
-  )
-
   const histogram = $derived.by(() => {
+    const entries: [number | string, number][] = Array.isArray(data)
+      ? data.map((space_group) => [space_group, 1])
+      : Object.entries(data)
     const hist = new Map<number, number>()
-    for (const space_group of normalized_data)
-      hist.set(space_group, (hist.get(space_group) ?? 0) + 1)
+    for (const [raw, count] of entries) {
+      if (!Number.isInteger(count) || count < 0) {
+        throw new RangeError(
+          `Space group ${raw} count must be a non-negative integer, got ${count}`,
+        )
+      }
+      const space_group = spg.normalize_spacegroup(raw)
+      if (space_group !== null && count)
+        hist.set(space_group, (hist.get(space_group) ?? 0) + count)
+    }
     return hist
   })
 
@@ -141,7 +148,11 @@
     })
   })
 
-  const total_count = $derived(normalized_data.length)
+  const total_count = $derived.by(() => {
+    let total = 0
+    for (const count of histogram.values()) total += count
+    return total
+  })
   // Crystal system bands over their full theoretical ranges, with count labels
   const crystal_system_regions = $derived(
     symmetry.CRYSTAL_SYSTEMS.map((system) => {

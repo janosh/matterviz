@@ -1,6 +1,6 @@
 // Isosurface geometry extraction shared by the main-thread fallback and geometry-worker.ts:
 // marching cubes for every requested isovalue on each volume's grid, prepared by the caller
-// (prepare_geometry_grid) so a worker receives at most MAX_GRID_POINTS values. A finite grid
+// (prepare_geometry_grid) so a worker receives a grid within its extraction budget. A finite grid
 // is the window itself; a periodic one is the unit cell, tiled over the window and clipped.
 import { compute_vertex_normals, marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'

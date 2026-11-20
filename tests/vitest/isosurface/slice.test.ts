@@ -175,10 +175,7 @@ test.each([true, false])(`upsample_volume refines smoothly (periodic=%s)`, (peri
     expect(value).toBeLessThanOrEqual(volume.data_range.max)
     if (fine_idx.every((idx, axis) => idx % factors[axis] === 0)) {
       const [idx_x, idx_y, idx_z] = fine_idx.map((idx, axis) => idx / factors[axis])
-      // the prefilter's recursion and exponential tail round to ~1e-15 of values up to e^2
-      expect(
-        Math.abs(value - volume.values[(idx_x * dims[1] + idx_y) * dims[2] + idx_z]),
-      ).toBeLessThan(1e-12)
+      expect(value).toBe(volume.values[(idx_x * dims[1] + idx_y) * dims[2] + idx_z])
     }
     const [frac_x, frac_y, frac_z] = fine_idx.map((idx, axis) => idx / fine_divisors[axis])
     // finite grids mirror at their faces, which only fits this field away from them

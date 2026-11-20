@@ -1,10 +1,52 @@
 import { expect, type Locator, test } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
+import { get_chart_svg, measure_plot_area } from '../helpers'
 import { dom_click, goto_perf_page, visible_count } from './utils'
 
 // Synthetic client-side data (no fixture download), a single hull and no rAF pulse loops:
 // the heavy demo page starves protocol calls under load
 test.describe(`ConvexHull2D on the performance page`, () => {
+  test(`double-clicking an entry copies it and double-clicking empty space preserves the probe`, async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions([`clipboard-read`, `clipboard-write`])
+    const diagram = await goto_perf_page(page, `2d`, `count=10&click_selection=false`)
+    const writes = await page.evaluateHandle(() => {
+      const copied: string[] = []
+      const write_text = navigator.clipboard.writeText.bind(navigator.clipboard)
+      navigator.clipboard.writeText = (text) => {
+        copied.push(text)
+        return write_text(text)
+      }
+      return copied
+    })
+    const svg = get_chart_svg(diagram)
+    const { clip } = await measure_plot_area(diagram)
+    const empty = (fraction: number) => ({
+      position: { x: clip.x + clip.width * fraction, y: clip.y + clip.height / 2 },
+    })
+    await svg.click(empty(0.25))
+    const probe = svg.locator(`.hull-overlay text`).filter({ hasText: /^probe$/ })
+    await expect(probe).toBeVisible()
+    const previous_x = await probe.getAttribute(`x`)
+    if (!previous_x) throw new Error(`Probe label has no x coordinate`)
+    await svg.dblclick(empty(0.75))
+    await expect(probe).toHaveAttribute(`x`, previous_x)
+
+    await diagram
+      .getByRole(`button`, { name: `Select Series 1 point 1`, exact: true })
+      .dblclick()
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(`ID: ref-Fe`)
+    await expect(probe).toHaveAttribute(`x`, previous_x)
+    await svg.click(empty(0.75))
+    await expect(probe).toBeVisible()
+    await expect(probe).not.toHaveAttribute(`x`, previous_x)
+    expect(await writes.jsonValue()).toEqual([expect.stringContaining(`ID: ref-Fe`)])
+  })
+
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
     const diagram = await goto_perf_page(page, `2d`, `count=100&click_selection=false`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)

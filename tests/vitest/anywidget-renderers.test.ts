@@ -8,7 +8,7 @@ import { inline_workers, widget_scope } from '../../extensions/anywidget/vite.co
 import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
-import { latest_stub, reset_stub } from './reactive-renderer-registry'
+import { renderer_stub, reset_stub } from './reactive-renderer-registry'
 import { library_prop_docs } from './setup'
 
 const component_name = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
@@ -95,7 +95,7 @@ const run_widget = (widget_type: string, model: MockModel) => {
   document.body.append(element)
   mount_spec(as_model(model), element, WIDGETS[widget_type])
   flushSync() // settle the initial writeback effects (all no-ops)
-  return latest_stub()
+  return renderer_stub()
 }
 
 // Seed a unique sentinel for every drive dep so each prop computes to a distinct value
@@ -143,7 +143,7 @@ test(`no widget prop binds defaulted data or shadows the DOM`, async () => {
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
 const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram
-  ternary_phase_diagram xrd rdf_plot`
+  ternary_phase_diagram xrd rdf_plot coordination_bar_plot`
 const drop_zone_widgets = new Set(drop_zones.split(/\s+/))
 
 // The stylesheet the bundle injects into the notebook page
@@ -267,8 +267,20 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       ]),
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
+    expect(WIDGET_MODEL_KEYS.binned_scatter_plot).toEqual(
+      expect.arrayContaining([`series`, `annotation`, `render_mode`, `color_bar`, `x_range`]),
+    )
+    expect(WIDGET_MODEL_KEYS.periodic_table).toEqual(
+      expect.arrayContaining([`tile_plots`, `tile_plot_config`, `split_layout`, `tile_props`]),
+    )
+    // computes its own series from the structures
+    expect(WIDGET_MODEL_KEYS.coordination_bar_plot).toEqual(
+      expect.arrayContaining([`structures`, `split_mode`, `mode`]),
+    )
+    expect(WIDGET_MODEL_KEYS.coordination_bar_plot).not.toContain(`series`)
     const plot_widgets = `scatter_plot scatter_plot_3d bar_plot histogram treemap band_structure
-      dos rdf_plot xrd bands_and_dos sunburst sankey box_plot ternary_plot neb_plot eos_plot`
+      dos rdf_plot xrd bands_and_dos sunburst sankey box_plot ternary_plot neb_plot eos_plot
+      coordination_bar_plot`
     for (const widget_type of plot_widgets.split(/\s+/)) {
       expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
         expect.arrayContaining(Object.keys(controls_traits)),
@@ -371,25 +383,53 @@ describe(`widget config wiring`, () => {
     expect(`cutaway` in props).toBe(false)
   })
 
+  // large series arrive as binary plot-series envelopes and reach the component as typed
+  // arrays next to their JSON series and fields; plain JSON series pass through unchanged
   test.each([
-    [`scatter_plot`, `x`, { show_legend: false, marker_renderer: `canvas` }],
-    [`bar_plot`, `y`, {}],
-    [`histogram`, `y`, {}],
+    `scatter_plot`,
+    `binned_scatter_plot`,
+    `bar_plot`,
+    `histogram`,
+    `box_plot`,
+    `scatter_plot_3d`,
+    `ternary_plot`,
+  ] as const)(`%s decodes binary series`, (widget_type) => {
+    const x = Float64Array.of(1, 2, 3)
+    const binary = {
+      format: `matterviz-binary-v1`,
+      kind: `plot-series`,
+      arrays: { x: { dtype: `float64`, shape: [3], data: new DataView(x.buffer) } },
+      label: `big`,
+    }
+    const json = { x: [0], y: [1], label: `small` }
+    const props = run_widget(
+      widget_type,
+      new MockModel({ widget_type, series: [binary, json] }),
+    ).read()
+    expect(props.series).toEqual([{ label: `big`, x }, json])
+  })
+
+  // binned_scatter_plot has no settings pane, so no controls traits
+  test.each([
+    [
+      `scatter_plot`,
+      `x`,
+      { show_legend: false, marker_renderer: `canvas`, ...controls_traits },
+    ],
+    [`bar_plot`, `y`, controls_traits],
+    [`histogram`, `y`, controls_traits],
+    [`binned_scatter_plot`, `x`, { annotation: `MAE = 0.1` }],
   ] as const)(`%s maps the %s range trait into axis config`, (widget_type, axis, extra) => {
     const model = new MockModel({
       widget_type,
       series: [],
       [`${axis}_axis`]: { label: `Count` },
       [`${axis}_range`]: [1, 5],
-      ...controls_traits,
       ...extra,
     })
     const props = run_widget(widget_type, model).read()
     expect(props[`${axis}_axis`]).toEqual({ label: `Count`, range: [1, 5] })
-    expect(pick(props, { ...controls_traits, ...extra })).toEqual({
-      ...controls_traits,
-      ...extra,
-    })
+    expect(pick(props, extra)).toEqual(extra)
     expect(`${axis}_range` in props).toBe(false)
     expect(`controls` in props).toBe(false)
   })

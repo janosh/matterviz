@@ -20,7 +20,7 @@ import { site_ellipsoid } from './thermal-ellipsoids'
 export type RenderAtom = PartialAtom & { species: Site[`species`] }
 // A fully occupied site with an ADP, drawn as its thermal ellipsoid: `ellipsoid` maps the unit
 // sphere onto it (see thermal_ellipsoid)
-export type EllipsoidRenderAtom = RenderAtom & { ellipsoid: Matrix3x3 }
+type EllipsoidRenderAtom = RenderAtom & { ellipsoid: Matrix3x3 }
 export type AtomGroups = {
   first_by_site: Map<number, RenderAtom>
   base: RenderAtom[]

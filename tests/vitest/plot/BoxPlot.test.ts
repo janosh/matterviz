@@ -14,7 +14,9 @@ import {
   export_via_pane,
   fire,
   form_controls,
+  mock_canvas_context,
   mount_sized,
+  mouse,
   one_tab_stop,
   pattern_id_of,
   pin_cycle,
@@ -313,6 +315,72 @@ describe(`BoxPlot`, () => {
       expect(lowest).toBeLessThan(clip.y + clip.height - 1)
     })
 
+    // Past CANVAS_MARKER_THRESHOLD drawn samples (all boxes together) paint on one canvas
+    // instead of an SVG circle each, and outliers aren't redrawn as circles on top
+    test.each([
+      [400, 400, false], // 801 drawn samples (the outlier 100 included)
+      [600, 401, true], // 1002
+    ])(`%i + %i samples draw on canvas: %s`, async (count_a, count_b, canvas) => {
+      const series = [
+        { y: [...dist(count_a, 10, 1), 100], label: `A` },
+        { y: dist(count_b, 20, 1), label: `B` },
+      ]
+      const plot = await mount_sized_box_plot({ series, points: `strip` })
+      expect(plot.querySelectorAll(`.box-series circle`)).toHaveLength(
+        canvas ? 0 : count_a + count_b + 1,
+      )
+      expect(plot.querySelector(`foreignObject canvas`) !== null).toBe(canvas)
+    })
+
+    // Canvas samples: no SVG circle is ever created (not even before the svg binds), every
+    // marker paints with a resolved stroke (never a var() token) and legend hover dims the
+    // other series' samples like their boxes; outliers stay hoverable through the box target
+    test(`canvas samples paint resolved, dimmed and without SVG churn`, async () => {
+      const fills: [string, number][] = []
+      const strokes: string[] = []
+      const ctx = mock_canvas_context({
+        fill: vi.fn(function (this: CanvasRenderingContext2D) {
+          fills.push([this.fillStyle as string, this.globalAlpha])
+        }),
+        stroke: vi.fn(function (this: CanvasRenderingContext2D) {
+          strokes.push(this.strokeStyle as string)
+        }),
+      })
+      let added_circles = 0
+      const observer = new MutationObserver((records) => {
+        for (const record of records)
+          for (const node of record.addedNodes)
+            if (node instanceof Element)
+              added_circles += node.matches(`circle`)
+                ? 1
+                : node.querySelectorAll(`circle`).length
+      })
+      observer.observe(document.body, { childList: true, subtree: true })
+      const series = [
+        { y: [...dist(600, 10, 1), 100], label: `A`, color: `#ff0000` },
+        { y: dist(500, 20, 1), label: `B`, color: `#0000ff` },
+      ]
+      const plot = await mount_sized_box_plot({ series, points: `strip`, show_legend: true })
+      observer.disconnect()
+      expect(added_circles).toBe(0)
+      const n_markers = 1101
+      expect(vi.mocked(ctx.arc).mock.calls.length % n_markers).toBe(0)
+      expect(ctx.arc).toHaveBeenCalled()
+      expect(strokes.some((stroke) => stroke.includes(`var(`))).toBe(false)
+      // box A's hover target reaches up to its far outlier (100 tops the value axis), not
+      // just its whisker box around 10
+      const clip = svg_rect(query(plot, `clipPath rect`))
+      const target = query(plot, `.box-series .hover-target`)
+      expect(Number(target.getAttribute(`y`))).toBeLessThan(clip.y + 20)
+
+      fills.length = 0
+      await fire(plot.querySelectorAll(`.legend-item`)[1], mouse(`mouseenter`))
+      const alpha_of = (color: string) =>
+        new Set(fills.filter(([fill]) => fill === color).map(([, alpha]) => alpha))
+      const [red_alphas, blue_alphas] = [alpha_of(`#ff0000`), alpha_of(`#0000ff`)]
+      expect(Math.max(...red_alphas)).toBeLessThan(Math.max(...blue_alphas))
+    })
+
     // Strips jitter over half the box (0.8 slot), styled by sample_style
     test(`per-series override and strip jitter within half the box`, async () => {
       const plot = await mount_sized_box_plot(
@@ -366,6 +434,32 @@ describe(`BoxPlot`, () => {
           expect(offsets).toHaveLength(60)
           expect(Math.min(...offsets)).toBeGreaterThanOrEqual(0)
         }
+      },
+    )
+
+    // point_side places the samples independently of the violin, opposite it for a raincloud;
+    // a per-series value wins over the component's, unset follows a half violin's side
+    test.each([
+      [`component`, `strip`, {}, { point_side: `negative` }, -1],
+      [`component swarm`, `swarm`, {}, { point_side: `negative` }, -1],
+      [`series wins`, `strip`, { point_side: `positive` }, { point_side: `negative` }, 1],
+      [`unset follows the violin`, `strip`, {}, {}, 1],
+    ] as const)(
+      `point_side %s puts points on their side`,
+      async (_name, mode, srs_opt, props, sign) => {
+        const plot = await mount_sized_box_plot(
+          {
+            series: [{ y: dist(60, 0, 1), label: `A`, side: `positive`, ...srs_opt }],
+            kind: `violin`,
+            points: mode,
+            ...props,
+          },
+          { width: 400, height: 400 },
+        )
+        const center = box_center(plot, `vertical`)
+        const offsets = sample_points(plot).map((pt) => sign * (pt.x - center))
+        expect(offsets).toHaveLength(60)
+        expect(Math.min(...offsets)).toBeGreaterThanOrEqual(0)
       },
     )
 

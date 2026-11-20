@@ -25,13 +25,23 @@
   import { BoxPlotControls } from '#lib/plot/index.js'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
+  import type { Rect } from '#lib/plot/core/layout.js'
+  import {
+    CANVAS_MARKER_THRESHOLD,
+    canvas_safe_color,
+    create_marker_batch,
+    create_marker_canvas,
+    type MarkerStyle,
+    push_marker,
+  } from '#lib/plot/core/canvas-markers.svelte.js'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { plot_color } from '#lib/colors/index.js'
+  import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
+  import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import {
     box_point_offsets,
@@ -124,6 +134,7 @@
     value_label_format = ``,
     kind = $bindable(DEFAULTS.box.kind),
     side = $bindable(DEFAULTS.box.side),
+    point_side,
     bandwidth = DEFAULTS.box.bandwidth,
     violin_width = DEFAULTS.box.violin_width,
     violin_style = {},
@@ -192,6 +203,9 @@
       kind?: ViolinKind
       // Which half of its slot a violin fills: `both`, `positive` or `negative` (split violins)
       side?: ViolinSide
+      // Which half of its slot the sample points fill; unset follows a half violin's `side`.
+      // A raincloud puts the violin on `positive` and its points ("rain") on `negative`.
+      point_side?: ViolinSide
       bandwidth?: BandwidthOption // violin KDE; a number is in decades on a log value axis
       // Violin width as a fraction of its category slot
       violin_width?: number
@@ -435,7 +449,10 @@
         radius: sample_state.radius,
         half_width: Math.abs((frame.px_per_unit[vertical ? `x` : `y`] * spread) / 2),
         // Half violins keep their samples on their own half (split violins share a slot)
-        side: draws_violin(srs) ? to_screen_side(srs.side ?? side) : `both`,
+        // unless point_side places them, e.g. opposite the violin for a raincloud
+        side: to_screen_side(
+          srs.point_side ?? point_side ?? (draws_violin(srs) ? (srs.side ?? side) : `both`),
+        ),
         seed: idx + 1,
       })
       map.set(idx, { values, offsets })
@@ -458,6 +475,62 @@
     }
     return map
   })
+
+  // Canvas can't paint var() tokens like the default theme-following stroke: resolve paints on
+  // the chart (the page before it mounts, so the first render already picks canvas), re-read
+  // when the theme's text color changes
+  const live_text_color = resolve_computed_color(() => frame.svg_element, `color`, {
+    fallback: `#000`,
+  })
+  const canvas_paint = (color: string): string => {
+    void live_text_color.current // re-resolve tokens on theme changes
+    return resolve_color_token(frame.svg_element ?? document.body, color)
+  }
+  let sample_stroke = $derived(canvas_paint(box_state.stroke_color))
+  // Past CANVAS_MARKER_THRESHOLD drawn samples paint on one canvas like ScatterPlot's markers
+  // (a raincloud of 100k samples was 100k SVG circles, ~4x slower to repaint), with each
+  // series' legend dimming. Null keeps SVG circles: few samples or an unpaintable color.
+  let sample_markers = $derived.by(() => {
+    let total = 0
+    for (const pts of box_points.values()) total += pts.length
+    if (total <= CANVAS_MARKER_THRESHOLD) return null
+    const batch = create_marker_batch(total)
+    for (const [idx, pts] of box_points) {
+      const style: MarkerStyle = {
+        radius: sample_state.radius,
+        fill: canvas_paint(box_color(idx)),
+        fill_opacity: sample_state.opacity,
+        stroke: sample_stroke,
+        stroke_width: sample_state.stroke_width,
+        stroke_opacity: 1,
+      }
+      if (!canvas_safe_color(style.fill) || !canvas_safe_color(style.stroke)) return null
+      const opacity = frame.series_opacity(idx)
+      for (const [cx, cy] of pts) push_marker(batch, cx, cy, opacity, style)
+    }
+    return batch
+  })
+  const no_markers = create_marker_batch(0)
+  // Canvas samples aren't DOM nodes, so a box's hover target grows to cover them: outliers
+  // and swarm points past the whisker box keep proxying hover and click like SVG circles did
+  const hit_rect = (rect: Rect, samples: readonly Vec2[] | undefined): Rect => {
+    if (!sample_markers || !samples?.length) return rect
+    const pad = sample_state.radius
+    let [x_lo, y_lo] = [rect.x, rect.y]
+    let [x_hi, y_hi] = [rect.x + rect.width, rect.y + rect.height]
+    for (const [px_x, px_y] of samples) {
+      x_lo = Math.min(x_lo, px_x - pad)
+      y_lo = Math.min(y_lo, px_y - pad)
+      x_hi = Math.max(x_hi, px_x + pad)
+      y_hi = Math.max(y_hi, px_y + pad)
+    }
+    return { x: x_lo, y: y_lo, width: x_hi - x_lo, height: y_hi - y_lo }
+  }
+  const sample_canvas = create_marker_canvas(() => ({
+    markers: sample_markers ?? no_markers,
+    width: frame.width,
+    height: frame.height,
+  }))
 
   // Category-axis pixel scale (x for vertical boxes, y for horizontal ones)
   const cat_scale = $derived(vertical ? frame.scales.x : frame.scales.y)
@@ -822,13 +895,19 @@
           )}
           <!-- Drawn samples (which include the outliers) or else the outliers alone -->
           {@const samples = box_points.get(box_item.idx)}
-          {@const markers =
-            samples ??
-            (draw_box && show_outliers
+          {@const markers = samples
+            ? sample_markers
+              ? []
+              : samples
+            : draw_box && show_outliers
               ? stats.outliers
                   .map((outlier) => point(c_center, val_scale(outlier)))
                   .filter(in_plot)
-              : [])}
+              : []}
+          {@const hit = hit_rect(
+            { x: hit_x, y: hit_y, width: Math.max(1, hit_w), height: Math.max(1, hit_h) },
+            samples,
+          )}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <g
             class="box-series"
@@ -943,10 +1022,10 @@
                 path is a painted child and bubbles to the group's pointer handlers too) -->
             <rect
               class="hover-target"
-              x={hit_x}
-              y={hit_y}
-              width={Math.max(1, hit_w)}
-              height={Math.max(1, hit_h)}
+              x={hit.x}
+              y={hit.y}
+              width={hit.width}
+              height={hit.height}
               fill="transparent"
               clip-path="url(#{frame.clip_path_id})"
             />
@@ -965,6 +1044,17 @@
           </g>
         {/if}
       {/each}
+      {#if sample_markers}
+        <!-- above the boxes like per-box circles; pointer events stay on the box groups -->
+        <foreignObject
+          x="0"
+          y="0"
+          width={frame.width}
+          height={frame.height}
+          pointer-events="none"
+          {@attach sample_canvas}
+        ></foreignObject>
+      {/if}
     </g>
 
     <ReferenceLinesLayer {frame} z="below-points" />
