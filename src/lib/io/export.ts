@@ -644,6 +644,12 @@ function serialize_svg(
   prepare_clone(svg, clone, null, false, state)
   for (const overlay of export_overlays(svg)) clone.append(overlay)
   minify_clone(clone)
+  // the figure's accessible name, as a <title> since minify_clone drops aria attributes
+  const name = svg.getAttribute(`aria-label`)
+  if (name)
+    clone.prepend(
+      Object.assign(document.createElementNS(SVG_NS, `title`), { textContent: name }),
+    )
   const viewbox = svg_viewbox(svg, state.max_stroke / 2)
   // Floor at 1px: small viewBoxes at low DPI round to 0 and make toBlob fail confusingly
   const size: [number, number] | null = viewbox
@@ -660,9 +666,9 @@ function serialize_svg(
   return { markup: new XMLSerializer().serializeToString(clone), size }
 }
 
-// Standalone SVG file content of a live figure (see serialize_svg)
-export const svg_to_string = (svg: SVGElement): string =>
-  `<?xml version="1.0" encoding="UTF-8"?>\n${serialize_svg(svg, dpi_to_scale(DEFAULT_PNG_DPI)).markup}`
+// Standalone SVG file content of a live figure (see serialize_svg), canvases embedded at png_dpi
+export const svg_to_string = (svg: SVGElement, png_dpi = DEFAULT_PNG_DPI): string =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n${serialize_svg(svg, dpi_to_scale(png_dpi)).markup}`
 
 // Rasterize a live SVG figure at `png_dpi` (72 DPI = one pixel per viewBox unit)
 export async function svg_to_png_blob(

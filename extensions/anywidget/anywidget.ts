@@ -44,7 +44,12 @@ import {
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
-import { is_binary_envelope, series_from_binary } from 'matterviz/io'
+import {
+  html_to_svg,
+  is_binary_envelope,
+  series_from_binary,
+  svg_to_string,
+} from 'matterviz/io'
 import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
@@ -102,6 +107,8 @@ function inject_app_css(target_element: HTMLElement): void {
 // Per-element teardown of the mounted widget: theme observer, model listeners + writeback
 // effects, interaction throttles and the Svelte instance itself
 const cleanups = new WeakMap<HTMLElement, () => void>()
+// widget_type of each mounted element, for export_svg
+const rendered_types = new WeakMap<HTMLElement, string>()
 
 const cleanup_element = (element: HTMLElement): void => {
   cleanups.get(element)?.()
@@ -296,6 +303,10 @@ type WidgetSpec = {
   // Model traits written by interaction callbacks (not derivable from drive specs);
   // listed so WIDGET_MODEL_KEYS reflects the full Python<->JS trait contract.
   interaction_model_keys?: readonly string[]
+  // Selector of a figure built from HTML (CSS grids, side-by-side panels), which SVG export
+  // redraws as SVG rather than serializing one <svg>: the element the component's own Export
+  // pane exports, so both paths give the same file
+  html_figure?: string
 }
 
 // Every prop a spec drives
@@ -424,7 +435,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       ...cartesian_plot_drive(`styles show_legend marker_renderer color_scale size_scale
         density_contours fill_regions error_bands hover_config label_placement_config
-        point_tween line_tween selected_point annotation`),
+        point_tween line_tween selected_point highlighted_ids annotation`),
       // None hides these, {} keeps the defaults
       nullable_prop(`color_bar`),
       nullable_prop(`size_legend`),
@@ -496,6 +507,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // The parent owns the shared Fermi reference; hover frequency and DOS orientation
     // are controlled internally.
     component: BandsAndDos,
+    html_figure: `.bands-and-dos`,
     drive: [
       // structure adds its Brillouin zone beside the bands, configured by bz_props
       band_structs_prop,
@@ -537,10 +549,25 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   periodic_table: {
     component: PeriodicTable,
+    html_figure: `.periodic-table`,
     drive: [
       ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
-        tile_plot_config split_layout tile_props`),
+        tile_plot_config split_layout tile_props active_elements`),
       nullable_prop(`color_bar`),
+      // Tile clicks toggle elements in active_elements once Python opts in by setting it to
+      // a list (link_selection does); until then they pin the tile's tooltip and inset plot
+      derived_prop(`on_activate`, [`active_elements`], (model) => {
+        const active = model.get(`active_elements`) as string[] | null | undefined
+        if (!active) return undefined
+        return ({ symbol }: { symbol: string }) =>
+          set_model(
+            model,
+            `active_elements`,
+            active.includes(symbol)
+              ? active.filter((sym) => sym !== symbol)
+              : [...active, symbol],
+          )
+      }),
     ],
   },
   rdf_plot: {
@@ -562,6 +589,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
+    html_figure: `.grid`,
     drive: [
       ...drive_props(`show_controls x_items y_items values color_scale missing x_axis y_axis
         tile_size gap show_values label_style`),
@@ -695,23 +723,66 @@ const render: Render = (props) => {
   const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
   let unmount_widget: () => void
   try {
-    if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
+    if (!widget_type || !spec)
+      throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
     // A malformed update tears the widget down: it no longer reflects the Python state
     unmount_widget = mount_spec(model, element, spec, (error) => {
       cleanup_element(element)
       show_error(error)
       console.error(`MatterViz ${widget_type}: trait update failed`, error)
     })
+    rendered_types.set(element, widget_type)
   } catch (error) {
     stop_theme()
     show_error(error)
     throw error
   }
   cleanups.set(element, () => {
+    rendered_types.delete(element)
     stop_theme()
     unmount_widget()
   })
   return () => cleanup_element(element)
+}
+
+// Smallest rendered size of an <svg> that can be the figure (smaller ones are icons) and of a
+// <canvas> that holds chart content (smaller ones are decorative)
+const MIN_FIGURE_SVG_PX = 20
+const MIN_FIGURE_CANVAS_PX = 50
+
+// Standalone SVG file content of a rendered widget, through the same serializer as the in-app
+// SVG export: HTML figures redrawn as SVG, else the largest <svg>. Throws for figures with a
+// chart-sized canvas outside that SVG (3D viewers, canvas charts), which have no vector form.
+export function export_svg(element: HTMLElement, png_dpi?: number): string {
+  const widget_type = rendered_types.get(element)
+  if (!widget_type) throw new Error(`No rendered MatterViz widget to export`)
+  const { html_figure } = WIDGETS[widget_type]
+  const area = (node: Element, min_px: number): number => {
+    const { width, height } = node.getBoundingClientRect()
+    return width >= min_px && height >= min_px ? width * height : 0
+  }
+  let figure: Element | null = html_figure ? element.querySelector(html_figure) : null
+  if (!html_figure) {
+    let best_area = 0
+    for (const svg of element.querySelectorAll(`svg`)) {
+      const svg_area = area(svg, MIN_FIGURE_SVG_PX)
+      if (svg_area > best_area) [figure, best_area] = [svg, svg_area]
+    }
+  }
+  // canvases in an SVG's <foreignObject> (canvas markers) export as images, HTML redraws drop them
+  const canvas = [...element.querySelectorAll(`canvas`)].find(
+    (node) =>
+      area(node, MIN_FIGURE_CANVAS_PX) > 0 &&
+      !(figure instanceof SVGElement && figure.contains(node)),
+  )
+  if (canvas || !figure) {
+    const content = canvas ? `canvas content` : `no ${html_figure ?? `<svg>`} figure`
+    throw new Error(
+      `MatterViz ${widget_type} renders ${content}, which has no vector form: export PNG or PDF instead`,
+    )
+  }
+  const svg = figure instanceof SVGElement ? figure : html_to_svg(figure as HTMLElement)
+  return svg_to_string(svg, png_dpi)
 }
 
 export default { render }

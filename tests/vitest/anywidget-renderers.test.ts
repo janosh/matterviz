@@ -3,7 +3,7 @@ import { is_plain_object } from 'svelte-widgets/utils'
 import { DEFAULTS } from '../../src/lib/settings'
 import { DATA_PROPS } from '../../extensions/anywidget/reactive.svelte'
 import { flushSync } from 'svelte'
-import { describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { inline_workers, widget_scope } from '../../extensions/anywidget/vite.config'
 import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
@@ -182,18 +182,44 @@ test.each(Object.entries(WIDGETS))(
       drop_zone_widgets.has(widget_type) ? false : undefined,
     )
     const driven_props = spec.drive.filter((driven_prop) => !driven_prop.writeback)
-    for (const { prop, compute } of driven_props)
-      expect(stub.read()[prop]).toEqual(compute(as_model(model)))
+    // callbacks are fresh closures per compute, so only their presence can match
+    const comparable = (value: unknown) => (typeof value === `function` ? Function : value)
+    const expect_driven = (
+      prop: string,
+      compute: (typeof driven_props)[number][`compute`],
+    ) => {
+      const expected = comparable(compute(as_model(model)))
+      expect(comparable(stub.read()[prop])).toEqual(expected)
+    }
+    for (const { prop, compute } of driven_props) expect_driven(prop, compute)
     // bump every dep, so a missing listener on a multi-dep derived prop is caught
     for (const { prop, compute, deps } of driven_props) {
       for (const dep of deps) {
         model.push_from_python(dep, `bumped:${dep}`)
         flushSync()
-        expect(stub.read()[prop]).toEqual(compute(as_model(model)))
+        expect_driven(prop, compute)
       }
     }
   },
 )
+
+// unset, a click keeps pinning the tile (tooltip and inset plot): no on_activate reaches it
+test(`periodic_table tile clicks toggle active_elements only once Python sets a list`, () => {
+  const model = new MockModel({ widget_type: `periodic_table`, active_elements: null })
+  const stub = run_widget(`periodic_table`, model)
+  expect(stub.read().on_activate).toBeUndefined()
+  model.push_from_python(`active_elements`, [`Fe`])
+  flushSync()
+  const click = (symbol: string) => {
+    ;(stub.read().on_activate as (elem: { symbol: string }) => void)({ symbol })
+    flushSync()
+  }
+  click(`O`)
+  expect(model.state.active_elements).toEqual([`Fe`, `O`])
+  click(`Fe`)
+  expect(model.state.active_elements).toEqual([`O`])
+  expect(stub.read().active_elements).toEqual([`O`])
+})
 
 test(`scatter_plot point callbacks write active_point (monotonic event_id) and hovered_point`, () => {
   const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
@@ -262,6 +288,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `active_point`,
         `hovered_point`,
         `selected_point`,
+        `highlighted_ids`,
         `show_legend`,
         `marker_renderer`,
       ]),
@@ -271,7 +298,13 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       expect.arrayContaining([`series`, `annotation`, `render_mode`, `color_bar`, `x_range`]),
     )
     expect(WIDGET_MODEL_KEYS.periodic_table).toEqual(
-      expect.arrayContaining([`tile_plots`, `tile_plot_config`, `split_layout`, `tile_props`]),
+      expect.arrayContaining([
+        `tile_plots`,
+        `tile_plot_config`,
+        `split_layout`,
+        `tile_props`,
+        `active_elements`,
+      ]),
     )
     // computes its own series from the structures
     expect(WIDGET_MODEL_KEYS.coordination_bar_plot).toEqual(
@@ -601,5 +634,104 @@ describe(`render() lifecycle`, () => {
     expect(element.textContent).toBe(`MatterViz trajectory: malformed trajectory`)
     expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
     expect(console_error).toHaveBeenCalledOnce()
+  })
+})
+
+describe(`export_svg`, () => {
+  afterEach(() => {
+    delete WIDGETS.export_probe
+  })
+  // happy-dom lays nothing out, so each node reports the size its `size` attribute names
+  const sized = (tag: string, size: [number, number], ns = `http://www.w3.org/2000/svg`) => {
+    const node = document.createElementNS(ns, tag)
+    const [width, height] = size
+    node.getBoundingClientRect = () => new DOMRect(0, 0, width, height)
+    return node
+  }
+  const render_with = (spec_extra: object, build: (element: HTMLElement) => void) => {
+    const element = document.createElement(`div`)
+    document.body.append(element)
+    WIDGETS.export_probe = {
+      ...WIDGETS.scatter_plot,
+      ...spec_extra,
+      component: () => build(element),
+    }
+    const model = new MockModel({ widget_type: `export_probe`, series: [] })
+    const dispose = anywidget_module.default.render({
+      model: as_model(model),
+      el: element,
+    } as never)
+    return { element, dispose: dispose as () => void }
+  }
+
+  test(`serializes the largest SVG, not icons, through the in-app serializer`, () => {
+    const { element, dispose } = render_with({}, (root) => {
+      const icon = sized(`svg`, [12, 12])
+      icon.setAttribute(`id`, `icon`)
+      const chart = sized(`svg`, [200, 100])
+      chart.setAttribute(`viewBox`, `0 0 200 100`)
+      chart.setAttribute(`aria-label`, `Bar chart`)
+      const dot = sized(`circle`, [2, 2])
+      dot.setAttribute(`cx`, `1.23456`)
+      dot.setAttribute(`data-idx`, `0`)
+      chart.append(dot)
+      root.append(icon, chart)
+    })
+    const markup = anywidget_module.export_svg(element)
+    expect(markup.startsWith(`<?xml version="1.0" encoding="UTF-8"?>\n<svg`)).toBe(true)
+    // sized, rounded and stripped of interaction attributes by svg_to_string
+    expect(markup).toContain(`width="200"`)
+    expect(markup).toContain(`cx="1.23"`)
+    expect(markup).not.toMatch(/icon|data-idx|aria-label/)
+    // the accessible name survives as a <title>
+    expect(markup).toContain(`<title>Bar chart</title>`)
+    dispose()
+    expect(() => anywidget_module.export_svg(element)).toThrow(`No rendered MatterViz widget`)
+  })
+
+  const html_ns = `http://www.w3.org/1999/xhtml`
+  test(`HTML figures are redrawn as SVG`, () => {
+    const { element } = render_with({ html_figure: `.figure` }, (root) => {
+      // a tile-sized inset SVG must not be taken for the figure, nor a sibling the
+      // component's own Export pane leaves out
+      const grid = sized(`div`, [300, 200], html_ns)
+      grid.classList.add(`figure`)
+      grid.append(sized(`svg`, [40, 40]))
+      root.append(sized(`div`, [500, 500], html_ns), grid)
+    })
+    const markup = anywidget_module.export_svg(element)
+    // the grid's own frame, with the inset redrawn inside it
+    expect(markup).toContain(`viewBox="0 0 300 200"`)
+    expect(markup.match(/<svg/g)).toHaveLength(2)
+  })
+
+  const chart = () => sized(`svg`, [200, 100])
+  const canvas = () => sized(`canvas`, [200, 100], html_ns)
+  const in_node = (node: Element, ...children: Element[]) => {
+    node.append(...children)
+    return node
+  }
+  test.each([
+    [`a canvas beside the SVG`, {}, () => [chart(), canvas()], `canvas content`],
+    [
+      `a canvas inside an HTML figure`,
+      { html_figure: `div` },
+      () => [in_node(sized(`div`, [200, 100], html_ns), canvas())],
+      `canvas content`,
+    ],
+    [`no SVG`, {}, () => [], `no <svg> figure`],
+    [`a missing HTML figure`, { html_figure: `.figure` }, () => [], `no .figure figure`],
+    // canvas markers: exported as an image
+    [
+      `a canvas in the SVG's foreignObject`,
+      {},
+      () => [in_node(chart(), in_node(sized(`foreignObject`, [200, 100]), canvas()))],
+      null,
+    ],
+  ])(`%s`, (_label, spec_extra, build, message) => {
+    const { element } = render_with(spec_extra, (root) => root.append(...build()))
+    const exported = () => anywidget_module.export_svg(element)
+    if (message) expect(exported).toThrow(`MatterViz export_probe renders ${message}`)
+    else expect(exported()).toContain(`<svg`)
   })
 })
