@@ -1076,7 +1076,11 @@ describe(`ScatterPlot`, () => {
       expect(arcs_since_clear).toBe(dense.x.length - 1)
       expect(canvas_rect).not.toHaveBeenCalled()
       expect(canvas_clip).not.toHaveBeenCalled()
-      expect(overlaid.querySelector(`text.label-text`)?.textContent).toBe(`tagged`)
+      const label_text = overlaid.querySelector(`text.label-text`)
+      expect(label_text?.textContent).toBe(`tagged`)
+      // labels in dense plots opt into a halo through CSS, drawn under the glyphs
+      expect(label_text?.getAttribute(`stroke`)).toBe(`var(--scatter-point-label-halo, none)`)
+      expect(label_text?.getAttribute(`paint-order`)).toBe(`stroke`)
       expect(overlaid.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
       const canvas = query<HTMLCanvasElement>(overlaid, `canvas.marker-canvas`)
       expect(canvas.parentElement?.tagName.toLowerCase()).toBe(`foreignobject`)

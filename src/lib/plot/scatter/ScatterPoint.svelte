@@ -227,6 +227,10 @@
         POINT_LABEL_FONT_SIZE}; font-family: {label.font_family ??
         `sans-serif`}; pointer-events: var(--scatter-point-label-pointer-events, none)"
       fill="var(--scatter-point-label-fill, currentColor)"
+      stroke="var(--scatter-point-label-halo, none)"
+      stroke-width="var(--scatter-point-label-halo-width, 3)"
+      stroke-linejoin="round"
+      paint-order="stroke"
       dominant-baseline="middle"
       class="label-text"
     >

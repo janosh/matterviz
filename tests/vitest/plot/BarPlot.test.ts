@@ -83,6 +83,19 @@ describe(`BarPlot`, () => {
         ),
       ).toEqual([`bar 1 of triclinic: 1`, `bar 1 of cubic: 2`])
       expect(plot.querySelectorAll(`.crystal-system-overlays rect`)).toHaveLength(7)
+      // a band narrower than a line hides its name, else it would overlap a neighbour's:
+      // triclinic's 2 spacegroups always, monoclinic's 13 on the shorter horizontal axis
+      const system_names = [
+        ...plot.querySelectorAll(`.crystal-system-overlays text[font-size="14"]`),
+      ].map((text) => text.textContent?.trim())
+      expect(system_names).toEqual([
+        ...(orientation === `vertical` ? [`monoclinic`] : []),
+        `orthorhombic`,
+        `tetragonal`,
+        `trigonal`,
+        `hexagonal`,
+        `cubic`,
+      ])
       // the spacegroup numbers go on the category axis, the counts on the value axis
       const [sg_side, count_side] = orientation === `vertical` ? [`x`, `y`] : [`y`, `x`]
       expect(plot.querySelector(`.${sg_side}-axis .axis-label`)?.textContent).toContain(

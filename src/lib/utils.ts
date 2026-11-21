@@ -39,6 +39,16 @@ export const JSON_KINDS = {
 } as const satisfies Record<string, readonly [(value: unknown) => boolean, string]>
 
 // Clamp a number to the [0, 1] range.
+// 32-bit FNV-1a hash
+export function hash_string(text: string): number {
+  let hash = 0x811c9dc5
+  for (let idx = 0; idx < text.length; idx++) {
+    hash ^= text.charCodeAt(idx)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
 
 // Tag-stripping, entity-decoding plain text of HTML (SSR-safe), shared with svelte-widgets

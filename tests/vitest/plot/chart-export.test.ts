@@ -79,6 +79,8 @@ test(`chart_export_filename slugs the title and axis labels; csv_source builds l
 test.each([
   [`linear-gradient(to right, rgb(0, 0, 255) 0%, rgb(255, 0, 0) 100%)`, { vector: [0, 0, 1, 0], stops: [[`rgb(0, 0, 255)`, `0%`], [`rgb(255, 0, 0)`, `100%`]] }],
   [`linear-gradient(to top, red 0%, rgba(0, 128, 0, 0.5) 50%, blue 100%)`, { vector: [0, 1, 0, 0], stops: [[`red`, `0%`], [`rgba(0, 128, 0, 0.5)`, `50%`], [`blue`, `100%`]] }],
+  // Chrome's computed value for evenly spaced stops omits their offsets
+  [`linear-gradient(to right, rgb(68, 1, 84), rgb(33, 145, 140), rgb(253, 231, 37))`, { vector: [0, 0, 1, 0], stops: [[`rgb(68, 1, 84)`, `0%`], [`rgb(33, 145, 140)`, `50%`], [`rgb(253, 231, 37)`, `100%`]] }],
   [`linear-gradient(red, blue)`, null],
   [`none`, null],
 ])(`parse_linear_gradient(%s)`, (css, expected) => {

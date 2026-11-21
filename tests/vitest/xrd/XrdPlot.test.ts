@@ -230,20 +230,42 @@ describe(`XrdPlot`, () => {
   )
 
   // A fractional annotate_peaks is a fraction of each pattern's own maximum, as top-k counts
-  // each pattern's own peaks: the weak pattern (max 30 of the shared 300) keeps its labels
-  test(`fractional annotate_peaks thresholds each pattern on its own maximum`, async () => {
-    const weak = { ...pattern, y: pattern.y.map((val) => val / 10) }
-    const target = await mount_xrd({
-      patterns: { Strong: { pattern }, Weak: { pattern: weak } },
-      annotate_peaks: 0.6,
-      show_angles: false,
-    })
-    const labels = [...target.querySelectorAll(`.bar-series`)].map((series) =>
-      [...series.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim()),
-    )
-    // y >= 0.6 * max: 200 and 300 of [100, 200, 150, 300, 120], in either pattern
-    expect(labels).toEqual([0, 1].map(() => [`110`, `200`]))
-  })
+  // each pattern's own peaks: the weak pattern (max 30 of the shared 300) keeps its labels.
+  // Labels compete across shown patterns though: a weak peak at a strong one's angle loses its
+  // label, unless the legend hides the strong pattern.
+  test.each([
+    [
+      `offset peaks`,
+      5,
+      [],
+      [
+        [`110`, `200`],
+        [`110`, `200`],
+      ],
+    ],
+    [`coinciding peaks`, 0, [], [[`110`, `200`], []]],
+    [`coinciding peaks, strong hidden`, 0, [0], [[`110`, `200`]]], // hidden: not rendered
+  ])(
+    `fractional annotate_peaks per pattern, %s`,
+    async (_desc, x_shift, hidden_series, expected) => {
+      const weak = {
+        ...pattern,
+        x: pattern.x.map((val) => val + x_shift),
+        y: pattern.y.map((val) => val / 10),
+      }
+      const target = await mount_xrd({
+        patterns: { Strong: { pattern }, Weak: { pattern: weak } },
+        annotate_peaks: 0.6,
+        show_angles: false,
+        hidden_series,
+      })
+      const labels = [...target.querySelectorAll(`.bar-series`)].map((series) =>
+        [...series.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim()),
+      )
+      // y >= 0.6 * max: 200 and 300 of [100, 200, 150, 300, 120], in either pattern
+      expect(labels).toEqual(expected)
+    },
+  )
 
   // Regression: the overbar must go on every digit of a multi-digit negative index
   // (-10 → 1̄0̄), not just the last one (10̄), which is what a naive prefix would produce.
@@ -372,7 +394,8 @@ describe(`XrdPlot`, () => {
     await wait_for_plot_render(target)
     const labels = () =>
       [...target.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim())
-    expect(labels()).toEqual([`200`, `200`])
+    // the patterns share their peaks' angles, so each angle is labelled once
+    expect(labels()).toEqual([`200`])
     // re-queried: swapping the patterns below re-renders the bars
     const fire = (bar_idx: number, type: string) => {
       const bars = target.querySelectorAll(`.bar-series`)[1].querySelectorAll(`path`)
@@ -403,14 +426,14 @@ describe(`XrdPlot`, () => {
     await tick()
     expect(harness.get_peaks().selected_peak).toEqual(second_peak)
     expect(on_bar_click).toHaveBeenCalledOnce()
-    expect(labels()).toEqual([`200`, `110, 1̅10`, `200`])
+    expect(labels()).toEqual([`200`, `110, 1̅10`])
     // another stick moves the pin, the pinned one releases it
     fire(0, `click`)
     expect(harness.get_peaks().selected_peak?.hkls).toEqual([[1, 0, 0]])
     fire(0, `click`)
     await tick()
     expect(harness.get_peaks().selected_peak).toBeNull()
-    expect(labels()).toEqual([`200`, `200`])
+    expect(labels()).toEqual([`200`])
 
     // A pin names a reflection, its indices only locate it: rebuilt patterns keep it (on the
     // rescaled intensity of a taller newcomer), moved or missing peaks drop it, hover alike

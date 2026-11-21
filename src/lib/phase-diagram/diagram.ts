@@ -4,6 +4,7 @@
 import { format_num } from 'svelte-widgets/format'
 import { hsl } from 'd3-color'
 import { humanize } from '#lib/labels.js'
+import { hash_string } from '#lib/utils.js'
 import type { Vec2 } from '#lib/math.js'
 import {
   BINARY_DIAGRAM_FORMAT,
@@ -377,16 +378,6 @@ export const region_label = (
   region: DiagramRegion | null,
   label_of: (id: string) => string,
 ): string => (region ? region.phases.map(label_of).join(` + `) : `–`)
-
-// 32-bit FNV-1a hash
-function hash_string(text: string): number {
-  let hash = 0x811c9dc5
-  for (let idx = 0; idx < text.length; idx++) {
-    hash ^= text.charCodeAt(idx)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return hash >>> 0
-}
 
 // Sorted unique model phases of the given diagrams: pass the same list as `phase_color_keys`
 // to every diagram of a comparison so a shared model phase gets one color in all of them

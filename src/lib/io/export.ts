@@ -3,7 +3,7 @@ import { download, type DownloadData } from 'svelte-widgets/browser'
 import type { FileSaver } from './file-export.svelte'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
 import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
-import { abortable } from '#lib/utils.js'
+import { abortable, hash_string } from '#lib/utils.js'
 import { clamp, to_error } from 'svelte-widgets/utils'
 // three.js and the scene camera helpers are imported dynamically where GPU canvases need
 // them: every 2D plot imports this module for SVG/PNG export, and static imports put
@@ -418,6 +418,8 @@ const OWN_STYLES: Record<string, string> = {
   opacity: `1`,
   'stop-color': `rgb(0, 0, 0)`,
   'stop-opacity': `1`,
+  // tile plots stretch a 1000-unit viewBox into a few px; without it their strokes vanish
+  'vector-effect': `none`,
 }
 // Containers whose content only renders where referenced, so nothing in them is stripped
 const DEFINITION_TAGS = new Set([
@@ -605,6 +607,45 @@ function minify_clone(root: Element): void {
     if (!group.firstElementChild && !group.closest(`defs`)) group.remove()
 }
 
+// Ids from crypto.randomUUID() and mount-order $props.id() made every export of an unchanged
+// figure differ, so all ids are renamed by `name(index)` in document order, with every
+// same-document reference (href="#id", url(#id) in attributes and inline styles) following.
+// A reference to an id outside the figure gets a fresh name too: still dangling, but stable
+// and unable to hit a renamed id.
+const URL_REF = /url\(\s*(?<quote>['"]?)#(?<ref>[^'")\s]+)\k<quote>\s*\)/g
+function rename_ids(root: Element, name: (idx: number) => string): void {
+  const elements = [root, ...root.querySelectorAll(`*`)]
+  const ids = new Map<string, string>()
+  const rename = (id: string): string => {
+    const new_id = ids.get(id) ?? name(ids.size)
+    ids.set(id, new_id)
+    return new_id
+  }
+  for (const element of elements) {
+    const id = element.getAttribute(`id`)
+    if (id !== null) element.setAttribute(`id`, rename(id))
+  }
+  for (const element of elements) {
+    for (const { name: attr, value } of Array.from(element.attributes)) {
+      const new_value = /^(?:xlink:)?href$/.test(attr)
+        ? value.replace(/^#(?<ref>.+)$/, (_, ref: string) => `#${rename(ref)}`)
+        : value.replaceAll(
+            URL_REF,
+            (_, quote: string, ref: string) => `url(${quote}#${rename(ref)}${quote})`,
+          )
+      if (new_value !== value) element.setAttribute(attr, new_value)
+    }
+  }
+}
+
+// Stable ids that still differ between figures, so two exports inlined in one page don't
+// resolve each other's clip paths: a hash of the figure with its ids numbered prefixes them.
+function renumber_ids(root: Element): void {
+  rename_ids(root, (idx) => `id${idx}`)
+  const prefix = `f${hash_string(root.outerHTML).toString(36)}`
+  rename_ids(root, (idx) => `${prefix}-${idx}`)
+}
+
 type SvgViewbox = [x: number, y: number, width: number, height: number]
 
 function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
@@ -644,6 +685,7 @@ function serialize_svg(
   prepare_clone(svg, clone, null, false, state)
   for (const overlay of export_overlays(svg)) clone.append(overlay)
   minify_clone(clone)
+  renumber_ids(clone)
   // the figure's accessible name, as a <title> since minify_clone drops aria attributes
   const name = svg.getAttribute(`aria-label`)
   if (name)
@@ -752,8 +794,15 @@ export function parse_linear_gradient(background_image: string) {
   const vector = GRADIENT_VECTORS[side]
   if (!vector) return null
   // split on commas outside parentheses (color functions like rgb(1, 2, 3) nest their own),
-  // then each stop at the space before its offset
-  const stops = args.split(/,(?![^(]*\))/).map((stop) => stop.trim().split(/\s+(?=\S+$)/))
+  // then each stop at the space before its percent offset. Browsers drop the offsets of
+  // evenly spaced stops from computed values, so a stop without one gets its even spacing
+  // (ColorBar sets all offsets or none, so mixed lists needn't interpolate per CSS).
+  const parts = args.split(/,(?![^(]*\))/).map((stop) => stop.trim())
+  const stops = parts.map((stop, idx) => {
+    const { color = stop, offset = `${(100 * idx) / Math.max(1, parts.length - 1)}%` } =
+      /^(?<color>.+?)\s+(?<offset>-?[\d.]+%)$/.exec(stop)?.groups ?? {}
+    return [color, offset]
+  })
   return { vector, stops }
 }
 
@@ -835,7 +884,20 @@ function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGElement {
       return
     }
     add_background(element, style, opacity)
-    for (const child of element.childNodes) {
+    // Paint children in CSS stacking order, not DOM order: negative z-index, then in-flow
+    // content, then positioned (z-index auto or 0), then positive z-index (e.g. split-tile
+    // segments under their value labels). toSorted is stable, so ties keep DOM order.
+    const paint_layer = (node: ChildNode): number => {
+      if (!(node instanceof Element)) return 0
+      const { position, zIndex } = getComputedStyle(node)
+      if (position === `static`) return 0
+      return Number(zIndex) || 0.5 // NaN for auto
+    }
+    const layered = [...element.childNodes].map((child) => ({
+      child,
+      layer: paint_layer(child),
+    }))
+    for (const { child } of layered.toSorted((a, b) => a.layer - b.layer)) {
       if (child instanceof Text) add_text(child, style, opacity)
       else if (child instanceof Element) walk(child, opacity)
     }

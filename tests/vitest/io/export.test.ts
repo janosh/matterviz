@@ -623,6 +623,44 @@ describe(`svg_to_string`, () => {
     },
   )
 
+  test(`renames random ids stably per figure, with every same-document reference`, () => {
+    // refs before their defs, spaced and double-quoted url(), xlink:href, a duplicate id,
+    // an id on the root and a ref to an id outside the figure
+    const figure = (uid: string, width = 9) =>
+      `<svg id="root-${uid}" viewBox="0 0 10 10"><g clip-path="url( #clip-${uid} )"><rect fill="url('#grad-${uid}')" style='mask: url("#clip-${uid}")' width="${width}" height="9"/><use href="#grad-${uid}"/><use xlink:href="#grad-${uid}"/><use href="#gone-${uid}"/><a href="https://x.y/#keep"/></g><defs><clipPath id="clip-${uid}"><rect width="5" height="5"/></clipPath><linearGradient id="grad-${uid}"/><linearGradient id="grad-${uid}"/></defs></svg>`
+    const [first, second, other] = [
+      figure(`1e3126d8`),
+      figure(`9b2c44f0`),
+      figure(`1e3126d8`, 8),
+    ].map((markup) => {
+      document.body.innerHTML = markup
+      const svg = document.querySelector(`svg`)
+      if (!svg) throw new Error(`svg not mounted`)
+      return svg_to_string(svg)
+    })
+    expect(first).toBe(second)
+    const exported = parse_svg(first)
+    const prefix = exported.id.replace(/-0$/, ``)
+    expect(prefix).toMatch(/^f[0-9a-z]+$/)
+    // two different figures inlined in one page must not share ids
+    expect(parse_svg(other).id).not.toBe(exported.id)
+    const ids = [exported, ...exported.querySelectorAll(`[id]`)].map((node) => node.id)
+    expect(ids).toEqual([0, 1, 2, 2].map((idx) => `${prefix}-${idx}`))
+    expect(exported.querySelector(`g`)?.getAttribute(`clip-path`)).toBe(`url(#${prefix}-1)`)
+    const rect = exported.querySelector(`g > rect`)
+    expect(rect?.getAttribute(`fill`)).toBe(`url('#${prefix}-2')`)
+    expect(rect?.getAttribute(`style`)).toMatch(new RegExp(`url\\(["']?#${prefix}-1["']?\\)`))
+    const hrefs = [...exported.querySelectorAll(`use, a`)].map(
+      (node) => node.getAttribute(`href`) ?? node.getAttribute(`xlink:href`),
+    )
+    expect(hrefs).toEqual([
+      `#${prefix}-2`,
+      `#${prefix}-2`,
+      `#${prefix}-3`,
+      `https://x.y/#keep`,
+    ])
+  })
+
   test(`inlines stylesheet colors and fonts minimally and drops redundant attributes`, () => {
     const style = document.createElement(`style`)
     style.textContent = `.tick-label { fill: rgb(200, 0, 0); font-size: 13px } .themed { stroke: rgb(0, 0, 200); stroke-width: 3px }`
@@ -677,17 +715,18 @@ describe(`svg_to_string`, () => {
     expect(result).not.toMatch(/<!--|data-|aria-|role=|tabindex=/)
   })
 
-  test(`rounds coordinates to 2 decimals, leaving text, ids, classes, hrefs and url() refs`, () => {
-    const clip = `url(#plot-clip-1a2b3c4d-4f3e-4234-9e12-3e4f5a6b7c8d)`
-    const attrs = `clip-path="${clip}" class="x-3e-4" stroke="black"`
+  test(`rounds coordinates to 2 decimals, leaving text, classes, hrefs and url() refs`, () => {
+    const attrs = `clip-path="url(#plot-clip-1a2b3c4d-4f3e-4234-9e12-3e4f5a6b7c8d)" class="x-3e-4" stroke="black"`
     const path = `<path id="p0.123456" d="M1.23456,2.5L-3.00499,4.1234e-7" ${attrs}/>`
     document.body.innerHTML = `<svg viewBox="0 0 100.123456 50">${path}<text x="10.98765">0.123456</text></svg>`
     const svg = document.querySelector(`svg`)
     if (!svg) throw new Error(`svg not mounted`)
     const exported = parse_svg(svg_to_string(svg))
     const attr = (name: string) => exported.querySelector(`path`)?.getAttribute(name)
-    expect([attr(`d`), attr(`id`)]).toEqual([`M1.23,2.5L-3,0`, `p0.123456`])
-    expect([attr(`clip-path`), attr(`class`)]).toEqual([clip, `x-3e-4`])
+    // ids are renamed (not rounded), and so is a ref to an id outside the figure
+    const prefix = attr(`id`)?.replace(/-0$/, ``)
+    expect([attr(`d`), attr(`id`)]).toEqual([`M1.23,2.5L-3,0`, `${prefix}-0`])
+    expect([attr(`clip-path`), attr(`class`)]).toEqual([`url(#${prefix}-1)`, `x-3e-4`])
     expect(exported.querySelector(`text`)?.getAttribute(`x`)).toBe(`10.99`)
     expect(exported.querySelector(`text`)?.textContent).toBe(`0.123456`)
     expect(exported.getAttribute(`viewBox`)).toBe(`-0.5 -0.5 101.12 51`)
@@ -759,6 +798,35 @@ test(`html_to_svg redraws an HTML grid's cell backgrounds and text as SVG`, () =
   const exported = parse_svg(svg_to_string(html_to_svg(grid)))
   expect(exported.getAttribute(`viewBox`)).toBe(`0 0 40 20`)
   expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
+})
+
+test(`html_to_svg paints children in CSS stacking order and skips export-excluded nodes`, () => {
+  // like a split ElementTile: value label (z 2) before its segment (z 1) in the DOM
+  document.body.innerHTML = `<div class="tile">
+    <span style="position: absolute; z-index: 2">18</span>
+    <span>Fe</span>
+    <div style="position: absolute; z-index: 1; background-color: rgb(0, 0, 255)"></div>
+    <i style="position: absolute; z-index: -1; background-color: rgb(0, 255, 0)"></i>
+    <figcaption data-export-exclude>hint</figcaption>
+    <svg viewBox="0 0 1000 1000"><path style="vector-effect: non-scaling-stroke" d="M0 0h9"/></svg>
+  </div>`
+  const tile = document.querySelector<HTMLElement>(`.tile`)
+  if (!tile) throw new Error(`tile not mounted`)
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+    new DOMRect(0, 0, 40, 20),
+  )
+  vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 10, 10))
+  const group = parse_svg(svg_to_string(html_to_svg(tile))).querySelector(`g`)
+  const painted = [...(group?.children ?? [])].map((node) =>
+    node.localName === `text`
+      ? node.textContent
+      : (node.getAttribute(`fill`) ?? node.localName),
+  )
+  expect(painted).toEqual([`rgb(0, 255, 0)`, `Fe`, `svg`, `rgb(0, 0, 255)`, `18`])
+  // stretched tile-plot viewBoxes need their strokes kept at screen width
+  expect(group?.querySelector(`path`)?.getAttribute(`vector-effect`)).toBe(
+    `non-scaling-stroke`,
+  )
 })
 
 describe(`export_sections`, () => {
