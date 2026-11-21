@@ -706,11 +706,9 @@
           pos.y + sign_y * 0.4,
           normalize_y(val),
         ],
-        axis_label_pos: [
-          pos.x,
-          pos.y + sign_y * 0.9,
-          pos.z < 0 ? half_y + 0.5 : -half_y - 0.5,
-        ] as Vec3,
+        // mid-axis below its tick labels, like x: past the axis' far end it sat at the
+        // scene's outermost corner, where the canvas edge cut it off
+        axis_label_pos: [pos.x + sign_x * 0.5, pos.y + sign_y * 0.9, 0] as Vec3,
       },
       {
         key: `z` as AxisKey,

@@ -526,7 +526,9 @@
               {@render plot_marks(marks, { class: `marks`, x: left, y: top, width, height })}
             </svg>
           {:else}
-            <figcaption>Hover, tap or focus a tile to enlarge its plot</figcaption>
+            <figcaption data-export-exclude>
+              Hover, tap or focus a tile to enlarge its plot
+            </figcaption>
           {/if}
         </figure>
       {/if}

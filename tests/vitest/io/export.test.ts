@@ -761,6 +761,35 @@ test(`html_to_svg redraws an HTML grid's cell backgrounds and text as SVG`, () =
   expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
 })
 
+test(`html_to_svg paints children in CSS stacking order and skips export-excluded nodes`, () => {
+  // like a split ElementTile: value label (z 2) before its segment (z 1) in the DOM
+  document.body.innerHTML = `<div class="tile">
+    <span style="position: absolute; z-index: 2">18</span>
+    <span>Fe</span>
+    <div style="position: absolute; z-index: 1; background-color: rgb(0, 0, 255)"></div>
+    <i style="position: absolute; z-index: -1; background-color: rgb(0, 255, 0)"></i>
+    <figcaption data-export-exclude>hint</figcaption>
+    <svg viewBox="0 0 1000 1000"><path style="vector-effect: non-scaling-stroke" d="M0 0h9"/></svg>
+  </div>`
+  const tile = document.querySelector<HTMLElement>(`.tile`)
+  if (!tile) throw new Error(`tile not mounted`)
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+    new DOMRect(0, 0, 40, 20),
+  )
+  vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 10, 10))
+  const group = parse_svg(svg_to_string(html_to_svg(tile))).querySelector(`g`)
+  const painted = [...(group?.children ?? [])].map((node) =>
+    node.localName === `text`
+      ? node.textContent
+      : (node.getAttribute(`fill`) ?? node.localName),
+  )
+  expect(painted).toEqual([`rgb(0, 255, 0)`, `Fe`, `svg`, `rgb(0, 0, 255)`, `18`])
+  // stretched tile-plot viewBoxes need their strokes kept at screen width
+  expect(group?.querySelector(`path`)?.getAttribute(`vector-effect`)).toBe(
+    `non-scaling-stroke`,
+  )
+})
+
 describe(`export_sections`, () => {
   const sources: ExportSources = {
     png: vi.fn(async (png_dpi: number) => new Blob([`${png_dpi}`])),

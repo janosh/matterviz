@@ -418,6 +418,8 @@ const OWN_STYLES: Record<string, string> = {
   opacity: `1`,
   'stop-color': `rgb(0, 0, 0)`,
   'stop-opacity': `1`,
+  // tile plots stretch a 1000-unit viewBox into a few px; without it their strokes vanish
+  'vector-effect': `none`,
 }
 // Containers whose content only renders where referenced, so nothing in them is stripped
 const DEFINITION_TAGS = new Set([
@@ -752,8 +754,15 @@ export function parse_linear_gradient(background_image: string) {
   const vector = GRADIENT_VECTORS[side]
   if (!vector) return null
   // split on commas outside parentheses (color functions like rgb(1, 2, 3) nest their own),
-  // then each stop at the space before its offset
-  const stops = args.split(/,(?![^(]*\))/).map((stop) => stop.trim().split(/\s+(?=\S+$)/))
+  // then each stop at the space before its percent offset. Browsers drop the offsets of
+  // evenly spaced stops from computed values, so a stop without one gets its even spacing
+  // (ColorBar sets all offsets or none, so mixed lists needn't interpolate per CSS).
+  const parts = args.split(/,(?![^(]*\))/).map((stop) => stop.trim())
+  const stops = parts.map((stop, idx) => {
+    const { color = stop, offset = `${(100 * idx) / Math.max(1, parts.length - 1)}%` } =
+      /^(?<color>.+?)\s+(?<offset>-?[\d.]+%)$/.exec(stop)?.groups ?? {}
+    return [color, offset]
+  })
   return { vector, stops }
 }
 
@@ -835,7 +844,20 @@ function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGElement {
       return
     }
     add_background(element, style, opacity)
-    for (const child of element.childNodes) {
+    // Paint children in CSS stacking order, not DOM order: negative z-index, then in-flow
+    // content, then positioned (z-index auto or 0), then positive z-index (e.g. split-tile
+    // segments under their value labels). toSorted is stable, so ties keep DOM order.
+    const paint_layer = (node: ChildNode): number => {
+      if (!(node instanceof Element)) return 0
+      const { position, zIndex } = getComputedStyle(node)
+      if (position === `static`) return 0
+      return Number(zIndex) || 0.5 // NaN for auto
+    }
+    const layered = [...element.childNodes].map((child) => ({
+      child,
+      layer: paint_layer(child),
+    }))
+    for (const { child } of layered.toSorted((a, b) => a.layer - b.layer)) {
       if (child instanceof Text) add_text(child, style, opacity)
       else if (child instanceof Element) walk(child, opacity)
     }

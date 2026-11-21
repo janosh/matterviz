@@ -69,6 +69,8 @@
     on_bar_hover,
     on_bar_click,
     tooltip,
+    // legend-hidden series keys (pattern indices), so hidden patterns free their label spots
+    hidden_series = $bindable(),
     ...rest
   }: Omit<BarPlotOptions & ScatterPlotOptions, `tooltip`> & {
     // the snippet receives the profile point (broadened) or the peak's bar (sticks)
@@ -79,7 +81,9 @@
       | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
       | PatternEntry[]
     peak_width?: number // stick width in degrees 2θ
-    annotate_peaks?: number // per pattern: int => its top k, float in (0,1) => fraction of its max
+    // per pattern: int => its top k, float in (0,1) => fraction of its max. Labels compete
+    // across shown patterns: one within 3% of the x-range of a taller label is dropped
+    annotate_peaks?: number
     // Peak label style: `compact` overbars negative indices (1̄10), `full` writes (h, k, l), null hides Miller indices.
     hkl_format?: HklFormat
     // Append the 2θ angle to peak labels. null shows it only when at most two patterns are plotted.
@@ -174,44 +178,58 @@
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels
   const intensity_range: Vec2 = [0, 110]
 
+  // Intensities on the plot's shared 0..100 scale, per pattern
+  const scaled_ys = $derived(
+    pattern_entries.map(({ pattern }) => pattern.y.map(scaled_intensity)),
+  )
+
+  // Annotated peak indices per pattern. Each shown pattern nominates its strongest peaks,
+  // then all nominees compete tallest first across patterns: a label within 3% of the
+  // x-range of one already kept (in any pattern) is dropped, else overlaid patterns stack
+  // their labels.
+  const annotated_peaks = $derived.by<Set<number>[]>(() => {
+    const kept = pattern_entries.map(() => new Set<number>())
+    if (broadening_enabled || annotate_peaks <= 0) return kept
+    const hidden = new Set(hidden_series)
+    // Taken off the shared domain rather than spreading `xs`, which can be a
+    // multi-thousand-point pre-broadened profile even in stick view (see angle_range)
+    const min_spacing = (angle_range[1] - angle_range[0]) * 0.03
+    const kept_xs: number[] = []
+    const nominees = pattern_entries.flatMap((entry, entry_idx) => {
+      if (hidden.has(entry_idx)) return []
+      const y_values = scaled_ys[entry_idx]
+      // of this pattern's own tallest peak, like top-k: the plot's shared scale puts a weak
+      // pattern's peaks far below the global maximum, which left them all unlabelled
+      const threshold = annotate_peaks < 1 ? annotate_peaks * array_max(y_values) : -Infinity
+      const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
+      // A doublet source's weaker lines (Kα2) only echo the main line's reflections:
+      // labelling them would repeat each hkl beside its own peak
+      const { peak_lines, x } = entry.pattern
+      return y_values
+        .map((y_val, idx) => ({ y_val, idx, x: x[idx], entry_idx }))
+        .filter(({ y_val, idx }) => y_val > threshold && !peak_lines?.[idx])
+        .toSorted((peak_a, peak_b) => peak_b.y_val - peak_a.y_val)
+        .slice(0, max_peaks)
+    })
+    for (const { idx, x, entry_idx } of nominees.toSorted(
+      (peak_a, peak_b) => peak_b.y_val - peak_a.y_val,
+    )) {
+      if (kept_xs.some((kept_x) => Math.abs(kept_x - x) < min_spacing)) continue
+      kept_xs.push(x)
+      kept[entry_idx].add(idx)
+    }
+    return kept
+  })
+
   // Stick view series
   const bar_series = $derived.by<BarSeries[]>(() => {
     if (broadening_enabled) return []
 
     return pattern_entries.map((entry, entry_idx) => {
       const x_values = entry.pattern.x
-      const y_values = entry.pattern.y.map(scaled_intensity)
-
-      // Determine which peaks to annotate
-      const selected_indices: number[] = []
-      if (annotate_peaks > 0) {
-        // of this pattern's own tallest peak, like top-k: the plot's shared scale puts a weak
-        // pattern's peaks far below the global maximum, which left them all unlabelled
-        const threshold = annotate_peaks < 1 ? annotate_peaks * array_max(y_values) : -Infinity
-        const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
-        // Strongest first, so a crowded neighbourhood is won by its tallest peak
-        // A doublet source's weaker lines (Kα2) only echo the main line's reflections:
-        // labelling them would repeat each hkl beside its own peak
-        const { peak_lines } = entry.pattern
-        const candidates = y_values
-          .map((y_val, idx) => ({ y_val, idx }))
-          .filter(({ y_val, idx }) => y_val > threshold && !peak_lines?.[idx])
-          .toSorted((peak_a, peak_b) => peak_b.y_val - peak_a.y_val)
-          .slice(0, max_peaks)
-        // Drop a label sitting within 3% of the x-range of one already kept, else they
-        // overlap. Taken off the shared domain rather than spreading `xs`, which can be a
-        // multi-thousand-point pre-broadened profile even in stick view (see angle_range).
-        const min_spacing = (angle_range[1] - angle_range[0]) * 0.03
-        for (const { idx } of candidates) {
-          const too_close = selected_indices.some(
-            (kept_idx) => Math.abs(x_values[kept_idx] - x_values[idx]) < min_spacing,
-          )
-          if (!too_close) selected_indices.push(idx)
-        }
-      }
-      if (selected_peak?.pattern_idx === entry_idx)
-        selected_indices.push(selected_peak.peak_idx)
-      const selected = new Set(selected_indices)
+      const y_values = scaled_ys[entry_idx]
+      const selected = new Set(annotated_peaks[entry_idx])
+      if (selected_peak?.pattern_idx === entry_idx) selected.add(selected_peak.peak_idx)
       // Angles are shown by default only while the plot holds at most two patterns
       const with_angle = show_angles ?? pattern_entries.length <= 2
       const metadata = x_values.map((_, idx) => ({
@@ -509,6 +527,7 @@
         {...rest}
         series={bar_series}
         bind:orientation
+        bind:hidden_series
         x_axis={plot_x_axis}
         y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
         tooltip={tooltip ?? peak_tooltip}

@@ -21,6 +21,9 @@
   const COUNT_LABEL_CHAR_PX = 6.4 // mean glyph advance of the 12px count annotation
   const COUNT_LABEL_ROW_PX = 14
   const COUNT_LABEL_MAX_ROWS = 3
+  // Crystal system names: a band narrower than one line (triclinic spans 2 of 230
+  // spacegroups) would push its name onto the neighbour's
+  const SYSTEM_LABEL_FONT_PX = 14
   const COUNT_LABEL_GAP_PX = 8 // between the plot area's right edge and horizontal count labels
   let {
     data,
@@ -240,21 +243,17 @@
   >
     {#each crystal_system_regions as region (region.system)}
       <!-- the system's band of spacegroups across the plot area: columns when vertical, rows
-        (spacegroups ascending upwards) when horizontal -->
+        (spacegroups ascending upwards) when horizontal. [band_lo, band_hi] in pixels. -->
+      {@const [band_lo, band_hi] =
+        orientation === `vertical`
+          ? [x_scale_fn(region.sg_start - 0.5), x_scale_fn(region.sg_end + 0.5)]
+          : [y_scale_fn(region.sg_end + 0.5), y_scale_fn(region.sg_start - 0.5)]}
+      {@const band_center = (band_lo + band_hi) / 2}
+      {@const name_fits = band_hi - band_lo >= SYSTEM_LABEL_FONT_PX}
       <rect
         {...orientation === `vertical`
-          ? {
-              x: x_scale_fn(region.sg_start - 0.5),
-              y: pad.t,
-              width: x_scale_fn(region.sg_end + 0.5) - x_scale_fn(region.sg_start - 0.5),
-              height: height - pad.t - pad.b,
-            }
-          : {
-              x: pad.l,
-              y: y_scale_fn(region.sg_end + 0.5),
-              width: width - pad.l - pad.r,
-              height: y_scale_fn(region.sg_start - 0.5) - y_scale_fn(region.sg_end + 0.5),
-            }}
+          ? { x: band_lo, y: pad.t, width: band_hi - band_lo, height: height - pad.t - pad.b }
+          : { x: pad.l, y: band_lo, width: width - pad.l - pad.r, height: band_hi - band_lo }}
         fill={region.color}
         opacity="0.15"
         stroke={region.color}
@@ -262,24 +261,24 @@
         stroke-opacity="0.3"
       />
       {#if orientation === `vertical`}
-        {@const x_center =
-          (x_scale_fn(region.sg_start - 0.5) + x_scale_fn(region.sg_end + 0.5)) / 2}
-        <!-- Crystal system label (rotated 90 degrees) at top edge -->
-        <text
-          x={x_center}
-          y={pad.t + 15}
-          text-anchor="start"
-          font-size="14"
-          fill="var(--text-color, black)"
-          opacity="0.6"
-          transform="rotate(90, {x_center}, {pad.t + 15})"
-        >
-          {region.system}
-        </text>
+        <!-- Crystal system label (rotated 90 degrees) at top edge, if its band fits it -->
+        {#if name_fits}
+          <text
+            x={band_center}
+            y={pad.t + 15}
+            text-anchor="start"
+            font-size={SYSTEM_LABEL_FONT_PX}
+            fill="var(--text-color, black)"
+            opacity="0.6"
+            transform="rotate(90, {band_center}, {pad.t + 15})"
+          >
+            {region.system}
+          </text>
+        {/if}
         <!-- Count annotation at top, stacked into rows where neighbours would overlap -->
         {#if show_counts && total_count > 0 && count_label_rows.has(region.system)}
           <text
-            x={clamp_label_x(x_center, region.half_width, width)}
+            x={clamp_label_x(band_center, region.half_width, width)}
             y={pad.t - 5 - COUNT_LABEL_ROW_PX * (count_label_rows.get(region.system) ?? 0)}
             text-anchor="middle"
             font-size="12"
@@ -289,25 +288,25 @@
           </text>
         {/if}
       {:else}
-        {@const y_center =
-          (y_scale_fn(region.sg_end + 0.5) + y_scale_fn(region.sg_start - 0.5)) / 2}
-        <!-- Crystal system label (horizontal) at right edge -->
-        <text
-          x={width - pad.r - 8}
-          y={y_center}
-          text-anchor="end"
-          dominant-baseline="central"
-          font-size="14"
-          fill="var(--text-color, black)"
-          opacity="0.6"
-        >
-          {region.system}
-        </text>
+        <!-- Crystal system label (horizontal) at right edge, if its band fits it -->
+        {#if name_fits}
+          <text
+            x={width - pad.r - 8}
+            y={band_center}
+            text-anchor="end"
+            dominant-baseline="central"
+            font-size={SYSTEM_LABEL_FONT_PX}
+            fill="var(--text-color, black)"
+            opacity="0.6"
+          >
+            {region.system}
+          </text>
+        {/if}
         <!-- Count annotation at right -->
         {#if show_counts && total_count > 0}
           <text
             x={width - pad.r + COUNT_LABEL_GAP_PX / 2}
-            y={y_center}
+            y={band_center}
             text-anchor="start"
             dominant-baseline="central"
             font-size="12"
