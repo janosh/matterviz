@@ -11,6 +11,7 @@ import {
 import { DEFAULT_FIT_PADDING } from '#lib/structure/camera-fit.js'
 import {
   bz_fit_extent,
+  vectors_fit_extent,
   cartesian_to_fractional,
   bz_mark_sizes,
   default_camera_position,
@@ -809,6 +810,24 @@ describe(`scene sizing helpers`, () => {
   ])(`default_camera_position %s`, (_desc, size, expected) => {
     expect(default_camera_position(size)).toEqual(expected)
   })
+
+  // regression: the cubic zone's half-width (2 for |b| = 4) is shorter than b, so a zone-only
+  // fit clipped the arrows and their labels at the default zoom
+  test.each([
+    [`reaches the longest arrow's label`, diag(4, 2, 1), 1, 1, 2 * 4 * 1.15],
+    [
+      `scales with vector_scale and padding`,
+      cubic_matrix(4),
+      2,
+      1 / 0.92,
+      (2 * 8 * 1.15) / 0.92,
+    ],
+    [`is zero without a lattice`, undefined, 1, 1, 0],
+  ] as [string, Matrix3x3 | undefined, number, number, number][])(
+    `vectors_fit_extent %s`,
+    (_desc, k_lattice, vector_scale, padding, expected) =>
+      expect(vectors_fit_extent(k_lattice, vector_scale, padding)).toBeCloseTo(expected, 10),
+  )
 
   describe(`bz_fit_extent`, () => {
     const k_lattice = cubic_matrix(4)

@@ -75,6 +75,7 @@ jobs:
   publint:
     name: Validate npm package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -83,15 +84,25 @@ jobs:
         uses: ./.github/actions/setup
         with:
           test-cache: package
+          extensions: anywidget
+          build-package: 'false' # built below
 
       # publint checks that every export target exists, so build dist/ first
       - name: Build and validate package exports and types
         run: |
           pnpm package:dist
           pnpm run publint
-      - name: Test package exports and check unused code
+      # otherwise only gh-pages.yml (main) and publish.yml build it, so a broken build would
+      # surface as a failed docs deploy after merge
+      - name: Build anywidget bundle
         run: |
-          pnpm exec vitest run tests/vitest/package-exports.test.ts --fsModuleCache --fsModuleCachePath=.cache/vitest
+          pnpm -C extensions/anywidget run build
+          cd extensions/anywidget/build
+          test -s matterviz.js && test -s split/matterviz.js && test -s widget-model-keys.json
+          test -s widget-model-schema.json
+      - name: Test package exports and the widget model schema, and check unused code
+        run: |
+          pnpm exec vitest run tests/vitest/package-exports.test.ts tests/vitest/anywidget-model-schema.test.ts --fsModuleCache --fsModuleCachePath=.cache/vitest
           pnpm run knip
 
   unit-test-shards:
@@ -110,7 +121,7 @@ jobs:
           test-cache: ${{ matrix.shard }}
       - name: Run unit tests
         # Built-output checks run once in publint; the remaining tests import source files.
-        run: pnpm exec vitest run --exclude=tests/vitest/package-exports.test.ts --shard=${{ matrix.shard }}/4 --maxWorkers=100% --fsModuleCache --fsModuleCachePath=.cache/vitest
+        run: pnpm exec vitest run --exclude=tests/vitest/package-exports.test.ts --exclude=tests/vitest/anywidget-model-schema.test.ts --shard=${{ matrix.shard }}/4 --maxWorkers=100% --fsModuleCache --fsModuleCachePath=.cache/vitest
 
   # Calibrate timing stability on main/manual runs before making this a PR or release gate.
   performance:
@@ -199,7 +210,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      # Inputs are the tracked files outside tests/ and .github/ plus the resolved dependency
+      # versions (no lockfile, so pnpm's node_modules record), so a test- or workflow-only push
+      # or a rerun reuses the last build of the same site instead of rebuilding (~70 s)
+      - name: Site build key
+        id: site-key
+        run: |
+          key=$( { git ls-tree -r HEAD -- . ':!tests' ':!.github'; cat node_modules/.pnpm/lock.yaml; } | sha256sum | cut -c1-40)
+          echo "key=browser-test-site-$key" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        id: site-cache
+        with:
+          path: .svelte-kit/output/
+          key: ${{ steps.site-key.outputs.key }}
       - name: Build production site
+        if: steps.site-cache.outputs.cache-hit != 'true'
         run: pnpm exec vp build
       - uses: actions/upload-artifact@v7
         with:
@@ -229,7 +254,7 @@ jobs:
         env:
           MATTERVIZ_E2E_MODE: source
           DEBUG: pw:browser
-          # the 333k-atom hotspot test takes ~10 min on CPU rendering: main, releases and
+          # the 210k-atom hotspot test takes ~6 min on CPU rendering: main, releases and
           # manual runs only, so it doesn't sit on every PR's critical path
           MATTERVIZ_PERF: ${{ github.event_name != 'pull_request' && '1' || '' }}
       - uses: actions/upload-artifact@v7
@@ -240,7 +265,7 @@ jobs:
           retention-days: 7
 
   e2e-test-shards:
-    name: E2E production (shard ${{ matrix.shard }}/8)
+    name: E2E production (shard ${{ matrix.shard }}/12)
     needs: [e2e-gate, build-site]
     if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -248,7 +273,7 @@ jobs:
     strategy:
       fail-fast: false # let every shard finish so we see all failures, not just the first
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -267,7 +292,7 @@ jobs:
       # Only the movie CLI test encodes with FFmpeg, so only the shard that drew it installs it
       - name: Check whether this shard runs the movie CLI test
         id: movie
-        run: pnpm exec playwright test --list --shard=${{ matrix.shard }}/8 | grep 'movie CLI' && echo ffmpeg=true >> "$GITHUB_OUTPUT" || true
+        run: pnpm exec playwright test --list --shard=${{ matrix.shard }}/12 | grep 'movie CLI' && echo ffmpeg=true >> "$GITHUB_OUTPUT" || true
         env:
           MATTERVIZ_E2E_MODE: preview
       # FFmpeg's .deb files come from a cache: the runner's apt mirror stalls mid-download often
@@ -304,7 +329,7 @@ jobs:
           name: browser-test-site
           path: .svelte-kit/output/
       - name: Run E2E tests
-        run: xvfb-run -a pnpm exec playwright test --headed --shard=${{ matrix.shard }}/8
+        run: xvfb-run -a pnpm exec playwright test --headed --shard=${{ matrix.shard }}/12
         env:
           MATTERVIZ_E2E_MODE: preview
           DEBUG: pw:browser

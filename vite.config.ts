@@ -151,7 +151,10 @@ class SizeShardSequencer extends BaseSequencer {
 }
 
 const plugins = [
-  ...(process.env.VITEST ? [native_svelte_compiler] : []),
+  // the anywidget entry's component loaders (import analysis needs them resolved to mock them)
+  ...(process.env.VITEST
+    ? [native_svelte_compiler, shared.widget_components(`${import.meta.dirname}/src/lib`)]
+    : []),
   shared.vite_plugin_json_gz(json_gz_options),
   raw_text_plugin,
   starry_night_theme_plugin,

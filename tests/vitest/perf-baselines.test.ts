@@ -116,9 +116,10 @@ const BASELINES = {
   // 2026-10-30: M5 Max/Node 26.13/Vitest 5; median of 3 runs (reference 31.4 ms). ~50 s before
   // kept matches were indexed by von Mises bucket for the symmetry-duplicate check.
   'lattice match 2000 A^2 unbounded': (610 * REFERENCE_MS) / 31.4,
-  // 2026-10-30: M5 Max/Node 26.13/Vitest 5; median of 3 runs (reference 32.0 ms). 614 ms with
-  // per-candidate allocations in the glide reduction.
-  'symmetry elements 41472 ops': (182 * REFERENCE_MS) / 32.0,
+  // 2026-11-21: M4 Pro/Node 26.13/Vitest 5; median of 5 runs (reference 33.2 ms). 182 ms at
+  // reference 32.0 before #518 read labels in the ITA standard frame (choosing that frame scans
+  // the group's operations); 614 ms with per-candidate allocations in the glide reduction.
+  'symmetry elements 41472 ops': (246 * REFERENCE_MS) / 33.2,
   // 2026-11-08: M4 Pro/Node 26.13/Vitest 5 under load; median of 3 runs (reference 82.4 ms). A
   // release took ~4 s copying the session's write back through the host's $state proxy. The
   // neighbor query takes the slower of 2 runs (reference 72.9 ms); a full search takes ~9x.

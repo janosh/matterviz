@@ -311,7 +311,8 @@ export type CellType = `original` | `conventional` | `primitive`
 // #lib/settings/viewer-state, so any other cell_type reaching here is a caller bug. moyo-wasm
 // serializes the output basis like the input one: row-major, each row a lattice vector.
 // `bonds` are dropped: site indices change under any cell transform, so stale bond indices
-// would mis-render. `charge` is per cell, so it scales by the new cell's site count relative
+// would mis-render. Site properties carry over from each new site's input site (see
+// carry_site_properties). `charge` is per cell, so it scales by the new cell's site count relative
 // to the analyzed input cell's, which counts merged split-partial sites once as moyo's cells
 // do: an exact rational ratio, where the volume ratio carried float noise into the integer
 // charge bond-order perception looks up.
@@ -334,6 +335,11 @@ export const transform_cell = (
     const wrapped_abc = wrap_to_unit_cell(abc)
     return make_site(element, wrapped_abc, frac_to_cart(wrapped_abc), element)
   })
+  const [linear, shift] =
+    cell_type === `conventional`
+      ? [sym_data.std_linear, sym_data.std_origin_shift]
+      : [sym_data.prim_std_linear, sym_data.prim_std_origin_shift]
+  carry_site_properties(structure, sites, linear, shift, sym_data.std_rotation_matrix)
   const { charge, id, lattice, properties: all_properties } = structure
   const { bonds: _bonds, ...properties } = all_properties ?? {}
   const n_input = sym_data.input_cell.positions.length
@@ -343,5 +349,56 @@ export const transform_cell = (
     charge: charge && (charge * cell.positions.length) / n_input,
     id,
     ...(Object.keys(properties).length > 0 ? { properties } : {}),
+  }
+}
+
+// Properties that only mean something in the input cell's lattice basis
+const BASIS_BOUND_PROPS = new Set([`selective_dynamics`, `constraint_basis`])
+const is_numeric_vec3 = (value: unknown): value is math.Vec3 =>
+  Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
+
+// Copy each transformed site's properties from its input site: x_input = P·x_new + p (moyo's
+// linear P and origin shift p), matched to the nearest input site under PBC. moyo's refined cell
+// is rigidly rotated by R (std_rotation_matrix, shared by the primitive cell), so Cartesian
+// 3-vectors (forces, magmoms, velocities) become R·v and 3x3 tensors (adp_U_cart) R·M·Rᵀ.
+// Lattice-basis properties (selective_dynamics) are dropped, the rest copied as-is.
+function carry_site_properties(
+  structure: Crystal,
+  sites: Site[],
+  linear_flat: readonly number[],
+  origin_shift: readonly number[],
+  rotation_flat: readonly number[],
+): void {
+  if (!structure.sites.some((site) => Object.keys(site.properties ?? {}).length > 0)) return
+  const input_from_new = math.mat3x3_from_flat_col_major(linear_flat)
+  const rotation = math.mat3x3_from_flat_col_major(rotation_flat)
+  const rotation_t = math.transpose_3x3(rotation)
+  const to_cart = math.create_frac_to_cart(structure.lattice.matrix)
+  const max_dist = 0.5 // Å, far beyond moyo's refinement shifts, far below interatomic spacing
+  for (const site of sites) {
+    const input_abc = math.add(math.mul_3x3_vec3(input_from_new, site.abc), [
+      ...origin_shift,
+    ] as math.Vec3)
+    let [best_idx, best_dist] = [-1, Infinity]
+    for (const [idx, candidate] of structure.sites.entries()) {
+      const frac_diff = math
+        .subtract(candidate.abc, input_abc)
+        .map((delta) => delta - Math.round(delta)) as math.Vec3
+      const dist = Math.hypot(...to_cart(frac_diff))
+      if (dist < best_dist) [best_idx, best_dist] = [idx, dist]
+    }
+    if (best_dist > max_dist)
+      throw new Error(
+        `No input site within ${max_dist} Å of transformed site ${site.label} at ` +
+          `[${site.abc.join(`, `)}] (nearest ${best_dist.toFixed(3)} Å)`,
+      )
+    for (const [key, value] of Object.entries(structure.sites[best_idx].properties ?? {})) {
+      if (BASIS_BOUND_PROPS.has(key)) continue
+      site.properties[key] = is_numeric_vec3(value)
+        ? math.mul_3x3_vec3(rotation, value)
+        : math.is_finite_matrix3x3(value)
+          ? math.dot(math.dot(rotation, value), rotation_t)
+          : value
+    }
   }
 }

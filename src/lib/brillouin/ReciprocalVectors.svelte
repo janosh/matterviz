@@ -3,6 +3,7 @@
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import Arrow from '#lib/structure/Arrow.svelte'
   import { SceneLabel } from '#lib/scene/index.js'
+  import { VECTOR_LABEL_OFFSET } from './geometry'
 
   let {
     k_lattice,
@@ -22,7 +23,7 @@
 
 {#each k_lattice as vec, idx (idx)}
   {@const scaled_vec = vec.map((coord) => coord * vector_scale) as Vec3}
-  {@const label_position = scaled_vec.map((coord) => coord * 1.15) as Vec3}
+  {@const label_position = scaled_vec.map((coord) => coord * VECTOR_LABEL_OFFSET) as Vec3}
   <Arrow
     position={[0, 0, 0]}
     vector={scaled_vec}

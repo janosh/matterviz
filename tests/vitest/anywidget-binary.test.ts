@@ -196,6 +196,28 @@ describe(`trajectory_from_binary`, () => {
     expect(stream?.elements).toEqual([`H`, `H`])
   })
 
+  test.each([6, 9])(`reads %i-component frame stress into metadata`, (width) => {
+    const stress = Float64Array.from(
+      { length: n_frames * width },
+      (_, idx) => 1 + (idx + 1) * 2 ** -40,
+    )
+    const arrays = traj_arrays({
+      frame_stress: arr(stress, [n_frames, width]),
+      stress: arr(forces, [n_frames, n_atoms, 3]),
+    })
+    const run = trajectory_from_binary(envelope(`trajectory`, arrays))
+    for (const [frame_idx, row] of run.properties.rows.entries()) {
+      const frame = run.read_frame(frame_idx) as NumericFrame
+      const values = Array.from(stress.subarray(frame_idx * width, (frame_idx + 1) * width))
+      expect(frame.header.metadata?.stress).toEqual(
+        width === 6 ? values : [values.slice(0, 3), values.slice(3, 6), values.slice(6)],
+      )
+      expect(frame.vector_keys).toContain(`stress`)
+      expect(row.properties).not.toHaveProperty(`stress`)
+      expect(row.properties).not.toHaveProperty(`frame_stress`)
+    }
+  })
+
   test.each([
     [{ positions: undefined }, /needs a 'positions' array/],
     [{ numbers: undefined }, /needs a 'numbers' array/],
@@ -232,6 +254,15 @@ describe(`trajectory_from_binary`, () => {
       /'lattice' must have shape \[3, 3, 3\]/,
     ],
     [{ steps: arr(steps.subarray(0, 2), [2]) }, /'steps' must have shape \[3\]/],
+    [{ frame_stress: arr(new Float64Array(12), [3, 4]) }, /needs 6 or 9 components/],
+    [{ frame_stress: arr(new Float64Array(6), [1, 6]) }, /must have shape \[3, \*\]/],
+    [{ frame_stress: arr(energy, [n_frames]) }, /must have shape \[3, \*\]/],
+    [{ frame_stress: arr(new Int32Array(18), [3, 6]) }, /dtype must be float/],
+    [{ frame_stress: arr(new Float64Array(18).fill(NaN), [3, 6]) }, /non-finite value/],
+    [
+      { frame_stress: arr(new Float64Array(18), [3, 6]), stress: arr(energy, [3]) },
+      /conflicts with scalar channel 'stress'/,
+    ],
     [{ force: arr(forces.subarray(0, 6), [1, 2, 3]) }, /'force' must have shape \[3, 2, 3\]/],
     [
       { stress: arr(new Float64Array(9), [n_frames, 3]) },

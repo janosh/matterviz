@@ -1,15 +1,23 @@
 import { make_config } from 'svelte-widgets/vite-config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { defineConfig, type Plugin, type PluginOption } from 'vite-plus'
+import { pathToFileURL } from 'node:url'
+import { defineConfig, type Plugin, type PluginOption, type Rolldown } from 'vite-plus'
 import {
   json_gz_worker_plugins,
   three_compat_alias,
   vite_plugin_json_gz,
   vite_plugin_moyo_wasm_source,
+  widget_components,
 } from '../../src/vite-plugins.ts'
 import { scoped_app_css } from '../../src/elements/scoped-css.ts'
+import { COMPONENTS } from '../../src/elements/components.ts'
+import { widget_model_schema } from './model-schema.ts'
+
+// dist/, where the `matterviz` imports resolve
+const dist_dir = resolve(import.meta.dirname, `../../dist`)
 
 // Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
 // globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.
@@ -45,6 +53,52 @@ export const inline_workers: Plugin = {
 // bare input/button rules and :root color-scheme would restyle the whole notebook page)
 export const widget_scope = `.matterviz-widget`
 
+// Writes build/widget-model-keys.json (WIDGET_MODEL_KEYS) and build/widget-model-schema.json (each
+// key's JSON kinds, typed from the props it drives, see model-schema.ts) so Python wrappers can test
+// their traits without a browser. Imports the built single file itself (what ships is what's
+// described), with happy-dom's DOM globals installed since module-level code reads them
+const emit_widget_model_keys: Rolldown.Plugin = {
+  name: `emit-widget-model-keys`,
+  async writeBundle({ dir }) {
+    if (!dir) throw new Error(`emit-widget-model-keys: build has no output dir`)
+    const { Window } = await import(`happy-dom`)
+    const happy_window = new Window()
+    const globals = globalThis as Record<string, unknown>
+    const added = Object.getOwnPropertyNames(happy_window).filter((key) => !(key in globals))
+    for (const key of added) globals[key] = Reflect.get(happy_window, key)
+    globals.window = happy_window
+    try {
+      // import() caches by URL, so a watch rebuild needs a fresh one to read the new bundle
+      const bundle_url = `${pathToFileURL(`${dir}/matterviz.js`).href}?build=${Date.now()}`
+      const { widget_model_keys, widget_model_targets } = await import(bundle_url)
+      const model_keys = await widget_model_keys()
+      const schema = widget_model_schema(
+        dist_dir,
+        COMPONENTS,
+        await widget_model_targets(),
+        model_keys,
+      )
+      const write_json = (name: string, data: unknown): void =>
+        writeFileSync(`${dir}/${name}`, `${JSON.stringify(data, null, 2)}\n`)
+      write_json(`widget-model-keys.json`, model_keys)
+      write_json(`widget-model-schema.json`, schema)
+    } finally {
+      for (const key of [...added, `window`]) delete globals[key]
+      await happy_window.happyDOM.close()
+    }
+  },
+}
+
+// The split build's CSS repeats the single file's: hosts link build/matterviz.css
+const drop_css: Rolldown.Plugin = {
+  name: `drop-split-css`,
+  generateBundle(_options, bundle) {
+    for (const file of Object.keys(bundle)) if (file.endsWith(`.css`)) delete bundle[file]
+  },
+}
+
+const minified = { minify: true, comments: false } as const
+
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
@@ -52,6 +106,7 @@ const plugins = [
   vite_plugin_moyo_wasm_source(`moyo-wasm-cdn`, moyo_wasm_source) as unknown,
   vite_plugin_json_gz() as unknown,
   svelte() as unknown,
+  widget_components(dist_dir) as unknown,
 ] as PluginOption[]
 
 // match the root matterviz printWidth: both checks cover these files, so a narrower
@@ -91,16 +146,19 @@ export default defineConfig({
     ...config.build, // keep shared cssTarget: esnext (for light-dark())
     outDir: `build`,
     lib: {
-      entry: resolve(import.meta.dirname, `anywidget.ts`),
-      formats: [`es`],
+      entry: resolve(import.meta.dirname, `index.ts`),
       fileName: `matterviz`,
       cssFileName: `matterviz`,
     },
     rolldownOptions: {
-      // Disable code splitting -- widget asset loader expects a single JS file. Vite's ES lib
-      // builds keep whitespace and pure annotations for the consumer's bundler to tree-shake
-      // with; nothing bundles this file again, so minify it fully
-      output: { codeSplitting: false, minify: true, comments: false },
+      // Nothing bundles these files again, so minify fully (Vite's ES lib builds keep whitespace
+      // and pure annotations for a consumer's tree-shaking). build/matterviz.js is one file for
+      // hosts loading the bundle as text, build/split/ an entry + per-widget chunks for hosts
+      // importing it by URL (a 2D plot skips three.js)
+      output: [
+        { ...minified, codeSplitting: false, plugins: [emit_widget_model_keys] },
+        { ...minified, dir: `build/split`, plugins: [drop_css] },
+      ],
     },
   },
 })

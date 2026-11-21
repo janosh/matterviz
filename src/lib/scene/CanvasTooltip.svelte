@@ -73,11 +73,15 @@
 
   // Measured once shown (hosts may lift their clip only then), not per anchor move since it
   // forces layout; a scroll or window resize moves the clip box, so it re-measures then.
+  // portal_to_host measures again once the tooltip is in the host: a clip lifted by a CSS
+  // :has([role='tooltip']) rule only applies then, and this effect may run first.
   const tooltip_shown = $derived(screen !== null)
+  const measure = () => {
+    if (host) bounds = clip_bounds(host)
+  }
   $effect(() => {
     void $size
     if (!tooltip_shown || !host) return
-    const measure = () => (bounds = clip_bounds(host))
     measure()
     const options = { capture: true, passive: true }
     globalThis.addEventListener(`scroll`, measure, options)
@@ -90,6 +94,7 @@
 
   const portal_to_host = (node: HTMLElement) => {
     host?.append(node)
+    measure()
     return () => node.remove()
   }
 </script>

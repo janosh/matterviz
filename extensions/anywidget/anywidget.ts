@@ -5,52 +5,27 @@
 import { is_plain_object } from 'svelte-widgets/utils'
 import type { AnyModel, Render } from 'anywidget/types'
 import {
-  Bands,
-  BandsAndDos,
-  BarPlot,
-  BinnedScatterPlot,
-  BoxPlot,
-  BrillouinZone,
-  ChemPotDiagram,
-  Composition,
-  ConvexHull,
-  CoordinationBarPlot,
-  Dos,
-  EosPlot,
-  FermiSurface,
-  HeatmapMatrix,
-  Histogram,
-  IsobaricBinaryPhaseDiagram,
-  IsobaricTernaryPhaseDiagram,
-  NebPlot,
   normalize_band_structure,
   normalize_dos,
-  PeriodicTable,
-  PhononModeExplorer,
-  RdfPlot,
-  Sankey,
-  ScatterPlot,
-  ScatterPlot3D,
   set_moyo_wasm_source,
-  SpacegroupBarPlot,
-  Structure,
-  Sunburst,
-  TernaryPlot,
   trajectory_from_binary,
   trajectory_from_json,
-  Trajectory,
-  Treemap,
   volume_from_binary,
   volume_from_json,
-  XrdPlot,
 } from 'matterviz'
-import { is_binary_envelope, series_from_binary } from 'matterviz/io'
+import {
+  html_to_svg,
+  is_binary_envelope,
+  series_from_binary,
+  svg_to_string,
+} from 'matterviz/io'
 import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
-import { mount, unmount } from 'svelte'
+import { type Component, mount, unmount } from 'svelte'
+import load_component from 'virtual:matterviz-widget-components'
 import type { COMPONENTS } from '../../src/elements/components'
-import type { DrivenProp } from './reactive.svelte'
+import type { DrivenProp, ModelKeySchema, ModelKeyTarget } from './reactive.svelte'
 import {
   derived_prop,
   drive_prop,
@@ -102,6 +77,8 @@ function inject_app_css(target_element: HTMLElement): void {
 // Per-element teardown of the mounted widget: theme observer, model listeners + writeback
 // effects, interaction throttles and the Svelte instance itself
 const cleanups = new WeakMap<HTMLElement, () => void>()
+// widget_type of each mounted element, for export_svg
+const rendered_types = new WeakMap<HTMLElement, string>()
 
 const cleanup_element = (element: HTMLElement): void => {
   cleanups.get(element)?.()
@@ -112,10 +89,22 @@ const cleanup_element = (element: HTMLElement): void => {
 const pick_props = (model: AnyModel, keys: readonly string[]) =>
   Object.fromEntries(keys.map((key) => [key, get_prop(model, key)]))
 
+// Each key lands unchanged under the prop path `path` (targets of a picked prop)
+const nested_targets = (
+  path: readonly string[],
+  keys: readonly string[],
+): Record<string, ModelKeyTarget> =>
+  Object.fromEntries(keys.map((key) => [key, [...path, key]]))
+
 // Derived prop bundling several traits into one object prop (deps == picked keys),
 // e.g. bands_props / dos_props.
 const picked_prop = (name: string, keys: string): DrivenProp =>
-  derived_prop(name, words(keys), (model) => pick_props(model, words(keys)))
+  derived_prop(
+    name,
+    words(keys),
+    (model) => pick_props(model, words(keys)),
+    nested_targets([name], words(keys)),
+  )
 
 const merge_object_prop = (
   base: unknown,
@@ -130,21 +119,31 @@ const merge_object_prop = (
 // Derived prop that folds a flat source trait into a target object trait under sub_key
 // (for example, x_range -> x_axis.range).
 const merged_prop = (target: string, sub_key: string, source: string): DrivenProp =>
-  derived_prop(target, [target, source], (model) =>
-    merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
+  derived_prop(
+    target,
+    [target, source],
+    (model) => merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
+    { [target]: [target], [source]: [target, sub_key] },
   )
 
 // Plot series as JSON, or (for large ones) binary `plot-series` envelopes whose numeric
 // columns arrive as typed arrays (readme)
-const series_prop = derived_prop(`series`, [`series`], (model) => {
-  const series = get_prop(model, `series`)
-  if (is_binary_envelope(series)) {
-    throw new TypeError(`series must be a list of series; wrap a binary plot-series in a list`)
-  }
-  return Array.isArray(series)
-    ? series.map((srs) => (is_binary_envelope(srs) ? series_from_binary(srs) : srs))
-    : series
-})
+const series_prop = derived_prop(
+  `series`,
+  [`series`],
+  (model) => {
+    const series = get_prop(model, `series`)
+    if (is_binary_envelope(series)) {
+      throw new TypeError(
+        `series must be a list of series; wrap a binary plot-series in a list`,
+      )
+    }
+    return Array.isArray(series)
+      ? series.map((srs) => (is_binary_envelope(srs) ? series_from_binary(srs) : srs))
+      : series
+  },
+  { series: { type: [`array`] } },
+)
 
 const plot_common_drive: readonly DrivenProp[] = [
   series_prop,
@@ -232,11 +231,22 @@ const spectral_record = <T>(
     }),
   )
 }
-const band_structs_prop = derived_prop(`band_structs`, [`band_structs`], (model) =>
-  spectral_record(get_prop(model, `band_structs`), normalize_band_structure, `band structure`),
+const band_structs_prop = derived_prop(
+  `band_structs`,
+  [`band_structs`],
+  (model) =>
+    spectral_record(
+      get_prop(model, `band_structs`),
+      normalize_band_structure,
+      `band structure`,
+    ),
+  { band_structs: { type: [`object`] } },
 )
-const doses_prop = derived_prop(`doses`, [`doses`], (model) =>
-  spectral_record(get_prop(model, `doses`), normalize_dos, `DOS`),
+const doses_prop = derived_prop(
+  `doses`,
+  [`doses`],
+  (model) => spectral_record(get_prop(model, `doses`), normalize_dos, `DOS`),
+  { doses: { type: [`object`] } },
 )
 
 // Shape pushed back to Python for scatter point click/hover interactions.
@@ -279,10 +289,10 @@ const scatter_interactions = (model: AnyModel) => {
   }
 }
 
-// Declarative description of one widget: the component, its reactive props (drive /
-// derived / writeback), and optional interaction callbacks + teardown.
+// Declarative description of one widget: its reactive props (drive / derived / writeback) and
+// optional interaction callbacks + teardown. Its component is COMPONENTS' entry for the same
+// widget_type, loaded on first render (vite.config.ts's widget_components)
 type WidgetSpec = {
-  component: unknown
   drive: readonly DrivenProp[]
   // style is the notebook wrapper, driven unless the component has nowhere to put it
   no_style?: true
@@ -293,9 +303,12 @@ type WidgetSpec = {
     props: Record<string, unknown>
     cleanup?: () => void
   }
-  // Model traits written by interaction callbacks (not derivable from drive specs);
-  // listed so WIDGET_MODEL_KEYS reflects the full Python<->JS trait contract.
-  interaction_model_keys?: readonly string[]
+  // Model traits written by interaction callbacks (not derivable from drive specs) and the JSON
+  // kinds written; listed so WIDGET_MODEL_KEYS reflects the full Python<->JS trait contract.
+  interaction_model_keys?: Readonly<Record<string, ModelKeySchema>>
+  // Selector of an HTML-built figure (CSS grids, side-by-side panels) export_svg redraws as SVG:
+  // the element the component's own Export pane exports, so both give the same file
+  html_figure?: string
 }
 
 // Every prop a spec drives
@@ -304,7 +317,7 @@ const driven_props = ({ no_style, drive }: WidgetSpec): readonly DrivenProp[] =>
 // Viewers with a drop zone: file drops are off in notebooks
 const no_file_drop = { allow_file_drop: false }
 
-// Mount a widget from its spec: build a two-way reactive $state props object (Python
+// Mount a widget's component: build a two-way reactive $state props object (Python
 // trait changes -> live view, component interaction -> model). Returns the teardown that
 // unregisters the model listeners, stops the writeback effects and unmounts the component.
 // Exported so tests can mount a single widget's wiring directly.
@@ -312,6 +325,7 @@ export const mount_spec = (
   model: AnyModel,
   element: HTMLElement,
   spec: WidgetSpec,
+  component: Component<Record<string, unknown>>,
   on_update_error?: (error: unknown) => void,
 ): (() => void) => {
   element.style.boxSizing = `border-box`
@@ -331,7 +345,7 @@ export const mount_spec = (
     if (instance) void unmount(instance)
   }
   try {
-    instance = mount(spec.component as Parameters<typeof mount>[0], { target: element, props })
+    instance = mount(component, { target: element, props })
   } catch (error) {
     teardown() // a mount throwing on a malformed trait must not leave model listeners behind
     throw error
@@ -344,28 +358,38 @@ export const mount_spec = (
 // Exported so tests can exercise each widget's drive/writeback/derived wiring.
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
-    component: Structure,
     static_props: no_file_drop,
     drive: [
       // show_site_labels/show_site_indices are delivered via scene_props (see scene_pick_keys),
       // not as top-level Structure props. highlighted_sites stays drive-only: the component
       // sets it from info-pane hover (high frequency), so writeback would flood the comm channel.
       ...drive_props(`show_controls structure enable_info_pane fullscreen_toggle png_dpi
-        isosurface_settings highlighted_sites`),
+        isosurface_settings highlighted_sites cell_type`),
       ...traj_structure_prop_keys.map(drive_prop),
-      derived_prop(`source`, [`data_url`, `structure_string`], (model) => {
-        const url = get_prop(model, `data_url`)
-        const data = get_prop(model, `structure_string`)
-        return url || (data ? { data, filename: `string` } : undefined)
-      }),
-      // Nested JSON grids or binary envelopes (readme); the renderer stores flat typed arrays
-      derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
-        const raw = get_prop(model, `volumetric_data`)
-        if (raw == null) return undefined
-        return (Array.isArray(raw) ? raw : [raw]).map((volume) =>
-          is_binary_envelope(volume) ? volume_from_binary(volume) : volume_from_json(volume),
-        )
-      }),
+      derived_prop(
+        `source`,
+        [`data_url`, `structure_string`],
+        (model) => {
+          const url = get_prop(model, `data_url`)
+          const data = get_prop(model, `structure_string`)
+          return url || (data ? { data, filename: `string` } : undefined)
+        },
+        { data_url: [`source`], structure_string: [`source`, `data`] },
+      ),
+      // Nested JSON grids or binary envelopes (readme), one or a list; the renderer stores
+      // flat typed arrays
+      derived_prop(
+        `volumetric_data`,
+        [`volumetric_data`],
+        (model) => {
+          const raw = get_prop(model, `volumetric_data`)
+          if (raw == null) return undefined
+          return (Array.isArray(raw) ? raw : [raw]).map((volume) =>
+            is_binary_envelope(volume) ? volume_from_binary(volume) : volume_from_json(volume),
+          )
+        },
+        { volumetric_data: { type: [`object`, `array`] } },
+      ),
       writeback_prop(`active_volume_id`),
       writeback_prop(`display_mode`, `structure`),
       writeback_prop(`slice_settings`, {}),
@@ -373,11 +397,15 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`hovered_site_idx`),
       // Open floating pane (StructurePane), e.g. 'flight' for the camera-flight planner
       writeback_prop(`active_pane`),
-      derived_prop(`scene_props`, scene_prop_keys, get_scene_props),
+      derived_prop(
+        `scene_props`,
+        scene_prop_keys,
+        get_scene_props,
+        nested_targets([`scene_props`], scene_prop_keys),
+      ),
     ],
   },
   trajectory: {
-    component: Trajectory,
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls layout fullscreen_toggle auto_play step_labels
@@ -385,22 +413,34 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // The JSON trait (pymatgen Trajectory, { frames }, array of structures) or a binary
       // envelope (readme) becomes an in-memory run; data_url is fetched and parsed by the file
       // viewer. A malformed trait throws like a malformed spectral one, failing the mount
-      derived_prop(`trajectory`, [`trajectory`], (model) => {
-        const value = get_prop(model, `trajectory`)
-        if (value == null) return undefined
-        if (is_binary_envelope(value)) return trajectory_from_binary(value)
-        return trajectory_from_json(value, { format: `json` })
+      derived_prop(
+        `trajectory`,
+        [`trajectory`],
+        (model) => {
+          const value = get_prop(model, `trajectory`)
+          if (value == null) return undefined
+          if (is_binary_envelope(value)) return trajectory_from_binary(value)
+          return trajectory_from_json(value, { format: `json` })
+        },
+        { trajectory: { type: [`object`, `array`] } },
+      ),
+      derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`), {
+        data_url: [`source`],
       }),
-      derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump
       // fetched from data_url; it rides in the file viewer's loading_options. None/{} mean
       // unset, so loading_options falls back to the viewer's default
-      derived_prop(`loading_options`, [`atom_type_mapping`], (model) => {
-        const atom_type_mapping = get_prop(model, `atom_type_mapping`)
-        const is_set =
-          is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0
-        return is_set ? { atom_type_mapping } : undefined
-      }),
+      derived_prop(
+        `loading_options`,
+        [`atom_type_mapping`],
+        (model) => {
+          const atom_type_mapping = get_prop(model, `atom_type_mapping`)
+          const is_set =
+            is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0
+          return is_set ? { atom_type_mapping } : undefined
+        },
+        { atom_type_mapping: [`loading_options`, `atom_type_mapping`] },
+      ),
       // Keep playback, layout and plot selection synchronized with the notebook.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, DEFAULTS.trajectory.display_mode),
@@ -414,26 +454,32 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `structure_props`,
         [...scene_prop_keys, ...traj_structure_prop_keys],
         get_structure_props,
+        {
+          ...nested_targets([`structure_props`, `scene_props`], scene_prop_keys),
+          ...nested_targets([`structure_props`], traj_structure_prop_keys),
+        },
       ),
     ],
   },
   scatter_plot: {
-    component: ScatterPlot,
     // selected_point drives the highlight from Python; active_point/hovered_point are
     // written back via the interaction callbacks.
     drive: [
       ...cartesian_plot_drive(`styles show_legend marker_renderer color_scale size_scale
         density_contours fill_regions error_bands hover_config label_placement_config
-        point_tween line_tween selected_point annotation`),
+        point_tween line_tween selected_point highlighted_ids annotation`),
       // None hides these, {} keeps the defaults
       nullable_prop(`color_bar`),
       nullable_prop(`size_legend`),
     ],
     interactions: scatter_interactions,
-    interaction_model_keys: [`active_point`, `hovered_point`],
+    // { series_idx, point_idx, x, y } (active_point adds event_id), or null when cleared
+    interaction_model_keys: {
+      active_point: { type: [`object`, `null`] },
+      hovered_point: { type: [`object`, `null`] },
+    },
   },
   scatter_plot_3d: {
-    component: ScatterPlot3D,
     drive: [
       series_prop,
       ...with_plot_controls(`surfaces ref_lines ref_planes x_axis y_axis z_axis display styles
@@ -441,7 +487,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   binned_scatter_plot: {
-    component: BinnedScatterPlot,
     drive: [
       series_prop,
       ...drive_props(`size_scale density overlays padding range_padding title point_labels
@@ -454,38 +499,32 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   bar_plot: {
-    component: BarPlot,
     drive: cartesian_plot_drive(
       `show_legend orientation mode bar line color_scale size_scale`,
     ),
   },
   histogram: {
-    component: Histogram,
     drive: [
       ...cartesian_plot_drive(`show_legend bins mode bar`),
       writeback_prop(`selected_series_idx`, 0),
     ],
   },
   composition: {
-    component: Composition,
     drive: drive_props(`composition mode show_percentages color_scheme patterns`),
   },
   convex_hull: {
-    component: ConvexHull,
     static_props: no_file_drop,
     drive: drive_props(`show_controls entries show_stable show_unstable show_hull_faces
       hull_face_opacity show_stable_labels show_unstable_labels max_hull_dist_show_labels
       max_hull_dist_show_phases temperature`),
   },
   band_structure: {
-    component: Bands,
     drive: [
       band_structs_prop,
       ...with_plot_controls(`show_legend fermi_level reference_frequency`),
     ],
   },
   dos: {
-    component: Dos,
     drive: [
       doses_prop,
       ...with_plot_controls(`stack sigma normalize orientation show_legend spin_mode`),
@@ -495,7 +534,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
     // The parent owns the shared Fermi reference; hover frequency and DOS orientation
     // are controlled internally.
-    component: BandsAndDos,
+    html_figure: `.bands-and-dos`,
     drive: [
       // structure adds its Brillouin zone beside the bands, configured by bz_props
       band_structs_prop,
@@ -509,7 +548,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   fermi_surface: {
-    component: FermiSurface,
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls fermi_data band_data mu color_property color_scale
@@ -519,32 +557,43 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   brillouin_zone: {
-    component: BrillouinZone,
     static_props: no_file_drop,
     drive:
       drive_props(`show_controls structure bz_data surface_color surface_opacity edge_color
-      edge_width show_vectors show_ibz ibz_color ibz_opacity camera_projection`),
+      edge_width show_vectors show_ibz ibz_color ibz_opacity camera_projection k_path
+      default_k_path`),
   },
   phase_diagram: {
-    component: IsobaricBinaryPhaseDiagram,
     static_props: no_file_drop,
     drive: drive_props(`show_controls data`),
   },
   xrd: {
-    component: XrdPlot,
     static_props: no_file_drop,
     drive: with_plot_controls(`patterns`),
   },
   periodic_table: {
-    component: PeriodicTable,
+    html_figure: `.periodic-table`,
     drive: [
       ...drive_props(`heatmap_values color_scale color_overrides labels gap missing tile_plots
-        tile_plot_config split_layout tile_props`),
+        tile_plot_config split_layout tile_props active_elements`),
       nullable_prop(`color_bar`),
+      // Tile clicks toggle elements in active_elements once Python opts in by setting it to
+      // a list (link_selection does); until then they pin the tile's tooltip and inset plot
+      derived_prop(`on_activate`, [`active_elements`], (model) => {
+        const active = model.get(`active_elements`) as string[] | null | undefined
+        if (!active) return undefined
+        return ({ symbol }: { symbol: string }) =>
+          set_model(
+            model,
+            `active_elements`,
+            active.includes(symbol)
+              ? active.filter((sym) => sym !== symbol)
+              : [...active, symbol],
+          )
+      }),
     ],
   },
   rdf_plot: {
-    component: RdfPlot,
     static_props: no_file_drop,
     drive:
       with_plot_controls(`patterns structures mode show_reference_line cutoff n_bins x_axis
@@ -552,7 +601,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   coordination_bar_plot: {
     // Computes its CN series from the structures, so the shared `series` trait has no place here
-    component: CoordinationBarPlot,
     static_props: no_file_drop,
     drive: [
       ...with_plot_controls(`structures strategy split_mode orientation show_legend display
@@ -561,7 +609,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   heatmap_matrix: {
-    component: HeatmapMatrix,
+    // not the controls pane's SettingsSection (class `settings-section grid`)
+    html_figure: `.heatmap > .grid`,
     drive: [
       ...drive_props(`show_controls x_items y_items values color_scale missing x_axis y_axis
         tile_size gap show_values label_style`),
@@ -569,41 +618,35 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   spacegroup_bar: {
-    component: SpacegroupBarPlot,
-    drive: drive_props(`show_controls data show_counts show_legend orientation x_axis y_axis`),
+    // No show_controls: the component renders its BarPlot without controls
+    drive: drive_props(`data show_counts show_legend orientation x_axis y_axis`),
   },
   chem_pot_diagram: {
     // ChemPotDiagram sizes itself through width/height and spreads no rest props, so the
     // notebook wrapper `style` has nowhere to go: size it with the width/height traits
-    component: ChemPotDiagram,
     no_style: true,
     drive: drive_props(`entries config temperature width height`),
   },
   treemap: {
-    component: Treemap,
     drive:
       hierarchy_drive(`padding_inner padding_top padding_outer label_fit label_min_font_size
       label_max_font_size parent_label_font_size`),
   },
   sunburst: {
-    component: Sunburst,
     drive: hierarchy_drive(`shape inner_radius pad_angle label_rotation`),
   },
   sankey: {
-    component: Sankey,
     drive: with_plot_controls(`data orientation node_width node_padding node_align min_fraction
       max_links iterations link_opacity link_color_mode show_node_labels value_format padding
       legend show_legend fullscreen_toggle`),
   },
   box_plot: {
-    component: BoxPlot,
     drive: cartesian_plot_drive(`show_legend orientation title box whisker median_style
       sample_style whisker_mode whisker_range whisker_percentiles show_outliers show_mean points
       show_value_labels value_label_stat value_label_format kind side bandwidth violin_width
       violin_style kde_clip point_side`),
   },
   ternary_plot: {
-    component: TernaryPlot,
     drive: [
       series_prop,
       ...with_plot_controls(`labels grid_step show_grid show_ticks tick_format color_scale
@@ -612,7 +655,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   ternary_phase_diagram: {
-    component: IsobaricTernaryPhaseDiagram,
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls entries options temperature display free_energy_mode t_range
@@ -623,7 +665,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   neb_plot: {
-    component: NebPlot,
     drive: [
       ...with_plot_controls(`paths coord_options coord_mode energy_reference show_spline
         annotate_barrier x_axis y_axis`),
@@ -633,7 +674,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   eos_plot: {
-    component: EosPlot,
     drive: [
       ...with_plot_controls(`volumes energies kinds show_fit_params data_label x_axis y_axis`),
       // Output only: the fitted E0, V0, B0, B0' and RMSE per successful kind
@@ -642,7 +682,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   phonon_mode_explorer: {
     // No show_controls prop: the explorer's panes carry their own chrome
-    component: PhononModeExplorer,
     drive: [
       ...drive_props(`phonons spectrum_kind amplitude supercell n_frames fps show_vectors
         vector_thickness vector_color auto_play pane_ratio show_bz_inset band_coloring
@@ -662,13 +701,60 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
     const model_keys = driven_props(spec).flatMap(({ deps }) => deps)
     return [
       widget_type,
-      [...new Set([...model_keys, ...(spec.interaction_model_keys ?? [])])].toSorted(),
+      [
+        ...new Set([...model_keys, ...Object.keys(spec.interaction_model_keys ?? {})]),
+      ].toSorted(),
     ]
   }),
 )
 
+// Where each model key goes, from which the build types build/widget-model-schema.json against
+// the components' props: per widget_type and key, every prop path its value reaches unchanged
+// and every JSON-kinds schema a transforming prop or interaction callback declares for it
+export const WIDGET_MODEL_TARGETS: Record<
+  string,
+  Record<string, ModelKeyTarget[]>
+> = Object.fromEntries(
+  Object.entries(WIDGETS).map(([widget_type, spec]) => {
+    const targets: Record<string, ModelKeyTarget[]> = {}
+    const add = (key: string, target: ModelKeyTarget): void => {
+      targets[key] = [...(targets[key] ?? []), target]
+    }
+    for (const { targets: prop_targets = {} } of driven_props(spec)) {
+      for (const [key, target] of Object.entries(prop_targets)) add(key, target)
+    }
+    for (const [key, schema] of Object.entries(spec.interaction_model_keys ?? {})) {
+      add(key, schema)
+    }
+    return [widget_type, targets]
+  }),
+)
+
+// Hosts list their widget's synced traits in _synced_keys (the anywidget model can't enumerate
+// its keys). A trait no spec reads would be silently dropped, so name it rather than render a
+// partial widget. Either side can be stale: a Python package newer than the bundle, or a saved
+// notebook's state older than the URL-synced bundle it now loads. widget_type, style and
+// show_controls are base traits no spec has to read.
+const check_synced_keys = (model: AnyModel, widget_type: string): void => {
+  const synced_keys = get_prop(model, `_synced_keys`)
+  let problem = `_synced_keys must be a list of trait names, got ${typeof synced_keys}`
+  if (Array.isArray(synced_keys)) {
+    const read_keys = new Set(WIDGET_MODEL_KEYS[widget_type])
+    const base_keys = [`widget_type`, `style`, `show_controls`]
+    const unknown = synced_keys.filter(
+      (key) => !read_keys.has(key) && !base_keys.includes(key),
+    )
+    if (!unknown.length) return
+    problem = `this matterviz-anywidget bundle doesn't read ${widget_type} trait(s) ${unknown.join(`, `)}`
+  }
+  throw new Error(
+    `${problem}. Python wrapper and bundle versions differ: re-run the cell with the Python ` +
+      `package version this bundle matches, or load the bundle version matching the Python package.`,
+  )
+}
+
 // Detect widget type and render
-const render: Render = (props) => {
+const render: Render = async (props) => {
   const { model, el: element } = props
   const widget_type = get_prop(model, `widget_type`) as string | undefined
   // anywidget only logs a throwing render or change handler, which leaves a blank or silently
@@ -693,25 +779,73 @@ const render: Render = (props) => {
   // before mount so the first paint already has it; a throwing mount stops it and replaces the
   // partial DOM with the error.
   const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
-  let unmount_widget: () => void
+  // a cleanup while the component loads (the element rendering again) cancels this render
+  let cancelled = false
+  let unmount_widget = (): void => {}
+  const cleanup = (): void => {
+    cancelled = true
+    rendered_types.delete(element)
+    stop_theme()
+    unmount_widget()
+  }
+  cleanups.set(element, cleanup)
   try {
-    if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
+    if (!widget_type || !spec)
+      throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
+    check_synced_keys(model, widget_type)
+    // its own chunks in the split build, already inlined in the single-file one
+    const { default: component } = await load_component[widget_type]()
+    if (cancelled) return () => {}
     // A malformed update tears the widget down: it no longer reflects the Python state
-    unmount_widget = mount_spec(model, element, spec, (error) => {
+    unmount_widget = mount_spec(model, element, spec, component, (error) => {
       cleanup_element(element)
       show_error(error)
       console.error(`MatterViz ${widget_type}: trait update failed`, error)
     })
+    rendered_types.set(element, widget_type)
   } catch (error) {
-    stop_theme()
-    show_error(error)
+    if (!cancelled) {
+      cleanup_element(element)
+      show_error(error)
+    }
     throw error
   }
-  cleanups.set(element, () => {
-    stop_theme()
-    unmount_widget()
-  })
-  return () => cleanup_element(element)
+  // a stale disposer (the element since rendered again) leaves the later widget mounted
+  return () => {
+    if (cleanups.get(element) === cleanup) cleanup_element(element)
+  }
+}
+
+// Standalone SVG file content of a rendered widget, through the same serializer as the in-app
+// SVG export: HTML figures redrawn as SVG, else the largest <svg> (under 20px: an icon). Throws
+// for a chart-sized (50px+) canvas outside that SVG (3D viewers, canvas charts): no vector form.
+export function export_svg(element: HTMLElement, png_dpi?: number): string {
+  const widget_type = rendered_types.get(element)
+  if (!widget_type) throw new Error(`No rendered MatterViz widget to export`)
+  const { html_figure } = WIDGETS[widget_type]
+  const area = (node: Element, min_px: number): number => {
+    const { width, height } = node.getBoundingClientRect()
+    return width >= min_px && height >= min_px ? width * height : 0
+  }
+  const figure = html_figure
+    ? element.querySelector(html_figure)
+    : ([...element.querySelectorAll(`svg`)]
+        .filter((svg) => area(svg, 20))
+        .toSorted((svg_a, svg_b) => area(svg_b, 0) - area(svg_a, 0))[0] ?? null)
+  // canvases in an SVG's <foreignObject> (canvas markers) export as images, HTML redraws drop them
+  const canvas = [...element.querySelectorAll(`canvas`)].find(
+    (node) => area(node, 50) && !(figure instanceof SVGElement && figure.contains(node)),
+  )
+  if (canvas || !figure) {
+    const content = canvas ? `canvas content` : `no ${html_figure ?? `<svg>`} figure`
+    throw new Error(
+      `MatterViz ${widget_type} renders ${content}, which has no vector form: export PNG or PDF instead`,
+    )
+  }
+  return svg_to_string(
+    figure instanceof SVGElement ? figure : html_to_svg(figure as HTMLElement),
+    png_dpi,
+  )
 }
 
 export default { render }

@@ -23,7 +23,7 @@ import { numeric_run } from './runs/memory'
 
 // unified atomic mass units per cubic angstrom to g/cm^3 (as structure/density.ts)
 const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
-const RESERVED = new Set([`positions`, `numbers`, `lattice`, `steps`])
+const RESERVED = new Set([`positions`, `numbers`, `lattice`, `steps`, `frame_stress`])
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 const FIELDS = [`pbc`, `metadata`, `time_step`]
 const TIME_UNITS = Object.keys(TIME_UNIT_TO_THZ)
@@ -99,6 +99,26 @@ export function trajectory_from_binary(
     arrays.steps && finite_values(checked_array(arrays.steps, `steps`, [n_frames]), `steps`)
   const step_of = (frame_idx: number): number => step_values?.[frame_idx] ?? frame_idx
 
+  // frame_stress: raw per-frame stress tensors, Voigt [n_frames, 6] or row-major [n_frames, 9]
+  let stress_at: ((frame_idx: number) => number[] | Matrix3x3) | undefined
+  if (arrays.frame_stress) {
+    const checked = checked_array(
+      arrays.frame_stress,
+      `frame_stress`,
+      [n_frames, null],
+      `float`,
+    )
+    const width = checked.shape[1]
+    if (width !== 6 && width !== 9)
+      throw new RangeError(`Binary frame_stress needs 6 or 9 components, got ${width}`)
+    if (arrays.stress?.shape.length === 1)
+      throw new TypeError(`Binary frame_stress conflicts with scalar channel 'stress'`)
+    const values = finite_values(checked, `frame_stress`)
+    stress_at = (frame_idx) =>
+      width === 9
+        ? matrix_at(values, frame_idx * 9)
+        : Array.from(values.subarray(frame_idx * 6, (frame_idx + 1) * 6))
+  }
   // Every other array is a per-atom vec3 channel [n_frames, n_atoms, 3] (force, velocity)
   // or a per-frame scalar [n_frames] (energy, temperature)
   const vectors: [string, BinaryArray[`values`]][] = []
@@ -134,13 +154,17 @@ export function trajectory_from_binary(
   const frame_size = n_atoms * 3
   const read = (frame_idx: number) => {
     const offset = frame_idx * frame_size
+    const metadata: Record<string, unknown> = Object.fromEntries(
+      scalars.map(([name, values]) => [name, values[frame_idx]]),
+    )
+    if (stress_at) metadata.stress = stress_at(frame_idx)
     const frame = create_numeric_md_frame(
       positions.subarray(offset, offset + frame_size),
       numbers,
       cell_of(frame_idx),
       pbc,
       step_of(frame_idx),
-      Object.fromEntries(scalars.map(([name, values]) => [name, values[frame_idx]])),
+      metadata,
       vector_keys,
     )
     for (const [column, [, values]] of vectors.entries())

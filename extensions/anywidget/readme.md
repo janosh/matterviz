@@ -4,11 +4,9 @@ A prebuilt [anywidget](https://anywidget.dev) bundle that renders MatterViz
 components in notebook environments (Jupyter, marimo, VS Code) and anywhere an
 ESM module can be loaded.
 
-`anywidget.ts` is the entry point: it dispatches on a `widget_type` string to the
-matching MatterViz Svelte component, mounts it into the host element, and forwards
-the widget's traitlet values as props. The build is a single self-contained ESM
-file (`build/matterviz.js`) plus its CSS (`build/matterviz.css`), with all
-dependencies (matterviz components, Svelte runtime, three.js, ...) inlined.
+`anywidget.ts` dispatches on a `widget_type` string to the matching MatterViz Svelte component, mounts it into the host element, and forwards the widget's traitlet values as props. The build entry `index.ts` loads it lazily and exports `render`, an async `export_svg(element, png_dpi?)`, `widget_model_keys()` and `widget_model_targets()`. It builds twice: a single self-contained ESM file (`build/matterviz.js`) with all dependencies (matterviz components, Svelte runtime, three.js, ...) inlined, plus its CSS (`build/matterviz.css`), and a code-split `build/split/`.
+
+`build/split/` has a tiny entry `matterviz.js` (anywidget fails a widget whose `_esm` module takes over 2 s to import) that loads the widget code, each widget's component and its dependencies as chunks on first render, so a 2D plot fetches ~1.2 MB (~0.45 MB gzip) instead of all 5.8 MB, skipping three.js. Its chunks load relative to the entry's URL, so it only works imported by URL (jsDelivr, the docs site); hosts that load the bundle as text (a local build synced to the notebook, marimo virtual files, headless or inline HTML export) use the single file. `build/matterviz.css` styles both. The docs site's copy (pymatviz's `main`) replaces its chunks on each deploy, so a notebook page loaded before a deploy may need a reload; pinned npm versions are immutable.
 
 This is a peer of `extensions/vscode`: a framework adapter
 that wraps the MatterViz component library for a specific host runtime.
@@ -33,7 +31,7 @@ The `trajectory` trait and each entry of `volumetric_data` accept, besides neste
 ```
 
 - **Arrays**: C-contiguous, little-endian. `dtype` is one of `float32 float64 int8 int16 int32 uint8 uint16 uint32` (cast `int64` steps to `int32` or `float64`). `data` must hold exactly `prod(shape) * itemsize` bytes. Buffers aligned to the item size are viewed in place (zero-copy); a misaligned one (whether the host's `DataView` offsets are aligned depends on how it splits the comm message) is copied once. Trajectory arrays are read in place whatever their float dtype (float32 values widen exactly as each frame is encoded); a float64 volume grid feeds matterviz unchanged, a float32 one is widened to float64 in one pass (half the wire size, one copy). Decoded trajectories and volumes borrow in-place buffers, so callers must not mutate them afterwards.
-- **`kind: 'trajectory'`** arrays: `positions` `[n_frames, n_atoms, 3]` float Cartesian Å (required); `numbers` `[n_atoms]` integer atomic numbers (required, fixed atom order); `lattice` `[3, 3]` (fixed cell) or `[n_frames, 3, 3]` float, rows a, b, c (optional); `steps` `[n_frames]` (optional, default 0..n_frames-1). Any other array is a per-atom vector channel if shaped `[n_frames, n_atoms, 3]` (name it `force`, `velocity`, ... as the site property it becomes) or a per-frame scalar if shaped `[n_frames]` (`energy`, `temperature`, ...: plot rows and frame metadata); other shapes are rejected. JSON fields: `pbc` (3 booleans, needs a lattice, default all true), `metadata` (object), `time_step` (`{ value, unit }`, `value` finite and positive, `unit` one of `fs`, `ps`, `ns`); any other field is rejected. Positions, vectors and cells stay flat: each frame is encoded on read into a numeric MD frame, so no per-site JS objects are built beyond the frame-0 preview.
+- **`kind: 'trajectory'`** arrays: `positions` `[n_frames, n_atoms, 3]` float Cartesian Å (required); `numbers` `[n_atoms]` integer atomic numbers (required, fixed atom order); `lattice` `[3, 3]` (fixed cell) or `[n_frames, 3, 3]` float, rows a, b, c (optional); `steps` `[n_frames]` (optional, default 0..n_frames-1). Optional `frame_stress` `[n_frames, 6]` (Voigt xx, yy, zz, yz, xz, xy) or `[n_frames, 9]` (row-major 3x3) finite float: each frame's raw `metadata.stress` in source units, not plotted, and not allowed next to a scalar channel named `stress`. Any other array is a per-atom vector channel if shaped `[n_frames, n_atoms, 3]` (name it `force`, `velocity`, ... as the site property it becomes) or a per-frame scalar if shaped `[n_frames]` (`energy`, `temperature`, ...: plot rows and frame metadata); other shapes are rejected. JSON fields: `pbc` (3 booleans, needs a lattice, default all true), `metadata` (object), `time_step` (`{ value, unit }`, `value` finite and positive, `unit` one of `fs`, `ps`, `ns`); any other field is rejected. Positions, vectors and cells stay flat: each frame is encoded on read into a numeric MD frame, so no per-site JS objects are built beyond the frame-0 preview.
 - **`kind: 'volume'`** arrays: exactly one, `values` `[nx, ny, nz]` float in C order (z fastest). JSON fields as for the JSON volume: `id`, `lattice` (3x3), `origin` (Vec3), `periodic`, and optional `label`, `units`, `signed`, `source`; dims come from the `values` shape. Every grid sample, binary or JSON, must be finite: a `NaN` or infinite sample makes the volume malformed, so a mount shows the error and a trait update carrying one tears the widget down like any other malformed update (it then no longer reflects the Python state; re-display the widget after sending a finite grid, e.g. `np.nan_to_num(values)`).
 - **`kind: 'plot-series'`**: any entry of a plot widget's `series` trait (scatter, binned scatter, bar, histogram, box) may be such an envelope instead of a JSON series. Arrays: 1D numeric columns of one length (`x`, `y`, `color_values`, `size_values`, ...), decoded to typed arrays (`series_from_binary`); arrays named `metadata.<key>` are zipped into per-point `metadata` objects (non-finite values as `null`); every other field (`label`, `markers`, styles, ...) is plain JSON spread back onto the series. Meant for large series: a 10⁶-point scatter is 16 MB of float64 instead of ~41 MB of JSON.
 
@@ -116,6 +114,8 @@ The bundle has no URL of its own to load worker files from (anywidget imports it
 - Any Python (or JS) wrapper can mount the bundle: call its default export's
   `render({ model, el })` with an anywidget-compatible model exposing
   `get(key)` for the widget's `widget_type` and props.
+- `build/widget-model-keys.json` (the exported `WIDGET_MODEL_KEYS`) lists, per `widget_type`, every model key the bundle reads or writes, so wrappers can test their traits against it without a browser. A model must carry `_synced_keys`, the list of its synced trait names (the anywidget model can't enumerate them): `render()` throws when it's missing, and names any key the widget doesn't read besides `widget_type`, `style` and `show_controls`, i.e. when wrapper and bundle versions differ.
+- `build/widget-model-schema.json` gives each of those keys the JSON kinds the bundle accepts, `{"type": [...], "enum": [...]}` (`type` from `string number boolean object array null`, `enum` the allowed strings when all are literals, e.g. `cell_type`), so wrappers can test their trait types too. The build reads them with the TypeScript compiler from `dist/`'s component prop types, following each `DrivenProp`'s `targets`: the prop path a key reaches unchanged (`x_range` -> `x_axis.range`), or the kinds a transforming prop (`series`, `trajectory`, ...) or interaction callback declares. A key without a target fails the build, so every key is described. `null` appears only where the prop takes it: a `None` trait reaches every other prop as unset.
 
 ## Build
 
@@ -125,7 +125,7 @@ The bundle has no URL of its own to load worker files from (anywidget imports it
 pnpm install && pnpm package:dist
 
 pnpm install:anywidget             # standalone install, no lockfile or pnpm-workspace.yaml
-pnpm -C extensions/anywidget build # -> build/matterviz.js + build/matterviz.css
+pnpm -C extensions/anywidget build # -> build/matterviz.{js,css}, build/split/ + build/widget-model-{keys,schema}.json
 ```
 
 ### Building from a matterviz checkout in downstream CI
@@ -163,6 +163,7 @@ CORS and a JavaScript MIME type via jsDelivr/unpkg, e.g.:
 
 ```txt
 https://cdn.jsdelivr.net/npm/matterviz-anywidget@<version>/build/matterviz.js
+https://cdn.jsdelivr.net/npm/matterviz-anywidget@<version>/build/split/matterviz.js
 ```
 
 `build/` is gitignored; the bundle never enters version control. See the

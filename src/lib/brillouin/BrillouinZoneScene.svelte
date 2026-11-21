@@ -8,6 +8,7 @@
   import { T } from '@threlte/core'
   import {
     bz_fit_extent,
+    vectors_fit_extent,
     bz_hover_data,
     face_anchors,
     k_lattice_inverse,
@@ -196,7 +197,10 @@
   bind:camera
   zone_vertices={bz_data?.vertices}
   size={bz_size}
-  fit_extent={bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice)}
+  fit_extent={Math.max(
+    bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice),
+    show_vectors ? vectors_fit_extent(bz_data?.k_lattice, vector_scale) : 0,
+  )}
   {width}
   {height}
   {set_camera_is_moving}

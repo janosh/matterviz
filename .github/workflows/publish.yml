@@ -120,6 +120,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A passing CI run on the same file tree (a squash-merged PR's head, or an earlier
+          # push) tested exactly this code, so a release cut after green CI starts at once
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.tree.sha)
+          same_tree=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?status=success&per_page=100" \
+            --jq "[.workflow_runs[] | select(.head_commit.tree_id == \"$tree\")][0].id // empty")
+          if [ -n "$same_tree" ]; then
+            echo "::notice::reusing CI run $same_tree, which passed on the same tree ($tree)"
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&branch=main&event=push&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
           if [ -z "$run_id" ]; then
@@ -246,7 +256,8 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           pnpm run build
-          test -s build/matterviz.js && test -s build/matterviz.css
+          test -s build/matterviz.js && test -s build/matterviz.css && test -s build/split/matterviz.js
+          test -s build/widget-model-keys.json && test -s build/widget-model-schema.json
           js_bytes=$(wc -c < build/matterviz.js)
           test "$js_bytes" -gt 1000000 || {
             echo "bundle too small ($js_bytes B)"; exit 1; }
@@ -321,6 +332,9 @@ jobs:
         package_vscode,
         package_jupyterlab,
       ]
+    # ci_gate needs the skipped `ci` job when CI already passed, and a skipped ancestor skips
+    # every job without a status function, so each publish job checks that every direct need succeeded
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.ci_gate.result == 'success' && needs.package_matterviz.result == 'success' && needs.package_anywidget.result == 'success' && needs.package_vscode.result == 'success' && needs.package_jupyterlab.result == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -375,6 +389,9 @@ jobs:
         package_vscode,
         package_jupyterlab,
       ]
+    # ci_gate needs the skipped `ci` job when CI already passed, and a skipped ancestor skips
+    # every job without a status function, so each publish job checks that every direct need succeeded
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.ci_gate.result == 'success' && needs.package_matterviz.result == 'success' && needs.package_anywidget.result == 'success' && needs.package_vscode.result == 'success' && needs.package_jupyterlab.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -420,6 +437,9 @@ jobs:
         package_vscode,
         package_jupyterlab,
       ]
+    # ci_gate needs the skipped `ci` job when CI already passed, and a skipped ancestor skips
+    # every job without a status function, so each publish job checks that every direct need succeeded
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.ci_gate.result == 'success' && needs.package_matterviz.result == 'success' && needs.package_anywidget.result == 'success' && needs.package_vscode.result == 'success' && needs.package_jupyterlab.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX
@@ -465,6 +485,7 @@ jobs:
   finalize:
     name: Create tag and GitHub release
     needs: [prepare, publish_npm, publish_pypi, publish_open_vsx]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.publish_npm.result == 'success' && needs.publish_pypi.result == 'success' && needs.publish_open_vsx.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

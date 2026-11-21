@@ -34,7 +34,7 @@ const stub_vite_preload = (): Plugin => ({
 })
 
 export default defineConfig({
-  // Relative asset URLs so @jupyterlab/builder can re-emit them under static/.
+  // Relative asset URLs so @jupyter/builder can re-emit them under static/.
   // Absolute `/assets/...` 404 when Lab isn't served from the domain root.
   base: `./`,
   plugins: [

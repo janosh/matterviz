@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## [v0.10.0](https://github.com/janosh/matterviz/compare/v0.9.0...v0.10.0)
 
-### Migration
+> 21 November 2026
 
+### Migration to 0.10
+
+- anywidget hosts: `render()` requires the wrapper's `_synced_keys` trait and shows a version-mismatch error for keys the bundle doesn't read; `export_svg(element, png_dpi?)` is async. The build entry is a 0.2 KB lazy loader, URL-importing hosts should load `split/matterviz.js` [#521](https://github.com/janosh/matterviz/pull/521)
+- svelte-widgets code is no longer re-exported or copied: import `format_num` (`svelte-widgets/format`), `clamp`, `is_plain_object`, `with_defaults` (`svelte-widgets/utils`), `SettingsGroup`, `InfoCard`, `InfoTag`, `KeyValueList`, `ShortcutsList`, ... from svelte-widgets directly; `DEFAULT_FMT`, `to_csv`, `csv_cell` and `ControlGroup` are removed and `d3-format` is no longer a dependency [#514](https://github.com/janosh/matterviz/pull/514)
+- Workers: `client.mount()` replaces `release()`; `create_worker_client({ retained_inputs })` sends inputs once. An electronic DOS declared in THz or cm^-1 throws, and unknown `units` on `Bands`/`Dos`/`IrRamanSpectrum` throw at the prop [#513](https://github.com/janosh/matterviz/pull/513)
 - Binary phase-diagram JSON stores pressure as `pressure_gpa` (GPa) instead of `pressure_pa`; files with the old key are rejected [#518](https://github.com/janosh/matterviz/pull/518)
 - Analysis functions use one verb: every `calc_*` / `calculate_*` is now `compute_*` with matching `compute_*_async` (`calc_msd` → `compute_msd`, `calc_vacf` → `compute_vacf`, `calculate_rdf` → `compute_rdf`, `calc_bond_angles` → `compute_bond_angles`, `calculate_e_above_hull` → `compute_e_above_hull`, ...), `CalcRdfsAsync`/`CalcStructureIdAsync` → `Compute*Async`, and `calc-*.ts` files → `compute-*.ts` [#515](https://github.com/janosh/matterviz/pull/515)
 - 3x3 helpers: `matrix_inverse_3x3` → `inverse_3x3`, `transpose_3x3_matrix` → `transpose_3x3`, `mat3x3_vec3_multiply` → `mul_3x3_vec3`, `vec9_to_mat3x3` → `mat3x3_from_flat_row_major`, `det2` → `det_2x2`; `mat3_from_flat_col_major` moves from `matterviz/symmetry` to `matterviz/math` as `mat3x3_from_flat_col_major` [#515](https://github.com/janosh/matterviz/pull/515)
@@ -22,6 +27,13 @@
 
 ### 🚀 New Features
 
+- anywidget `build/widget-model-schema.json`: each model key's JSON kinds and string enum (`cell_type`, `camera_projection`, ...), typed at build time from the props it drives so Python wrappers can test their trait types; `spacegroup_bar` no longer drives the `show_controls` its component ignores
+- anywidget `structure` forwards `cell_type` and `brillouin_zone` forwards `k_path`/`default_k_path`, so notebooks can show the conventional or primitive standard cell and the high-symmetry path
+- Periodic-table `tile_plots` (per-element histograms, scatter or line minis with shared axes and pinnable insets), `ScatterPlot` `annotation`, `BoxPlot` `point_side` and canvas-painted samples past 1000 points, multi-series `BarPlot` palette colors, binary `plot-series` inputs and `binned_scatter_plot`/`coordination_bar_plot` notebook widgets [#520](https://github.com/janosh/matterviz/pull/520)
+- anywidget: code-split `build/split/` bundle (2D widgets load ~1 MB instead of 5.8 MB, never three.js), `build/widget-model-keys.json` key contract, SVG export through the in-app serializer, opt-in periodic-table `active_elements` toggling and scatter `highlighted_ids` for linked selection, binary trajectory `frame_stress` tensors as per-frame `metadata.stress` [#521](https://github.com/janosh/matterviz/pull/521)
+- Isosurface `surface_finish` (`satin` default, `translucent_shell`, `chalk`, `unlit`), per-lobe camera sorting of transparent surfaces, `depth_cue` scene setting, camera-following key/fill lights, gradient normals [#519](https://github.com/janosh/matterviz/pull/519)
+- FHI-aims `geometry.in` and Quantum ESPRESSO `pw.x` input parsers, slab `is_symmetric`/`is_polar`, ternary phase diagram export pane, MSD `remove_com_drift`, bindable `view` and Alt+drag select on `BarPlot`/`Histogram`/`BoxPlot`, Ctrl+wheel and keyboard zoom/pan, touch gestures; XRD/SAED in workers [#513](https://github.com/janosh/matterviz/pull/513)
+- Phonon mode explorer: Shift+arrow q-point/mode stepping, fat-band/participation/IR-Raman band coloring, clickable and enlargeable BZ inset; every demo component prop documented; 104-139 KB less gzipped JS on pages with 2D plots [#512](https://github.com/janosh/matterviz/pull/512)
 - ITA symmetry labels, symmetrized CIF export, keep-molecules-whole option, hull composition probe and grand-potential projection (`open_elements`), anywidget binary array transfer (`matterviz-binary-v1`), log-axis minor ticks, derived secondary x-axis [#518](https://github.com/janosh/matterviz/pull/518)
 - CIF moment/ADP export, Uiso ellipsoids, non-diagonal supercell volumes and symmetry elements, primitive-zone default k-paths, bar error tooltips, Ry/Ha Fermi-band links, ASE-compatible extXYZ [#516](https://github.com/janosh/matterviz/pull/516)
 - Typed bonding options, VESTA-style `pair_cutoffs` bonding strategy with an editor, general integer supercell matrices, mCIF magnetic moments, ADPs with thermal ellipsoids, Kα1/Kα2 XRD doublets, EOS standard errors, band-gap VBM/CBM and direct/indirect detail, Setyawan–Curtarolo default k-paths (`high_symmetry_kpath`), bar error bars and typed-array plot series [#515](https://github.com/janosh/matterviz/pull/515)
@@ -29,6 +41,11 @@
 
 ### 🐛 Bug Fixes
 
+- 3D tooltips measure their clip box again once attached, so a structure gallery card that lifts its clip for a tooltip no longer clamps the tooltip inside the card
+- Conventional and primitive cell views keep site properties: forces, magmoms and velocities rotate into the standardized frame, `adp_U_cart` tensors too; lattice-basis `selective_dynamics` is dropped. They used to lose every site property
+- Band and DOS energy units (`efermi` converted with the bands, electronic DOS `unit` read), POSCAR/extXYZ constraint bases, linked plots with derived y2 no longer loop, log-axis zoom limits, touch drags, Chempot vertex dedup 1.2 s → 6 ms [#513](https://github.com/janosh/matterviz/pull/513)
+- Isosurface colors no longer muddied by AgX tone mapping; shell opacity matches the slider [#519](https://github.com/janosh/matterviz/pull/519)
+- Square heatmap tiles, 12px minimum tick labels, Brillouin zone and Fermi surface cameras fit reciprocal vectors, partial `isosurface_settings` filled from defaults, `VacfPlot` under svelte 5.59 [#521](https://github.com/janosh/matterviz/pull/521)
 - Box stats on log axes, unknown hull stability counted separately, distinct DOS spin styles, inverse hull energy over all competing phases, half-resolution sheared-supercell isosurfaces [#518](https://github.com/janosh/matterviz/pull/518)
 - Compound gases are hull phases at μ(T, p), so carbonates decompose on the hull where the synthesis planner says they do; gas shifts apply without elemental entries; false `d`-glide labels in Fm-3m; arcsinh axes without ticks; `clean_series` misaligned `point_ids`; Savitzky-Golay edges; OUTCAR run-together lattice rows; undecoded ASE `atoms.info` arrays; heatmap keyboard navigation in shadow roots; Tl electronegativity 1.62; unique CIF atom labels [#515](https://github.com/janosh/matterviz/pull/515)
 

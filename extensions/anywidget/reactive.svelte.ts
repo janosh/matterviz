@@ -104,19 +104,31 @@ export const throttle = <Args extends unknown[]>(
 //   - writeback: also push prop -> trait via set_model ($bindable the component mutates)
 //   - fallback:  seed/revert value for a writeback prop whose trait is absent/None
 //                (null would crash components that expect [], 0, ...)
+//   - targets:   per dep, where its value goes, for build/widget-model-schema.json: the
+//                component prop path (prop, then nested keys) it reaches unchanged, or the
+//                JSON kinds a compute that transforms it accepts. Deps without one (read by
+//                another prop that has one) are left out of the schema
 export type DrivenProp = {
   prop: string
   deps: readonly string[]
   compute: (model: AnyModel) => unknown
   writeback?: boolean
   fallback?: unknown
+  targets?: Readonly<Record<string, ModelKeyTarget>>
 }
+
+// JSON kinds of a model value. enum lists the allowed strings when every string the prop
+// accepts is a literal (e.g. camera_projection: perspective | orthographic)
+export type ModelKind = `string` | `number` | `boolean` | `object` | `array` | `null`
+export type ModelKeySchema = { type: readonly ModelKind[]; enum?: readonly string[] }
+export type ModelKeyTarget = readonly string[] | ModelKeySchema
 
 // Plain driven key (trait name == component prop name).
 export const drive_prop = (key: string): DrivenProp => ({
   prop: key,
   deps: [key],
   compute: (model) => get_prop(model, key),
+  targets: { [key]: [key] },
 })
 
 // Trait/prop names are listed as whitespace-separated words
@@ -129,6 +141,7 @@ export const nullable_prop = (key: string): DrivenProp => ({
   prop: key,
   deps: [key],
   compute: (model) => model.get(key),
+  targets: { [key]: [key] },
 })
 
 // Prop composed from several traits; recomputed whenever any dep changes.
@@ -136,7 +149,8 @@ export const derived_prop = (
   prop: string,
   deps: readonly string[],
   compute: (model: AnyModel) => unknown,
-): DrivenProp => ({ prop, deps, compute })
+  targets?: Readonly<Record<string, ModelKeyTarget>>,
+): DrivenProp => ({ prop, deps, compute, targets })
 
 // Two-way prop: driven from Python AND written back on component mutation. fallback
 // seeds/reverts the value when the trait is absent/None.

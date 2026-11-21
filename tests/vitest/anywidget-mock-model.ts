@@ -9,7 +9,9 @@ export class MockModel {
   save_count = 0
   set_count = 0
   constructor(initial: Record<string, unknown> = {}) {
-    this.state = { ...initial }
+    // anywidget.ts requires the wrapper's synced trait names: default to the initial ones
+    const synced_keys = Object.keys(initial).filter((key) => !key.startsWith(`_`))
+    this.state = { _synced_keys: synced_keys, ...initial }
   }
   get(key: string): unknown {
     return this.state[key]

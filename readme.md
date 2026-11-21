@@ -134,6 +134,6 @@ Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://doi.org/1
   url = {https://github.com/janosh/matterviz},
   note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
   urldate = {2026-11-10}, % optional, replace with your date of access
-  version = {0.9.0}, % replace with the version you use
+  version = {0.10.0}, % replace with the version you use
 }
 ```

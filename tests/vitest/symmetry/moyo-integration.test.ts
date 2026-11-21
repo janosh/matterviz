@@ -561,3 +561,71 @@ describe(`host symmetry backend`, () => {
     expect(backend.space_group_database.mock.calls).toEqual([[225]])
   })
 })
+
+describe(`transform_cell carries site properties`, () => {
+  // Tetragonal cell with its unique 5 Å axis along x: the standardized cell puts it on c, so a
+  // Cartesian property along x must follow that axis wherever moyo orients c
+  const tetragonal = (properties: Record<string, unknown>) =>
+    make_crystal(
+      [
+        [5, 0, 0],
+        [0, 3, 0],
+        [0, 0, 3],
+      ],
+      [{ element: `Fe`, abc: [0, 0, 0], properties }],
+    )
+
+  test.each([`conventional`, `primitive`] as const)(
+    `%s cell rotates vectors and tensors, drops basis flags, copies scalars`,
+    async (cell_type) => {
+      const properties = {
+        force: [2, 0, 0],
+        magmom: [0.5, 0, 0],
+        adp_U_cart: [
+          [0.03, 0, 0],
+          [0, 0.01, 0],
+          [0, 0, 0.01],
+        ],
+        selective_dynamics: [true, false, false],
+        charge: 0.7,
+        label_note: `x-axis`,
+      }
+      const orig = tetragonal(properties)
+      const result = transform_cell(orig, cell_type, await analyze_crystal(orig))
+      const c_vec = result.lattice.matrix[2]
+      expect(Math.hypot(...c_vec)).toBeCloseTo(5, 6)
+      const c_hat = c_vec.map((comp) => comp / 5) as Vec3
+      const [site] = result.sites
+      const parallel = (vec: Vec3, length: number) =>
+        c_hat.map((comp) => expect.closeTo(comp * length, 10))
+      expect(site.properties.force).toEqual(parallel([2, 0, 0], 2))
+      expect(site.properties.magmom).toEqual(parallel([0.5, 0, 0], 0.5))
+      // U = 0.01 I + 0.02 ĉĉᵀ: the large thermal axis follows the unique axis
+      const expected_adp = c_hat.map((comp_i, row) =>
+        c_hat.map((comp_j, col) =>
+          expect.closeTo((row === col ? 0.01 : 0) + 0.02 * comp_i * comp_j, 10),
+        ),
+      )
+      expect(site.properties.adp_U_cart).toEqual(expected_adp)
+      expect(site.properties).not.toHaveProperty(`selective_dynamics`)
+      expect(site.properties).toMatchObject({ charge: 0.7, label_note: `x-axis` })
+      // input untouched
+      expect(orig.sites[0].properties).toEqual(properties)
+    },
+  )
+
+  test(`every conventional-cell copy gets its primitive site's properties`, async () => {
+    const prim = make_crystal(fcc_primitive_matrix(3.61), [
+      { element: `Cu`, abc: [0, 0, 0], properties: { magmom: 1.5 } },
+    ])
+    const result = transform_cell(prim, `conventional`, await analyze_crystal(prim))
+    expect(result.sites.map((site) => site.properties.magmom)).toEqual([1.5, 1.5, 1.5, 1.5])
+  })
+
+  test(`throws when a transformed site has no input site nearby`, async () => {
+    const orig = tetragonal({ force: [1, 0, 0] })
+    const sym_data = await analyze_crystal(orig)
+    const shifted: SymmetryDataset = { ...sym_data, std_origin_shift: [0.5, 0.5, 0.5] }
+    expect(() => transform_cell(orig, `conventional`, shifted)).toThrow(/No input site within/)
+  })
+})

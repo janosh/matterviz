@@ -251,6 +251,11 @@ describe(`PieChart`, () => {
     const [fe_label] = document.querySelectorAll(`text`)
     const [symbol, amount] = fe_label.querySelectorAll(`tspan`)
     expect([symbol.textContent, amount.textContent]).toEqual([`Fe`, `2`])
+    // medium weights: bold symbols read as heavy blobs on small pies
+    expect([symbol, amount].map((tspan) => tspan.getAttribute(`font-weight`))).toEqual([
+      `500`,
+      `400`,
+    ])
     expect(document.querySelector(`foreignObject`)).toBeNull()
   })
 })

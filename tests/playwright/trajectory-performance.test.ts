@@ -34,21 +34,23 @@ const load_page = async (page: Page, frames: number, atoms: number) => {
 }
 
 test.describe(`Trajectory performance`, () => {
-  test(`overlays hotspots on all 333k atom spheres without replacing the scene @source`, async ({
+  test(`overlays hotspots on all 210k atom spheres without replacing the scene @source`, async ({
     page,
     errors,
   }) => {
     // This checks full rendering, including on CI's CPU renderer; timing is covered below.
     test.skip(
       IS_CI && process.env.MATTERVIZ_PERF !== `1`,
-      `CPU rendering takes ~10 min; CI runs it outside pull requests (MATTERVIZ_PERF=1)`,
+      `CPU rendering takes ~6 min; CI runs it outside pull requests (MATTERVIZ_PERF=1)`,
     )
     test.setTimeout(IS_CI ? 900_000 : 90_000)
     const { default: h5 } = await import(`h5wasm/node`)
     await h5.ready
     const directory = await mkdtemp(`${tmpdir()}/matterviz-hotspot-test-`)
     const filename = `${directory}/device.h5`
-    const n_atoms = 333_200
+    // above the session's 200k cache_max_site_records, so no frame fits the frame cache (the
+    // uncached path), and small enough for CI's CPU renderer (333k took ~10 min)
+    const n_atoms = 210_000
     const cell_depth = Math.ceil(n_atoms / 10_000)
     try {
       const file = new h5.File(filename, `w`)

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Plugin } from 'vite'
+import { COMPONENTS } from './elements/components.ts'
 
 export const split_query = (path: string): [clean: string, query: string] => {
   const clean = path.replace(/\?.*$/, ``)
@@ -135,5 +136,22 @@ export const vite_plugin_moyo_wasm_source = (
     if (!code.includes(moyo_glue_url))
       throw new Error(`${name}: ${moyo_glue_url} not found in ${identifier}`)
     return { code: prelude + code.replace(moyo_glue_url, source), map: null }
+  },
+})
+
+// `virtual:matterviz-widget-components` (extensions/anywidget) default-exports a loader per
+// widget_type importing its COMPONENTS file under lib_dir: the widget build's dist/, so in its
+// split output each widget loads only its own chunks, or src/lib for tests
+const WIDGET_COMPONENTS_ID = `virtual:matterviz-widget-components`
+export const widget_components = (lib_dir: string): Plugin => ({
+  name: `matterviz-widget-components`,
+  resolveId: (id) => (id === WIDGET_COMPONENTS_ID ? `\0${id}` : null),
+  load(id) {
+    if (id !== `\0${WIDGET_COMPONENTS_ID}`) return null
+    const loaders = Object.entries(COMPONENTS).map(([widget_type, path]) => {
+      const file = JSON.stringify(`${lib_dir}/${path}.svelte`)
+      return `${JSON.stringify(widget_type)}: () => import(${file})`
+    })
+    return `export default {\n${loaders.join(`,\n`)}\n}`
   },
 })

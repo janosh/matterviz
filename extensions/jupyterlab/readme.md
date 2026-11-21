@@ -39,19 +39,19 @@ Files above 100 MB refuse to parse (transfer already happened; parse in the kern
 
 ```sh
 pnpm install --ignore-workspace --config.strict-dep-builds=false
-pnpm build   # vite build && jupyter labextension build . (needs jupyter on PATH)
+pnpm build   # vite build && jupyter-builder build . (needs jupyterlab on PATH)
 uv build --wheel
 ```
 
 `uv_build` packages whatever is already on disk — run `pnpm build` first or you will ship an empty extension. The install flags are needed because this package is outside the monorepo workspace and `@jupyterlab/application` depends on fontawesome, whose install script pnpm declines to run unattended and then exits non-zero over.
 
-The `process` devDependency is not imported by anything here. `@jupyterlab/builder`'s webpack config carries an unconditional `ProvidePlugin({ process: 'process/browser' })`, which has to resolve from this package under pnpm's strict layout. Don't delete it as unused.
+The `process`, `style-loader` and `css-loader` devDependencies are not imported by anything here. `@jupyter/builder`'s rspack config names them by bare specifier (`ProvidePlugin({ process: 'process/browser' })` and its CSS rule), so under pnpm's strict layout they have to resolve from this package. Don't delete them as unused. `@jupyter/builder` (not the legacy `@jupyterlab/builder`) also ships `@jupyterlab/core-meta`, so the build never fetches it from npm or GitHub.
 
 The build runs in two stages, which is load-bearing:
 
 1. **Vite** compiles `src/index.ts` plus the MatterViz Svelte component graph into plain ESM under `lib/`. All `@jupyterlab/*` and `@lumino/*` imports stay external so JupyterLab supplies the shared singleton instances — bundling a private copy would produce plugin tokens that never match the ones in the application registry.
-2. **`jupyter labextension build`** webpacks `lib/index.js` into a federated module under `data/share/jupyter/labextensions/matterviz-jupyterlab/`, which `uv_build` copies into the wheel's data directory so pip unpacks it over `{sys.prefix}/share`.
+2. **`jupyter-builder build`** bundles `lib/index.js` into a federated module under `data/share/jupyter/labextensions/matterviz-jupyterlab/`, which `uv_build` copies into the wheel's data directory so pip unpacks it over `{sys.prefix}/share`.
 
 Webpack cannot build MatterViz directly: the source relies on Vite-only features (`import.meta.glob`, `.json.gz` imports) and Svelte compilation. Feeding it already-compiled ESM sidesteps both. Vite's dynamic-import chunks survive the second pass, so HDF5 support stays a ~4.6 MB chunk fetched only when someone actually opens an `.h5` file.
 
-`jupyter labextension build` emits an asset-size warning for the three-dimensional viewer chunks. That is expected for a bundle carrying three.js.
+`jupyter-builder build` emits an asset-size warning for the three-dimensional viewer chunks. That is expected for a bundle carrying three.js.
