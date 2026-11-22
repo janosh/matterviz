@@ -10,6 +10,7 @@ import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.j
 import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
 import { DEFAULTS } from '#lib/settings.js'
 import {
+  corner_label_lines,
   measure_treemap_label_block,
   normalize_treemap_label_lines,
   place_treemap_label,
@@ -317,6 +318,59 @@ describe(`place_treemap_label`, () => {
     // line 1 spans [16.75, 22.25] (center 19.5), line 2 [22.25, 33.25] (center 27.75)
     expect(placement?.lines.map((line) => line.y)).toEqual([19.5, 27.75])
   })
+
+  test.each([
+    // 'label' 30x11 at 10px: line centers 5.5 below the corner plus the margin
+    {
+      name: `horizontal: anchored at the top-left corner`,
+      cell: rect(100, 50),
+      rotated: false,
+    },
+    // rotated in a tall thin cell: anchored at the bottom-left, rotated about it
+    { name: `rotated: reads upward from the bottom-left`, cell: rect(14, 100), rotated: true },
+  ])(`top-left $name`, ({ cell, rotated }) => {
+    const placement = place_treemap_label({
+      ...base,
+      rect: cell,
+      margin: 1,
+      align: `top-left`,
+    })
+    const pivot_y = rotated ? cell.height - 1 : 1
+    expect(placement).toMatchObject({ x: 1, start: true, fits: true })
+    expect(placement?.lines.map((line) => line.y)).toEqual([pivot_y + 5.5])
+    expect(placement?.transform).toBe(rotated ? `rotate(-90, 1, ${pivot_y})` : undefined)
+  })
+
+  test(`fits is false when shrink went below the block's fitting size`, () => {
+    const opts = { ...base, fit: `shrink` as const, align: `top-left` as const }
+    expect(place_treemap_label({ ...opts, rect: rect(25, 12) })?.fits).toBe(true) // 25/30 * 10
+    expect(place_treemap_label({ ...opts, rect: rect(5, 5) })?.fits).toBe(false) // < 6px
+  })
+})
+
+test.each([
+  {
+    name: `label+value: suffix on a dimmer line, underscore wraps, then the name alone`,
+    variants: [{ text: `free_energy 20.1k` }, { text: `free_energy` }],
+    expected: [
+      [`free_energy`, `20.1k`],
+      [`free_`, `energy`, `20.1k`],
+      [`free_energy`],
+      [`free_`, `energy`],
+    ],
+  },
+  {
+    name: `bare label without underscores`,
+    variants: [{ text: `mace` }],
+    expected: [[`mace`]],
+  },
+  { name: `no label`, variants: [], expected: [] },
+])(`corner_label_lines $name`, ({ variants, expected }) => {
+  const candidates = corner_label_lines(variants)
+  expect(candidates.map((lines) => lines.map((line) => line.text))).toEqual(expected)
+  const suffix = candidates[0]?.at(-1)
+  if (expected[0]?.length === 2)
+    expect(suffix).toMatchObject({ font_scale: 0.9, opacity: 0.75 })
 })
 
 describe(`align_tiling`, () => {

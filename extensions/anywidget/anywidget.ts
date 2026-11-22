@@ -629,7 +629,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   treemap: {
     drive:
-      hierarchy_drive(`padding_inner padding_top padding_outer label_fit label_min_font_size
+      hierarchy_drive(`padding_inner padding_top padding_outer label_fit label_align label_min_font_size
       label_max_font_size parent_label_font_size`),
   },
   sunburst: {
