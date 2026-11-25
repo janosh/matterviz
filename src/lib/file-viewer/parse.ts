@@ -6,6 +6,7 @@ import {
   VASP_VOLUMETRIC_REGEX,
 } from '#lib/constants.js'
 import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
+import { format_bytes } from 'svelte-widgets/format'
 import {
   as_text,
   classify_payload,
@@ -101,9 +102,7 @@ const resolve_large_file = async (
     )
   }
   const { request_large_file_content } = await import(`./host-bridge`)
-  console.info(
-    `Handling large file: ${filename} (${Math.round(marker.file_size / 1024 / 1024)}MB)`,
-  )
+  console.info(`Handling large file: ${filename} (${format_bytes(marker.file_size)})`)
   return {
     type: `trajectory`,
     data: await request_large_file_content(marker.file_path, filename),

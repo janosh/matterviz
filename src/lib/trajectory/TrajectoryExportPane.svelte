@@ -1,7 +1,7 @@
 <script lang="ts">
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { format_num } from 'svelte-widgets/format'
+  import { format_bytes, format_num } from 'svelte-widgets/format'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
 
   import { track_settings } from '#lib/controls.js'
@@ -145,8 +145,8 @@
     label: format === `webm` ? `WebM` : `MP4`,
     supported: is_video_export_supported(format),
   }))
-  let file_size_mb = $derived(
-    canvas ? (bitrate_mbps * 1e6 * video_frame_count) / video_fps / 8 / 1024 / 1024 : 0,
+  let file_size_bytes = $derived(
+    canvas ? (bitrate_mbps * 1e6 * video_frame_count) / video_fps / 8 : 0,
   )
 
   const frame_at: TrajectoryFrameResolver = (idx, signal) =>
@@ -492,11 +492,7 @@
 
     <div class="export-info">
       {format_num(video_frame_count / video_fps, `.1f`)}s ({export_frame_count} frames: {range})
-      {#if file_size_mb > 0}
-        • ~{file_size_mb < 1
-          ? `${format_num(file_size_mb * 1024, `.0f`)} KB`
-          : `${format_num(file_size_mb, `.1f`)} MB`}
-      {/if}
+      {#if file_size_bytes > 0}• ~{format_bytes(file_size_bytes)}{/if}
     </div>
 
     {#if run && !canvas}

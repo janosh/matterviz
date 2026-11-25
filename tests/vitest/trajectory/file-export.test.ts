@@ -611,7 +611,10 @@ describe(`TrajectoryExportPane property export`, () => {
       )
       const canvas = document.createElement(`canvas`)
       wrapper.append(canvas)
-      await vi.waitFor(() => expect(doc_query(`.export-info`).textContent).toContain(`KB`))
+      // the size estimate in binary units, like the bytes it divides (format_bytes)
+      await vi.waitFor(() =>
+        expect(doc_query(`.export-info`).textContent).toMatch(/• ~[\d.]+ KiB/),
+      )
       for (const label of [`extXYZ`, `POSCAR ZIP`, `CSV`, `JSON`, `WebM`, `MP4`]) {
         const button = doc_query<HTMLButtonElement>(`button[aria-label="Download ${label}"]`)
         expect(button.disabled, label).toBe(!can_navigate && [`WebM`, `MP4`].includes(label))
