@@ -20,12 +20,29 @@ export const host_run = (
     frame_idx: number,
     signal?: AbortSignal,
     channels?: FrameChannels,
+    display?: boolean,
   ) => Promise<NumericFrame>,
   release: () => void = () => {},
 ): HostRun => {
   const fields = run_fields_from_summary(summary)
   const warnings = mirror_warning_collector(summary.warnings)
   let disposed = false
+  const read = (
+    frame_idx: number,
+    signal?: AbortSignal,
+    channels?: FrameChannels,
+    display = false,
+  ) => {
+    assert_frame_idx(summary, frame_idx)
+    if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
+    if (signal?.aborted) return Promise.reject(to_error(signal.reason))
+    if (frame_idx === 0 && !summary.preview.metadata?.render_sample)
+      return select_frame_channels(encode_frame(summary.preview), channels)
+    // A host may send more channels than asked for, or ignore the display hint.
+    return request_frame(frame_idx, signal, channels, display).then((frame) =>
+      select_frame_channels(frame, channels),
+    )
+  }
   return {
     ...fields,
     // Keep the snapshot unproxied when Svelte binds the run to reactive state.
@@ -36,17 +53,8 @@ export const host_run = (
     read_concurrency: 8,
     subscribe_warnings: warnings.subscribe,
     receive_warnings: warnings.receive,
-    read_frame: (frame_idx, signal, channels) => {
-      assert_frame_idx(summary, frame_idx)
-      if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
-      if (signal?.aborted) return Promise.reject(to_error(signal.reason))
-      if (frame_idx === 0 && !summary.preview.metadata?.render_sample)
-        return select_frame_channels(encode_frame(summary.preview), channels)
-      // a host may send more channels than asked for
-      return request_frame(frame_idx, signal, channels).then((frame) =>
-        select_frame_channels(frame, channels),
-      )
-    },
+    read_frame: read,
+    read_display_frame: (idx, signal, channels) => read(idx, signal, channels, true),
     dispose: () => {
       if (disposed) return
       disposed = true

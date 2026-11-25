@@ -20,6 +20,7 @@ import * as structure_id_pane_module from '#lib/structure-id/TrajectoryStructure
 import { Matrix4 } from 'three/webgpu'
 import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
+import { frame_from_wire, frame_to_wire } from '#lib/file-viewer/host-protocol.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { FrameView } from '#lib/trajectory/frame.js'
 import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare.js'
@@ -245,6 +246,40 @@ describe(`display modes`, () => {
     ).toEqual([1, 2])
     expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(1)
     expect(compute_hotspots).not.toHaveBeenCalled()
+  })
+
+  test(`default remote viewing uses compact reads; atom inspection and callbacks use exact reads`, async () => {
+    const structure_props = last_props<StructureProps>(structure_component)
+    const frames = [0, 10, 20].map((step) => make_trajectory_frame(step, 2))
+    for (const frame of frames) frame.structure.sites[0].xyz[0] = Math.PI
+    const backing = trajectory_from_frames(frames)
+    const request = vi.fn(async (idx, signal, channels, display) =>
+      frame_from_wire(frame_to_wire(await backing.read_frame(idx, signal, channels), display)),
+    )
+    const run = host_run(summarize_run(backing), request)
+    // Keep the default open Global sidebar: it reads metadata, not positions.
+    const props = $state(default_props({ trajectory: run, current_step_idx: 1 }))
+    const target = mount_trajectory(props)
+    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(true))
+    await vi.waitFor(() => expect(structure_props().selected_sites).toBeDefined())
+    // Atom picks used for distance/angle measurements restore source precision.
+    structure_props().selected_sites = [0, 1]
+    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(false))
+    structure_props().selected_sites = []
+    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(true))
+    const tab = (name: string) => {
+      const button = [...target.querySelectorAll<HTMLButtonElement>(`[role="tab"]`)].find(
+        (candidate) => candidate.textContent?.startsWith(name),
+      )
+      expect(button).toBeDefined()
+      button?.click()
+    }
+    tab(`Atoms`)
+    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(false))
+    tab(`Global`)
+    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(true))
+    props.on_pause = vi.fn()
+    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(false))
   })
 
   test(`channel selection follows viewer controls, inspection and custom coloring`, async () => {

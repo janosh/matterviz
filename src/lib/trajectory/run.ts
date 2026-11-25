@@ -201,6 +201,9 @@ export interface TrajectoryRun {
   // Numeric snapshots are borrowed read-only: never mutate or transfer their buffers.
   // Use materialize_frame() for independently editable Site records and rich metadata.
   read_frame(frame_idx: number, signal?: AbortSignal, channels?: FrameChannels): FrameResult
+  // Optional lossy transport for viewing only; exact consumers always use read_frame.
+  // Display reads wrap before rounding; exports must re-read source coordinates.
+  read_display_frame?: TrajectoryRun[`read_frame`]
   // Source workers can prepare the next scene alongside decoding, before transferring it.
   readonly preparation_concurrency?: number
   // Unanswered reads to keep in flight for a source that pipelines them over a round trip (a

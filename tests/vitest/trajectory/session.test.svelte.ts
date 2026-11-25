@@ -1,3 +1,4 @@
+import { frame_from_wire, frame_to_wire } from '#lib/file-viewer/host-protocol.js'
 import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
 import {
   create_numeric_md_frame,
@@ -73,6 +74,7 @@ type Host = {
   can_advance: boolean
   preparation?: FramePreparation
   channels?: FrameChannels
+  display?: boolean
 }
 
 const session_roots: (() => void)[] = []
@@ -98,6 +100,7 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
         can_advance: () => host.can_advance,
         preparation: () => host.preparation,
         channels: () => host.channels,
+        display: () => host.display ?? false,
         index: () => host.index,
         set_index: (idx) => (host.index = idx),
         fps: () => host.fps,
@@ -284,7 +287,7 @@ describe(`frame loading`, () => {
     const run = host_run(summary, read)
     expect(run.atom_count).toBe(1_000_000)
     const { session } = make_session({ run })
-    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal), undefined)
+    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal), undefined, false)
     expect(session.current_structure).toBeUndefined()
     pending.resolve(encode_frame(complete))
     await pending.promise
@@ -1034,6 +1037,66 @@ describe(`property mirroring`, () => {
 })
 
 describe(`resolve_frame`, () => {
+  it.each([false, true])(
+    `exports exact source data after compact playback (hidden vectors: %s), then switches to inspection`,
+    async (hidden_vectors) => {
+      const raf = stub_raf()
+      vi.spyOn(performance, `now`).mockReturnValue(0)
+      const frame_list = frames(4)
+      for (const frame of frame_list) {
+        frame.structure.sites[0].xyz = [Math.PI, 0, 0]
+        if (hidden_vectors) frame.structure.sites[0].properties.custom = [Math.E, 1e-100, 0]
+      }
+      const backing = trajectory_from_frames(frame_list)
+      const request = vi.fn(
+        async (
+          idx: number,
+          signal?: AbortSignal,
+          channels?: FrameChannels,
+          display?: boolean,
+        ) =>
+          frame_from_wire(
+            frame_to_wire(await backing.read_frame(idx, signal, channels), display),
+          ),
+      )
+      const run = host_run(summarize_run(backing), request)
+      const { host, session } = make_session({
+        run,
+        display: true,
+        channels: hidden_vectors ? { vectors: [] } : undefined,
+        fps: 30,
+      })
+      session.player.play()
+      flushSync()
+      await vi.advanceTimersByTimeAsync(0)
+      await flush_microtasks()
+      expect(request.mock.calls.some(([idx, , , display]) => idx === 1 && display)).toBe(true)
+      raf.at(-1)?.(34)
+      flushSync()
+      await flush_microtasks()
+      expect(session.current_frame?.step).toBe(10)
+      expect(session.numeric_frame?.coordinates[0]).toBe(Math.fround(Math.PI))
+      const displayed = session.current_frame
+      const exported = await session.resolve_frame(1)
+      expect(exported?.structure.sites[0].xyz[0]).toBe(Math.PI)
+      expect(exported?.structure.sites[0].properties.custom).toEqual(
+        hidden_vectors ? [Math.E, 1e-100, 0] : undefined,
+      )
+      expect(request.mock.lastCall).toEqual([1, undefined, undefined, false])
+      expect(session.current_frame).toBe(displayed)
+      session.player.pause()
+      host.display = false
+      host.channels = undefined
+      flushSync()
+      await flush_microtasks()
+      await flush_microtasks()
+      expect(session.numeric_frame?.coordinates[0]).toBe(Math.PI)
+      expect(session.current_frame?.structure.sites[0].properties.custom).toEqual(
+        hidden_vectors ? [Math.E, 1e-100, 0] : undefined,
+      )
+    },
+  )
+
   it.each([false, true])(
     `exports source coordinates and vectors (hidden: %s)`,
     async (hidden) => {

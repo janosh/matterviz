@@ -3,7 +3,10 @@
 import type { PartialSettings } from '#lib/settings.js'
 import type { ThemeName } from '#lib/theme/index.js'
 import { site_stride } from '#lib/structure/site.js'
+import { cart_to_frac_with_fallback } from '#lib/structure/parsers/shared.js'
+import type { Vec3 } from '#lib/math.js'
 import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
+import { wrap_frame_coordinates } from '#lib/trajectory/frame.js'
 import type { TrajectoryMetadata, TrajectoryRunSummary } from '#lib/trajectory/index.js'
 
 export interface FileData {
@@ -46,6 +49,9 @@ export type HostRequest =
       command: `request_frame`
       frame_index: number
       channels?: FrameChannels
+      // Viewing only: xyz float32, with fractional coordinates reconstructed by the client.
+      // Omit for source reads (analysis, data export, inspectors and custom callbacks).
+      display?: boolean
     } & HostFileRequest)
 
 // The host watches the rendered file itself (no webview subscription step)
@@ -105,36 +111,54 @@ export type HostToWebviewMessage =
 // JSON Site record per atom (2.5x the bytes plus a decode on each side).
 export type WireFrame = Omit<NumericFrame, `coordinates` | `sites` | `scalar_columns`> & {
   coordinates: ArrayBuffer
+  coordinate_encoding?: `xyz-f32`
   sites: Exclude<NumericFrame[`sites`], Uint8Array> | ArrayBuffer
   scalar_columns?: Record<string, ArrayBuffer>
 }
 
 // A view's own bytes: a view into a larger (or shared) buffer would post all of it
-const own_buffer = (view: Float64Array | Uint8Array): ArrayBuffer =>
+const own_buffer = (view: Float32Array | Float64Array | Uint8Array): ArrayBuffer =>
   view.buffer instanceof ArrayBuffer && view.byteLength === view.buffer.byteLength
     ? view.buffer
     : view.slice().buffer
 
-export const frame_to_wire = ({
-  coordinates,
-  sites,
-  scalar_columns,
-  ...rest
-}: NumericFrame): WireFrame => ({
-  ...rest,
-  coordinates: own_buffer(coordinates),
-  sites: sites instanceof Uint8Array ? own_buffer(sites) : sites,
-  ...(scalar_columns && {
-    scalar_columns: Object.fromEntries(
-      Object.entries(scalar_columns).map(([key, column]) => [key, own_buffer(column)]),
-    ),
-  }),
-})
+export const frame_to_wire = (frame: NumericFrame, display = false): WireFrame => {
+  // Extra vector channels use the existing exact format.
+  display &&= frame.vector_keys.length === 0
+  // Wrap before rounding: an atom just below a periodic boundary must not jump cells
+  // because float32 rounds its fractional coordinate to 1. Source buffers stay untouched.
+  const { coordinates, sites, scalar_columns, ...rest } = display
+    ? wrap_frame_coordinates(frame)
+    : frame
+  const wire: WireFrame = {
+    ...rest,
+    coordinates: own_buffer(coordinates),
+    sites: sites instanceof Uint8Array ? own_buffer(sites) : sites,
+    ...(scalar_columns && {
+      scalar_columns: Object.fromEntries(
+        Object.entries(scalar_columns).map(([key, column]) => [key, own_buffer(column)]),
+      ),
+    }),
+  }
+  if (!display) return wire
+  const xyz = new Float32Array(sites.length * 3)
+  const width = site_stride(rest.vector_keys)
+  for (let idx = 0; idx < sites.length; idx++) {
+    for (let axis = 0; axis < 3; axis++) xyz[idx * 3 + axis] = coordinates[idx * width + axis]
+  }
+  // Preserve unusual coordinates outside float32's range rather than sending infinities.
+  if (!xyz.every(Number.isFinite)) return wire
+  return {
+    ...wire,
+    coordinate_encoding: `xyz-f32`,
+    coordinates: xyz.buffer,
+  }
+}
 
 // Throws on a frame a host posted without frame_to_wire: its typed arrays arrive as plain
 // objects that would decode to empty columns, a materialized frame has no columns at all
 export const frame_from_wire = (wire: WireFrame): NumericFrame => {
-  const { coordinates, sites, scalar_columns, ...rest } = wire
+  const { coordinates, sites, scalar_columns, coordinate_encoding, ...rest } = wire
   const columns = Object.values(scalar_columns ?? {})
   if (
     !(coordinates instanceof ArrayBuffer) ||
@@ -145,10 +169,18 @@ export const frame_from_wire = (wire: WireFrame): NumericFrame => {
       `Malformed host frame: expected ArrayBuffer coordinates and sites (see frame_to_wire), got fields ${Object.keys(wire).join(`, `)}`,
     )
   const n_sites = sites instanceof ArrayBuffer ? sites.byteLength : sites.length
-  const n_values = n_sites * site_stride(rest.vector_keys)
-  if (coordinates.byteLength !== n_values * Float64Array.BYTES_PER_ELEMENT)
+  if (coordinate_encoding !== undefined && coordinate_encoding !== `xyz-f32`)
+    throw new Error(`Malformed host frame: unknown coordinate encoding ${coordinate_encoding}`)
+  const compact = coordinate_encoding === `xyz-f32`
+  const width = site_stride(rest.vector_keys)
+  const n_values = n_sites * width
+  if (coordinates.byteLength !== (compact ? n_sites * 12 : n_values * 8))
     throw new Error(
       `Malformed host frame: ${coordinates.byteLength} coordinate bytes for ${n_sites} sites with vectors [${rest.vector_keys}]`,
+    )
+  if (compact && (rest.vector_keys.length || !rest.wrapped))
+    throw new Error(
+      `Malformed host frame: xyz-f32 requires wrapped coordinates without vectors`,
     )
   // one value per site, else sites past a short column would read undefined
   for (const [key, column] of Object.entries(scalar_columns ?? {}))
@@ -156,9 +188,26 @@ export const frame_from_wire = (wire: WireFrame): NumericFrame => {
       throw new Error(
         `Malformed host frame: scalar column ${key} has ${column.byteLength} bytes for ${n_sites} sites`,
       )
+  const decoded = compact ? new Float64Array(n_values) : new Float64Array(coordinates)
+  if (compact) {
+    const positions = new Float32Array(coordinates)
+    const convert =
+      rest.structure.lattice &&
+      cart_to_frac_with_fallback(rest.structure.lattice.matrix).convert
+    const xyz: Vec3 = [0, 0, 0]
+    const abc: Vec3 = [0, 0, 0]
+    for (let idx = 0; idx < n_sites; idx++) {
+      for (let axis = 0; axis < 3; axis++) xyz[axis] = positions[idx * 3 + axis]
+      decoded.set(xyz, idx * width)
+      if (convert) {
+        convert(xyz, abc)
+        decoded.set(abc, idx * width + 3)
+      }
+    }
+  }
   return {
     ...rest,
-    coordinates: new Float64Array(coordinates),
+    coordinates: decoded,
     sites: sites instanceof ArrayBuffer ? new Uint8Array(sites) : sites,
     ...(scalar_columns && {
       scalar_columns: Object.fromEntries(

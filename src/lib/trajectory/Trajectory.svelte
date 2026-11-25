@@ -554,15 +554,16 @@
   let atom_color_config = $derived(
     structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
   )
-  const frame_channels = $derived.by((): FrameChannels | undefined => {
-    // Inspectors, exports and arbitrary host snippets/callbacks need complete properties.
-    // Ordinary atom hover uses only species, coordinates and bonds. Analyses read their
-    // own channels from the source, independently of this display packet.
-    if (
-      inspector_shown ||
+  // Default inspector tabs use exact metadata. Atom inspection/measurement, exports and
+  // arbitrary callbacks need source precision. Analyses read independently from the source.
+  const exact_frame = $derived.by(() =>
+    Boolean(
+      (inspector_shown && inspector_tab === `atoms`) ||
+      selected_sites.length > 0 ||
       structure_pane === `info` ||
       structure_pane === `export` ||
       structure_props.children ||
+      typeof structure_props.tooltip === `function` ||
       structure_props.on_camera_move ||
       structure_props.on_camera_reset ||
       on_step_change ||
@@ -570,9 +571,11 @@
       on_pause ||
       on_end ||
       on_loop ||
-      atom_color_config.mode === `custom`
-    )
-      return undefined
+      atom_color_config.mode === `custom`,
+    ),
+  )
+  const frame_channels = $derived.by((): FrameChannels | undefined => {
+    if (inspector_shown || exact_frame) return undefined
     const frame =
       session.scene_frame?.run === trajectory ? session.scene_frame?.frame : undefined
     if (!frame) return undefined
@@ -636,6 +639,7 @@
     run: () => (loading || error_msg || hdf5_picker_open ? undefined : trajectory),
     preparation: () => frame_preparation,
     channels: () => frame_channels,
+    display: () => !exact_frame,
     wait_for_render: uses_structure_renderer,
     index: () => current_step_idx,
     set_index: (idx) => (current_step_idx = idx),

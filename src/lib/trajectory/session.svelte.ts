@@ -28,6 +28,8 @@ interface TrajectorySessionInputs extends Omit<
   wait_for_render?: () => boolean
   preparation?: () => FramePreparation | undefined
   channels?: () => FrameChannels | undefined
+  // Opt in only when no inspector/export/callback needs source precision.
+  display?: () => boolean
   // Fired after every committed index change (slider, keyboard, plot click, controller, clamp)
   on_step_change?: (idx: number) => void
   on_frame_error?: (frame_idx: number, error: Error) => void
@@ -94,11 +96,12 @@ export function create_trajectory_session(
     for (const waiter of render_waiters) waiter.settle(error)
   }
   const channels = $derived(inputs.channels?.())
+  const display = $derived(inputs.display?.() ?? false)
   const preparation = $derived.by(() => {
     const settings = inputs.preparation?.()
     return settings && channels ? { ...settings, channels } : settings
   })
-  const request_key = $derived(value_key(preparation ?? { channels }))
+  const request_key = $derived(value_key({ preparation, channels, display }))
   const matches_request = (frame: SessionFrame): boolean => frame.request_key === request_key
   const read_display = (
     run: TrajectoryRun,
@@ -112,7 +115,10 @@ export function create_trajectory_session(
         .prepare_frame(idx, preparation, signal)
         .then((frame) => ({ ...frame, request_key: key }))
     }
-    const frame = run.read_frame(idx, signal, channels)
+    const frame =
+      display && run.read_display_frame
+        ? run.read_display_frame(idx, signal, channels)
+        : run.read_frame(idx, signal, channels)
     return is_promise(frame)
       ? frame.then((received) => ({ frame: received, request_key: key }))
       : { frame, request_key: key }

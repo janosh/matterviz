@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import type { WebviewToHostMessage } from '#lib/file-viewer/host-protocol.js'
+import { frame_from_wire, type WireFrame } from '#lib/file-viewer/host-protocol.js'
 import type { FrameChannels } from '#lib/trajectory/frame.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
@@ -66,7 +67,7 @@ const frame_msg = (
   file_path: string,
   frame_index: number,
   channels?: FrameChannels,
-): WebviewToHostMessage => ({
+): Extract<WebviewToHostMessage, { command: `request_frame` }> => ({
   command: `request_frame`,
   request_id: `frame-request`,
   file_path,
@@ -486,11 +487,13 @@ describe(`MatterViz Extension`, () => {
 
     // numeric, its coordinates an ArrayBuffer that VS Code's postMessage carries as such,
     // with only the vector channels asked for
-    for (const [channels, vector_keys] of [
-      [undefined, [`force`]],
-      [{ vectors: [] }, []],
+    for (const [channels, vector_keys, display] of [
+      [{ vectors: [] }, [], true],
+      [undefined, [`force`], true], // Extra channels retain the exact format.
+      [undefined, [`force`], false],
+      [{ vectors: [] }, [], false],
     ] as const) {
-      await handle_msg(frame_msg(file_path, 1, channels), mock_webview)
+      await handle_msg({ ...frame_msg(file_path, 1, channels), display }, mock_webview)
       expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
         command: `frame_response`,
         request_id: `frame-request`,
@@ -501,6 +504,13 @@ describe(`MatterViz Extension`, () => {
         }),
         frame_index: 1,
       })
+      const { frame } = mock_webview.postMessage.mock.lastCall?.[0] as { frame: WireFrame }
+      const compact = display && !vector_keys.length
+      expect(frame.coordinate_encoding).toBe(compact ? `xyz-f32` : undefined)
+      expect(frame.coordinates.byteLength).toBe(
+        compact ? 12 : (6 + 3 * vector_keys.length) * 8,
+      )
+      expect(frame_from_wire(frame).coordinates[0]).toBe(1)
     }
     await handle_msg(frame_msg(file_path, n_frames), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(

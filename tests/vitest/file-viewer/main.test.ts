@@ -737,6 +737,28 @@ describe(`LARGE_FILE markers`, () => {
     return (await import(`#lib/file-viewer/parse.js`)).parse_file_content
   }
 
+  test(`opts display reads into compact transport and keeps source reads exact`, async () => {
+    const { post_message } = with_host((request) => {
+      if (request.command !== `request_frame`) return summary_reply(request)
+      const frame = backing.read_frame(Number(request.frame_index), undefined, { vectors: [] })
+      if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
+      return {
+        command: `frame_response`,
+        request_id: request.request_id,
+        frame: vscode_clone(frame_to_wire(frame, request.display === true)),
+      }
+    })
+    const result = await (await fresh_parse())(marker, `movie.extxyz`)
+    const run = result.data as TrajectoryRun
+    expect((await run.read_display_frame?.(2))?.wrapped).toBe(true)
+    expect(post_message.mock.lastCall?.[0]).toMatchObject({
+      command: `request_frame`,
+      display: true,
+    })
+    expect((await run.read_frame(2)).wrapped).toBeUndefined()
+    expect(post_message.mock.lastCall?.[0]).not.toHaveProperty(`display`)
+  })
+
   test(`asks the host for the file and serves frames and plot rows from it`, async () => {
     const { post_message, message_bus } = with_host((request) =>
       request.command === `request_frame`

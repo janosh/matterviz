@@ -124,8 +124,8 @@ export async function request_large_file_content(
         }
         const run = host_run(
           data.run_summary,
-          (frame_idx, signal, channels) =>
-            request_host_frame(file_path, filename, frame_idx, signal, channels),
+          (frame_idx, signal, channels, display) =>
+            request_host_frame(file_path, filename, frame_idx, signal, channels, display),
           () => globalThis.removeEventListener(`message`, handler),
         )
         globalThis.addEventListener(`message`, handler)
@@ -142,11 +142,19 @@ const request_host_frame = (
   frame_idx: number,
   signal?: AbortSignal,
   channels?: FrameChannels,
+  display = false,
 ): Promise<NumericFrame> => {
   if (!host_api) return Promise.reject(new Error(`No host bridge is available`))
   return post_request(
     host_api,
-    { command: `request_frame`, file_path, filename, frame_index: frame_idx, channels },
+    {
+      command: `request_frame`,
+      file_path,
+      filename,
+      frame_index: frame_idx,
+      channels,
+      ...(display && { display: true }),
+    },
     10_000,
     `Frame ${display_idx(frame_idx)} timeout after 10s`,
     (data, resolve, reject) => {

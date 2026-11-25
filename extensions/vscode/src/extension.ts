@@ -386,13 +386,16 @@ export const handle_msg = async (
     }
   } else if (msg.command === `request_frame` && msg.file_path) {
     try {
-      const { request_id, file_path, frame_index, channels } = msg
+      const { request_id, file_path, frame_index, channels, display } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
       assert_authorized(file_path, webview)
       const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
-      const frame = frame_to_wire(await run.read_frame(frame_index, undefined, channels))
+      const frame = frame_to_wire(
+        await run.read_frame(frame_index, undefined, channels),
+        display === true,
+      )
       webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
     } catch (error) {
       const error_message = to_error(error).message
