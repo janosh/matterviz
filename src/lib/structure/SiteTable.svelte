@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { format_num } from 'svelte-widgets/format'
-  import type { CellSnippetArgs, RowData } from 'svelte-widgets/table'
+  import type { RowData } from 'svelte-widgets/table'
   import { display_idx, from_display_idx } from '#lib/labels.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { join_hover_link } from '#lib/tooltip/index.js'
-  import { toggle_item, is_finite_number } from '#lib/utils.js'
+  import { toggle_item } from '#lib/utils.js'
   import type { ComponentProps } from 'svelte'
   import type { Site } from './index'
   import { DATA_TABLE_PROPS, site_columns, site_property_specs, site_rows } from './site-table'
@@ -37,15 +36,11 @@
   $effect(() => atom_link.publish(hovered_atom))
   const shown_atom = $derived(hovered_atom ?? atom_link.linked)
 
-  // 4 significant digits per site keep the columns narrow in a sidebar; exports keep every digit
-  // (a caller's default_num_format wins, in the cells' text too)
+  // 4 significant digits per site keep the columns narrow in a sidebar; a rounded cell's hover
+  // tooltip and exports keep every digit (a caller's default_num_format wins)
   const num_format = $derived(rest.default_num_format ?? `.4~g`)
   let specs = $derived(site_property_specs(sites))
-  let columns = $derived(
-    site_columns(specs).map((col) =>
-      col.id === `site` || col.id === `element` ? col : { ...col, cell: full_value_cell },
-    ),
-  )
+  let columns = $derived(site_columns(specs))
   let rows = $derived(site_rows(sites, specs, source_indices))
 
   const toggle_atom = (_event: MouseEvent | KeyboardEvent, row: RowData) => {
@@ -53,19 +48,6 @@
     selected_atoms = toggle_item(selected_atoms ?? [], from_display_idx(row.site))
   }
 </script>
-
-<!-- Number cell whose tooltip (the table's delegated [title] one) gives the full value when
-  the column format rounds it, e.g. a sidebar's 4 significant digits -->
-{#snippet full_value_cell({ val, col }: CellSnippetArgs)}
-  {#if is_finite_number(val)}
-    {@const text = format_num(val, col.format ?? num_format)}
-    <span title={text === String(val) ? undefined : String(val)}>{text}</span>
-  {:else if val == null || Number.isNaN(val)}
-    <span data-title="Not available">n/a</span>
-  {:else}
-    <span title={String(val)}>{String(val)}</span>
-  {/if}
-{/snippet}
 
 <HeatmapTable
   {...DATA_TABLE_PROPS}
