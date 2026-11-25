@@ -2,7 +2,7 @@
 
 // MatterViz AnyWidget Entry Point
 
-import { is_plain_object } from 'svelte-widgets/utils'
+import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import type { AnyModel, Render } from 'anywidget/types'
 import type { LobsterKind, PourbaixHoverInfo, WulffShapeData } from 'matterviz'
 import {
@@ -930,7 +930,7 @@ const render: Render = async (props) => {
   // anywidget only logs a throwing render or change handler, which leaves a blank or silently
   // stale cell, so a bad widget_type or malformed trait shows its error in place of the widget
   const show_error = (error: unknown): void => {
-    element.textContent = `MatterViz ${widget_type}: ${error instanceof Error ? error.message : error}`
+    element.textContent = `MatterViz ${widget_type}: ${to_error(error).message}`
   }
   // guard with Object.hasOwn so prototype keys (toString, constructor, ...) don't
   // resolve as specs and silently bypass the unknown-widget_type error

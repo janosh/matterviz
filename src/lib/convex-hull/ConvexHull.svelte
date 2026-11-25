@@ -389,6 +389,16 @@
   }
 </script>
 
+{#snippet temperature_slider()}
+  {#if hull_data.has_temp_data && temperature !== undefined}
+    <TemperatureSlider
+      available_temperatures={hull_data.available_temperatures}
+      {interpolate_temperature}
+      bind:temperature
+    />
+  {/if}
+{/snippet}
+
 {#snippet chrome_content(context: ReturnType<typeof create_canvas_interactions> | null)}
   {@const { phase_stats, stable_entries, unstable_entries } = hull_data}
   {@const title = merged_controls.title || phase_stats?.chemical_system || ``}
@@ -551,13 +561,7 @@
 
   {#if (hull_data.has_temp_data && temperature !== undefined) || hull_data.gas_config}
     <div class="right-controls">
-      {#if hull_data.has_temp_data && temperature !== undefined}
-        <TemperatureSlider
-          available_temperatures={hull_data.available_temperatures}
-          {interpolate_temperature}
-          bind:temperature
-        />
-      {/if}
+      {@render temperature_slider()}
       {#if hull_data.gas_config}
         <GasPressureControls
           config={hull_data.gas_config}
@@ -618,13 +622,7 @@
     style="{rest.style ?? ``}; height: var(--hull-height, 500px)"
   >
     <!-- a T whose data lacks an open-system reference must stay changeable -->
-    {#if hull_data.has_temp_data && temperature !== undefined}
-      <TemperatureSlider
-        available_temperatures={hull_data.available_temperatures}
-        {interpolate_temperature}
-        bind:temperature
-      />
-    {/if}
+    {@render temperature_slider()}
   </MissingConvexHullData>
 {/if}
 

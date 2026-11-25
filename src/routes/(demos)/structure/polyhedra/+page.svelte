@@ -1,6 +1,5 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { page } from '$app/state'
   import { DEFAULTS } from '#lib/settings.js'
   import type { AnyStructure, Molecule } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
@@ -67,7 +66,7 @@
   // ?supercell=2x2x2 overrides; ?file= structures default to 1x1x1. Read client-side only
   // (prerender forbids url.searchParams) and once on mount so it doesn't fight user changes.
   onMount(() => {
-    const supercell = page.url.searchParams.get(`supercell`)
+    const supercell = url_param(`supercell`)
     if (supercell) supercell_scaling = supercell
     else if (url_param(`file`)) supercell_scaling = `1x1x1`
   })

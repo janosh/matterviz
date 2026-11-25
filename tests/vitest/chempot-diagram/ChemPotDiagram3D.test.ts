@@ -15,6 +15,8 @@ import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometr
 import { ARITY_COLORS } from '#lib/chempot-diagram/color.js'
 import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
 import type { Vec3 } from '#lib/math.js'
+import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+import { dpi_to_scale } from '#lib/io/export.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import * as THREE from 'three/webgpu'
 import { afterEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
@@ -31,7 +33,7 @@ import {
   query,
   set_input,
 } from '../setup'
-import { load_json } from '../test-fixtures'
+import { load_json, png_blob } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
 // the component's live deriveds) and every ConvexGeometry build is counted
@@ -71,66 +73,42 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async (outcome) => {
-  vi.useFakeTimers()
+// Both snapshots go through the shared canvas + overlay exporters (io/export.test.ts covers their
+// encoding) with the diagram's labels: the SVG embeds the encoded frame (toDataURL of a presented
+// WebGPU canvas is blank), the labels as text and the view settings as metadata
+test(`SVG snapshot of the canvas, its overlay labels and the view settings`, async () => {
   const wrapper = document.createElement(`div`)
-  const canvas = document.createElement(`canvas`)
-  wrapper.append(canvas)
-  vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 200, 100))
-  // a HiDPI backing store already at the 2x export size is encoded without resampling
-  Object.assign(canvas, { width: 400, height: 200 })
+  wrapper.innerHTML = `<canvas></canvas><span class="tick-label">-2.5</span><span class="domain-label">Li2O</span><span class="other">x</span>`
+  document.body.append(wrapper)
+  onTestFinished(() => wrapper.remove())
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+    new DOMRect(0, 0, 200, 100),
+  )
+  vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(new DOMRect(5, 5, 20, 10))
+  const canvas = doc_query(`canvas`, HTMLCanvasElement)
+  // a backing store already at the export size is encoded as is
+  const scale = dpi_to_scale(DEFAULT_PNG_DPI)
+  Object.assign(canvas, { width: 200 * scale, height: 100 * scale })
   Object.defineProperties(canvas, {
     clientWidth: { value: 200 },
     clientHeight: { value: 100 },
   })
-  // the WebGPU frame is encoded (a 2D drawImage of the canvas reads no pixels) and composited
-  // canvas encoders write real PNGs, whose resolution the export declares (set_png_dpi)
-  const png_bytes = Uint8Array.from(
-    atob(
-      `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
-    ),
-    (char) => char.charCodeAt(0),
+  canvas.toBlob = (callback: BlobCallback) => callback(png_blob())
+  const svg = await chempot_svg_string(wrapper, { elements: [`Li`, `O`] })
+  expect(svg).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?><svg /)
+  expect(svg).toContain(`<image href="data:image/png;base64,iVBORw0KGgo`)
+  const doc = new DOMParser().parseFromString(svg, `image/svg+xml`)
+  expect([...doc.querySelectorAll(`text`)].map(({ textContent }) => textContent)).toEqual([
+    `-2.5`,
+    `Li2O`,
+  ])
+  expect(JSON.parse(doc.querySelector(`metadata`)?.textContent ?? ``)).toEqual({
+    elements: [`Li`, `O`],
+  })
+  // nothing rendered yet: refused rather than an empty image
+  await expect(chempot_png_blob(document.createElement(`div`), 144)).rejects.toThrow(
+    `No canvas to export yet`,
   )
-  const frame_blob = new Blob([png_bytes], { type: `image/png` })
-  canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)
-  const frame = { close: vi.fn() }
-  const decode = vi.fn(async () => frame)
-  vi.stubGlobal(`createImageBitmap`, decode)
-  const context = { scale: vi.fn(), drawImage: vi.fn() }
-  const blob = new Blob([png_bytes], { type: `image/png` })
-  const output = {
-    width: 0,
-    height: 0,
-    getContext: () => context,
-    toBlob: (callback: BlobCallback) => {
-      if (outcome === `success`) setTimeout(() => callback(blob), 6000)
-      if (outcome === `empty`) callback(null)
-    },
-  }
-  vi.spyOn(document, `createElement`).mockReturnValue(output as unknown as HTMLCanvasElement)
-  const settled = vi.fn()
-  void chempot_png_blob(wrapper, 144).then(settled, settled)
-  await vi.runAllTimersAsync()
-  expect([output.width, output.height]).toEqual([400, 200])
-  expect(context.scale).toHaveBeenCalledExactlyOnceWith(2, 2)
-  expect(decode).toHaveBeenCalledExactlyOnceWith(expect.any(Blob))
-  expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(frame, 0, 0, 200, 100)
-  expect(frame.close).toHaveBeenCalledOnce()
-  if (outcome === `success`) {
-    expect(settled).toHaveBeenCalledExactlyOnceWith(expect.any(Blob))
-    // the SVG embeds that encoded frame too: toDataURL of a presented WebGPU canvas is blank
-    const svg = await chempot_svg_string(wrapper, {})
-    expect(svg).toContain(`<image href="data:image/png;base64,iVBORw0KGgo`)
-  } else {
-    expect(settled).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        message: expect.stringContaining(
-          outcome === `empty` ? `Failed to generate high-resolution PNG` : `toBlob timed out`,
-        ),
-      }),
-    )
-  }
-  expect(vi.getTimerCount()).toBe(0)
 })
 
 // Mount, silence the expected console noise and wait out the compute spinner. Returns a getter

@@ -85,6 +85,28 @@ describe(`prepare_diagram`, () => {
     expect(prepare_diagram(toy_entries).elements).toEqual([`K`, `Na`, `Li`]) // electronegativity
   })
 
+  test(`an enabled compound gas joins as a phase and keeps its formula's entries off the hull`, () => {
+    // oxfmt-ignore
+    const compositions: Record<string, number>[] = [{ Li: 1 }, { C: 1 }, { O: 1 }, { C: 1, O: 2 }]
+    const entries = compositions.map((comp, idx) => make_phase(comp, idx === 3 ? -1 : 0))
+    const gas_config = { enabled_gases: [`CO2` as const, `O2` as const] }
+    const model = prepare_diagram(entries, {
+      elements: [`Li`, `C`, `O`],
+      free_energy: { gas_config },
+    })
+    // O2 is elemental: it shifts the O reference instead of adding a phase
+    const gas = {
+      composition: { C: 1, O: 2 },
+      gas: `CO2`,
+      entry_id: `gas:CO2`,
+      name: `CO2 gas`,
+    }
+    expect(model.phases.slice(4).map(({ entry }) => entry)).toEqual([
+      expect.objectContaining({ ...gas, reduced_formula: `CO2` }),
+    ])
+    expect(model.in_hull).toEqual([true, true, true, false, true])
+  })
+
   // oxfmt-ignore
   test.each([
     [[make_phase({ Li: 1, Na: 1 }, -0.5)], undefined, /exactly 3 elements, got 2/],

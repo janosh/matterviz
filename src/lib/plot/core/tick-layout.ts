@@ -3,7 +3,7 @@
 
 import { clamp } from 'svelte-widgets/utils'
 import { format_tick_values } from '#lib/labels.js'
-import { array_max, array_min, assert_non_negative } from '#lib/math.js'
+import { array_max, array_min, assert_non_negative, to_radians } from '#lib/math.js'
 import { get_tick_label, tick_label_format } from '#lib/plot/core/scales.js'
 import {
   DEFAULT_FONT_SPEC,
@@ -187,7 +187,7 @@ export const tick_label_aabb = ({
   const block_height = dimensions.line_widths.length * dimensions.line_height
   const [local_min_x, local_max_x] = anchor_x_bounds(block_width(dimensions), anchor)
   const [local_min_y, local_max_y] = block_y_bounds(block_height, side, rotation)
-  const radians = (normalized_rotation(rotation) * Math.PI) / 180
+  const radians = to_radians(normalized_rotation(rotation))
   const cosine = snap_near_zero(Math.cos(radians))
   const sine = snap_near_zero(Math.sin(radians))
   const horizontal = is_horizontal_side(side)
@@ -284,7 +284,7 @@ const labels_collide = (
   if (!aabbs_collide(first.aabb, second.aabb, gap)) return false
   const rotation = normalized_rotation(first.rotation)
   if (rotation === 0 || rotation !== normalized_rotation(second.rotation)) return true
-  const radians = (rotation * Math.PI) / 180
+  const radians = to_radians(rotation)
   const horizontal = is_horizontal_side(first.side)
   const delta_along = second.position.axis - first.position.axis
   const delta_cross = second.position.cross_axis - first.position.cross_axis

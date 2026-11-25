@@ -84,7 +84,12 @@
 
   // Rods win the pick over the cutting plane, also where seen through it, and the drag catcher
   // wins over both (their pick_rank)
-  const { set_hover_enabled, touch_hover } = scene_interactivity()
+  const { set_camera_is_moving, touch_hover } = scene_interactivity({
+    clear_hover: () => {
+      hover_xy = null
+      on_hover?.(null)
+    },
+  })
 
   // === Frame: composition in XZ (centred), temperature along Y ===
 
@@ -319,11 +324,7 @@
     rotation_damping: 0,
     set_camera_is_moving: (moving) => {
       camera_is_moving = moving
-      set_hover_enabled(!moving)
-      if (moving) {
-        hover_xy = null
-        on_hover?.(null)
-      }
+      set_camera_is_moving(moving)
     },
   })
   let orbit_controls = $state<ComponentProps<typeof extras.OrbitControls>[`ref`]>()

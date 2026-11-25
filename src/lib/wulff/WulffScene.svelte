@@ -52,14 +52,11 @@
     height?: number
   } = $props()
 
-  const { set_hover_enabled, touch_hover } = scene_interactivity({
+  const { set_camera_is_moving, touch_hover } = scene_interactivity({
     on_click: () => pin.toggle(hovered),
     on_empty_click: () => pin.unpin(),
+    clear_hover: () => (hovered = null),
   })
-  const set_camera_is_moving = (moving: boolean) => {
-    set_hover_enabled(!moving)
-    if (moving) hovered = null
-  }
 
   const radius = $derived(Math.max(...wulff.vertices.map((vert) => Math.hypot(...vert))))
   // Per family: its facets as one polyhedron, and which facet each fan triangle of

@@ -9,6 +9,7 @@ import {
   checked_array,
   decode_binary_envelope,
 } from '#lib/io/binary-arrays.js'
+import { AMU_PER_A3_TO_G_PER_CM3 } from '#lib/constants.js'
 import { display_idx } from '#lib/labels.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import { TIME_UNIT_TO_THZ } from '#lib/spectral/frequency-units.js'
@@ -21,8 +22,6 @@ import type { TrajectoryMetadata } from './index'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'
 import { numeric_run } from './runs/memory'
 
-// unified atomic mass units per cubic angstrom to g/cm^3 (as structure/density.ts)
-const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
 const RESERVED = new Set([`positions`, `numbers`, `lattice`, `steps`, `frame_stress`])
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 const FIELDS = [`pbc`, `metadata`, `time_step`]

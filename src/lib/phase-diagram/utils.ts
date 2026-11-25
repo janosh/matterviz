@@ -1,5 +1,5 @@
 import { format_num } from 'svelte-widgets/format'
-import { point_in_polygon, type Vec2 } from '#lib/math.js'
+import { point_in_polygon, sorted_numbers, type Vec2 } from '#lib/math.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import { line } from 'd3-shape'
 import type {
@@ -259,7 +259,7 @@ export function find_isotherm_intersections(vertices: Vec2[], temperature: numbe
       )
     }
   }
-  return intersections.toSorted((val_a, val_b) => val_a - val_b)
+  return sorted_numbers(intersections)
 }
 
 // Consecutive crossing pairs bound the region's intervals along the isotherm (half-open edge

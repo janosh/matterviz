@@ -1,5 +1,6 @@
 // Worker-safe composition and density helpers. Kept outside the component barrel so
 // trajectory parsing can extract density without loading Svelte components in a Web Worker.
+import { AMU_PER_A3_TO_G_PER_CM3 } from '#lib/constants.js'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import * as math from '#lib/math.js'
@@ -43,9 +44,6 @@ const count_elements = (structure: AnyStructure): Partial<Record<ElementSymbol, 
 export const get_element_counts = (structure: AnyStructure) => ({
   ...count_elements(structure),
 })
-
-// unified atomic mass units (u) per cubic angstrom (Å^3) to g/cm^3
-const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
 
 // Reuse cached numeric topology counts without materializing trajectory sites.
 export const get_density = (structure: Crystal): number => {

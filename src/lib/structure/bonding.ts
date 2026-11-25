@@ -328,6 +328,33 @@ const find_bond_by_key = <BondType extends BondKeyTarget>(
 const make_bond_record = (bond: BondKeyTarget, order: BondOrder): StructureBond =>
   normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, order, bond.cell_shift)
 
+// `record` shown as a calculated bond: no added or removed entry, and an order override only
+// where its order differs from the calculated `base_order`
+const calculated_state = (
+  { added_bonds, removed_bonds, bond_order_overrides }: BondEditState,
+  record: StructureBond,
+  key: string,
+  base_order: BondOrder,
+): BondEditState => ({
+  added_bonds: remove_bond_key(added_bonds, key),
+  removed_bonds: remove_bond_key(removed_bonds, key),
+  bond_order_overrides:
+    record.order === base_order
+      ? remove_bond_key(bond_order_overrides, key)
+      : replace_bond(bond_order_overrides, record),
+})
+
+// `record` shown as a manually added bond, clearing any removal or override of its key
+const added_state = (edit_state: BondEditState, record: StructureBond, key: string) => ({
+  action: `added` as const,
+  changed: true,
+  state: {
+    added_bonds: replace_bond(edit_state.added_bonds, record),
+    removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
+    bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
+  },
+})
+
 export function has_visible_bond(
   edit_state: BondEditState,
   bond: BondKeyTarget,
@@ -351,32 +378,13 @@ export function add_or_restore_bond(
   // A removal names a bond the strategy found. Once it finds it no more (bonding settings
   // changed), lifting the removal alone would leave the pair unbonded, so it is added instead.
   if (removed_bond && includes_bond_key(calculated_bonds, key)) {
-    return {
-      action: `restored`,
-      changed: true,
-      state: {
-        ...edit_state,
-        added_bonds: remove_bond_key(edit_state.added_bonds, key),
-        removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-        bond_order_overrides:
-          removed_bond.order === order
-            ? remove_bond_key(edit_state.bond_order_overrides, key)
-            : replace_bond(edit_state.bond_order_overrides, record),
-      },
-    }
+    const state = calculated_state(edit_state, record, key, removed_bond.order)
+    return { action: `restored`, changed: true, state }
   }
   if (!removed_bond && has_visible_bond(edit_state, record, calculated_bonds)) {
     return { action: `already-visible`, changed: false, state: edit_state }
   }
-  return {
-    action: `added`,
-    changed: true,
-    state: {
-      added_bonds: replace_bond(edit_state.added_bonds, record),
-      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
-    },
-  }
+  return added_state(edit_state, record, key)
 }
 
 export function delete_bond(
@@ -442,26 +450,11 @@ export function set_bond_order(
     return {
       action: `ordered-calculated`,
       changed: has_existing_edit || order !== visible_order,
-      state: {
-        added_bonds: remove_bond_key(edit_state.added_bonds, key),
-        removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-        bond_order_overrides:
-          order === visible_order
-            ? remove_bond_key(edit_state.bond_order_overrides, key)
-            : replace_bond(edit_state.bond_order_overrides, record),
-      },
+      state: calculated_state(edit_state, record, key, visible_order),
     }
   }
   // a stale removal (see add_or_restore_bond) would hide the added bond
-  return {
-    action: `ordered-added`,
-    changed: true,
-    state: {
-      added_bonds: replace_bond(edit_state.added_bonds, record),
-      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
-    },
-  }
+  return { ...added_state(edit_state, record, key), action: `ordered-added` }
 }
 
 export const merge_bond_edits = (

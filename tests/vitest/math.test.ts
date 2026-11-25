@@ -1875,3 +1875,34 @@ test.each([
     }
   },
 )
+
+// per-axis mean in the points' own dimension (simplex rotation centres, polyhedron targets)
+test.each([
+  [[[1, 2]], [1, 2]],
+  [
+    [
+      [0, 0],
+      [1, 0],
+      [0.5, 1],
+    ],
+    [0.5, 1 / 3],
+  ],
+  [
+    [
+      [0, 0, 0],
+      [2, 4, 6],
+    ],
+    [1, 2, 3],
+  ],
+  [
+    [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+    ],
+    [0.25, 0.25, 0.25, 0.25],
+  ],
+])(`mean_point(%j) = %j`, (points, expected) => {
+  expect(math.mean_point(points)).toEqual(expected)
+})

@@ -57,7 +57,7 @@
   import Structure from '#lib/structure/Structure.svelte'
   import { is_crystal } from '#lib/structure/validation.js'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
-  import { clamp, html_to_text, is_plain_object } from 'svelte-widgets/utils'
+  import { clamp, html_to_text, is_plain_object, to_error } from 'svelte-widgets/utils'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -808,7 +808,7 @@
       try {
         dropped = normalize_sweep(opened.data)
       } catch (error) {
-        return error instanceof Error ? error.message : String(error)
+        return to_error(error).message
       }
       sweep = Object.freeze(dropped)
       nav.series_id.current = undefined

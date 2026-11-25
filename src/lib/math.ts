@@ -849,6 +849,12 @@ export const miller_plane_normal = (lattice: Matrix3x3, hkl: Vec3): Vec3 =>
 // Plain loops, not reduce: these run over per-frame trajectory series and box-plot samples.
 
 // Arithmetic mean; NaN for empty input (0/0), matching the mathematical convention.
+// Per-axis mean of points (their centroid), in the points' dimension
+export const mean_point = (points: readonly (readonly number[])[]): number[] =>
+  points[0].map(
+    (_, axis) => points.reduce((sum, point) => sum + point[axis], 0) / points.length,
+  )
+
 export function mean(values: readonly number[]): number {
   let sum = 0
   for (const value of values) sum += value

@@ -10,6 +10,7 @@ import {
   is_finite_vec3,
   type Matrix3x3,
   reciprocal_lattice,
+  same_values,
   type Vec3,
 } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
@@ -278,7 +279,7 @@ class PositionAccumulator {
         source_frame_number,
       )
       const expected_shape = this.signal_shapes[key]
-      if (expected_shape.join(`,`) !== parsed.sample_shape.join(`,`)) {
+      if (!same_values(expected_shape, parsed.sample_shape)) {
         throw new Error(
           `Frame ${display_idx(source_frame_number)} signal "${key}" changed shape from ` +
             `[${expected_shape.join(`, `)}] to [${parsed.sample_shape.join(`, `)}]`,

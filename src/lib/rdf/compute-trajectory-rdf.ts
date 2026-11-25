@@ -11,7 +11,7 @@ import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/v
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { sweep_frames } from '#lib/trajectory/analysis.js'
 import { compute_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
-import { coordination_number } from './compute-pdf'
+import { coordination_number, site_composition } from './compute-pdf'
 import type { FrameRdfOptions } from './compute-rdf'
 
 // Default sample: neighbour lists at the 10 A cutoff cost ~30-60 ms per 2000-atom frame, so
@@ -153,7 +153,7 @@ export async function collect_trajectory_rdf(
     | {
         frame_number: number
         species: { element: string; occu: number }[][]
-        counts: Map<string, number>
+        counts: Record<string, number>
       }
     | undefined
   const {
@@ -172,14 +172,10 @@ export async function collect_trajectory_rdf(
       }
       frame_steps.push(step)
       if (!reference) {
-        const counts = new Map<string, number>()
         const species = structure.sites.map((site) =>
-          site.species.map(({ element, occu }) => {
-            counts.set(element, (counts.get(element) ?? 0) + occu)
-            return { element, occu }
-          }),
+          site.species.map(({ element, occu }) => ({ element, occu })),
         )
-        reference = { frame_number, species, counts }
+        reference = { frame_number, species, counts: site_composition(structure) }
       }
       const reference_species = reference.species
       const composition_changed =
@@ -245,7 +241,7 @@ export async function collect_trajectory_rdf(
   const curves = accumulators.map(
     ({ pair: [el_a, el_b], sum, density_sum }): TrajectoryRdfCurve => {
       const g_r = Array.from(sum, (value) => value / n_frames)
-      const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
+      const [n_a, n_b] = [counts[el_a] ?? 0, counts[el_b] ?? 0]
       // Integrate N_b<g/V> directly, with the mean RDF's shell boundary.
       const coordination_g_r = Array.from(density_sum, (value) => value / n_frames)
       const shell = rdf_shell(radius, g_r, n_b, coordination_g_r)

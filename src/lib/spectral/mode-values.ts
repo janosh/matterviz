@@ -1,6 +1,6 @@
 // Mode values (e.g. the electron–phonon coupling λ_qν) over a band structure: their parsing,
 // the projection of their q-points onto the band path and the markers Bands draws there
-import { is_plain_object } from 'svelte-widgets/utils'
+import { clamp, is_plain_object } from 'svelte-widgets/utils'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { is_finite_vec3, inverse_3x3 } from '#lib/math.js'
 import { branch_x, plotted_branches } from './helpers'
@@ -162,7 +162,7 @@ export function project_qpoints_onto_path(
       const rel_1 = f_0 * b_01 + f_1 * b_11 + f_2 * b_21
       const rel_2 = f_0 * b_02 + f_1 * b_12 + f_2 * b_22
       const along = rel_0 * vec[0] + rel_1 * vec[1] + rel_2 * vec[2]
-      const frac = len_sq > 0 ? Math.min(1, Math.max(0, along / len_sq)) : 0
+      const frac = len_sq > 0 ? clamp(along / len_sq, 0, 1) : 0
       const dist_sq =
         (rel_0 - frac * vec[0]) ** 2 +
         (rel_1 - frac * vec[1]) ** 2 +
@@ -205,7 +205,7 @@ function segment_candidates(
   )
   // counting sort of the q-points into n_cells³ cells, about one point per cell
   const per_side = Math.round(Math.cbrt(qpoints.length))
-  const n_cells = Math.max(1, Math.min(64, per_side))
+  const n_cells = clamp(per_side, 1, 64)
   const cell_of = (frac: number): number =>
     Math.min(n_cells - 1, Math.floor((frac - Math.floor(frac)) * n_cells))
   const q_cells = Int32Array.from(
@@ -278,7 +278,7 @@ export function thin_mode_markers(
   const kept = new Map<string, ModeValueMarker>()
   for (const marker of markers) {
     const bin = Math.floor(((marker.x - x_min) / span) * MODE_MARKER_BINS)
-    const key = `${marker.mode_idx} ${Math.min(MODE_MARKER_BINS - 1, Math.max(0, bin))}`
+    const key = `${marker.mode_idx} ${clamp(bin, 0, MODE_MARKER_BINS - 1)}`
     const held = kept.get(key)
     if (!held || Math.abs(marker.value) > Math.abs(held.value)) kept.set(key, marker)
   }

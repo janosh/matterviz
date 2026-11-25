@@ -23,6 +23,7 @@ import {
   dot,
   EPS,
   euclidean_dist,
+  mean_point,
   merge_coplanar_triangles,
   normalize_vec,
   point_in_polygon,
@@ -719,10 +720,7 @@ export function fit_plane(points: number[][], rel_tol = 1e-6): DomainPlane | nul
 }
 
 // Mean of a set of points, per axis
-export const vertex_mean = (points: number[][]): Vec3 =>
-  [0, 1, 2].map(
-    (axis) => points.reduce((sum, point) => sum + point[axis], 0) / points.length,
-  ) as Vec3
+export const vertex_mean = (points: number[][]): Vec3 => mean_point(points) as Vec3
 
 // Triangles of a non-indexed position buffer, as corner triples (9 numbers per face)
 const buffer_faces = (positions: ArrayLike<number>): Vec3[][] =>
@@ -737,6 +735,7 @@ const buffer_faces = (positions: ArrayLike<number>): Vec3[][] =>
 // re-merged as a flat non-indexed position array, or null when nothing survives.
 export function strip_closing_faces(positions: ArrayLike<number>): Float32Array | null {
   const faces = buffer_faces(positions)
+  if (!faces.length) return null
   const hull_centroid = vertex_mean(faces.flat())
   const kept = faces
     .filter((corners) => {

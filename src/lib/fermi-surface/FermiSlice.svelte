@@ -18,6 +18,7 @@
     slice_shading_rgba,
   } from './compute'
   import { BAND_COLORS } from './constants'
+  import { rgba_to_data_url } from '#lib/isosurface/slice-rendering.js'
   import type { CarrierType, SliceShading } from './compute'
   import type { BandGridData, FermiSliceData, FermiSurfaceData } from './types'
   import { to_error } from 'svelte-widgets/utils'
@@ -148,8 +149,6 @@
   // (client-side only; contours only without a 2D canvas, e.g. in a test DOM)
   let shading_image = $derived.by(() => {
     if (!band_data || shading === `none` || !slice_data) return null
-    const context = globalThis.document?.createElement(`canvas`).getContext(`2d`)
-    if (!context) return null
     const energy_map = sample_slice_energies(band_data, {
       plane: slice_data,
       bounds,
@@ -158,10 +157,7 @@
     })
     energy_map.layers = energy_map.layers.filter((layer) => shows_band(layer.band_index))
     const pixels = slice_shading_rgba(energy_map, shading, band_colors, { carriers })
-    const { width, height } = energy_map
-    ;[context.canvas.width, context.canvas.height] = [width, height]
-    context.putImageData(new ImageData(pixels, width, height), 0, 0)
-    return context.canvas.toDataURL()
+    return rgba_to_data_url(pixels, energy_map.width, energy_map.height)
   })
 
   // The zone depends on the lattice alone, so band and shading changes reuse it

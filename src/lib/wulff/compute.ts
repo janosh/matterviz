@@ -147,7 +147,7 @@ function facet_polygon(
   normal: Vec3,
 ): { vertex_indices: number[]; area: number } {
   const points = on_plane.map((idx) => vertices[idx])
-  const centroid = math.scale(math.add(...points), 1 / points.length)
+  const centroid = math.mean_point(points) as math.Vec3
   const offsets = points.map((point) => math.subtract(point, centroid))
   const axis_u = math.normalize_vec(offsets[0])
   const axis_w = math.cross_3d(normal, axis_u)

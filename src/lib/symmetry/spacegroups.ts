@@ -1,6 +1,6 @@
 // Space group to crystal system mappings and utilities
 
-import type { Vec2 } from '#lib/math.js'
+import { sorted_numbers, type Vec2 } from '#lib/math.js'
 // type-only import (erased at runtime, so no import cycle with #lib/plot)
 import type { SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
 
@@ -464,9 +464,9 @@ export function spacegroup_sunburst_data(
 
   // Emit crystal systems in canonical (space group number) order, only those present
   return CRYSTAL_SYSTEMS.flatMap((system) => {
-    const nums = [...counts.keys()]
-      .filter((num) => spacegroup_to_crystal_sys(num) === system)
-      .toSorted((num_a, num_b) => num_a - num_b)
+    const nums = sorted_numbers(
+      [...counts.keys()].filter((num) => spacegroup_to_crystal_sys(num) === system),
+    )
     if (nums.length === 0) return []
     return [
       {

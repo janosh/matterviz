@@ -1,4 +1,14 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
+
+// Mounted (the client-only 3D canvas is up), not network-idle: superseding the default
+// example's symmetry analysis on mount tears down its worker mid-WASM fetch, a request
+// Playwright then never sees finish
+const mounted = (page: Page) =>
+  expect(page.locator(`.wulff-shape canvas`).first()).toBeAttached()
+const open = async (page: Page, path: string) => {
+  await page.goto(path)
+  await mounted(page)
+}
 
 // Dragging a γ or Δμ slider must not move anything around it: a changing percentage once resized
 // the Area column (and so the slider under the cursor)
@@ -7,7 +17,7 @@ for (const [query, slider_selector] of [
   [`?example=Rutile-type oxide vs Δμ_O (illustrative)`, `.delta-mu input`],
 ]) {
   test(`dragging ${slider_selector} leaves the table in place`, async ({ page }) => {
-    await page.goto(`/structure/wulff${query}`, { waitUntil: `networkidle` })
+    await open(page, `/structure/wulff${query}`)
     const slider = page.locator(slider_selector).first()
     await expect(slider).toBeVisible()
     const layouts = await slider.evaluate(async (input: HTMLInputElement) => {
@@ -45,7 +55,7 @@ for (const [query, slider_selector] of [
 test(`the picked example and its edits sync to the URL and survive a reload`, async ({
   page,
 }) => {
-  await page.goto(`/structure/wulff`, { waitUntil: `networkidle` })
+  await open(page, `/structure/wulff`)
   const oxide = `Rutile-type oxide vs Δμ_O (illustrative)`
   await page.locator(`.file-item`, { hasText: oxide }).click()
   const number = page.getByLabel(`Surface energy of {001} (number)`)
@@ -59,7 +69,8 @@ test(`the picked example and its edits sync to the URL and survive a reload`, as
   }
   const expected = [oxide, `1.1.0_1.0.1_0.0.1*0.7_1.1.1`, `-1.5`]
   await expect.poll(params).toEqual(expected)
-  await page.reload({ waitUntil: `networkidle` })
+  await page.reload()
+  await mounted(page)
   await expect(number).toHaveValue(`0.7`)
   await expect(page.getByTitle(`Remove {100}`)).toHaveCount(0)
   await expect(page.locator(`.delta-mu input`)).toHaveValue(`-1.5`)
@@ -80,7 +91,7 @@ test(`the picked example and its edits sync to the URL and survive a reload`, as
 
 // Tables in panes span the pane: the info pane's Families table once left a blank strip
 test(`the info pane's families table fills its card`, async ({ page }) => {
-  await page.goto(`/structure/wulff`, { waitUntil: `networkidle` })
+  await open(page, `/structure/wulff`)
   await page.locator(`canvas`).first().hover()
   await page.locator(`button.wulff-info-toggle`).first().click({ force: true })
   const table = page.locator(`.draggable-pane table`).first()
@@ -97,7 +108,7 @@ test(`the info pane's families table fills its card`, async ({ page }) => {
 
 // A malformed ?delta_mu= is reported and dropped, not applied (NaN once broke every shape)
 test(`an invalid ?delta_mu= shows its error and the shape still renders`, async ({ page }) => {
-  await page.goto(`/structure/wulff?delta_mu=abc`, { waitUntil: `networkidle` })
+  await open(page, `/structure/wulff?delta_mu=abc`)
   await expect(page.getByText(`?delta_mu= must be a number`)).toBeVisible()
   await expect(page.locator(`.wulff-shape .legend`)).toBeVisible()
   await expect.poll(() => new URL(page.url()).searchParams.get(`delta_mu`)).toBeNull()

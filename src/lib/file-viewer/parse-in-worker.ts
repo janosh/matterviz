@@ -10,7 +10,7 @@ import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.
 import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
-import { to_error } from 'svelte-widgets/utils'
+import { clamp, to_error } from 'svelte-widgets/utils'
 import { can_create_worker, disable_workers } from '#lib/worker-client.svelte.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
@@ -369,7 +369,7 @@ const parse_with_worker = async (
   let largest_frame_bytes = 0
   const capacity = () =>
     largest_frame_bytes
-      ? Math.max(1, Math.min(concurrency, Math.floor(memory_budget / largest_frame_bytes)))
+      ? clamp(Math.floor(memory_budget / largest_frame_bytes), 1, concurrency)
       : 1
   Object.defineProperty(primary, `preparation_concurrency`, { get: capacity })
   const source_options = {

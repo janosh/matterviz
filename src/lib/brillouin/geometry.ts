@@ -117,12 +117,7 @@ export function bz_hover_data(
 
 // Centroid of polyhedron vertices, used as orbit/rotation target by BZ + Fermi scenes
 export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
-  vertices?.length
-    ? math.scale(
-        vertices.reduce<Vec3>((acc, vert) => math.add(acc, vert), [0, 0, 0]),
-        1 / vertices.length,
-      )
-    : [0, 0, 0]
+  vertices?.length ? (math.mean_point(vertices) as Vec3) : [0, 0, 0]
 
 // Mean reciprocal-lattice vector magnitude: characteristic scene size for camera placement
 // and arrow scaling. Fallback 10 (upper end of typical |b_i| ~ 2pi/a in 1/A) keeps the

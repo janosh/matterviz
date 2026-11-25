@@ -130,6 +130,15 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
   keys.press(`ArrowLeft`)
   expect(state.hovered?.data).toMatchObject({ is_ibz: true })
   expect(keys.message).toBe(`Irreducible zone face 6 of 6`)
+
+  // orbiting drops the hovered mark and the k-path hover (no pointerleave reaches them)
+  const orbit = threlte_stub.nodes.find(({ tag }) => tag === `OrbitControls`)
+  const { onstart, onchange } = (orbit?.props ?? {}) as Record<string, () => void>
+  onstart()
+  onchange()
+  flushSync()
+  expect(state.hovered).toBeNull()
+  expect(on_kpath_hover).toHaveBeenLastCalledWith(null)
   void unmount(mounted)
 })
 

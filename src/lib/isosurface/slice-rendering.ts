@@ -34,6 +34,19 @@ export const resolve_slice_value_range = (
   symmetric: ValueRangeSymmetry = `auto`,
 ): Vec2 => resolve_value_range(color_scale, fit_value_range(slice.min, slice.max, symmetric))
 
+// RGBA pixels as a PNG data URL, or null without a 2D canvas (SSR, a test DOM)
+export const rgba_to_data_url = (
+  pixels: Uint8ClampedArray<ArrayBuffer>,
+  width: number,
+  height: number,
+): string | null => {
+  const context = globalThis.document?.createElement(`canvas`).getContext(`2d`)
+  if (!context) return null
+  ;[context.canvas.width, context.canvas.height] = [width, height]
+  context.putImageData(new ImageData(pixels, width, height), 0, 0)
+  return context.canvas.toDataURL()
+}
+
 // Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask. Rows are
 // flipped so the slice's +v axis points up on the canvas. Pass `out` of the right size to
 // fill it in place.

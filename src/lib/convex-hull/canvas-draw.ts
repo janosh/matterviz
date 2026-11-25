@@ -10,7 +10,14 @@ import {
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { capitalize, type D3SymbolName, symbol_map } from '#lib/labels.js'
-import { array_extent, mean, to_radians, type Vec3 } from '#lib/math.js'
+import {
+  array_extent,
+  mean,
+  mean_point,
+  sorted_numbers,
+  to_radians,
+  type Vec3,
+} from '#lib/math.js'
 import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
 import {
   centered_rect,
@@ -44,12 +51,6 @@ import type {
 
 export type Projected = { x: number; y: number; depth: number }
 export type ProjectPoint = (coord_x: number, coord_y: number, coord_z: number) => Projected
-
-// Mean of the simplex corners (triangle or tetrahedron): the rotation centre of the view
-export const simplex_centroid = (corners: readonly (readonly number[])[]): number[] =>
-  corners[0].map(
-    (_, axis) => corners.reduce((sum, corner) => sum + corner[axis], 0) / corners.length,
-  )
 
 // Marker radius in CSS px before the container scale (stable points are larger)
 const stability_radius = (is_stable: boolean): number => (is_stable ? 6 : 4)
@@ -111,7 +112,7 @@ const is_pulsing = (entry: ConvexHullEntry, opts: HullPointOpts): boolean =>
   same_entry(opts.selected_entry, entry) || opts.is_highlighted(entry)
 
 // A circle at `projected`, filled and/or stroked at the given alphas (unset keeps color's own)
-function draw_ring(
+export function draw_ring(
   ctx: CanvasRenderingContext2D,
   { x, y }: Projected,
   radius: number,
@@ -561,10 +562,7 @@ export function hull_face_sets(
     for (const vertices of facet.length === 3
       ? [facet]
       : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1))) {
-      const key = vertices
-        .map(vertex_idx)
-        .toSorted((idx_a, idx_b) => idx_a - idx_b)
-        .join(`,`)
+      const key = sorted_numbers(vertices.map(vertex_idx)).join(`,`)
       if (!faces.has(key))
         faces.set(key, { vertices, facet_idx, e_form: face_e_form(vertices) })
     }
@@ -847,8 +845,8 @@ function draw_energy_axis(
 
 const GIZMO_CAM_DIST = 5
 const MIN_ELEV_FOR_ENERGY_AXIS = 5 // degrees — below this the axis ticks collapse to a point
-const TRIANGLE_CENTROID = simplex_centroid(TRIANGLE_VERTICES)
-const TETRAHEDRON_CENTROID = simplex_centroid(TETRAHEDRON_VERTICES)
+const TRIANGLE_CENTROID = mean_point(TRIANGLE_VERTICES)
+const TETRAHEDRON_CENTROID = mean_point(TETRAHEDRON_VERTICES)
 
 // Center the camera on the triangle's visual center: the bbox center sits sqrt(3)/12 above the
 // centroid (rotation center), scaled by cos(elevation) so it only applies near top-down.

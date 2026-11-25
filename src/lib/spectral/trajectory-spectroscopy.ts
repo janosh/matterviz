@@ -154,10 +154,6 @@ const require_one_of = <Allowed extends string>(
 }
 
 const shape_text = (shape: number[]): string => `[${shape.join(`, `)}]`
-export const arrays_equal = <Value>(
-  left: ArrayLike<Value> | undefined,
-  right: ArrayLike<Value>,
-): boolean => left !== undefined && same_values(left, right)
 
 const require_finite = (values: ArrayLike<number>, label: string, noun: string): void => {
   for (let idx = 0; idx < values.length; idx++) {
@@ -185,7 +181,7 @@ export function validate_trajectory_signal(
   if (signal.unit !== undefined && !signal.unit.trim()) {
     fail(`${label} unit must be a non-empty string when supplied`)
   }
-  if (expected_shape && !arrays_equal(signal.sample_shape, expected_shape)) {
+  if (expected_shape && !same_values(signal.sample_shape, expected_shape)) {
     fail(
       `${label} has sample shape ${shape_text(signal.sample_shape)}, expected ${shape_text(expected_shape)}`,
     )

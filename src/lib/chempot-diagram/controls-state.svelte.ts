@@ -5,7 +5,8 @@ import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
 import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { Point2D, Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math.js'
+import { get_relative_coords } from '#lib/plot/core/interactions.js'
 import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { clamp, to_error } from 'svelte-widgets/utils'
@@ -382,13 +383,8 @@ export const sticky_range = <Range extends readonly (number | null)[] | undefine
 // Pointer position relative to `container`, for tooltip placement. The true hotspot,
 // not a nudged one: PlotTooltip needs it to flip correctly and to size the gap that
 // keeps the pointer glyph clear (its `offset`/`avoid_cursor`).
-export const container_pointer = (
-  event: MouseEvent,
-  container: HTMLElement | undefined,
-): Point2D => {
-  const rect = container?.getBoundingClientRect()
-  return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
-}
+export const container_pointer = (event: MouseEvent, container: HTMLElement | undefined) =>
+  get_relative_coords(event, container ?? null) ?? { x: event.clientX, y: event.clientY }
 
 // Plain-text formula of a domain label (electronegativity order, no delimiters)
 export const domain_formula_text = (formula: string): string =>

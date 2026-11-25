@@ -5,6 +5,7 @@ import { parse_composition } from '#lib/composition/parse.js'
 import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { solve_linear_program } from '#lib/math.js'
+import { to_error } from 'svelte-widgets/utils'
 import { composition_to_simplex_coords } from './barycentric-coords'
 import { compute_hull_stability, is_unary_entry } from './entry-stability'
 import * as thermo from './thermodynamics'
@@ -302,7 +303,7 @@ export function probe_from_text(
     }
   } catch (err) {
     return {
-      error: `Can't parse ${text}: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Can't parse ${text}: ${to_error(err).message}`,
     }
   }
 }

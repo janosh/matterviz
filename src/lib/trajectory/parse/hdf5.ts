@@ -190,12 +190,12 @@ const parent_path = (path: string): string => path.slice(0, path.lastIndexOf(`/`
 
 const validate_steps = (steps: number[], path: string): void => {
   if (!steps.every(Number.isSafeInteger)) {
-    throw new Error(`TorchSim HDF5 steps ${path} must contain safe integers`)
+    throw new Error(`${FORMAT} steps ${path} must contain safe integers`)
   }
   const step_idx = first_non_increasing_index(steps)
   if (step_idx !== null) {
     throw new Error(
-      `TorchSim HDF5 steps ${path} must increase strictly; entries ` +
+      `${FORMAT} steps ${path} must increase strictly; entries ` +
         `${step_idx - 1} and ${step_idx} are ${steps[step_idx - 1]} and ${steps[step_idx]}`,
     )
   }

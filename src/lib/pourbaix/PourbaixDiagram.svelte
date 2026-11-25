@@ -2,7 +2,7 @@
   import { PLOT_COLORS } from '#lib/colors/index.js'
   import { format_formula_html, format_formula_svg } from '#lib/composition/formula-markup.js'
   import { json_source } from '#lib/io/export.js'
-  import { slice_to_rgba } from '#lib/isosurface/slice-rendering.js'
+  import { rgba_to_data_url, slice_to_rgba } from '#lib/isosurface/slice-rendering.js'
   import { polygon_label_point, type Vec2 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
@@ -198,17 +198,13 @@
     )
     const value_range: Vec2 = [0, max_value]
     const color_scale = { scheme: `interpolateViridis` as const, value_range }
-    const context = document.createElement(`canvas`).getContext(`2d`)
-    if (!context) return { color_scale, image: null } // e.g. a test DOM without 2D canvas
     const values = energy_above_envelope(envelope, heatmap_plane, visible_window, HEATMAP_GRID)
     const [width, height] = HEATMAP_GRID
     // flips the grid's rows, which run up in E, into image rows
     const slice = { data: values, mask: new Uint8Array(values.length).fill(1), width, height }
     const pixels = new Uint8ClampedArray(values.length * 4)
     slice_to_rgba(slice, color_scale, value_range, pixels)
-    ;[context.canvas.width, context.canvas.height] = HEATMAP_GRID
-    context.putImageData(new ImageData(pixels, width, height), 0, 0)
-    return { color_scale, image: context.canvas.toDataURL() }
+    return { color_scale, image: rgba_to_data_url(pixels, width, height) }
   })
 
   // === Hover ===

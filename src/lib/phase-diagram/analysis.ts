@@ -1,7 +1,7 @@
 // Derived views of a binary-phase-diagram/2: phase fractions along an isopleth, where two
 // diagrams disagree on the phase set, and the Gibbs-energy curves with their convex hull
 
-import type { Vec2, Vec3 } from '#lib/math.js'
+import { sorted_numbers, type Vec2, type Vec3 } from '#lib/math.js'
 import type { BinaryPhaseDiagram, DiagramRegion, GibbsEnergyGrid } from './types'
 import { compute_lever_rule, find_isotherm_intersections, find_region_at } from './utils'
 
@@ -143,9 +143,9 @@ export function phase_disagreement(
   for (const temperature of temperatures) {
     const spans_a = region_spans(data.regions, temperature)
     const spans_b = region_spans(other.regions, temperature)
-    const cuts = [...spans_a, ...spans_b]
-      .flatMap(([x_start, x_end]) => [x_start, x_end])
-      .toSorted((cut_a, cut_b) => cut_a - cut_b)
+    const cuts = sorted_numbers(
+      [...spans_a, ...spans_b].flatMap(([x_start, x_end]) => [x_start, x_end]),
+    )
     for (let idx = 0; idx + 1 < cuts.length; idx++) {
       const [x_start, x_end] = [cuts[idx], cuts[idx + 1]]
       if (x_end <= x_start) continue

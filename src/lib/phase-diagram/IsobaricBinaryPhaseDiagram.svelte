@@ -393,7 +393,7 @@
       const ends = band_ends(band)
       if (!ends) return []
       // a reversed y_axis.range flips the axis, not the window the band is cut to
-      const [t_min, t_max] = [Math.min(...t_domain), Math.max(...t_domain)]
+      const [t_min, t_max] = array_extent(t_domain)
       const [t_low, t_high] = [Math.max(ends[0], t_min), Math.min(ends[1], t_max)]
       if (!(t_high > t_low)) return []
       const [y_top, y_bottom] = [y_scale(t_high), y_scale(t_low)].toSorted(

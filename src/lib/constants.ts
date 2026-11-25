@@ -23,6 +23,8 @@ export const EV_TO_KJ_PER_MOL = (ELEMENTARY_CHARGE_C * AVOGADRO_PER_MOL) / 1000
 export const EV_PER_A3_TO_GPA = ELEMENTARY_CHARGE_C * 1e21
 // CODATA 2022 atomic mass constant (MD hotspot masses, ASE time unit)
 export const AMU_KG = 1.66053906892e-27
+// unified atomic mass units per cubic angstrom (amu/A^3) to g/cm^3
+export const AMU_PER_A3_TO_G_PER_CM3 = AMU_KG * 1e27
 // One fs in ASE's time unit A*sqrt(amu/eV) (ase.units.fs): velocity in sqrt(eV/amu) times
 // this is A/fs, for ASE momenta and MD HDF5 velocities
 export const FS_IN_ASE_TIME = 1e-5 * Math.sqrt(ELEMENTARY_CHARGE_C / AMU_KG)

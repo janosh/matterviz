@@ -146,10 +146,13 @@
   // Only the front-most visible sheet gets the pointer event; a k-path drawn through the zone
   // wins over sheets in front of it (its pick_rank), or most of it could not be hovered. A
   // click on a mark pins its tooltip, one on empty space unpins.
-  const { set_hover_enabled, touch_hover } = scene_interactivity({
+  // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
+  // a drag would raycast up to 48 tiled meshes per pointermove
+  const { set_camera_is_moving, touch_hover } = scene_interactivity({
     clip_plane: () => clip_plane,
     on_click: () => pin.toggle(hovered),
     on_empty_click: () => pin.unpin(),
+    clear_hover: () => (hovered = null),
   })
 
   let visible_surfaces = $derived(
@@ -254,13 +257,6 @@
       show_vectors ? vectors_fit_extent(fermi_data?.k_lattice) : 0,
     ),
   )
-  // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
-  // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
-  // and out as the sheets sweep under the cursor reads as the surface flickering
-  const set_camera_is_moving = (moving: boolean) => {
-    set_hover_enabled(!moving)
-    if (moving) hovered = null
-  }
 
   // Only the transparency flag feeds the material set: the opacity value itself is written in
   // place below, so an opacity-slider tick does not rebuild (and recompile) every material.

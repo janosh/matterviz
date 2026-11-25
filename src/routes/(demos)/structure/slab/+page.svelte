@@ -39,12 +39,7 @@
 </p>
 
 <div class="bleed-1400">
-  <FilePicker
-    files={Object.keys(bulk_structures).map((name) => ({ name, url: ``, type: `json` }))}
-    active_files={[selected.value]}
-    on_click={({ name }) => (selected.value = name)}
-    style="margin-bottom: 1em"
-  />
+  <FilePicker {...selected.picker(`json`)} style="margin-bottom: 1em" />
   <SlabBuilder structure={bulk} bind:slab />
 
   <section class="demo-2col">

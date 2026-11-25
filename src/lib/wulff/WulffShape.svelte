@@ -32,11 +32,11 @@
   } from '#lib/scene/index.js'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import type { SymmetryDataset } from '#lib/symmetry/index.js'
-  import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
+  import { point_group_rotations } from '#lib/symmetry/index.js'
+  import { structure_symmetry } from '#lib/symmetry/structure-symmetry.svelte.js'
   import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import { Canvas } from '@threlte/core'
-  import { getAbortSignal, untrack } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { compute_wulff_shape } from './compute'
   import { wulff_model } from './export'
@@ -82,23 +82,9 @@
   let [width, height] = $state([0, 0])
   let [controls_open, info_pane_open, export_pane_open] = $state([false, false, false])
 
-  // The structure's point group; a result for a replaced structure never lands
-  let symmetry = $state.raw<{ data?: SymmetryDataset; error?: unknown; of?: Crystal }>({})
-  $effect(() => {
-    symmetry = {}
-    const of = structure
-    if (!of?.lattice) return
-    // aborted on rerun or unmount, dropping a superseded worker job; its result never lands
-    const signal = getAbortSignal()
-    analyze_structure_symmetry(of, {}, signal)
-      .then(
-        (data) => ({ data }),
-        (error: unknown) => ({ error }),
-      )
-      .then((outcome) => {
-        if (!signal.aborted) symmetry = { ...outcome, of }
-      })
-  })
+  // The structure's point group
+  const analysis = structure_symmetry(() => structure)
+  const symmetry = $derived(analysis.current)
 
   // rotations undefined: compute_wulff_shape finds the lattice holohedry (inside its try)
   type PointGroup = { rotations?: Matrix3x3[]; label: string } | { error: string } | null

@@ -533,7 +533,7 @@ function horizon_ridges(visible: WorkFacet[]): number[][] {
   for (const facet of visible) {
     for (let skip = 0; skip < facet.vertex_indices.length; skip++) {
       const ridge = facet.vertex_indices.toSpliced(skip, 1)
-      const key = ridge.toSorted((idx_a, idx_b) => idx_a - idx_b).join(`,`)
+      const key = math.sorted_numbers(ridge).join(`,`)
       ridges.set(key, ridges.has(key) ? null : ridge)
     }
   }

@@ -9,6 +9,7 @@ import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
 import { marching_cubes } from '#lib/marching-cubes.js'
+import { clamp } from 'svelte-widgets/utils'
 import type {
   BandEnergyGrid,
   BandGridData,
@@ -40,7 +41,7 @@ const MAX_UPSAMPLED_POINTS = 20_000_000
 const AUTO_GRID_POINTS = 48
 
 export const auto_interpolation_factor = (k_grid: Vec3): number =>
-  Math.min(4, Math.max(1, AUTO_GRID_POINTS / Math.max(...k_grid)))
+  clamp(AUTO_GRID_POINTS / Math.max(...k_grid), 1, 4)
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
