@@ -36,6 +36,9 @@
   $effect(() => atom_link.publish(hovered_atom))
   const shown_atom = $derived(hovered_atom ?? atom_link.linked)
 
+  // 4 significant digits per site keep the columns narrow in a sidebar; a rounded cell's hover
+  // tooltip and exports keep every digit (a caller's default_num_format wins)
+  const num_format = $derived(rest.default_num_format ?? `.4~g`)
   let specs = $derived(site_property_specs(sites))
   let columns = $derived(site_columns(specs))
   let rows = $derived(site_rows(sites, specs, source_indices))
@@ -48,8 +51,7 @@
 
 <HeatmapTable
   {...DATA_TABLE_PROPS}
-  // 4 significant digits per site keep the columns narrow in a sidebar; exports keep every digit
-  default_num_format=".4~g"
+  default_num_format={num_format}
   data={rows}
   {columns}
   search={{ placeholder: `Filter sites`, fuzzy: true }}

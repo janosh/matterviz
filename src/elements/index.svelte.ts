@@ -4,8 +4,8 @@
 import { watch_theme } from '#lib/theme/embedded'
 import { check_blob_workers, disable_workers } from '#lib/worker-client.svelte'
 import { mount, unmount } from 'svelte'
-import { SvelteMap } from 'svelte/reactivity'
 import elements, { css } from 'virtual:matterviz-elements'
+import { prop_store } from './prop-store.svelte'
 
 const tags = Object.keys(elements)
 const defined = tags.filter((tag) => customElements.get(tag))
@@ -36,13 +36,6 @@ const parse_attribute = (value: string): unknown => {
   }
 }
 
-// What Svelte expects of a bound value: components mutate bindable props in place (e.g.
-// Structure's scene_props), which re-renders only through a $state proxy
-const as_state = <T>(value: T): T => {
-  const state = $state(value)
-  return state
-}
-
 // Bindable data the components replace but never mutate in place, so it stays unproxied: a
 // deep proxy over a 30k-site structure (set by the page or parsed from `source`) put every
 // read behind $state traps and took mv-structure 2.8 s to render
@@ -52,34 +45,21 @@ const DATA_PROPS = new Set(
 
 for (const [tag, spec] of Object.entries(elements)) {
   const { load, props: prop_names, seeded } = spec
+  // only bindable props outside DATA_PROPS become proxies: `el.x = obj` keeps obj for the rest
   const proxied = new Set(spec.bindable.filter((name) => !DATA_PROPS.has(name)))
 
   class MatterVizElement extends HTMLElement {
     static observedAttributes = prop_names
-    // Set props, reactive per key. Only bindable ones outside DATA_PROPS become $state
-    // proxies, so `el.x = obj` keeps obj itself for every other prop.
-    readonly #values = new SvelteMap<string, unknown>()
+    // The component's props, through whose setters it writes bindable props back (e.g. the
+    // structure a `source` loads) for the accessors to read. Bindables without a default stay
+    // held while undefined, where undefined is their own value rather than an unset marker.
+    readonly #store = prop_store(
+      prop_names,
+      (name) => proxied.has(name),
+      (name) => seeded.includes(name),
+    )
     // Props the page set, as opposed to ones the component wrote back into seeded keys
     readonly #page_set = new Set<string>()
-    // The component's props. Keys set at mount get a setter, through which Svelte writes
-    // bindable props back (e.g. the structure a `source` loads) for the accessors to read.
-    readonly #props = new Proxy(
-      {},
-      {
-        get: (_, key) => (typeof key === `string` ? this.#values.get(key) : undefined),
-        has: (_, key) => typeof key === `string` && this.#values.has(key),
-        ownKeys: () => [...this.#values.keys()],
-        getOwnPropertyDescriptor: (_, key) =>
-          typeof key === `string` && this.#values.has(key)
-            ? {
-                get: () => this.#values.get(key),
-                set: (value: unknown) => this.#store(key, value),
-                enumerable: true,
-                configurable: true,
-              }
-            : undefined,
-      },
-    )
     readonly #internals = this.attachInternals()
     #app: Record<string, unknown> | undefined
     #stop_theme: (() => void) | undefined
@@ -88,7 +68,7 @@ for (const [tag, spec] of Object.entries(elements)) {
       for (const name of prop_names) {
         Object.defineProperty(this.prototype, name, {
           get(this: MatterVizElement) {
-            return this.#values.get(name)
+            return this.#store.get(name)
           },
           set(this: MatterVizElement, value: unknown) {
             this.#set(name, value)
@@ -113,13 +93,7 @@ for (const [tag, spec] of Object.entries(elements)) {
     #set(name: string, value: unknown) {
       if (value === undefined) this.#page_set.delete(name)
       else this.#page_set.add(name)
-      this.#store(name, value)
-    }
-
-    // Unset props leave the map: Svelte rejects an undefined key whose prop has a default
-    #store(name: string, value: unknown) {
-      if (value === undefined) this.#values.delete(name)
-      else this.#values.set(name, proxied.has(name) ? as_state(value) : value)
+      this.#store.store(name, value)
     }
 
     attributeChangedCallback(name: string, _old: string | null, value: string | null) {
@@ -137,12 +111,9 @@ for (const [tag, spec] of Object.entries(elements)) {
       if (this.#app) return
       const { default: component } = await load()
       if (!this.isConnected || this.#app) return
-      // Bindable props without a default write back only if their key exists at mount, where
-      // undefined is their own value rather than an unset marker
-      for (const name of seeded) {
-        if (!this.#values.has(name)) this.#values.set(name, undefined)
-      }
-      this.#app = mount(component, { target: this, props: this.#props })
+      const { props, store } = this.#store
+      for (const name of seeded) if (!(name in props)) store(name, undefined)
+      this.#app = mount(component, { target: this, props })
     }
 
     disconnectedCallback() {
@@ -156,8 +127,8 @@ for (const [tag, spec] of Object.entries(elements)) {
         this.#app = undefined
         // What the component wrote back (its scene, camera, parsed structure) belongs to it:
         // a later mount starts from the page's props only
-        for (const name of this.#values.keys()) {
-          if (!this.#page_set.has(name)) this.#values.delete(name)
+        for (const name of Object.keys(this.#store.props)) {
+          if (!this.#page_set.has(name)) this.#store.store(name, undefined)
         }
       })
     }

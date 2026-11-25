@@ -374,6 +374,7 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
   // Structural properties
   volume: { label: `Volume`, unit: `Å³` },
   density: { label: `Density`, unit: `g/cm³` },
+  rmsd: { label: `RMSD vs frame 1`, unit: `Å` }, // structure-diff trajectory overlay
 
   // Lattice parameters
   a: { label: `a`, unit: `Å` },

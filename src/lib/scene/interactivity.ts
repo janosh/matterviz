@@ -103,21 +103,27 @@ export class TouchTaps {
 // Threlte interactivity() for a 3D scene (call during component init) dispatching each pointer
 // event to the one object front_hit picks, so handlers need no stopPropagation(). `clip_plane`
 // is read per event. `touch_hover` wraps hover handlers for touch taps (see TouchTaps);
-// `set_hover_enabled(false)` stops hover raycasts while the camera moves and hides a tapped
-// tooltip; `on_click`/`on_empty_click` see clicks on and off wrapped objects (a TooltipPin).
+// `set_hover_enabled(false)` stops hover raycasts and hides a tapped tooltip;
+// `set_camera_is_moving` (for build_orbit_props) does so while the camera moves and calls
+// `clear_hover` as it starts, since a hovered mark gets no pointerleave then. A drag would
+// otherwise raycast on each pointermove, and a tooltip hopping under the cursor reads as flicker.
+// `on_click`/`on_empty_click` see clicks on and off wrapped objects (a TooltipPin).
 export const scene_interactivity = ({
   clip_plane,
+  clear_hover,
   ...clicks
-}: { clip_plane?: () => Plane | null } & SceneClicks = {}) => {
+}: { clip_plane?: () => Plane | null; clear_hover?: () => void } & SceneClicks = {}) => {
   const { enabled } = extras.interactivity({
     filter: (hits) => front_hit(hits, clip_plane?.()),
   })
   const taps = new TouchTaps(clicks)
-  return {
-    set_hover_enabled: (on: boolean): void => {
-      enabled.set(on)
-      if (!on) taps.release()
-    },
-    touch_hover: taps.wrap,
+  const set_hover_enabled = (on: boolean): void => {
+    enabled.set(on)
+    if (!on) taps.release()
   }
+  const set_camera_is_moving = (moving: boolean): void => {
+    set_hover_enabled(!moving)
+    if (moving) clear_hover?.()
+  }
+  return { set_hover_enabled, set_camera_is_moving, touch_hover: taps.wrap }
 }

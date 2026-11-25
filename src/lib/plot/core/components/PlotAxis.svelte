@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { in_range, type Vec2 } from '#lib/math.js'
+  import { in_range, same_values, type Vec2 } from '#lib/math.js'
   import AxisLabel from '#lib/plot/core/components/AxisLabel.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
   import {
@@ -15,7 +15,6 @@
   } from '#lib/plot/core/text-metrics.js'
   import type { TicksOption } from '#lib/plot/core/scales.js'
   import {
-    arrays_equal,
     centers_tick_lines,
     resolve_tick_layout,
     TICK_LABEL_HEIGHT,
@@ -81,7 +80,7 @@
   let last_positions: number[] = []
   const tick_positions = $derived.by(() => {
     const next = ticks.map(place)
-    if (!arrays_equal(next, last_positions)) last_positions = next
+    if (!same_values(next, last_positions)) last_positions = next
     return last_positions
   })
   const plot_w = $derived(Math.max(0, width - pad.l - pad.r))

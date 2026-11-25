@@ -10,7 +10,8 @@
   import { untrack } from 'svelte'
   import { ConeGeometry, CylinderGeometry } from 'three/webgpu'
 
-  let { arrows }: { arrows: ArrowColumns } = $props()
+  // on_top draws over the atoms (no depth test): arrows shorter than an atom stay visible
+  let { arrows, on_top = false }: { arrows: ArrowColumns; on_top?: boolean } = $props()
   const placements = $derived(arrows.placements)
 
   const { invalidate } = useThrelte()
@@ -51,6 +52,16 @@
       mesh.geometry.instanceCount = count
       materials[part].dimensions.value.set(...dimensions)
     }
+    invalidate()
+  })
+
+  $effect(() => {
+    for (const { material } of materials) {
+      material.depthTest = !on_top
+      material.depthWrite = !on_top
+    }
+    // after the opaque atoms, which they would otherwise be sorted among by depth
+    for (const mesh of meshes) mesh.renderOrder = on_top ? 1 : 0
     invalidate()
   })
 

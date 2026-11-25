@@ -195,6 +195,7 @@
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
+    bond_colors,
     bonding_strategy = DEFAULTS.structure.bonding_strategy,
     auto_bond_order = DEFAULTS.structure.auto_bond_order,
     aromatic_display = DEFAULTS.structure.aromatic_display,
@@ -229,6 +230,7 @@
     symmetry_elements_props = {},
     symmetry_declutter = true,
     atom_label,
+    scene_children,
     tooltip,
     camera_is_moving = $bindable(false),
     series_key = undefined,
@@ -333,6 +335,9 @@
     hovered_idx?: number | null
     bond_thickness?: number
     bond_color?: string
+    // Per-bond colors (e.g. by -ICOHP), one per rendered bond of the rendered structure (image
+    // sites too); undefined keeps a bond's atom-color gradient
+    bond_colors?: (bonds: BondData, structure: AnyStructure) => readonly (string | undefined)[]
     bonding_strategy?: BondingStrategy
     auto_bond_order?: boolean
     aromatic_display?: `aromatic` | `kekule`
@@ -373,6 +378,8 @@
     // axes/planes/centers stay readable (derived: hiding the overlay restores the rest)
     symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
+    // Extra 3D content (threlte components) in the atoms' Cartesian frame, e.g. ghost atoms
+    scene_children?: Snippet<[{ site_radius: (site: Site, site_idx: number) => number }]>
     // false hides the hovered-atom tooltip, a snippet adds rows below the built-in site info
     tooltip?: TooltipProp<{ site: Site; site_idx: number }>
     site_label_size?: number
@@ -1660,6 +1667,7 @@
         atom_events={atom_instance_events}
         bonds={bonds_to_render}
         {bond_color}
+        {bond_colors}
         {bond_thickness}
         {bonds_capped}
         {ambient_light}
@@ -1755,6 +1763,8 @@
       {#if displacement_arrows.placements.count > 0}
         <ArrowInstances arrows={displacement_arrows} />
       {/if}
+
+      {@render scene_children?.({ site_radius: get_site_radius })}
 
       <!-- Per-atom trajectory trails: every atom's whole path in one indexed
         LineSegments (1 draw call no matter how many atoms or frames) -->

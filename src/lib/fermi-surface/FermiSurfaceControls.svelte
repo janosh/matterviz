@@ -14,7 +14,7 @@
   import { parse_num_token } from '#lib/utils.js'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import { untrack, type Snippet } from 'svelte'
-  import type { Vec2 } from '#lib/math.js'
+  import { sorted_numbers, type Vec2 } from '#lib/math.js'
   import { property_label, resolve_color_property } from './constants'
   import { energy_unit_text } from '#lib/spectral/frequency-units.js'
   import { mu_slider_range } from './compute'
@@ -153,7 +153,7 @@
     set_bands(
       bands.includes(band_idx)
         ? bands.filter((band) => band !== band_idx)
-        : [...bands, band_idx].toSorted((left, right) => left - right),
+        : sorted_numbers([...bands, band_idx]),
     )
   }
 

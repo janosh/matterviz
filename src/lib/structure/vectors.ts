@@ -490,7 +490,8 @@ export function write_arrow_placement(
     rotations[idx * 4 + 3] = 1
     return
   }
-  const shaft_len = Math.max(0, length - resolve_arrow_size(dimensions[2], length) * 0.5)
+  // the head's tip lands on the vector's end: the shaft stops a full head length short
+  const shaft_len = Math.max(0, length - resolve_arrow_size(dimensions[2], length))
   // Preserve the f64 shaft-visibility decision in the sign; the shader uses |length|.
   lengths[idx] = shaft_len > 0.01 ? length : -length
   // Quaternion.setFromUnitVectors(+Y, direction), including its antiparallel branch.

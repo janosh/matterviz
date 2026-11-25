@@ -1,7 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { browser } from '$app/env'
-  import { page } from '$app/state'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import { open_material } from '#lib/file-viewer/open.js'
   import { apply_structure_material } from '#lib/structure/material.js'
@@ -19,7 +18,7 @@
     label_file_volumes,
   } from '#lib/isosurface/types.js'
   import { volumetric_files } from '#site/isosurfaces.js'
-  import { latest_load, replace_url } from '#site/state.svelte.js'
+  import { latest_load, replace_url, url_param } from '#site/state.svelte.js'
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
   import { untrack } from 'svelte'
@@ -228,7 +227,7 @@
   // the stale scenario over the user's changes.
   function clear_scenario() {
     active_scenario = undefined
-    if (browser && page.url.searchParams.has(`scenario`)) {
+    if (url_param(`scenario`) !== null) {
       replace_url(globalThis.location.pathname)
     }
   }
@@ -271,7 +270,7 @@
   // param after user imports, and reloading a preset then would wipe the
   // user's custom scene.
   $effect(() => {
-    const param = page.url.searchParams.get(`scenario`)
+    const param = url_param(`scenario`)
     untrack(() => {
       const target = scenarios.find((scenario) => scenario.id === param)
       if (target) {

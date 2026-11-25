@@ -13,6 +13,21 @@ type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export const grow_capacity = (capacity: number, required: number): number =>
   required > capacity ? Math.max(required, Math.ceil(capacity * 1.5)) : capacity
 
+type GrowableBuffer = Float32Array | Float64Array | Int32Array | Uint32Array
+// Typed array holding at least `needed` entries (contents kept): amortized doubling, never
+// past `cap` (so a capped buffer fills exactly to its budget; callers keep `needed <= cap`)
+export const grow_buffer = <Buffer extends GrowableBuffer>(
+  buffer: Buffer,
+  needed: number,
+  cap = Infinity,
+): Buffer => {
+  if (needed <= buffer.length) return buffer
+  const BufferType = buffer.constructor as new (length: number) => Buffer
+  const next = new BufferType(Math.min(cap, Math.max(needed, buffer.length * 2)))
+  next.set(buffer)
+  return next
+}
+
 // Any array-like (Array, typed array, arguments) holding exactly three finite numbers
 export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
   if (typeof values !== `object` || values === null) return false
@@ -174,13 +189,15 @@ export const first_non_increasing_index = (values: ArrayLike<number>): number | 
 export const same_position = (left: Vec3, right: Vec3): boolean =>
   left.every((value, axis) => Math.abs(value - right[axis]) < 1e-6)
 
-// Element-wise === of two array-likes; cheaper than hashing for hot "column changed?" checks
+// Element-wise Object.is of two array-likes (Svelte's equality: NaN matches itself, so NaN
+// entries never read as a change); cheaper than hashing for hot "column changed?" checks
 export const same_values = <Value>(
   left: ArrayLike<Value>,
   right: ArrayLike<Value>,
 ): boolean => {
   if (left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
+  for (let idx = 0; idx < left.length; idx++)
+    if (!Object.is(left[idx], right[idx])) return false
   return true
 }
 
@@ -834,6 +851,12 @@ export const miller_plane_normal = (lattice: Matrix3x3, hkl: Vec3): Vec3 =>
 // Plain loops, not reduce: these run over per-frame trajectory series and box-plot samples.
 
 // Arithmetic mean; NaN for empty input (0/0), matching the mathematical convention.
+// Per-axis mean of points (their centroid), in the points' dimension
+export const mean_point = (points: readonly (readonly number[])[]): number[] =>
+  points[0].map(
+    (_, axis) => points.reduce((sum, point) => sum + point[axis], 0) / points.length,
+  )
+
 export function mean(values: readonly number[]): number {
   let sum = 0
   for (const value of values) sum += value

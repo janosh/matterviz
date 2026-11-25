@@ -525,7 +525,11 @@
         {/each}
       </div>
     {:else if atom_color_config.scale_type === `continuous` && property_colors}
-      <div title={legend_title} {@attach tooltip({ placement: `top` })}>
+      <div
+        class="property-colorbar"
+        title={legend_title}
+        {@attach tooltip({ placement: `top` })}
+      >
         <ColorBar
           color_scale={resolve_color_scale(atom_color_config.color_scale, [
             property_colors.min_value ?? 0,
@@ -583,6 +587,13 @@
     bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
     right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
     gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
+  }
+  /* min/max ticks flush inward from the bar ends, never centered past the viewer's edge */
+  .property-colorbar :global(.tick-label.horizontal:first-child) {
+    transform: none;
+  }
+  .property-colorbar :global(.tick-label.horizontal:last-child:not(:first-child)) {
+    transform: translateX(-100%);
   }
   .element-legend {
     /* 9pt floor keeps chips legible in small embeds (gallery cards) where

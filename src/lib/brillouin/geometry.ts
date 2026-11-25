@@ -117,12 +117,7 @@ export function bz_hover_data(
 
 // Centroid of polyhedron vertices, used as orbit/rotation target by BZ + Fermi scenes
 export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
-  vertices?.length
-    ? math.scale(
-        vertices.reduce<Vec3>((acc, vert) => math.add(acc, vert), [0, 0, 0]),
-        1 / vertices.length,
-      )
-    : [0, 0, 0]
+  vertices?.length ? (math.mean_point(vertices) as Vec3) : [0, 0, 0]
 
 // Mean reciprocal-lattice vector magnitude: characteristic scene size for camera placement
 // and arrow scaling. Fallback 10 (upper end of typical |b_i| ~ 2pi/a in 1/A) keeps the
@@ -205,8 +200,8 @@ export const k_cell_fit_extent = (
   return extent > 0 ? extent : Math.sqrt(3) * k_space_size(undefined) * padding
 }
 
-// Reciprocal vector labels sit this far along their arrows (ReciprocalVectors)
-export const VECTOR_LABEL_OFFSET = 1.15
+// Room for the reciprocal vector labels just past the arrow tips (ReciprocalVectors)
+const VECTOR_LABEL_OFFSET = 1.15
 
 // Padded diameter of the origin-centered sphere reaching the reciprocal vector labels: arrows
 // longer than the zone's half-width (every cubic lattice) poke out of a zone-only fit

@@ -33,6 +33,10 @@ export const COMPONENTS = {
   coordination_bar_plot: `coordination/CoordinationBarPlot`,
   neb_plot: `neb/NebPlot`,
   eos_plot: `eos/EosPlot`,
+  pourbaix_diagram: `pourbaix/PourbaixDiagram`,
+  structure_diff: `structure-diff/StructureDiff`,
+  cohp: `spectral/Cohp`,
+  wulff_shape: `wulff/WulffShape`,
 } as const
 
 // The custom-element tag of a component path or name: ScatterPlot3D -> mv-scatter-plot-3d

@@ -48,7 +48,7 @@ const measured: Record<string, number> = {
   '/spectral/bands': 1.41,
   '/spectral/bands-and-dos': 1.42,
   '/spectral/brillouin-bands-dos': 1.5,
-  '/spectral/brillouin-zone': 1.68,
+  '/spectral/brillouin-zone': 1.76,
   '/spectral/electronic-structure': 1.51,
   '/spectral/fermi-surface': 1.09,
   '/spectral/ir-raman': 1.34,
@@ -64,9 +64,10 @@ const measured: Record<string, number> = {
   '/structure/polyhedra': 1.24,
   '/structure/rdf': 1.25,
   '/structure/slab': 1.17,
-  '/structure/symmetry': 1.99,
+  '/structure/symmetry': 2.07,
   '/structure/vectors': 1.17,
-  '/structure/xrd': 2.02,
+  '/structure/wulff': 1.62,
+  '/structure/xrd': 2.1,
   '/trajectory': 2.65,
   '/trajectory/render': 1.26,
 }
@@ -94,10 +95,13 @@ for (const route of demo_routes) {
       last_activity = performance.now()
     })
     context.on(`requestfailed`, settle)
+    // Stops before the totals are summed: a request finishing after that would ask for its
+    // size as the browser closes, an unhandled rejection that fails the run outside any test
+    let collecting = true
     context.on(`requestfinished`, (request) => {
       settle(request)
       const url = request.url()
-      if (!url.startsWith(`http`)) return // data: and blob: URLs download nothing
+      if (!collecting || !url.startsWith(`http`)) return // data: and blob: download nothing
       responses.push(request.sizes().then((sizes) => ({ url, bytes: sizes.responseBodySize })))
     })
     // nothing in flight for a full second
@@ -121,6 +125,7 @@ for (const route of demo_routes) {
     // a demo whose import failed swaps its placeholder for this alert and downloads nothing
     await expect(page.locator(`.lazy-demo > p[role="alert"]`)).toHaveCount(0)
 
+    collecting = false
     const finished = await Promise.all(responses)
     const total_mb = finished.reduce((sum, { bytes }) => sum + bytes, 0) / 1e6
     const measured_mb = measured[route] ?? BASELINE

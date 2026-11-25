@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import { sort_by_electronegativity } from '#lib/composition/format.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
@@ -320,7 +321,7 @@ export function get_convex_hull_stats(
   // E_form only: absolute computed energies would put ~-8 and ~-1 eV/atom in one stat
   const e_forms = processed_entries
     .map((entry) => entry.e_form_per_atom)
-    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+    .filter((val): val is number => is_finite_number(val))
   const [min_e_form, max_e_form] = math.array_extent(e_forms)
   const hull_distances = processed_entries
     .map((entry) => entry.e_above_hull)
@@ -532,7 +533,7 @@ function horizon_ridges(visible: WorkFacet[]): number[][] {
   for (const facet of visible) {
     for (let skip = 0; skip < facet.vertex_indices.length; skip++) {
       const ridge = facet.vertex_indices.toSpliced(skip, 1)
-      const key = ridge.toSorted((idx_a, idx_b) => idx_a - idx_b).join(`,`)
+      const key = math.sorted_numbers(ridge).join(`,`)
       ridges.set(key, ridges.has(key) ? null : ridge)
     }
   }

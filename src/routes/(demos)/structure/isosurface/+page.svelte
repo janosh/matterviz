@@ -1,13 +1,12 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { browser } from '$app/env'
-  import { page } from '$app/state'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import { humanize } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
-  import { file_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
+  import { url_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
   import type {
     AnyStructure,
     IsosurfaceSettings,
@@ -144,8 +143,8 @@
 
   // Load file from URL param or default on mount
   onMount(() => {
-    const requested = file_param()
-    const view = page.url.searchParams.get(`view`)
+    const requested = url_param(`file`)
+    const view = url_param(`view`)
     display_mode = view === `slice` || view === `split` ? view : `structure`
     // an unknown ?file= (e.g. a stale link) falls back to the first fixture, not a blank page
     const target =
@@ -153,8 +152,8 @@
 
     if (target) {
       // Apply URL params for isovalue/show_negative after loading
-      const isovalue_param = page.url.searchParams.get(`isovalue`)
-      const show_neg_param = page.url.searchParams.get(`show_negative`)
+      const isovalue_param = url_param(`isovalue`)
+      const show_neg_param = url_param(`show_negative`)
 
       void load_file(target.name, target.url).then((is_current) => {
         const [layer] = isosurface_settings.layers

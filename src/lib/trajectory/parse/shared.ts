@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import type { NumericFrame, FrameChannels } from '../frame'
 import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import type { Matrix3x3 } from '#lib/math.js'
@@ -183,7 +184,7 @@ export const vasp_stress_metadata = (stress_kbar: Matrix3x3): StressMetadata =>
 // 6-component Voigt vector [xx, yy, zz, yz, xz, xy] or a 3x3 tensor. Undefined if malformed.
 export const ase_stress_metadata = (stress: unknown): StressMetadata | undefined => {
   const values = Array.isArray(stress) ? stress.flat() : []
-  if (!values.every((value) => typeof value === `number` && Number.isFinite(value))) {
+  if (!values.every((value) => is_finite_number(value))) {
     return undefined
   }
   const to_gpa = (value: number) => -value * EV_PER_A3_TO_GPA

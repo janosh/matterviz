@@ -111,6 +111,7 @@ describe.each<[string, Formatter, [string, string][]]>([
       [`O2-`, `O<sub>2</sub><sup>-</sup>`],
       [`SO4^2-`, `SO<sub>4</sub><sup>2-</sup>`],
       [`Fe^3+`, `Fe<sup>3+</sup>`],
+      [`Cu^+`, `Cu<sup>+</sup>`], // a lone element's caret charge (was plain Cu^+)
       [`Fe2^3+O3^2-`, `Fe<sub>2</sub><sup>3+</sup>O<sub>3</sub><sup>2-</sup>`],
       [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
       [`Li.5CoO2`, `Li<sub>.5</sub>CoO<sub>2</sub>`],
@@ -138,6 +139,7 @@ describe.each<[string, Formatter, [string, string][]]>([
       [`Fe3C`, `Fe${svg_sub(`3`)}C`],
       [`SiO2`, `SiO${svg_sub(`2`)}`],
       [`O2-`, `O${svg_sub(`2`)}${svg_sup(`-`)}`],
+      [`Cl^-`, `Cl${svg_sup(`-`)}`],
       [`O2-2H`, `O${svg_sub(`2`)}${svg_sup(`-2`)}H`],
       [`H2O2H2O`, `H${svg_sub(`2`)}O${svg_sub(`2`)}H${svg_sub(`2`)}O`],
     ],

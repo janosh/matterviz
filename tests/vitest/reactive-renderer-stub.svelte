@@ -28,6 +28,9 @@
     fits = $bindable(),
     selection = $bindable(),
     isosurface_settings = $bindable(),
+    log_conc = $bindable(),
+    wulff_data = $bindable(),
+    hover_info = $bindable(),
     ...rest
   }: Record<string, unknown> = $props()
 
@@ -52,6 +55,9 @@
     else if (key === `fits`) fits = value
     else if (key === `selection`) selection = value
     else if (key === `isosurface_settings`) isosurface_settings = value
+    else if (key === `log_conc`) log_conc = value
+    else if (key === `wulff_data`) wulff_data = value
+    else if (key === `hover_info`) hover_info = value
     else throw new Error(`reactive-renderer-stub has no $bindable for '${key}'`)
   }
   const read = (): Record<string, unknown> => ({
@@ -76,6 +82,9 @@
     fits,
     selection,
     isosurface_settings,
+    log_conc,
+    wulff_data,
+    hover_info,
   })
   register_stub({ read, write })
 </script>

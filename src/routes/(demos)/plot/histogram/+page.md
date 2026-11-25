@@ -418,16 +418,17 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { Histogram } from 'matterviz'
+  import { FilePicker, Histogram } from 'matterviz'
   import * as utils from '#site/histogram-data.js'
+  import { url_selection } from '#site/state.svelte.js'
 
-  let selected = $state(`bimodal`)
+  const selected = url_selection(`dist`, [`bimodal`, `skewed`, `discrete`, `age`, `mixture`])
   let mode = $state(`single`)
   let x_axis = $state({})
   let y_axis = $state({ label: `Count` })
   $effect(() => {
-    x_axis.label = { discrete: `Rating`, age: `Age` }[selected] ?? `Value`
-    x_axis.format = selected === `discrete` ? `.1f` : `.0f`
+    x_axis.label = { discrete: `Rating`, age: `Age` }[selected.value] ?? `Value`
+    x_axis.format = selected.value === `discrete` ? `.1f` : `.0f`
   })
 
   const dist = (data, label, color) => ({ data, label, color })
@@ -439,7 +440,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     mixture: dist(utils.generate_mixture(1800), `Complex Mixture`, `#f39c12`),
   })
 
-  let current = $derived(distributions[selected])
+  let current = $derived(distributions[selected.value])
   let series_data = $derived(
     mode === `single`
       ? [{ values: current.data, label: current.label, color: current.color }]
@@ -447,17 +448,13 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
           values: data,
           label,
           color,
-          visible: key === selected,
+          visible: key === selected.value,
         })),
   )
 </script>
 
 <div class="demo-controls">
-  <select bind:value={selected}>
-    {#each Object.entries(distributions) as [key, dist] (key)}
-      <option value={key}>{dist.label}</option>
-    {/each}
-  </select>
+  <FilePicker {...selected.picker(`data`, (key) => distributions[key].label)} />
   {#each [`single`, `overlay`] as display_mode (display_mode)}
     <label><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label>
   {/each}
@@ -468,15 +465,15 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   {mode}
   bind:x_axis
   bind:y_axis
-  bins={selected === `discrete` ? 10 : 40}
+  bins={selected.value === `discrete` ? 10 : 40}
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
     <strong>{property}</strong><br />
-    {{ age: `Age`, discrete: `Rating` }[selected] ?? `Value`}: {format_num(
+    {{ age: `Age`, discrete: `Rating` }[selected.value] ?? `Value`}: {format_num(
       value,
-      selected === `discrete` ? `.1f` : `.0f`,
+      selected.value === `discrete` ? `.1f` : `.0f`,
     )}<br />
     Count: {count}<br />%: {format_num(count / current.data.length, `.2~%`)}
   {/snippet}

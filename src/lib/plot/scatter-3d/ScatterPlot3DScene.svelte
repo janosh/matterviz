@@ -160,7 +160,15 @@
   })
 
   // Overlapping points must pick the front surface, not the last (farthest) hit.
-  const { set_hover_enabled } = scene_interactivity()
+  // No point hover while orbiting: a drag would raycast every instance on each pointermove,
+  // and the highlight sphere + tooltip hopping between points under the cursor reads as flicker
+  const { set_camera_is_moving } = scene_interactivity({
+    clear_hover: () => {
+      if (!hovered_point) return
+      hovered_point = null
+      on_point_hover?.(null)
+    },
+  })
 
   type AxisKey = `x` | `y` | `z`
 
@@ -190,15 +198,7 @@
     fit_zoom: () => fit_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
-    // No point hover while orbiting: a drag would raycast every instance on each pointermove,
-    // and the highlight sphere + tooltip hopping between points under the cursor reads as flicker
-    set_camera_is_moving: (moving) => {
-      set_hover_enabled(!moving)
-      if (moving && hovered_point) {
-        hovered_point = null
-        on_point_hover?.(null)
-      }
-    },
+    set_camera_is_moving,
   })
 
   // Dynamic backside positions - axes/grids/planes always face away from camera

@@ -1999,9 +1999,10 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
                 ? 0
                 : kind === `bonds`
                   ? 0.5
-                  : mesh.geometry.type === `ConeGeometry`
-                    ? 1
-                    : 0.425
+                  : // a unit arrow with a 0.3 head: shaft 0..0.7, head 0.7..1 (tip on the end)
+                    mesh.geometry.type === `ConeGeometry`
+                    ? 0.85
+                    : 0.35
             const matrix = new Matrix4()
             mesh.getMatrixAt(0, matrix)
             const expected = Math.fround(inputs.offset + center_offset)

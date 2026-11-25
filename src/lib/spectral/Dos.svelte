@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { is_finite_number } from '#lib/utils.js'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { TooltipValue } from '#lib/tooltip/index.js'
@@ -122,8 +123,8 @@
     const curves = [...Object.values(doses), ...Object.values(a2f)]
     let [lo, hi] = array_extent(curves.flatMap((dos) => array_extent(display_x(dos))))
     const [range_lo, range_hi] = (is_horizontal ? y_axis : x_axis).range ?? []
-    if (typeof range_lo === `number` && Number.isFinite(range_lo)) lo = range_lo
-    if (typeof range_hi === `number` && Number.isFinite(range_hi)) hi = range_hi
+    if (is_finite_number(range_lo)) lo = range_lo
+    if (is_finite_number(range_hi)) hi = range_hi
     const span = Number.isFinite(hi - lo) ? Math.abs(hi - lo) : 0
     return Math.max(display_sigma, helpers.DISPLAY_BROADENING * span)
   })

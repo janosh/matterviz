@@ -10,6 +10,8 @@
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Snippet } from 'svelte'
   import Popover from 'svelte-widgets/Popover.svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import { Check, Copy, Download } from 'svelte-widgets/icons'
   import { create_clipboard_feedback } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -131,7 +133,7 @@
                     item.show_dpi ? ` (${png_dpi} DPI)` : ``
                   }${why_suffix}`}
                 >
-                  ⬇
+                  <Icon icon={Download} />
                 </button>
               {/if}
               {#if item.copy_text}
@@ -143,7 +145,7 @@
                   aria-describedby={hint_id}
                   title={`Copy ${item.label} to clipboard${why_suffix}`}
                 >
-                  {copied.has(copy_key) ? `✅` : `📋`}
+                  <Icon icon={copied.has(copy_key) ? Check : Copy} />
                 </button>
               {/if}
               {#if why}<small id={hint_id} class="disabled-reason">{why}</small>{/if}
@@ -193,15 +195,6 @@
     font-size: 0.85em;
     opacity: 0.8;
     white-space: normal;
-  }
-  .export-grid button {
-    min-width: 1.9em;
-    height: 1.6em;
-    padding: 0 4pt;
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
   }
   .export-grid input[type='number'] {
     width: 3.5em;

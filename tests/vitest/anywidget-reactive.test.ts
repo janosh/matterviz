@@ -188,6 +188,20 @@ describe(`reactive_widget`, () => {
     reactive.dispose()
   })
 
+  // an effect writing a bound prop while reading an unset one re-ran without end when the store
+  // was a SvelteMap, whose missing-key reads track every key's writes
+  test(`real mount(): an effect writing a bound prop while reading an unset one settles`, () => {
+    const model = new MockModel({})
+    const reactive = reactive_widget(as_model(model), [
+      drive_prop(`unset`),
+      writeback_prop(`echo`),
+    ])
+    mount(Harness, { target: document.createElement(`div`), props: reactive.props })
+    flushSync()
+    expect(model.state.echo).toEqual({ unset: undefined })
+    reactive.dispose()
+  })
+
   // A structure the component loads itself (data_url) while the trait is None reaches the
   // props as loaded: with no key at mount, Svelte would keep a deep proxy of it instead
   test(`real mount(): data a component loads writes back unproxied`, () => {

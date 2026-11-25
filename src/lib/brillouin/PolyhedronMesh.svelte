@@ -19,6 +19,7 @@
     edge_width,
     pick_rank = 0,
     hovered_face = null,
+    depth_write = false,
     ...pointer_props
   }: {
     polyhedron: Pick<BrillouinZoneData, `vertices` | `faces` | `edges`>
@@ -28,6 +29,9 @@
     edge_width: number // absolute cylinder thickness in 1/Å (see bz_mark_sizes)
     pick_rank?: number // hover priority over other meshes on the pointer ray (see front_hit)
     hovered_face?: number | null
+    // write depth so opaque solids sort per pixel (the Wulff shape's per-family meshes); off
+    // for translucent zones, whose faces must not hide what lies inside them
+    depth_write?: boolean
   } & Partial<TouchHoverProps> = $props() // hover handlers forwarded to the face mesh
 
   const geometry = $derived(polyhedron_geometry(polyhedron.vertices, polyhedron.faces))
@@ -45,7 +49,7 @@
       transparent
       {opacity}
       side={DoubleSide}
-      depthWrite={false}
+      depthWrite={depth_write}
     />
   </T.Mesh>
   {#if hovered_polygon}

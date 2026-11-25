@@ -9,7 +9,7 @@ import {
 import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
 import {
-  GAS_STOICHIOMETRY,
+  gas_phase_entry,
   is_elemental_gas,
   is_gas_composition,
   relevant_gases,
@@ -126,15 +126,7 @@ export function prepare_diagram(
     if (compound_gases.some((gas) => is_gas_composition(entry.composition, gas)))
       entry.exclude_from_hull = true
   }
-  for (const gas of compound_gases) {
-    normalized.push({
-      composition: { ...GAS_STOICHIOMETRY[gas] },
-      gas,
-      entry_id: `gas:${gas}`,
-      reduced_formula: gas,
-      name: `${gas} gas`,
-    })
-  }
+  normalized.push(...compound_gases.map(gas_phase_entry))
   const model = build_free_energy_model(normalized, elements, options.free_energy)
   const [el_a, el_b, el_c] = elements
   return {

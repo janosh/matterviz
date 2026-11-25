@@ -41,6 +41,29 @@ test(`table settings reset authored overrides and preserve column widths`, async
   await expect(opacity).toHaveValue(`1`)
 })
 
+// Labels like a<sub>frac</sub>, Fe<sup>2+</sup> or a <kbd>r</kbd> shortcut must not grow their
+// row (no layout shift), and a key cap sits a touch smaller than its text
+test(`sub, sup and kbd leave row heights unchanged`, async ({ page }) => {
+  const table = page.locator(`#table-controls`)
+  const heights = await table.evaluate(async (node) => {
+    const rows = [node.querySelector(`thead tr`), node.querySelector(`tbody tr`)]
+    const measure = () => rows.map((row) => row?.getBoundingClientRect().height)
+    const before = measure()
+    for (const row of rows)
+      row?.lastElementChild?.insertAdjacentHTML(
+        `beforeend`,
+        `<sub>frac</sub><sup>2+</sup><kbd>r</kbd>`,
+      )
+    await new Promise(requestAnimationFrame)
+    const kbd = node.querySelector(`tbody kbd`)
+    const font_px = (el: Element | null | undefined) =>
+      el ? Number(getComputedStyle(el).fontSize.slice(0, -2)) : NaN
+    return { before, after: measure(), kbd_ratio: font_px(kbd) / font_px(kbd?.parentElement) }
+  })
+  expect(heights.after).toEqual(heights.before)
+  expect(heights.kbd_ratio).toBeCloseTo(0.85, 2)
+})
+
 test(`table search, pagination, selection and export use the visible data`, async ({
   page,
 }) => {

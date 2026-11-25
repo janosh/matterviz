@@ -233,6 +233,9 @@
     active_volume_id = $bindable<string | undefined>(),
     children,
     top_right_controls,
+    scene_children,
+    controls_extra,
+    site_table_props,
     on_fullscreen_change,
     on_camera_move,
     on_camera_reset,
@@ -398,6 +401,14 @@
     // Content rendered inside the viewer, given the current structure and fullscreen state.
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
     top_right_controls?: Snippet // rendered at the end of the control buttons row
+    // Extra 3D content drawn inside every 3D pane in the atoms' Cartesian frame (threlte
+    // components such as ArrowInstances or InstancedAtoms), e.g. a comparison overlay
+    scene_children?: Snippet<[{ site_radius: (site: Site, site_idx: number) => number }]>
+    controls_extra?: Snippet // extra settings at the top of the controls (gear) pane
+    // Extra props for the docked site table, e.g. its initial `sort`
+    site_table_props?: Partial<
+      Omit<ComponentProps<typeof SiteTable>, `sites` | `selected_atoms` | `hovered_atom`>
+    >
     // Called with the structure and the new `fullscreen` state when fullscreen is toggled.
     on_fullscreen_change?: EventHandler
     // Called with camera position, target, zoom and `camera_has_moved` when the camera is moved.
@@ -948,14 +959,9 @@
     const controller = new AbortController()
     const { signal } = controller
     symmetry
-      .ensure_moyo_wasm_ready()
-      .then(() =>
-        signal.aborted
-          ? null
-          : symmetry.analyze_structure_symmetry(current_structure, { symprec, algo }, signal),
-      )
+      .analyze_structure_symmetry(current_structure, { symprec, algo }, signal)
       .then((data) => {
-        if (data && !signal.aborted) untrack(() => (sym_data = data))
+        if (!signal.aborted) untrack(() => (sym_data = data))
       })
       .catch((err) => {
         if (signal.aborted) return
@@ -1157,6 +1163,9 @@
     get bonding_options() {
       return { [bonding_strategy]: bonding_options }
     },
+    get scene_children() {
+      return scene_children
+    },
   }
   // Scene inputs that follow the displayed frame (tool_trail_positions too, as it reads the
   // frame's tool_input), passed beside the bundle above like active_sites and property_colors
@@ -1190,6 +1199,9 @@
     },
     get sym_data() {
       return sym_data
+    },
+    get symmetry_error() {
+      return symmetry_error
     },
     get displacement_rmsd() {
       return displacement_summary?.rmsd
@@ -1704,6 +1716,7 @@
                   : undefined}
                 bind:fly_to_request={session.fly_to_request}
                 {persist_settings}
+                {controls_extra}
               />
             {/if}
 
@@ -1860,6 +1873,7 @@
           }
           export_filename="structure-sites"
           scroll_style={DOCKED_SCROLL_STYLE}
+          {...site_table_props}
         />
         {#if !SiteTableComponent}
           <StatusMessage message="Loading site table…" type="info" style="border: none" />
@@ -1897,12 +1911,32 @@
   .structure-site-layout.docked-sidebar-row {
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
+    /* Viewer and sidebar read as one rounded box: outer corners take --struct-border-radius,
+       the edge they share stays square so no gap opens between them */
+    --docked-radius: var(--struct-border-radius, 0);
+    > .structure {
+      border-radius: var(--docked-radius) 0 0 var(--docked-radius);
+    }
+    > :global(.structure-site-sidebar) {
+      border-radius: 0 var(--docked-radius) var(--docked-radius) 0;
+    }
+    /* stacked: viewer on top, sidebar below */
+    &:global(.docked-sidebar-stacked) {
+      > .structure {
+        border-radius: var(--docked-radius) var(--docked-radius) 0 0;
+      }
+      > :global(.structure-site-sidebar) {
+        border-radius: 0 0 var(--docked-radius) var(--docked-radius);
+      }
+    }
   }
   /* The site table's toolbar (up to six 22px buttons, 142px) shares the header row, left of
-     the close button; the gap keeps the title clear of it when the sidebar fits its content.
+     the close button; the gap keeps the title clear of it when the sidebar fits its content,
+     and the 22px line height centers the title on the toolbar hanging from its bottom edge.
      An open search box outgrows that, so the toolbar takes its own row meanwhile. */
   :global(.structure-site-sidebar > h4) {
     column-gap: 148px;
+    line-height: 22px;
   }
   :global(.structure-site-sidebar > .table-container > .control-buttons) {
     position: absolute;

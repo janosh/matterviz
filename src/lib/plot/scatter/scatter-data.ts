@@ -5,7 +5,7 @@ import { error_getter } from '#lib/plot/core/error-bars.js'
 import { plot_color } from '#lib/colors/index.js'
 import { symbol_names } from '#lib/labels.js'
 import { DEFAULTS } from '#lib/settings.js'
-import { first_duplicate } from '#lib/utils.js'
+import { first_duplicate, is_finite_number } from '#lib/utils.js'
 import {
   get_series_symbol,
   is_transparent_or_none,
@@ -28,10 +28,8 @@ import { assert_series_lengths, has_marker, is_numeric_column } from '#lib/plot/
 
 // A colour/size value a scale can map: NaN, ±Infinity and null fall back to the series style
 // like a missing value (d3 scales map NaN to undefined: a black marker at the default size)
-export const is_finite_num = (val: number | null | undefined): val is number =>
-  typeof val === `number` && Number.isFinite(val)
 export const finite_or_null = (val: number | null | undefined): number | null =>
-  is_finite_num(val) ? val : null
+  is_finite_number(val) ? val : null
 
 // Resolve an indexed-or-scalar series prop into a per-point getter. Hoisting the
 // null/Array.isArray branch out of the point loop matters at 100k points, where these
@@ -317,7 +315,7 @@ export function line_fallback_color<Metadata>(
 ): string {
   const fill = shown_point_style(series)?.fill
   if (fill && !is_transparent_or_none(fill)) return fill
-  const value = series.color_values?.find(is_finite_num)
+  const value = series.color_values?.find(is_finite_number)
   return value != null ? color_scale(value) : plot_color(series_idx)
 }
 
@@ -348,7 +346,7 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
         display_style.symbol_type = point_style.symbol_type
       }
       const color_value = data_series.color_values?.[0]
-      display_style.symbol_color = is_finite_num(color_value)
+      display_style.symbol_color = is_finite_number(color_value)
         ? color_scale_fn(color_value)
         : (point_override?.color ?? point_style?.fill ?? series_default_color)
       display_style.symbol_opacity = point_override?.opacity ?? point_style?.fill_opacity

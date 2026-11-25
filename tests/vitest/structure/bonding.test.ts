@@ -1131,6 +1131,27 @@ describe(`compute_bonds memo`, () => {
     )
   })
 
+  // A lattice-free chain caps the k search at its bounding-box diagonal, so a misread packed
+  // column (vector columns make the stride 12) would drop neighbours here
+  test(`k-NN reads an unmaterialized molecular frame's packed columns`, () => {
+    const frame = create_numeric_md_frame(
+      Float64Array.of(0, 0, 0, 1.1, 0, 0, 2.9, 0.4, 0, 4.2, 0, 0.3, 7.5, 0, 0),
+      Uint8Array.of(6, 6, 8, 6, 1),
+      undefined,
+      undefined,
+      0,
+      {},
+      [`force`, `velocity`],
+    )
+    const reference = materialize_frame(frame).structure
+    const { structure } = new FrameView().update(frame)
+    const site_reads = spy_site_reads(structure)
+    const knn = neighbor_list.neighbor_query(structure, { k: 4 })
+    expect(knn.offsets.at(-1)).toBe(20) // every site reaches all 4 others
+    expect(knn).toEqual(neighbor_list.neighbor_query(reference, { k: 4 }))
+    for (const spy of site_reads) expect(spy).not.toHaveBeenCalled()
+  })
+
   // Thermal jitter around fcc sites (atoms cross the periodic faces): slow frames reuse the
   // skinned list, fast ones make it fail before paying off and switch to plain searches,
   // slow motion again restores the skin. Every frame matches a fresh full search.

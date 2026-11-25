@@ -29,18 +29,13 @@ export const parse_float_token = (token: string | undefined): number => {
   return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
 }
 
+// Every integer below 2^53 and every power of ten up to 1e22 is an exact double
+const MAX_EXACT_MANTISSA = 2 ** 53
+const POW10 = Float64Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
 // Whitespace tokenizer for the hot atom-line loops of the trajectory parsers. Unlike
 // `trim().split(/\s+/)`, it records token bounds and values in reusable typed arrays and
 // decodes numbers off the char codes, so a 20 MB XYZ/LAMMPS file allocates nothing per
 // coordinate. One instance per parse call.
-const grow = <T extends Int32Array | Float64Array>(old: T): T => {
-  const next = new (old.constructor as new (length: number) => T)(old.length * 2)
-  next.set(old)
-  return next
-}
-// Every integer below 2^53 and every power of ten up to 1e22 is an exact double
-const MAX_EXACT_MANTISSA = 2 ** 53
-const POW10 = Float64Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
 export class LineScanner {
   private starts = new Int32Array(64)
   private ends = new Int32Array(64)
@@ -64,9 +59,9 @@ export class LineScanner {
       while (idx < to && (code = line.charCodeAt(idx)) <= 32) idx++
       if (idx >= to) break
       if (count === starts.length) {
-        this.starts = grow(starts)
-        this.ends = grow(ends)
-        this.values = grow(values)
+        this.starts = math.grow_buffer(starts, starts.length + 1)
+        this.ends = math.grow_buffer(ends, ends.length + 1)
+        this.values = math.grow_buffer(values, values.length + 1)
         ;({ starts, ends, values } = this)
       }
       starts[count] = idx

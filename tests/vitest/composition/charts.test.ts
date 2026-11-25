@@ -203,16 +203,23 @@ describe(`PieChart`, () => {
   // SVG path numbers in order of appearance (rounded to kill cos/sin float noise)
   const path_numbers = (path: Element) =>
     (path.getAttribute(`d`)?.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).map(
-      (num) => Math.round(Number(num) * 1e6) / 1e6,
+      (num) => Math.round(Number(num) * 1e6) / 1e6 || 0, // -0 -> 0
     )
 
   test(`slice arcs start at 12 o'clock and sweep clockwise by fraction`, () => {
     mount_chart(PieChart, { composition: { H: 3, O: 1 }, size: 200, stroke_width: 0 })
     const [hydrogen, oxygen] = document.querySelectorAll(`path.pie-segment`)
-    // H: 270° from -90° -> large arc, ends at 180° (left): M c c L c 0 A r r 0 1 1 0 c Z
-    expect(path_numbers(hydrogen)).toEqual([100, 100, 100, 0, 100, 100, 0, 1, 1, 0, 100])
-    // O: 90° from 180° back to the top: no large arc
-    expect(path_numbers(oxygen)).toEqual([100, 100, 0, 100, 100, 100, 0, 0, 1, 100, 0])
+    // paths are centered on the origin, translated to the chart center
+    expect(hydrogen.getAttribute(`transform`)).toBe(`translate(100 100)`)
+    // H: 270° from the top -> large arc, ends at 9 o'clock, then in to the center:
+    // M 0 -r A r r 0 1 1 -r 0 L 0 0 A 0 0 0 1 0 0 0 Z
+    expect(path_numbers(hydrogen)).toEqual([
+      0, -100, 100, 100, 0, 1, 1, -100, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    ])
+    // O: 90° from 9 o'clock back to the top: no large arc
+    expect(path_numbers(oxygen)).toEqual([
+      -100, 0, 100, 100, 0, 0, 1, 0, -100, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ])
     expect(hydrogen.getAttribute(`aria-label`)).toBe(`H: 3 atoms (75%)`)
   })
 
@@ -221,9 +228,7 @@ describe(`PieChart`, () => {
     const path = doc_query(`path.pie-segment`)
     expect(path.getAttribute(`stroke-width`)).toBe(`0`)
     // two semicircle pairs: outer radius 99.5, inner 50
-    expect(new Set(path_numbers(path))).toEqual(
-      new Set([100, 0.5, 99.5, 0, 1, 199.5, 50, 150]),
-    )
+    expect(new Set(path_numbers(path))).toEqual(new Set([0, -99.5, 99.5, 1, -50, 50]))
   })
 
   test.each([

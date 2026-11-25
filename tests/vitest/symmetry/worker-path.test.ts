@@ -2,10 +2,14 @@
 // a stub Worker is installed before the import): moyo's analyze_cell held the main thread for
 // 16-19 s on a 47k-site supercell, so it must run in the worker whenever one can be created.
 import type * as Analyze from '#lib/symmetry/analyze.js'
-import type { MoyoWorkerOptions } from '#lib/symmetry/analyze.js'
+import type { MoyoWorkerOptions, MoyoWorkerResult } from '#lib/symmetry/analyze.js'
 import type * as MoyoWasm from '@spglib/moyo-wasm'
 import type { MoyoCell } from '@spglib/moyo-wasm'
-import { analyze_cell } from '@spglib/moyo-wasm'
+import {
+  analyze_cell,
+  hall_symbol_entries_from_number,
+  wyckoff_positions,
+} from '@spglib/moyo-wasm'
 import { wyckoff_positions_from_moyo } from '#lib/symmetry/wyckoff.js'
 import { afterEach, beforeAll, expect, test, vi } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
@@ -26,9 +30,15 @@ const stub = install_stub_worker<{
   id: number
   input: { cell: MoyoCell }
   options: MoyoWorkerOptions
-}>(({ input, options }) =>
-  real_analyze_cell.current?.(JSON.stringify(input.cell), options.symprec, options.setting),
-)
+}>(({ input, options }) => ({
+  dataset: real_analyze_cell.current?.(
+    JSON.stringify(input.cell),
+    options.symprec,
+    options.setting,
+  ),
+  // a marked database: the page's lookups must serve the worker's, not their own WASM's
+  database: { settings: [], wyckoff_positions: { 523: [{ letter: `worker` }] } },
+}))
 let analyze: typeof Analyze
 
 beforeAll(async () => {
@@ -57,15 +67,39 @@ test(`analyzes in the moyo worker, never on the main thread, with the main-threa
   expect(sym_data.wyckoffs).toEqual(main_thread?.wyckoffs)
   const rows = wyckoff_positions_from_moyo(sym_data)
   expect(rows.map(({ wyckoff, elem }) => `${elem} ${wyckoff}`)).toEqual([`Na 4a`, `Cl 4b`])
+  expect(sym_data.hall_number).toBe(523)
+  expect(analyze.spacegroup_wyckoff_positions(523)).toEqual([{ letter: `worker` }])
+
+  // the real worker sends that database along, so the page never loads the WASM for lookups
+  const replies = vi.spyOn(self, `postMessage`).mockImplementation(() => {})
+  await import(`#lib/symmetry/moyo-worker.js`)
+  self.dispatchEvent(new MessageEvent(`message`, { data: message }))
+  await vi.waitFor(() => expect(replies).toHaveBeenCalledOnce())
+  const reply = replies.mock.calls[0][0] as {
+    id: number
+    result: MoyoWorkerResult
+    error: null
+  }
+  const { id, result, error } = reply
+  expect([id, error, result.dataset.number]).toEqual([message.id, null, 225])
+  const settings = hall_symbol_entries_from_number(225)
+  expect(result.database).toEqual({
+    settings,
+    wyckoff_positions: Object.fromEntries(
+      settings.map(({ hall_number }) => [hall_number, wyckoff_positions(hall_number)]),
+    ),
+  })
 })
 
 // A superseded viewer run must not queue another multi-second analysis behind the live one
-test(`an aborted analysis rejects without posting to the worker`, async () => {
+test(`an aborted analysis rejects and drops its worker job`, async () => {
   const controller = new AbortController()
   const pending = analyze.analyze_structure_symmetry(make_rocksalt(), {}, controller.signal)
   controller.abort()
   await expect(pending).rejects.toThrow(`aborted`)
-  expect(stub.posted).toEqual([])
+  // its sole waiter gone, the worker running it is torn down
+  expect(stub.posted).toHaveLength(1)
+  expect(stub.instances.at(-1)?.terminated).toBe(1)
 })
 
 // Last in this file: a registered source cannot be unregistered.

@@ -186,6 +186,10 @@
       "types": "./dist/phase-diagram/index.d.ts",
       "default": "./dist/phase-diagram/index.js"
     },
+    "./pourbaix": {
+      "types": "./dist/pourbaix/index.d.ts",
+      "default": "./dist/pourbaix/index.js"
+    },
     "./convex-hull": {
       "types": "./dist/convex-hull/index.d.ts",
       "default": "./dist/convex-hull/index.js"
@@ -229,6 +233,10 @@
     "./structure": {
       "types": "./dist/structure/index.d.ts",
       "default": "./dist/structure/index.js"
+    },
+    "./structure-diff": {
+      "types": "./dist/structure-diff/index.d.ts",
+      "default": "./dist/structure-diff/index.js"
     },
     "./structure-id": {
       "types": "./dist/structure-id/index.d.ts",
@@ -294,6 +302,10 @@
       "types": "./dist/workers.d.ts",
       "default": "./dist/workers.js"
     },
+    "./wulff": {
+      "types": "./dist/wulff/index.d.ts",
+      "default": "./dist/wulff/index.js"
+    },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",
       "default": "./dist/xrd/index.js"
@@ -336,7 +348,7 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.5.0",
-    "svelte-widgets": "github:janosh/svelte-widgets#main",
+    "svelte-widgets": "https://github.com/janosh/svelte-widgets/releases/download/main-build/svelte-widgets.tgz",
     "three": "^0.187.0"
   },
   "devDependencies": {

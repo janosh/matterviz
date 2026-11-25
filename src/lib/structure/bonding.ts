@@ -28,12 +28,12 @@ import { BOND_ORDERS, BondFrame, pack_bonds, type BondColumns } from './bond-ren
 import {
   bin_points,
   bounding_box,
-  grow,
   lattice_pbc_or_throw,
   MAX_NEIGHBOR_PAIRS,
   MAX_PAIRS_PER_SITE,
   neighbor_query_cutoff,
   NO_PBC,
+  packed_positions,
   site_positions,
   type NeighborList,
   type PairBand,
@@ -328,6 +328,33 @@ const find_bond_by_key = <BondType extends BondKeyTarget>(
 const make_bond_record = (bond: BondKeyTarget, order: BondOrder): StructureBond =>
   normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, order, bond.cell_shift)
 
+// `record` shown as a calculated bond: no added or removed entry, and an order override only
+// where its order differs from the calculated `base_order`
+const calculated_state = (
+  { added_bonds, removed_bonds, bond_order_overrides }: BondEditState,
+  record: StructureBond,
+  key: string,
+  base_order: BondOrder,
+): BondEditState => ({
+  added_bonds: remove_bond_key(added_bonds, key),
+  removed_bonds: remove_bond_key(removed_bonds, key),
+  bond_order_overrides:
+    record.order === base_order
+      ? remove_bond_key(bond_order_overrides, key)
+      : replace_bond(bond_order_overrides, record),
+})
+
+// `record` shown as a manually added bond, clearing any removal or override of its key
+const added_state = (edit_state: BondEditState, record: StructureBond, key: string) => ({
+  action: `added` as const,
+  changed: true,
+  state: {
+    added_bonds: replace_bond(edit_state.added_bonds, record),
+    removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
+    bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
+  },
+})
+
 export function has_visible_bond(
   edit_state: BondEditState,
   bond: BondKeyTarget,
@@ -351,32 +378,13 @@ export function add_or_restore_bond(
   // A removal names a bond the strategy found. Once it finds it no more (bonding settings
   // changed), lifting the removal alone would leave the pair unbonded, so it is added instead.
   if (removed_bond && includes_bond_key(calculated_bonds, key)) {
-    return {
-      action: `restored`,
-      changed: true,
-      state: {
-        ...edit_state,
-        added_bonds: remove_bond_key(edit_state.added_bonds, key),
-        removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-        bond_order_overrides:
-          removed_bond.order === order
-            ? remove_bond_key(edit_state.bond_order_overrides, key)
-            : replace_bond(edit_state.bond_order_overrides, record),
-      },
-    }
+    const state = calculated_state(edit_state, record, key, removed_bond.order)
+    return { action: `restored`, changed: true, state }
   }
   if (!removed_bond && has_visible_bond(edit_state, record, calculated_bonds)) {
     return { action: `already-visible`, changed: false, state: edit_state }
   }
-  return {
-    action: `added`,
-    changed: true,
-    state: {
-      added_bonds: replace_bond(edit_state.added_bonds, record),
-      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
-    },
-  }
+  return added_state(edit_state, record, key)
 }
 
 export function delete_bond(
@@ -442,26 +450,11 @@ export function set_bond_order(
     return {
       action: `ordered-calculated`,
       changed: has_existing_edit || order !== visible_order,
-      state: {
-        added_bonds: remove_bond_key(edit_state.added_bonds, key),
-        removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-        bond_order_overrides:
-          order === visible_order
-            ? remove_bond_key(edit_state.bond_order_overrides, key)
-            : replace_bond(edit_state.bond_order_overrides, record),
-      },
+      state: calculated_state(edit_state, record, key, visible_order),
     }
   }
   // a stale removal (see add_or_restore_bond) would hide the added bond
-  return {
-    action: `ordered-added`,
-    changed: true,
-    state: {
-      added_bonds: replace_bond(edit_state.added_bonds, record),
-      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
-    },
-  }
+  return { ...added_state(edit_state, record, key), action: `ordered-added` }
 }
 
 export const merge_bond_edits = (
@@ -832,18 +825,6 @@ const same_band = (left: PairBand, right: PairBand): boolean =>
   math.same_values(left.elem_ids, right.elem_ids) &&
   math.same_values(left.lo, right.lo) &&
   math.same_values(left.hi, right.hi)
-
-// Site positions as packed xyz triples, written into `out` when its length fits
-const packed_positions = (structure: AnyStructure, out?: Float64Array): Float64Array => {
-  const { sites, n_sites, coordinates, stride } = site_positions(structure)
-  const xyz = out?.length === n_sites * 3 ? out : new Float64Array(n_sites * 3)
-  for (let idx = 0; idx < n_sites; idx++)
-    for (let axis = 0; axis < 3; axis++)
-      xyz[idx * 3 + axis] = coordinates
-        ? coordinates[idx * stride + axis]
-        : sites[idx].xyz[axis]
-  return xyz
-}
 
 function finite_bond_neighbors(
   structure: AnyStructure,
@@ -1500,11 +1481,11 @@ function perceive_bonds(
       if (norm_dist < shell[orig_idxs[partner]]) shell[orig_idxs[partner]] = norm_dist
 
       if (n_cand === cand_slot.length) {
-        cand_slot = grow(cand_slot, n_cand + 1)
-        cand_center = grow(cand_center, n_cand + 1)
-        cand_norm = grow(cand_norm, n_cand + 1)
-        cand_metallic = grow(cand_metallic, n_cand + 1)
-        cand_strength = grow(cand_strength, n_cand + 1)
+        cand_slot = math.grow_buffer(cand_slot, n_cand + 1)
+        cand_center = math.grow_buffer(cand_center, n_cand + 1)
+        cand_norm = math.grow_buffer(cand_norm, n_cand + 1)
+        cand_metallic = math.grow_buffer(cand_metallic, n_cand + 1)
+        cand_strength = math.grow_buffer(cand_strength, n_cand + 1)
       }
       cand_slot[n_cand] = slot
       cand_center[n_cand] = center

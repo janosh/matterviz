@@ -2,7 +2,7 @@
 // Based on the classic algorithm by Lorensen & Cline (1987)
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
 import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
-import { det_3x3, inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { det_3x3, grow_buffer, inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
 
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/isosurface/grid.js'
 
@@ -295,18 +295,6 @@ interface MarchingCubesOptions {
   position_offset?: Vec3
 }
 
-type GrowableArray = Float32Array | Uint32Array
-
-// Double the capacity of a typed array until `needed` entries fit
-export const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
-  if (needed <= array.length) return array
-  let capacity = Math.max(2 * array.length, 1024)
-  while (capacity < needed) capacity *= 2
-  const bigger = new (array.constructor as new (length: number) => Arr)(capacity)
-  bigger.set(array)
-  return bigger
-}
-
 // Cubes per block edge for the empty-block skip: a level set crosses few blocks, so the cube
 // loop visits only those (~10% of a 101³ band grid's cubes) after one read per grid point
 const BLOCK_SIZE = 4
@@ -453,9 +441,9 @@ export function marching_cubes(
     }
   }
 
-  let positions = new Float32Array(0)
-  let normals = new Float32Array(0)
-  let indices = new Uint32Array(0)
+  let positions = new Float32Array(1024)
+  let normals = new Float32Array(compute_norms ? 1024 : 0)
+  let indices = new Uint32Array(1024)
   let n_vertices = 0
   let n_indices = 0
 
@@ -562,7 +550,7 @@ export function marching_cubes(
     const frac_z = (idx_z + oz1 + frac * (oz2 - oz1)) * inv_nz
 
     const vert_idx = n_vertices++
-    positions = grow(positions, 3 * n_vertices)
+    positions = grow_buffer(positions, 3 * n_vertices)
     positions[3 * vert_idx] = frac_x * kx0 + frac_y * ky0 + frac_z * kz0 + offset_x
     positions[3 * vert_idx + 1] = frac_x * kx1 + frac_y * ky1 + frac_z * kz1 + offset_y
     positions[3 * vert_idx + 2] = frac_x * kx2 + frac_y * ky2 + frac_z * kz2 + offset_z
@@ -589,7 +577,7 @@ export function marching_cubes(
         gradient_y = cart_y
       }
       const length = Math.hypot(gradient_x, gradient_y, gradient_z)
-      normals = grow(normals, 3 * n_vertices)
+      normals = grow_buffer(normals, 3 * n_vertices)
       if (length > 0) {
         normals[3 * vert_idx] = gradient_x / length
         normals[3 * vert_idx + 1] = gradient_y / length
@@ -674,7 +662,7 @@ export function marching_cubes(
           const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
           const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
           const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
-          indices = grow(indices, n_indices + 3)
+          indices = grow_buffer(indices, n_indices + 3)
           indices[n_indices++] = vector_0
           indices[n_indices++] = flip_winding ? vector_2 : vector_1
           indices[n_indices++] = flip_winding ? vector_1 : vector_2

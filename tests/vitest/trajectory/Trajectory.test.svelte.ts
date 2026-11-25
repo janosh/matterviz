@@ -1900,3 +1900,44 @@ describe(`panes track progressively loaded property rows`, () => {
     },
   )
 })
+
+describe(`diff_reference`, () => {
+  // Two H atoms, the second moving +0.5 Å along x per frame: with the mean (drift) removed
+  // each sits half the separation change off, so RMSD = |Δx| / 2
+  const moving_run = () =>
+    trajectory_from_frames(
+      [0, 1, 2].map((frame_idx) => {
+        const frame = make_trajectory_frame(frame_idx, 2)
+        frame.structure.sites[1].xyz = [1 + 0.5 * frame_idx, 0, 0]
+        return frame
+      }),
+    )
+  test.each([
+    [`first`, 2, `RMSD 0.5 Å vs frame 1 · drift 0.5 Å removed`],
+    [`previous`, 2, `RMSD 0.25 Å vs frame 2 · drift 0.25 Å removed`],
+    [`previous`, 0, `The first frame has no previous frame`],
+  ] as const)(
+    `%s, frame index %s: RMSD series on the plot and the frame's diff in the settings`,
+    async (mode, current_step_idx, status) => {
+      const target = mount_trajectory(
+        default_props({
+          trajectory: moving_run(),
+          diff_reference: mode,
+          current_step_idx,
+          active_pane: `controls`,
+          visible_properties: [`rmsd`],
+        }),
+      )
+      // a lone series shows no legend: its y axis names it
+      await vi.waitFor(() => expect(axis_labels(target)).toContain(`RMSD vs frame 1 (Å)`))
+      const group = [...target.querySelectorAll(`label`)].find((label) =>
+        label.textContent?.includes(`Compare with`),
+      )?.parentElement
+      await vi.waitFor(() =>
+        expect(
+          group?.querySelector(`small`)?.textContent?.replaceAll(/\s+/g, ` `).trim(),
+        ).toBe(status),
+      )
+    },
+  )
+})

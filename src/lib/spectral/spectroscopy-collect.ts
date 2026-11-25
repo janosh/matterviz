@@ -1,5 +1,5 @@
 import { display_idx } from '#lib/labels.js'
-import { is_finite_vec3_like, partition_point } from '#lib/math.js'
+import { is_finite_vec3_like, partition_point, same_values } from '#lib/math.js'
 import type { AnalysisStreamOptions } from '#lib/trajectory/analysis.js'
 import { collect_trajectory_positions } from '#lib/trajectory/analysis.js'
 import { values_per_sample } from '#lib/trajectory/helpers.js'
@@ -11,7 +11,7 @@ import type {
   SpectroscopyPreprocessing,
   TrajectorySpectroscopyInput,
 } from './trajectory-spectroscopy'
-import { arrays_equal, standard_masses_for_elements } from './trajectory-spectroscopy'
+import { standard_masses_for_elements } from './trajectory-spectroscopy'
 
 // Signal keys a trajectory may carry for each response; the first present is the default
 export const INFRARED_SIGNAL_KEYS = [`dipole`, `polarization`, `current`] as const
@@ -53,7 +53,7 @@ const velocity_channel = (run: TrajectoryRun, key: string): `vector` | `signal` 
       ? `vector`
       : null
   if (is_loaded_signal(signal)) return null
-  return signal.frame_aligned && arrays_equal(signal.sample_shape, [run.atom_count, 3])
+  return signal.frame_aligned && same_values(signal.sample_shape, [run.atom_count, 3])
     ? `vector`
     : `signal`
 }
@@ -125,20 +125,16 @@ export const trajectory_signal_keys = (
 ): string[] => {
   if (!run) return []
   const declared_keys = Object.entries(run.signals ?? {}).flatMap(([key, { sample_shape }]) =>
-    !expected_shape || arrays_equal(sample_shape, expected_shape) ? [key] : [],
+    !expected_shape || same_values(sample_shape, expected_shape) ? [key] : [],
   )
   // Frame metadata is only a response signal when it is named like one: LAMMPS box origins
   // and other vec3 bookkeeping would otherwise show up as IR candidates
-  const metadata_keys = Object.entries(run.preview.metadata ?? {}).flatMap(([key, value]) =>
-    RESPONSE_SIGNAL_KEY.test(key) &&
-    (!expected_shape ||
-      arrays_equal(
-        parse_frame_signal(value, key, run.atom_count)?.sample_shape,
-        expected_shape,
-      ))
-      ? [key]
-      : [],
-  )
+  const metadata_keys = Object.entries(run.preview.metadata ?? {}).flatMap(([key, value]) => {
+    if (!RESPONSE_SIGNAL_KEY.test(key)) return []
+    const shape =
+      expected_shape && parse_frame_signal(value, key, run.atom_count)?.sample_shape
+    return !expected_shape || (shape && same_values(shape, expected_shape)) ? [key] : []
+  })
   return [...new Set([...declared_keys, ...metadata_keys])].toSorted()
 }
 

@@ -13,12 +13,14 @@
   import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
   import type { PositionedArc } from '#lib/plot/core/utils/hierarchy-layout.js'
   import {
+    corner_label_lines,
     measure_treemap_label_block,
     normalize_treemap_label_lines,
     place_treemap_label,
     safe_font_size,
   } from '#lib/plot/treemap/labels.js'
   import type {
+    TreemapLabelAlign,
     TreemapLabelBlock,
     TreemapLabelFit,
     TreemapLabelFormatter,
@@ -59,6 +61,7 @@
     label_text = $bindable(DEFAULTS.treemap.label_text),
     label_formatter,
     label_fit = `shrink`,
+    label_align = `center`,
     label_min_font_size = 6,
     label_max_font_size,
     parent_label_font_size = 14,
@@ -98,6 +101,9 @@
       // Structured multiline labels; unlike cell_content keeps built-in hover/click/tooltip
       label_formatter?: TreemapLabelFormatter<Metadata>
       label_fit?: TreemapLabelFit // shrink-to-fit (default), hide, or clip at max size
+      // top-left: leaf labels at the cell corner, a label+... suffix on its own dimmer line,
+      // names wrapping at underscores, and labels that fit no candidate left out
+      label_align?: TreemapLabelAlign
       label_min_font_size?: number // px floor used by shrink mode
       label_max_font_size?: number // px ceiling for leaf/cutoff labels
       parent_label_font_size?: number // px size/ceiling for branch header labels
@@ -263,6 +269,7 @@
       if (arc.depth === 0) return []
       if (label_formatter) return [normalize_treemap_label_lines(label_formatter(arc))]
       const { variants } = chart_state.node_infos[idx]
+      if (label_align === `top-left` && !is_header(arc)) return corner_label_lines(variants)
       if (label_fit === `hide`) return variants.map(({ text }) => [{ text }])
       return [normalize_treemap_label_lines(variants[0]?.text)]
     }),
@@ -279,8 +286,10 @@
 
   // Label placement for a cell, null = hidden. Branch cells label their header strip;
   // leaves (and branches at the depth cutoff) center it, rotating 90° in thin tall cells.
+  // Top-left labels take the first candidate that fits at the minimum font size, else none.
   function place_label(idx: number): TreemapLabelPlacement | null {
     const header = is_header(chart_state.arcs[idx])
+    const corner = label_align === `top-left` && !header
     for (const block of label_blocks[idx]) {
       const placement = place_treemap_label({
         rect: rects[idx],
@@ -290,8 +299,9 @@
         min_font_size: label_min_font_size,
         header_height,
         margin: LABEL_MARGIN,
+        align: label_align,
       })
-      if (placement) return placement
+      if (placement && (!corner || placement.fits)) return placement
     }
     return null
   }
@@ -472,13 +482,13 @@
                     </text>
                   {/if}
                   <text
-                    class={['cell-label', { header: lbl.header }]}
+                    class={['cell-label', { header: lbl.header, start: lbl.start }]}
                     data-treemap-node-idx={idx}
                     x={lbl.x}
                     y={lbl.lines[0].y}
                     dominant-baseline="central"
                     transform={lbl.transform}
-                    fill={label_fill}
+                    style:fill="var(--treemap-label-color, {label_fill})"
                     fill-opacity={label_opacity}
                     font-size={lbl.font_size}
                     style:cursor={cells_clickable ? `pointer` : `text`}
@@ -564,6 +574,7 @@
     --plot-bg, which is often semi-transparent and near-invisible as a line */
     stroke: var(--treemap-cell-stroke, light-dark(white, #16181d));
     stroke-width: var(--treemap-cell-stroke-width, 1);
+    rx: var(--treemap-cell-radius, 0);
     transition: fill-opacity 0.15s ease;
   }
   .cells rect:hover {
@@ -579,8 +590,10 @@
   .cell-label tspan {
     dominant-baseline: inherit;
   }
-  .cell-label.header {
+  .cell-label.start {
     text-anchor: start;
+  }
+  .cell-label.header {
     font-weight: 600;
   }
   .cell-label.halo {

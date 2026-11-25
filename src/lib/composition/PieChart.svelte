@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { annular_sector_path } from '#lib/plot/sunburst/render.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { CompositionChartProps } from './chart'
@@ -36,42 +37,26 @@
   let outer_radius = $derived(size / 2 - stroke_width)
   let ring_inner = $derived(Math.min(inner_radius, outer_radius - 10))
 
-  const polar = (radius: number, angle_deg: number): [number, number] => {
-    const rad = (angle_deg * Math.PI) / 180
-    return [center + radius * Math.cos(rad), center + radius * Math.sin(rad)]
-  }
+  // Angles are radians clockwise from 12 o'clock, as annular_sector_path draws them
+  const polar = (radius: number, angle: number): [number, number] => [
+    center + radius * Math.sin(angle),
+    center - radius * Math.cos(angle),
+  ]
 
   let segments = $derived.by(() => {
-    let angle = -90 // start at 12 o'clock, sweep clockwise
+    let angle = 0
     const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
     return raw_segments.map((segment) => {
       const label = segment.element + segment_suffix(segment, label_opts)
-      if (segment.fraction === 1) {
-        // single element: two semicircles per ring (an SVG arc can't sweep a full 360°)
-        const circle = (radius: number, sweep: 0 | 1) =>
-          `M ${center} ${center - radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center + radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center - radius} Z`
-        return {
-          ...segment,
-          path: circle(outer_radius, 1) + (ring_inner > 0 ? circle(ring_inner, 0) : ``),
-          label_x: center,
-          label_y: center,
-          font_scale: fit_font_scale(2.6, label.length, outer_radius * 2),
-        }
-      }
-      const span = segment.fraction * 360
-      const [start, end] = [angle, angle + span]
+      const [start, end] = [angle, angle + segment.fraction * 2 * Math.PI]
       angle = end
-      const large_arc = span > 180 ? 1 : 0
-      const [coord_x_1, coord_y_1] = polar(outer_radius, start)
-      const [coord_x_2, coord_y_2] = polar(outer_radius, end)
-      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${coord_x_2} ${coord_y_2}`
-      let path: string
-      if (ring_inner > 0) {
-        const [coord_x_3, coord_y_3] = polar(ring_inner, end)
-        const [coord_x_4, coord_y_4] = polar(ring_inner, start)
-        path = `M ${coord_x_1} ${coord_y_1} ${outer_arc} L ${coord_x_3} ${coord_y_3} A ${ring_inner} ${ring_inner} 0 ${large_arc} 0 ${coord_x_4} ${coord_y_4} Z`
-      } else path = `M ${center} ${center} L ${coord_x_1} ${coord_y_1} ${outer_arc} Z`
-
+      // centered on the origin, the <path> translates it to the chart center
+      const path = annular_sector_path(start, end, Math.max(0, ring_inner), outer_radius)
+      if (segment.fraction === 1) {
+        const font_scale = fit_font_scale(2.6, label.length, outer_radius * 2)
+        return { ...segment, path, label_x: center, label_y: center, font_scale }
+      }
+      const span = segment.fraction * 360 // degrees
       const outside = span < THIN_SLICE
       const label_radius = outside
         ? outer_radius * 1.2
@@ -83,7 +68,7 @@
       const base_scale = 1.4 + Math.min(span / FULL_SCALE_ANGLE, 1) * 0.6
       const available = outside
         ? outer_radius * 0.8
-        : Math.min(outer_radius - ring_inner, ((span * Math.PI) / 180) * label_radius * 0.8)
+        : Math.min(outer_radius - ring_inner, (end - start) * label_radius * 0.8)
       return {
         ...segment,
         path,
@@ -110,6 +95,7 @@
     {/snippet}
     <path
       d={segment.path}
+      transform="translate({center} {center})"
       fill={segment.pattern?.url ?? segment.color}
       stroke="white"
       role="img"

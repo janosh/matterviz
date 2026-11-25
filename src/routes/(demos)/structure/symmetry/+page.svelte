@@ -8,7 +8,6 @@
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
-    ensure_moyo_wasm_ready,
     spacegroup_wyckoff_positions,
     symmetry_elements_from_ops,
     tile_symmetry_elements,
@@ -17,12 +16,9 @@
     WyckoffTable,
   } from '#lib/symmetry/index.js'
   import { structure_files } from '#site/structures.js'
-  import { file_param, loaded_fixture, set_file_param } from '#site/state.svelte.js'
-  import { onMount } from 'svelte'
+  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
 
-  let wasm_ready = $state(false)
-  let error = $state<string | null>(null)
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
   let display_filename = $state(default_filename)
@@ -87,16 +83,9 @@
     },
   })
 
-  onMount(() => {
-    // Initialize WASM
-    ensure_moyo_wasm_ready()
-      .then(() => (wasm_ready = true))
-      .catch((err) => (error = `WASM init failed: ${err}`))
-  })
-
   // Update filename from URL
   $effect(() => {
-    const file = file_param()
+    const file = url_param(`file`)
     if (file && file !== source_filename) {
       source_filename = file
       display_filename = file
@@ -105,9 +94,7 @@
   // Full Wyckoff-position database of the detected space-group setting: adds ITA
   // representative coordinates and lets the table list unoccupied positions
   const wyckoff_db = $derived(
-    wasm_ready && top_ex_sym_data
-      ? spacegroup_wyckoff_positions(top_ex_sym_data.hall_number)
-      : [],
+    top_ex_sym_data ? spacegroup_wyckoff_positions(top_ex_sym_data.hall_number) : [],
   )
 </script>
 
@@ -120,13 +107,7 @@
 
 <div class="symmetry-grid bleed-1400">
   <div>
-    {#if error}
-      <pre style="color: var(--error-color)">{error}</pre>
-    {:else if !wasm_ready}
-      <div class="loading-placeholder">
-        <Spinner text="Loading symmetry analysis..." />
-      </div>
-    {:else if top_ex_sym_data}
+    {#if top_ex_sym_data}
       <SymmetryStats
         sym_data={top_ex_sym_data}
         bind:settings={wide_example_symmetry_settings}
@@ -158,6 +139,12 @@
           style="margin: 0.5em 0 0 1.5em"
         />
       {/if}
+    {:else if top_viewer?.analysis.symmetry_error}
+      <pre style="color: var(--error-color)">{top_viewer.analysis.symmetry_error}</pre>
+    {:else if top_ex_structure}
+      <div class="loading-placeholder">
+        <Spinner text="Analyzing symmetry..." />
+      </div>
     {:else}
       <EmptyState message="Load a structure to analyze its symmetry" />
     {/if}
@@ -178,7 +165,7 @@
       display_filename = data.filename || source_filename
       const fixture = loaded_fixture(data)
       source_filename = fixture ?? source_filename
-      set_file_param(fixture)
+      set_url_param(`file`, fixture)
     }}
     style="height: 100%; min-height: 500px"
   >

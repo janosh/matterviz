@@ -194,12 +194,11 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           pnpm package:dist
-          # Development tracks svelte-widgets#main, but a git dependency makes every consumer
-          # clone and build it on install. Ship the npm release instead, which must be the
-          # commit this build installed. jq -e fails the job on a missing version or commit.
+          # Development tracks svelte-widgets main through its main-build release tarball. Ship
+          # the npm release instead, which must be the commit that tarball was built from.
+          # jq -e fails the job on a missing version or commit.
           widgets_version=$(jq -er .version node_modules/svelte-widgets/package.json)
-          widgets_sha=$(pnpm list svelte-widgets --json |
-            jq -er '.[0].dependencies["svelte-widgets"].resolved | match("[0-9a-f]{40}").string')
+          widgets_sha=$(jq -er .gitHead node_modules/svelte-widgets/package.json)
           [ "$(npm view "svelte-widgets@$widgets_version" gitHead)" = "$widgets_sha" ] || {
             echo "::error::svelte-widgets main ($widgets_sha) is ahead of npm $widgets_version; release svelte-widgets first"
             exit 1; }

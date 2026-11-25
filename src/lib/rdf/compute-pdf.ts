@@ -1,7 +1,7 @@
 import { compute_lattice_params } from '#lib/math.js'
 import type { PdfWeighting } from '#lib/scattering/index.js'
 import { pdf_scattering_weights } from '#lib/scattering/index.js'
-import type { Crystal } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal } from '#lib/structure/index.js'
 import { to_error } from 'svelte-widgets/utils'
 import { compute_all_pair_rdfs, compute_rdf, shell_volume } from './compute-rdf'
 import type {
@@ -29,7 +29,7 @@ const with_pdf_defaults = <T extends RdfOptions>(options: T): T => ({
 // ideal-gas normalization (Σ occu over the sites carrying that element), so the fractions c_a
 // derived here stay in step with the g_ab(r) they multiply. Any other composition source
 // (formula string, oxidation-state map) could silently disagree on partial occupancies.
-export function site_composition(structure: Crystal): Record<string, number> {
+export function site_composition(structure: AnyStructure): Record<string, number> {
   const counts: Record<string, number> = {}
   for (const site of structure.sites) {
     for (const { element, occu } of site.species) {

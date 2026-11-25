@@ -4,7 +4,7 @@
 // is the window itself; a periodic one is the unit cell, tiled over the window and clipped.
 import { compute_vertex_normals, marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_frac_to_cart, det_3x3, dot, inverse_3x3 } from '#lib/math.js'
+import { create_frac_to_cart, det_3x3, dot, grow_buffer, inverse_3x3 } from '#lib/math.js'
 import { type ScalarGrid3D, scalar_grid_strides } from './grid'
 import { resample_periodic, type SurfaceClip } from './sampling'
 import { MAX_GRID_POINTS } from './types'
@@ -125,12 +125,12 @@ function tile_and_clip(
   let out_tris = new Uint32Array(3 * Math.max(indices.length, 64))
   let [n_out, n_tri_idx] = [0, 0]
   const add_vertex = (values: Float64Array): number => {
-    if (STRIDE * n_out === out.length) out = grow(out)
+    out = grow_buffer(out, STRIDE * (n_out + 1))
     for (let col = 0; col < STRIDE; col++) out[STRIDE * n_out + col] = values[col]
     return n_out++
   }
   const emit = (vert_a: number, vert_b: number, vert_c: number): void => {
-    if (n_tri_idx + 3 > out_tris.length) out_tris = grow(out_tris)
+    out_tris = grow_buffer(out_tris, n_tri_idx + 3)
     out_tris[n_tri_idx++] = vert_a
     out_tris[n_tri_idx++] = vert_b
     out_tris[n_tri_idx++] = vert_c
@@ -264,13 +264,6 @@ function tile_and_clip(
     indices: tris,
     normals: out_normals.slice(0, 3 * n_used),
   }
-}
-
-// Double a typed array's capacity, keeping its contents
-const grow = <Arr extends Float64Array | Uint32Array>(array: Arr): Arr => {
-  const next = new (array.constructor as new (length: number) => Arr)(2 * array.length)
-  next.set(array)
-  return next
 }
 
 // A periodic volume's surface over its window. Over MAX_SURFACE_TRIANGLES estimated, the unit

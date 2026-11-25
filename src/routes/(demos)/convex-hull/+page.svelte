@@ -1,5 +1,7 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { url_selection } from '#site/state.svelte.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { ElementSymbol } from '#lib'
   import type {
@@ -52,7 +54,7 @@
   const side_model = $derived(side_hull?.get_model())
   let clicked_entry_id = $state<string | undefined>(undefined)
   const quinary_paths = Object.keys(quinary_files).toSorted()
-  let selected_quinary_path = $state(quinary_paths[0])
+  const selected_quinary_path = url_selection(`quinary`, quinary_paths)
 
   onMount(() => {
     for (const system of primary_systems) {
@@ -566,16 +568,13 @@
   <section class="demo-section">
     <h2 id="standalone-stats-for-quinary-systems">Standalone Stats for Quinary Systems</h2>
     {@render feature_list(quinary_stats_features)}
-    <div class="demo-controls quinary-stats-controls">
-      <label for="quinary-select">Quinary dataset:</label>
-      <select id="quinary-select" bind:value={selected_quinary_path}>
-        {#each quinary_paths as path (path)}
-          <option value={path}>{hull_system_name(path)}</option>
-        {/each}
-      </select>
-    </div>
+    <FilePicker
+      {...selected_quinary_path.picker(`system`, hull_system_name)}
+      class="quinary-stats-controls"
+      style="margin-bottom: 1em"
+    />
     <LazyDemo label="Quinary statistics">
-      {#await quinary_files[selected_quinary_path]()}
+      {#await quinary_files[selected_quinary_path.value]()}
         <p role="status">Loading quinary data…</p>
       {:then { default: entries }}
         {@const quinary_model = process_hull_for_stats(entries)}
@@ -587,7 +586,7 @@
           />
         {/if}
       {:catch error}
-        <p role="alert">Failed to load {selected_quinary_path}: {String(error)}</p>
+        <p role="alert">Failed to load {selected_quinary_path.value}: {String(error)}</p>
       {/await}
     </LazyDemo>
   </section>

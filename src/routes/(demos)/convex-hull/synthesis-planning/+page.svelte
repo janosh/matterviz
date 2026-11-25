@@ -1,17 +1,16 @@
 <script lang="ts">
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
+  import FilePicker from '#lib/FilePicker.svelte'
   import { SynthesisPlanner } from '#lib/synthesis-planning/index.js'
   import type { SynthesisConditions } from '#lib/synthesis-planning/index.js'
   import { to_error } from 'svelte-widgets/utils'
   import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
-  import { latest_load } from '#site/state.svelte.js'
+  import { latest_load, url_selection } from '#site/state.svelte.js'
 
-  let selected_id = $state(synthesis_demo_systems[0]?.id ?? ``)
-  const selected = $derived(
-    synthesis_demo_systems.find((system) => system.id === selected_id) ??
-      synthesis_demo_systems[0],
-  )
+  const labels = Object.fromEntries(synthesis_demo_systems.map(({ id, label }) => [id, label]))
+  const selected_id = url_selection(`system`, Object.keys(labels))
+  const selected = $derived(synthesis_demo_systems.find(({ id }) => id === selected_id.value))
   let entries = $state<PhaseData[]>([])
   let target = $state(``)
   let conditions = $state<SynthesisConditions>({ temperature: 0, open_species: [] })
@@ -56,14 +55,10 @@
   assumptions.
 </p>
 
-<label>
-  Chemical system
-  <select bind:value={selected_id}>
-    {#each synthesis_demo_systems as system (system.id)}
-      <option value={system.id}>{system.label}</option>
-    {/each}
-  </select>
-</label>
+<FilePicker
+  {...selected_id.picker(`system`, (id) => labels[id])}
+  style="margin-bottom: 0.5em"
+/>
 {#if selected?.description}<p class="description">{selected.description}</p>{/if}
 
 {#if error}
@@ -108,12 +103,6 @@
 </details>
 
 <style>
-  label {
-    display: flex;
-    gap: 0.5em;
-    align-items: center;
-    margin-bottom: 0.5em;
-  }
   .description {
     margin: 0 0 1em;
     color: var(--text-color-muted, #888);

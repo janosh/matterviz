@@ -1,4 +1,5 @@
 import type { AnyStructure } from '#lib'
+import { Check, Copy } from 'svelte-widgets/icons'
 import { download } from 'svelte-widgets/browser'
 import app_css from '#lib/app.css?inline'
 import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export.js'
@@ -163,11 +164,13 @@ describe(`StructureExportPane`, () => {
     vi.useFakeTimers()
     mount_pane({ structure: simple_structure })
     const copy_btn = get_button(`Copy JSON`)
-    expect(copy_btn.textContent).toContain(`📋`)
+    // the button's icon: Copy, Check while the copy is confirmed, then Copy again
+    const icon_path = () => copy_btn.querySelector(`path`)?.getAttribute(`d`)
+    expect(icon_path()).toBe(Copy.d)
     copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`✅`))
+    await vi.waitFor(() => expect(icon_path()).toBe(Check.d))
     vi.advanceTimersByTime(1000)
-    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`📋`))
+    await vi.waitFor(() => expect(icon_path()).toBe(Copy.d))
     vi.useRealTimers()
   })
 

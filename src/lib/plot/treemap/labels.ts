@@ -8,6 +8,9 @@ import type { TreemapArc } from '#lib/plot/treemap/treemap.js'
 import type { ClassValue } from 'svelte/elements'
 
 export type TreemapLabelFit = `hide` | `shrink` | `clip`
+// center (default): labels centered in leaf cells; top-left: anchored at the cell's
+// top-left corner (rotated ones read upward from the bottom-left), like file-size maps
+export type TreemapLabelAlign = `center` | `top-left`
 
 export interface TreemapLabelLine {
   text: string
@@ -42,6 +45,8 @@ export interface TreemapLabelPlacement {
   lines: (TreemapLabelLine & { y: number; font_scale: number })[]
   font_size: number
   header: boolean
+  start: boolean // text-anchor start (headers and top-left labels) instead of middle
+  fits: boolean // false when shrink mode had to go below the block's fitting size
   transform?: string
 }
 
@@ -62,6 +67,28 @@ export function normalize_treemap_label_lines(
     const normalized = typeof line === `string` ? { text: line } : line
     return normalized?.text ? [{ ...normalized }] : []
   })
+}
+
+// Top-left label candidates, richest first: the name with its label+... suffix (e.g. the
+// value) on a smaller, dimmer line below, then with the name wrapped after underscores,
+// then the name alone (unwrapped, wrapped). `variants` is the node's fit chain
+// (`name suffix`, name, short) from hierarchy-chart's node_label_variants.
+export function corner_label_lines(
+  variants: readonly { text: string }[],
+): TreemapLabelLine[][] {
+  const [first, second] = variants
+  if (!first?.text) return []
+  const name = second && first.text.startsWith(`${second.text} `) ? second.text : first.text
+  const has_suffix = name !== first.text
+  const pieces = name.split(`_`)
+  const wrapped = pieces.map((piece, idx) => (idx < pieces.length - 1 ? `${piece}_` : piece))
+  const names = pieces.length > 1 ? [[name], wrapped] : [[name]]
+  const as_lines = (texts: string[]) => texts.map((text) => ({ text }))
+  const suffix = { text: first.text.slice(name.length + 1), font_scale: 0.9, opacity: 0.75 }
+  return [
+    ...(has_suffix ? names.map((texts) => [...as_lines(texts), suffix]) : []),
+    ...names.map(as_lines),
+  ]
 }
 
 const line_scale = (line: TreemapLabelLine): number =>
@@ -97,11 +124,13 @@ export function place_treemap_label({
   min_font_size,
   header_height,
   margin,
+  align = `center`,
 }: {
   rect: Rect
   block: TreemapLabelBlock
   header: boolean // label the branch's header strip instead of the cell center
   fit: TreemapLabelFit
+  align?: TreemapLabelAlign
   min_font_size: number // px floor for shrink mode
   header_height: number // header strip height (treemap.ts' header_strip)
   margin: number // px clearance between label text and cell edges
@@ -136,8 +165,13 @@ export function place_treemap_label({
   const block_height = block.height * (font_size / max_font_size)
   const center_x = rect.x + rect.width / 2
   const center_y = rect.y + label_height / 2
-  const coord_x = header ? rect.x + margin : center_x
-  let line_top = center_y - block_height / 2
+  const top_left = align === `top-left` && !header
+  // top-left: lines start at the corner; rotated ones at the bottom-left corner, where
+  // rotate(-90) turns the line stacking direction (down) into rightward
+  const pivot_x = rect.x + margin
+  const pivot_y = rotated ? rect.y + rect.height - margin : rect.y + margin
+  const coord_x = header || top_left ? pivot_x : center_x
+  let line_top = top_left ? pivot_y : center_y - block_height / 2
   const placed_lines = block.lines.map((line) => {
     const font_scale = line_scale(line)
     const line_height = font_size * font_scale * LINE_HEIGHT
@@ -147,11 +181,14 @@ export function place_treemap_label({
     return { ...line, font_scale, y: coord_y }
   })
 
+  const [rotate_x, rotate_y] = top_left ? [pivot_x, pivot_y] : [center_x, center_y]
   return {
     x: coord_x,
     lines: placed_lines,
     font_size,
     header,
-    ...(rotated ? { transform: `rotate(-90, ${center_x}, ${center_y})` } : {}),
+    start: header || top_left,
+    fits: max_font_size * best_ratio >= safe_min_font_size,
+    ...(rotated ? { transform: `rotate(-90, ${rotate_x}, ${rotate_y})` } : {}),
   }
 }

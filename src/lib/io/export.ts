@@ -1,5 +1,5 @@
 import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants.js'
-import { download, type DownloadData } from 'svelte-widgets/browser'
+import { blob_to_data_url, download, type DownloadData } from 'svelte-widgets/browser'
 import type { FileSaver } from './file-export.svelte'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
 import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
@@ -927,6 +927,35 @@ export function html_to_svg(element: HTMLElement): SVGSVGElement {
   return svg
 }
 
+// A canvas's on-screen box, refused while it has none for overlays to sit on
+const laid_out_rect = (canvas: HTMLCanvasElement): DOMRect => {
+  const rect = canvas.getBoundingClientRect()
+  if (!(rect.width > 0 && rect.height > 0))
+    throw new Error(`Cannot export a canvas that has not been laid out (zero size)`)
+  return rect
+}
+
+// SVG counterpart of canvas_overlay_png_blob: the canvas frame (encoded, since a presented
+// WebGPU canvas reads back blank) as an embedded image with `overlays` redrawn as vector SVG
+export async function canvas_overlay_svg(
+  canvas: HTMLCanvasElement | null | undefined,
+  overlays: readonly HTMLElement[],
+): Promise<SVGSVGElement> {
+  const source = require_element(canvas, `canvas`)
+  const origin = laid_out_rect(source)
+  const { width, height } = origin
+  const href = await blob_to_data_url(await canvas_to_png_blob(source))
+  const svg = svg_el(`svg`, {
+    xmlns: SVG_NS,
+    width,
+    height,
+    viewBox: `0 0 ${width} ${height}`,
+  })
+  svg.append(svg_el(`image`, { href, x: 0, y: 0, width, height }))
+  for (const overlay of overlays) svg.append(overlay_to_svg(overlay, origin))
+  return svg as SVGSVGElement
+}
+
 // PNG of a live canvas (re-rendered at `png_dpi`, see canvas_to_png_blob) with `overlays` laid
 // over it: canvases stacked on it (annotation layers) are painted as they are, HTML (legends,
 // color bars, scene labels) is redrawn on top at its on-screen position, through the same
@@ -939,10 +968,8 @@ export async function canvas_overlay_png_blob(
   const source = require_element(canvas, `canvas`)
   const frame_blob = await canvas_to_png_blob(source, png_dpi)
   if (overlays.length === 0) return frame_blob
-  const origin = source.getBoundingClientRect()
+  const origin = laid_out_rect(source)
   const { width, height } = origin
-  if (!(width > 0 && height > 0))
-    throw new Error(`Cannot export a canvas that has not been laid out (zero size)`)
   const scale = dpi_to_scale(png_dpi)
   // sized in export pixels so the overlay rasterizes as crisply as the re-rendered frame
   const svg = svg_el(`svg`, {

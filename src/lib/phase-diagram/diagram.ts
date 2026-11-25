@@ -4,7 +4,7 @@
 import { format_num } from 'svelte-widgets/format'
 import { hsl } from 'd3-color'
 import { humanize } from '#lib/labels.js'
-import { hash_string } from '#lib/utils.js'
+import { hash_string, is_finite_number } from '#lib/utils.js'
 import type { Vec2 } from '#lib/math.js'
 import {
   BINARY_DIAGRAM_FORMAT,
@@ -83,16 +83,15 @@ const INVARIANT_LABELS: Readonly<Record<InvariantKind, string>> = {
 
 const PHASE_KINDS: readonly string[] = [`liquid`, `solid`, `gas`]
 const PROVENANCE_KINDS: readonly string[] = [`assessment`, `model`, `sketch`]
-const finite = (val: unknown): val is number => Number.isFinite(val)
 const is_point = (point: unknown): boolean =>
-  Array.isArray(point) && point.length === 2 && point.every(finite)
+  Array.isArray(point) && point.length === 2 && point.every(is_finite_number)
 const length = (list: unknown): number => (Array.isArray(list) ? list.length : 0)
-const in_unit = (val: unknown): boolean => finite(val) && val >= 0 && val <= 1
-const non_negative = (val: unknown): boolean => finite(val) && val >= 0
+const in_unit = (val: unknown): boolean => is_finite_number(val) && val >= 0 && val <= 1
+const non_negative = (val: unknown): boolean => is_finite_number(val) && val >= 0
 const increasing = (list: unknown): boolean =>
   Array.isArray(list) &&
   list.length >= 2 &&
-  list.every((val, idx) => finite(val) && (!idx || list[idx - 1] < val))
+  list.every((val, idx) => is_finite_number(val) && (!idx || list[idx - 1] < val))
 // region and boundary x may stray past [0, 1] by float noise, not by more
 const X_TOL = 1e-9
 const in_x_range = ([x_val]: Vec2): boolean => x_val >= -X_TOL && x_val <= 1 + X_TOL
@@ -185,7 +184,7 @@ export function diagram_errors(value: unknown): string[] {
   }
   // marked points sit at a finite T and a mole fraction in [0, 1]
   const check_position = (where: string, temperature: unknown, compositions: unknown[]) => {
-    if (!finite(temperature) || !compositions.every(in_unit)) {
+    if (!is_finite_number(temperature) || !compositions.every(in_unit)) {
       errors.push(`${where} needs a finite temperature and compositions in [0, 1]`)
     }
   }
@@ -314,7 +313,7 @@ function gibbs_errors(grid: unknown, model_phases: Set<unknown>): string[] {
       (values as unknown[]).every(
         (row) =>
           length(row) === n_comps &&
-          (row as unknown[]).every((val) => val === null || finite(val)),
+          (row as unknown[]).every((val) => val === null || is_finite_number(val)),
       )
     return shaped
       ? []
@@ -604,9 +603,9 @@ export function observation_markers(
   const by_id = new Map(predictions.map((prediction) => [prediction.id, prediction]))
   return rows.flatMap((row): ObservationMarker[] => {
     const { T_K: temperature, phases = [], system } = row
-    if (!finite(temperature)) return []
+    if (!is_finite_number(temperature)) return []
     const { T_K, x: predicted_xs = [], pass = null } = by_id.get(row.id) ?? {}
-    const predicted_t = finite(T_K) ? T_K : null
+    const predicted_t = is_finite_number(T_K) ? T_K : null
     const marker = (
       phase: ObservedPhase | null,
       composition: number,
@@ -628,9 +627,11 @@ export function observation_markers(
     if (!mirrored && system !== `${comp_a}-${comp_b}`) return []
     const orient = (x_val: number) => (mirrored ? 1 - x_val : x_val)
     return phases.flatMap((phase, idx) => {
-      if (!finite(phase.x)) return []
+      if (!is_finite_number(phase.x)) return []
       const model_x = predicted_xs[idx]
-      return [marker(phase, orient(phase.x), finite(model_x) ? orient(model_x) : null)]
+      return [
+        marker(phase, orient(phase.x), is_finite_number(model_x) ? orient(model_x) : null),
+      ]
     })
   })
 }

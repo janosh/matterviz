@@ -1,6 +1,7 @@
 // Frame-major position accumulation shared by every run that reads frames one at a time
 // (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
+import { is_finite_number } from '#lib/utils.js'
 import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
@@ -9,6 +10,7 @@ import {
   is_finite_vec3,
   type Matrix3x3,
   reciprocal_lattice,
+  same_values,
   type Vec3,
 } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
@@ -277,7 +279,7 @@ class PositionAccumulator {
         source_frame_number,
       )
       const expected_shape = this.signal_shapes[key]
-      if (expected_shape.join(`,`) !== parsed.sample_shape.join(`,`)) {
+      if (!same_values(expected_shape, parsed.sample_shape)) {
         throw new Error(
           `Frame ${display_idx(source_frame_number)} signal "${key}" changed shape from ` +
             `[${expected_shape.join(`, `)}] to [${parsed.sample_shape.join(`, `)}]`,
@@ -364,7 +366,7 @@ export const parse_frame_signal = (
   key: string,
   n_atoms: number,
 ): { values: number[]; sample_shape: number[] } | null => {
-  if (typeof value === `number` && Number.isFinite(value)) {
+  if (is_finite_number(value)) {
     return { values: [value], sample_shape: [] }
   }
   const values = ArrayBuffer.isView(value)

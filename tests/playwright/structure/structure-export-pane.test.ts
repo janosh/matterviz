@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { Check, Copy } from 'svelte-widgets/icons'
 import { readFile } from 'node:fs/promises'
 import {
   goto_structure_test,
@@ -44,10 +45,12 @@ test.describe(`StructureExportPane Tests`, { tag: `@webgl` }, () => {
     await test.step(`copying two formats in sequence shows checkmark feedback each time`, async () => {
       for (const format of [`JSON`, `XYZ`]) {
         const copy_btn = pane_div.locator(`button[title="Copy ${format} to clipboard"]`)
-        await expect(copy_btn).toHaveText(`📋`)
+        // the button's icon: Copy, Check while the copy is confirmed, then Copy again
+        const icon_path = copy_btn.locator(`path`)
+        await expect(icon_path).toHaveAttribute(`d`, Copy.d)
         await copy_btn.click()
-        await expect(copy_btn).toHaveText(`✅`)
-        await expect(copy_btn).toHaveText(`📋`)
+        await expect(icon_path).toHaveAttribute(`d`, Check.d)
+        await expect(icon_path).toHaveAttribute(`d`, Copy.d)
       }
     })
 

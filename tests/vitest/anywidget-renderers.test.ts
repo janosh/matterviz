@@ -22,6 +22,14 @@ const { check_blob_workers, spectral_doc } = vi.hoisted(() => ({
       : null,
 }))
 const set_moyo_wasm_source = vi.hoisted(() => vi.fn())
+// the real importer is covered in the pourbaix tests
+const import_pymatgen_pourbaix = vi.hoisted(() =>
+  vi.fn((json: unknown) => ({
+    entries: [{ formula: `Zn`, energy: 0, of: json }],
+    water_energy: -2.4583,
+    log_conc: -5,
+  })),
+)
 // Swap matterviz components for a recording stub to exercise the real widget wiring
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
@@ -48,6 +56,20 @@ vi.mock(`matterviz`, async () => {
     // like the real ones: a lone document normalizes, a {label: document} map returns null
     normalize_band_structure: spectral_doc,
     normalize_dos: spectral_doc,
+    // foreign documents: the real importers are covered in the pourbaix, wulff and lobster tests
+    import_pymatgen_pourbaix,
+    // the real component defaults the writeback fallbacks come from
+    POURBAIX_DEFAULTS: (await import(`../../src/lib/pourbaix/compute`)).POURBAIX_DEFAULTS,
+    WULFF_DEFAULTS: (await import(`../../src/lib/wulff/types`)).WULFF_DEFAULTS,
+    parse_surface_energies: (json: unknown) => ({ facets: [{ of: json }], lattice: `cubic` }),
+    // every kind but COBI present, so the wiring test's seeded kind finds curves
+    parse_lobster_files: (files: unknown) => ({
+      by_kind: {
+        get: (kind: string) => (kind === `COBI` ? undefined : { cohp: { files, kind } }),
+        values: () => [{ cohp: { files } }].values(),
+      },
+      dos: { total: { dos_of: files } },
+    }),
   }
 })
 // The build's per-widget loaders (widget_components), resolving each widget_type's stubbed
@@ -361,7 +383,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
     expect(WIDGET_MODEL_KEYS.coordination_bar_plot).not.toContain(`series`)
     const plot_widgets = `scatter_plot scatter_plot_3d bar_plot histogram treemap band_structure
       dos rdf_plot xrd bands_and_dos sunburst sankey box_plot ternary_plot neb_plot eos_plot
-      coordination_bar_plot`
+      coordination_bar_plot pourbaix_diagram cohp`
     for (const widget_type of plot_widgets.split(/\s+/)) {
       expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
         expect.arrayContaining(Object.keys(controls_traits)),
@@ -562,6 +584,54 @@ describe(`widget config wiring`, () => {
     expect(() => read_with({ DFT: 1 })).toThrow(`"DFT"`)
   })
 
+  // matterviz-shaped data passes through, foreign documents are imported with the traits they
+  // carry (pymatgen's water energy, a WulffShape lattice), which traits set explicitly override
+  test.each([
+    [
+      `pourbaix_diagram`,
+      `entries`,
+      [{ formula: `Zn^2+`, energy: -1.5 }],
+      `water_energy`,
+      -2.4583,
+    ],
+    [`wulff_shape`, `facets`, [{ miller: [1, 0, 0], energy: 1 }], `lattice`, `cubic`],
+  ] as const)(
+    `%s takes native or imported %s`,
+    (widget_type, key, native, extra, imported) => {
+      const read_with = (traits: Record<string, unknown>) =>
+        run_widget(widget_type, new MockModel({ widget_type, ...traits })).read()
+      const native_props = read_with({ [key]: native })
+      expect(native_props[key]).toEqual(native)
+      expect(extra in native_props).toBe(false)
+      const doc = { foreign: true }
+      const imported_props = read_with({ [key]: doc })
+      expect(imported_props[key]).toEqual([expect.objectContaining({ of: doc })])
+      expect(imported_props[extra]).toBe(imported)
+      expect(read_with({ [key]: doc, [extra]: 7 })[extra]).toBe(7)
+    },
+  )
+
+  test(`cohp parses lobster_files, picks kind and shows DOSCAR's total DOS`, () => {
+    const files = { 'COHPCAR.lobster': `...`, 'DOSCAR.lobster': `...` }
+    const model = new MockModel({ widget_type: `cohp`, lobster_files: files })
+    const stub = run_widget(`cohp`, model)
+    expect(stub.read().cohp).toEqual({ files })
+    expect(stub.read().doses).toEqual({ Total: { dos_of: files } })
+    model.push_from_python(`kind`, `COOP`)
+    flushSync()
+    expect(stub.read().cohp).toEqual({ files, kind: `COOP` })
+    expect(() => model.push_from_python(`kind`, `COBI`)).toThrow(`hold no COBICAR.lobster`)
+  })
+
+  test(`structure_diff turns the inner viewer's file drops off`, () => {
+    const model = new MockModel({
+      widget_type: `structure_diff`,
+      structure_props: { style: `height: 300px` },
+    })
+    const props = run_widget(`structure_diff`, model).read()
+    expect(props.structure_props).toEqual({ allow_file_drop: false, style: `height: 300px` })
+  })
+
   test(`bands_and_dos forwards controls into both child prop bags`, () => {
     const model = new MockModel({
       widget_type: `bands_and_dos`,
@@ -600,6 +670,7 @@ describe(`writeback wiring`, () => {
     [`neb_plot`, `active_image_idx`, 0, 3, 1],
     [`eos_plot`, `fits`, [], [{ kind: `vinet`, rmse: 0.01 }], [{ kind: `murnaghan` }]],
     [`phonon_mode_explorer`, `selection`, null, { mode_idx: 2 }, { mode_idx: 5 }],
+    [`pourbaix_diagram`, `log_conc`, -6, -4, -2], // imported: trait, else pymatgen's, else default
   ] as const)(
     `%s %s round-trips and falls back when cleared`,
     (widget_type, key, default_value, local_value, python_value) => {
@@ -623,6 +694,106 @@ describe(`writeback wiring`, () => {
       expect(model.save_count).toBe(save_count)
     },
   )
+})
+
+describe(`imported and output writebacks`, () => {
+  // every setting a widget's controls change syncs back, seeded with the component's default
+  test.each([
+    [
+      `structure_diff`,
+      { matching: `auto`, remove_drift: true, show_ghost: true, show_arrows: true },
+      { arrow_scale: 1, hovered_site_idx: null },
+    ],
+    [
+      `pourbaix_diagram`,
+      { log_conc: -6, composition: null, temperature: 298.15, controls_open: false },
+      { show_water_lines: true, show_labels: true, heatmap_formula: null },
+    ],
+    [
+      `cohp`,
+      { spin_mode: `overlay`, show_integrated: false, shift_to_fermi: true },
+      { show_average: false, controls_open: false, hovered_bond: null },
+    ],
+    [
+      `wulff_shape`,
+      { opacity: 1, edge_color: `#222222`, edge_width: 0.006, show_axes: true },
+      { show_legend: true, camera_projection: `perspective` },
+    ],
+  ] as const)(`%s seeds every synced setting with its default`, (widget_type, ...parts) => {
+    const expected = Object.assign({}, ...parts)
+    const synced = WIDGETS[widget_type].drive.filter(
+      (spec) => spec.writeback && !spec.to_model,
+    )
+    expect(new Set(synced.map(({ prop }) => prop))).toEqual(new Set(Object.keys(expected)))
+    const props = run_widget(widget_type, new MockModel({ widget_type })).read()
+    expect(pick(props, expected)).toStrictEqual(expected)
+  })
+
+  test(`pourbaix_diagram imports entries once and writes a moved log_conc over the imported`, () => {
+    const model = new MockModel({
+      widget_type: `pourbaix_diagram`,
+      entries: { foreign: true },
+    })
+    import_pymatgen_pourbaix.mockClear()
+    const stub = run_widget(`pourbaix_diagram`, model)
+    expect(import_pymatgen_pourbaix).toHaveBeenCalledOnce() // for all 5 props reading it
+    expect(stub.read().log_conc).toBe(-5)
+    expect(model.save_count).toBe(0)
+    stub.write(`log_conc`, -2)
+    flushSync()
+    expect(model.state.log_conc).toBe(-2)
+  })
+
+  // outputs reach Python as summaries, sent again only when the summary changes, null once gone
+  const plane = {
+    label: `Zn^2+`,
+    species: [{ entry: { formula: `Zn^2+`, energy: -1.524 }, aqueous: true, weight: 1 }],
+    metal_fractions: { Zn: 1 },
+    offset: 1,
+    ph_coeff: 0,
+    potential_coeff: -2,
+  }
+  const families = [
+    { miller: [1, 1, 1], n_facets: 8, area_fraction: 0.9 },
+    { miller: [1, 0, 0], n_facets: 0, area_fraction: 0 },
+  ]
+  const numbers = { surface_area: 5.1, weighted_surface_energy: 1.9, shape_factor: 5.3 }
+  const geometry = { facets: [{}], edges: [[0, 1]], point_group: [] }
+  test.each([
+    [
+      `pourbaix_diagram`,
+      `hover_info`,
+      (ph: number) => ({ plane, ph, potential: 0.5, energy: -1 }), // pointer moves in a domain
+      {
+        label: `Zn^2+`,
+        species: [{ formula: `Zn^2+`, aqueous: true, weight: 1 }],
+        metal_fractions: { Zn: 1 },
+      },
+    ],
+    [
+      `wulff_shape`,
+      `wulff_data`,
+      // only the geometry changes
+      (z: number) => ({ ...geometry, vertices: [[0, 0, z]], families, ...numbers }),
+      { families, absent_families: [[1, 0, 0]], ...numbers },
+    ],
+  ] as const)(`%s sends %s to Python as a summary`, (widget_type, key, value_at, summary) => {
+    const model = new MockModel({ widget_type })
+    const stub = run_widget(widget_type, model)
+    expect(stub.read()[key]).toBeNull()
+    expect(model.save_count).toBe(0)
+    const write = (value: unknown) => {
+      stub.write(key, value)
+      flushSync()
+    }
+    write(value_at(1))
+    expect(model.state[key]).toStrictEqual(summary)
+    const save_count = model.save_count
+    write(value_at(2))
+    expect(model.save_count).toBe(save_count)
+    write(null)
+    expect(model.state[key]).toBeNull()
+  })
 })
 
 // render() as anywidget calls it (RenderProps also wants signal/host/experimental, unused here)

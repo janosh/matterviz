@@ -349,7 +349,11 @@ describe(`Export functionality`, () => {
         `nonsingular unit cell`,
       )
       expect(() => serialize(without_abc)).toThrow(error)
-      if (format === `CIF`) expect(content).toContain(`_cell_length_c 0.000000`)
+      // a zero-length c gets 90° (not 0°) for both angles it spans
+      if (format === `CIF`)
+        expect(content).toContain(
+          `_cell_length_c 0.000000\n_cell_angle_alpha 90.000000\n_cell_angle_beta 90.000000`,
+        )
     })
 
     // The data block header is required by pymatgen: the alphabetical formula with

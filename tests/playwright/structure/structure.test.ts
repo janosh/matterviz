@@ -167,7 +167,7 @@ test.describe(`compressed source URL`, () => {
       try {
         if (route_path === `/structure/symmetry`) {
           const loading = page.locator(`.loading-placeholder`)
-          await expect(loading.getByRole(`status`)).toHaveText(`Loading symmetry analysis...`)
+          await expect(loading.getByRole(`status`)).toHaveText(`Analyzing symmetry...`)
           for (const width of [1200, 420]) {
             await page.setViewportSize({ width, height: 900 })
             // the slot and status can be read before the resize reflows, so retry until settled

@@ -23,12 +23,7 @@
     fermi_file_paints,
     fermi_surface_files,
   } from '#site/fermi-surfaces.js'
-  import {
-    file_param,
-    latest_load,
-    loaded_fixture,
-    set_file_param,
-  } from '#site/state.svelte.js'
+  import { url_param, latest_load, loaded_fixture, set_url_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -69,7 +64,7 @@
     active_file = file.name
     error_msg = undefined
     loading = true
-    if (sync_url) set_file_param(file.name)
+    if (sync_url) set_url_param(`file`, file.name)
 
     try {
       const opened = await open_material(file.url)
@@ -100,7 +95,7 @@
 
   // Load file from URL param (when synced) or default on mount
   onMount(() => {
-    const requested = sync_url ? file_param() : null
+    const requested = sync_url ? url_param(`file`) : null
     const file_from_url = requested
       ? fermi_surface_files.find((file) => file.name === requested)
       : null
@@ -149,7 +144,7 @@
     error_msg = undefined
     if (!data.source_filename) return
     active_file = data.source_filename
-    if (sync_url) set_file_param(loaded_fixture(data))
+    if (sync_url) set_url_param(`file`, loaded_fixture(data))
   }}
   tooltip={{
     suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,

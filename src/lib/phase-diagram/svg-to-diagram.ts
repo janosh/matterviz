@@ -2,7 +2,7 @@
 // data for rendering by IsobaricBinaryPhaseDiagram. Region labels ("A + B") name the phases;
 // axis-aligned boundaries become invariant (horizontal) or solvus (vertical) lines.
 
-import { array_extent, leading_number, type Vec2, type Vec4 } from '#lib/math.js'
+import { array_extent, leading_number, mean, type Vec2, type Vec4 } from '#lib/math.js'
 import {
   BINARY_DIAGRAM_FORMAT,
   type BinaryPhaseDiagram,
@@ -603,8 +603,7 @@ function assemble_regions(
   const position = (token: string): number => {
     if (token === components[0]) return -Infinity
     if (token === components[1]) return Infinity
-    const xs = centres.get(token) ?? []
-    return xs.reduce((sum, x_val) => sum + x_val, 0) / xs.length
+    return mean(centres.get(token) ?? [])
   }
   const phases = [...centres.keys()].map((id): BinaryPhase => ({
     id,

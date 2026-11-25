@@ -18,7 +18,6 @@
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
   import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import {
@@ -31,7 +30,8 @@
   import { join_hover_link } from '#lib/tooltip/index.js'
   import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
+  import { point_group_rotations } from '#lib/symmetry/index.js'
+  import { structure_symmetry } from '#lib/symmetry/structure-symmetry.svelte.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -308,25 +308,8 @@
       (default_k_path && !k_path) ||
       (info_pane_open && controls_config.visible(`info-pane`)),
   )
-  // tagged with its structure: derived state reads it before this effect resets it
-  let symmetry = $state.raw<{ data?: MoyoDataset; error?: unknown; of?: Crystal }>({})
-  $effect(() => {
-    symmetry = {}
-    const of = structure
-    if (!needs_symmetry || !of?.lattice) return
-    let stale = false
-    analyze_structure_symmetry(of, {}).then(
-      (data) => {
-        if (!stale) symmetry = { data, of }
-      },
-      (error: unknown) => {
-        if (!stale) symmetry = { error, of }
-      },
-    )
-    return () => {
-      stale = true
-    }
-  })
+  const analysis = structure_symmetry(() => (needs_symmetry ? structure : undefined))
+  const symmetry = $derived(analysis.current)
   // The IBZ is an optional overlay, so its failures (symmetry analysis rejecting, a degenerate
   // wedge) are a dismissible notice and on_error while the zone keeps rendering, never the
   // fatal `error_msg` that blanks the whole viewer

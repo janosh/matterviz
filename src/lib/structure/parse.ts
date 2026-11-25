@@ -59,7 +59,7 @@ import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
-import { parse_leading_num } from '#lib/utils.js'
+import { parse_leading_num, is_finite_number } from '#lib/utils.js'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import { load as yaml_load } from 'js-yaml'
 
@@ -1268,7 +1268,7 @@ const json_species_issue = (entry: Record<string, unknown>): string | undefined 
       ? `${element} is not an element (pymatgen DummySpecies are not supported)`
       : `expected an element symbol`
   }
-  if (occu != null && !(typeof occu === `number` && Number.isFinite(occu) && occu >= 0))
+  if (occu != null && !(is_finite_number(occu) && occu >= 0))
     return `occu must be a finite number >= 0`
   if (oxidation_state != null && !Number.isFinite(oxidation_state))
     return `oxidation_state must be a finite number or null`

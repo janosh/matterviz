@@ -1,5 +1,6 @@
 // Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
+import { is_finite_number } from '#lib/utils.js'
 import { format_num } from 'svelte-widgets/format'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
@@ -186,6 +187,15 @@ export const analyze_gas_data = (
   relevant_gases: relevant_gases(present_elements(entries), config.enabled_gases ?? []),
 })
 
+// The phase entry of a compound gas (no energy: callers add theirs)
+export const gas_phase_entry = (gas: GasSpecies) => ({
+  composition: { ...GAS_STOICHIOMETRY[gas] },
+  gas,
+  entry_id: `gas:${gas}`,
+  reduced_formula: gas,
+  name: `${gas} gas`,
+})
+
 // Whether a composition is that of `gas`, in any multiple (C2O4 is CO2)
 export function is_gas_composition(
   composition: Partial<Record<string, number>>,
@@ -360,10 +370,9 @@ export function apply_gas_corrections(
     // hull distances were measured against the old references and phases
     const moved: PhaseData = {
       ...entry,
-      e_form_per_atom:
-        typeof e_form === `number` && Number.isFinite(e_form)
-          ? e_form + own_shift - ref_sum_of(entry.composition)
-          : undefined,
+      e_form_per_atom: is_finite_number(e_form)
+        ? e_form + own_shift - ref_sum_of(entry.composition)
+        : undefined,
       e_above_hull: undefined,
       is_stable: undefined,
       ...(replaced && { exclude_from_hull: true }),
@@ -380,7 +389,8 @@ export function apply_gas_corrections(
   // Compound gas phases: E_form = μ(T, P) per atom on the 0 K references, re-referenced like
   // every entry; an absolute energy on the references' scale when they all have one
   const gas_entries = compound_gases.map((gas): PhaseData => {
-    const composition = { ...GAS_STOICHIOMETRY[gas] }
+    const entry = gas_phase_entry(gas)
+    const { composition } = entry
     const atoms = gas_num_atoms(gas)
     const mu_form = compute_gas_chemical_potential(provider, gas, temperature, pressures[gas])
     let ref_energy = 0 // Σ x_e E_e of the 0 K references, NaN without absolute ones
@@ -391,11 +401,7 @@ export function apply_gas_corrections(
     }
     const energy_per_atom = mu_form + ref_energy
     return {
-      composition,
-      gas,
-      entry_id: `gas:${gas}`,
-      reduced_formula: gas,
-      name: `${gas} gas`,
+      ...entry,
       e_form_per_atom: mu_form - ref_sum_of(composition),
       // E_form-only when a reference has no absolute energy
       ...(Number.isFinite(energy_per_atom) && {

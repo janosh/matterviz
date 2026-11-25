@@ -82,7 +82,7 @@
   } from '#lib/structure/validation.js'
   import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
   import { clamp, to_error } from 'svelte-widgets/utils'
-  import { untrack, type ComponentProps } from 'svelte'
+  import { untrack, type ComponentProps, type Snippet } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -120,6 +120,7 @@
     persist_settings = false,
     pane_props = {},
     toggle_props = {},
+    controls_extra,
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     controls_open?: boolean // Control pane state
@@ -160,6 +161,7 @@
     persist_settings?: boolean // Opt-in browser persistence for safely scoped single-view usage
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
+    controls_extra?: Snippet // host settings shown above the built-in groups
   } = $props()
 
   let controls_pane = $state<HTMLDivElement | null>(null)
@@ -1213,6 +1215,7 @@
         </button>
       {/if}
     </div>
+    {@render controls_extra?.()}
     {#if volumetric_data?.length}
       <SettingsGroup
         title="Volumetric data"

@@ -68,7 +68,7 @@
     series_text,
   } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { clamp01 } from '#lib/utils.js'
+  import { clamp01, is_finite_number } from '#lib/utils.js'
   import type { Vec2 } from '#lib/math.js'
   import { measure_text_width } from '#lib/plot/core/tick-layout.js'
   import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
@@ -96,7 +96,6 @@
     visible_bar_indices,
   } from './geometry'
   import type { LineSeriesPoint as BarLineSeriesPoint } from './geometry'
-  import { is_finite_num } from '#lib/plot/scatter/scatter-data.js'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
   interface LineMarkerHandlerProps extends BarHandlerProps<Metadata> {
@@ -593,7 +592,7 @@
       ...(has_marker(srs, `points`)
         ? {
             symbol_type: point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
-            symbol_color: is_finite_num(first_color_value)
+            symbol_color: is_finite_number(first_color_value)
               ? color_scale_fn(first_color_value)
               : (point_style?.fill ?? color),
           }

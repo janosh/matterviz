@@ -1,0 +1,81 @@
+{
+  "material_id": "mp-72",
+  "pretty_formula": "Ti",
+  "weighted_surface_energy": 1.9985243504987897,
+  "shape_factor": 5.017363572709828,
+  "surface_anisotropy": 0.038420104360740524,
+  "surfaces": [
+    {
+      "miller_index": [0, 0, 0, 1],
+      "surface_energy": 2.152215199900508,
+      "surface_energy_EV_PER_ANG2": 0.13433071320806916,
+      "area_fraction": 0.013660297124215714
+    },
+    {
+      "miller_index": [1, 0, -1, 0],
+      "surface_energy": 2.2190341142135015,
+      "surface_energy_EV_PER_ANG2": 0.1385012220009948,
+      "area_fraction": 0.02700481569912131
+    },
+    {
+      "miller_index": [1, 0, -1, 1],
+      "surface_energy": 2.251538932874714,
+      "surface_energy_EV_PER_ANG2": 0.1405300133010755,
+      "area_fraction": 0.0
+    },
+    {
+      "miller_index": [1, 0, -1, 2],
+      "surface_energy": 2.155621801227633,
+      "surface_energy_EV_PER_ANG2": 0.13454333654885287,
+      "area_fraction": 1.8922581431407466e-6
+    },
+    {
+      "miller_index": [1, 1, -2, 0],
+      "surface_energy": 2.035417074976807,
+      "surface_energy_EV_PER_ANG2": 0.12704074730545348,
+      "area_fraction": 0.16982307447625763
+    },
+    {
+      "miller_index": [1, 1, -2, 1],
+      "surface_energy": 1.9318734349462858,
+      "surface_energy_EV_PER_ANG2": 0.12057806131842835,
+      "area_fraction": 0.4741547631142942
+    },
+    {
+      "miller_index": [2, -1, -1, 2],
+      "surface_energy": 2.0055604698154053,
+      "surface_energy_EV_PER_ANG2": 0.12517724449890874,
+      "area_fraction": 0.17779230204967036
+    },
+    {
+      "miller_index": [2, 0, -2, 1],
+      "surface_energy": 2.263788852611296,
+      "surface_energy_EV_PER_ANG2": 0.14129459318836224,
+      "area_fraction": 0.0
+    },
+    {
+      "miller_index": [2, 1, -3, 0],
+      "surface_energy": 2.138851987454173,
+      "surface_energy_EV_PER_ANG2": 0.13349664705206854,
+      "area_fraction": 0.050516795206548996
+    },
+    {
+      "miller_index": [2, 1, -3, 1],
+      "surface_energy": 2.101264869212902,
+      "surface_energy_EV_PER_ANG2": 0.13115064354785608,
+      "area_fraction": 0.08704606007174853
+    },
+    {
+      "miller_index": [2, 1, -3, 2],
+      "surface_energy": 2.0779772084822206,
+      "surface_energy_EV_PER_ANG2": 0.12969714202298782,
+      "area_fraction": 0.0
+    },
+    {
+      "miller_index": [2, 2, -4, 1],
+      "surface_energy": 2.1434230139470034,
+      "surface_energy_EV_PER_ANG2": 0.1337819480985918,
+      "area_fraction": 0.0
+    }
+  ]
+}

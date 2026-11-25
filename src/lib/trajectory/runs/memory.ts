@@ -1,5 +1,6 @@
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
+import { is_finite_number } from '#lib/utils.js'
 import { display_idx } from '#lib/labels.js'
 import { encode_frame, type NumericFrame } from '../frame'
 import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math.js'
@@ -21,9 +22,6 @@ export interface MemoryRunExtras {
   // Pre-extracted per-frame rows; otherwise full_data_extractor runs over every frame
   properties?: TrajectoryMetadata[]
 }
-
-const is_finite_number = (value: unknown): value is number =>
-  typeof value === `number` && Number.isFinite(value)
 
 // Structural invariants every consumer relies on: at least one frame, finite steps and
 // coordinates, masses and signals that match frame 0's atoms. The atom count may vary between

@@ -3,6 +3,7 @@
 // partition is in normalized coordinates (angle fraction in [0, 1], y0 === depth) independent
 // of pixel size and zoom: Sunburst maps it to screen space per frame, Treemap re-tiles it.
 
+import { is_finite_number } from '#lib/utils.js'
 import { hsl } from 'd3-color'
 import type { HierarchyNode, HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
@@ -170,7 +171,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
 
   // Coerce non-finite/negative input values to 0 so nothing downstream sees NaN
   const clean_value = (val: number | undefined | null): number =>
-    typeof val === `number` && Number.isFinite(val) && val >= 0 ? val : 0
+    is_finite_number(val) && val >= 0 ? val : 0
 
   // 'remainder' is d3's .sum(); 'leaf-sum' ignores parent values; 'total' treats explicit
   // values as authoritative (else the children's sum). Children under-summing leave a gap;

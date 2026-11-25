@@ -1,0 +1,1 @@
+Real LOBSTER output for BiSe (Bi6Se6, spin-restricted, LOBSTER 2 list format) from the [pymatgen test files](https://github.com/materialsproject/pymatgen-test-files/tree/85005108e99e40cbd59e78f067459b0ca664efc6/electronic_structure/cohp). Rows above E − E_F = 4.3 eV, where every COHP and COOP value is zero, were cut from COHPCAR and COOPCAR and their headers updated.

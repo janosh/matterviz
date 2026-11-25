@@ -240,7 +240,7 @@ test.each([
         )
         const rotation = new Quaternion().setFromUnitVectors(up, direction)
         const head = head_length < 0 ? length * -head_length : head_length
-        const shaft = Math.max(0, length - head * 0.5)
+        const shaft = Math.max(0, length - head) // the head's tip on the vector's end
         const shaft_radius = shaft_size < 0 ? shaft * -shaft_size : shaft_size
         const head_radius = head_size < 0 ? shaft * -head_size : head_size
         const origin = new Vector3(...position).addScaledVector(direction, shaft * 0.5)
@@ -355,6 +355,39 @@ test.each(color_mode_cases)(
     structure = { sites: [] }
     check([])
     expect(build_vector_layers(null, options, layers)).toEqual([])
+  },
+)
+
+test.each([false, true])(
+  `on_top=%s draws over the atoms without a depth test`,
+  async (on_top) => {
+    const packed = pack_arrows(
+      [{ position: [0, 0, 0], vector: [0, 0, 0.2], magnitude: 0.2, scale: 1, color: `red` }],
+      0.02,
+      0.06,
+      -0.3,
+    )
+    const component = mount(ArrowInstances, {
+      target: document.body,
+      props: { arrows: packed, on_top },
+    })
+    try {
+      flushSync()
+      const meshes = threlte_stub.nodes.map(({ props }) => props.is)
+      if (!meshes.every((mesh): mesh is ArrowMesh => mesh instanceof ArrowMesh))
+        throw new Error(`Expected arrow meshes`)
+      expect(meshes).toHaveLength(2)
+      for (const mesh of meshes) {
+        expect(mesh.renderOrder).toBe(on_top ? 1 : 0)
+        const { material } = mesh
+        if (Array.isArray(material))
+          throw new TypeError(`Expected one material per arrow part`)
+        expect([material.depthTest, material.depthWrite]).toEqual([!on_top, !on_top])
+      }
+    } finally {
+      await unmount(component)
+      threlte_stub.reset()
+    }
   },
 )
 

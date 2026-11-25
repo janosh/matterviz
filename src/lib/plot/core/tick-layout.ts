@@ -3,7 +3,13 @@
 
 import { clamp } from 'svelte-widgets/utils'
 import { format_tick_values } from '#lib/labels.js'
-import { array_max, array_min, assert_non_negative } from '#lib/math.js'
+import {
+  array_max,
+  array_min,
+  assert_non_negative,
+  same_values,
+  to_radians,
+} from '#lib/math.js'
 import { get_tick_label, tick_label_format } from '#lib/plot/core/scales.js'
 import {
   DEFAULT_FONT_SPEC,
@@ -187,7 +193,7 @@ export const tick_label_aabb = ({
   const block_height = dimensions.line_widths.length * dimensions.line_height
   const [local_min_x, local_max_x] = anchor_x_bounds(block_width(dimensions), anchor)
   const [local_min_y, local_max_y] = block_y_bounds(block_height, side, rotation)
-  const radians = (normalized_rotation(rotation) * Math.PI) / 180
+  const radians = to_radians(normalized_rotation(rotation))
   const cosine = snap_near_zero(Math.cos(radians))
   const sine = snap_near_zero(Math.sin(radians))
   const horizontal = is_horizontal_side(side)
@@ -284,7 +290,7 @@ const labels_collide = (
   if (!aabbs_collide(first.aabb, second.aabb, gap)) return false
   const rotation = normalized_rotation(first.rotation)
   if (rotation === 0 || rotation !== normalized_rotation(second.rotation)) return true
-  const radians = (rotation * Math.PI) / 180
+  const radians = to_radians(rotation)
   const horizontal = is_horizontal_side(first.side)
   const delta_along = second.position.axis - first.position.axis
   const delta_cross = second.position.cross_axis - first.position.cross_axis
@@ -1153,12 +1159,6 @@ type CacheEntry = {
 // Per-side LRU so interleaved plots don't evict one another's lookups
 const cached_layouts: Partial<Record<TickLayoutSide, CacheEntry[]>> = {}
 
-export const arrays_equal = (
-  left: readonly (number | string)[],
-  right: readonly (number | string)[],
-): boolean =>
-  left.length === right.length && left.every((value, idx) => Object.is(value, right[idx]))
-
 // Shared by compute_auto_padding and PlotAxis, memoized on every input plus the text-metrics
 // revision
 export const resolve_tick_layout = (
@@ -1192,8 +1192,8 @@ export const resolve_tick_layout = (
   const cached_idx = side_cache.findIndex(
     (entry) =>
       entry.key === key &&
-      arrays_equal(entry.full_texts, full_texts) &&
-      arrays_equal(entry.tick_positions, axis.tick_positions),
+      same_values(entry.full_texts, full_texts) &&
+      same_values(entry.tick_positions, axis.tick_positions),
   )
   if (cached_idx !== -1) {
     const [cached] = side_cache.splice(cached_idx, 1)

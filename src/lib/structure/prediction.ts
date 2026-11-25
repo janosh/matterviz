@@ -1,5 +1,6 @@
 // Prediction interchange and publication validation. No Svelte/DOM imports: file workers use
 // the same contract as live tools. Undefined object fields are omitted; array holes are errors.
+import { is_finite_number } from '#lib/utils.js'
 import { is_plain_object } from 'svelte-widgets/utils'
 import { grid_data_range, type VolumetricData } from '#lib/isosurface/types.js'
 import { grid_dimensions } from '#lib/isosurface/grid.js'
@@ -88,7 +89,7 @@ function copy_prediction_metadata<T>(source: T, root_path: string): T {
   const ancestors = new WeakSet<object>()
   function copy(value: unknown, path: string): unknown {
     if (value === null || typeof value === `string` || typeof value === `boolean`) return value
-    if (typeof value === `number` && Number.isFinite(value)) return value
+    if (is_finite_number(value)) return value
     if (!value || typeof value !== `object`)
       return invalid(path, `expected a finite JSON value`)
     if (ancestors.has(value)) return invalid(path, `cyclic metadata is not supported`)

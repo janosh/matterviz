@@ -1,12 +1,10 @@
 // HTML overlay label helpers for the 3D chemical potential diagram: tick label occlusion and
 // composited PNG/SVG snapshots (plus GLB export)
-import { canvas_to_png_blob, dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
-import { blob_to_data_url } from 'svelte-widgets/browser'
+import { canvas_overlay_png_blob, canvas_overlay_svg } from '#lib/io/export.js'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
 import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { export_scene_as } from '#lib/scene/index.js'
-import { escape_html as xml_escape } from 'svelte-widgets/utils'
 import * as THREE from 'three/webgpu'
 
 interface XYZ {
@@ -38,17 +36,6 @@ export function get_view_settings(opts: {
   }
 }
 
-interface OverlayTextItem {
-  x: number
-  y: number
-  text: string
-  font: string
-  font_size: string
-  font_family: string
-  font_weight: string
-  color: string
-}
-
 const is_shown = ({ display, visibility }: CSSStyleDeclaration): boolean =>
   display !== `none` && visibility !== `hidden`
 
@@ -78,65 +65,19 @@ export function occlude_tick_labels(wrapper: HTMLElement): boolean {
   return occluded.includes(true)
 }
 
-// Collect HTML overlay text (tick/axis/domain labels) positioned relative to the canvas
-function get_overlay_text_items(
-  wrapper: HTMLElement,
-  canvas_rect: DOMRect,
-): OverlayTextItem[] {
-  const text_items: OverlayTextItem[] = []
-  const labels = wrapper.querySelectorAll<HTMLElement>(
-    `.tick-label, .axis-label, .domain-label`,
-  )
-  for (const element of labels) {
-    const style = getComputedStyle(element)
-    if (!is_shown(style)) continue
-    const element_rect = element.getBoundingClientRect()
-    text_items.push({
-      x: element_rect.left + element_rect.width / 2 - canvas_rect.left,
-      y: element_rect.top + element_rect.height / 2 - canvas_rect.top,
-      text: element.textContent ?? ``,
-      font: style.font || `${style.fontSize} ${style.fontFamily}`,
-      font_size: style.fontSize || `11px`,
-      font_family: style.fontFamily || `sans-serif`,
-      font_weight: style.fontWeight || `400`,
-      color: style.color || `#333`,
-    })
-  }
-  return text_items
-}
-
-// The 3D canvas, throwing when it is missing or has zero size (hidden/unrendered)
-function require_canvas(wrapper: HTMLElement | undefined): {
-  canvas: HTMLCanvasElement
-  rect: DOMRect
-  wrapper: HTMLElement
-} {
-  const canvas = wrapper?.querySelector(`canvas`)
-  const rect = canvas?.getBoundingClientRect()
-  if (!canvas || !wrapper || !rect || !(rect.width > 0) || !(rect.height > 0))
-    throw new Error(`Chemical potential diagram has no rendered canvas to export`)
-  return { canvas, rect, wrapper }
-}
+// The 3D canvas and its HTML overlay labels (tick, axis and domain labels)
+const canvas_and_labels = (wrapper: HTMLElement | undefined) =>
+  [
+    wrapper?.querySelector(`canvas`),
+    [
+      ...(wrapper?.querySelectorAll<HTMLElement>(`.tick-label, .axis-label, .domain-label`) ??
+        []),
+    ],
+  ] as const
 
 // The 3D canvas (re-rendered at `png_dpi`) with the HTML overlay labels drawn on top
-export async function chempot_png_blob(
-  wrapper: HTMLElement | undefined,
-  png_dpi: number,
-): Promise<Blob> {
-  const { canvas, rect, wrapper: root } = require_canvas(wrapper)
-  const frame = await createImageBitmap(await canvas_to_png_blob(canvas, png_dpi))
-  return paint_png_blob(rect.width, rect.height, dpi_to_scale(png_dpi), (ctx) => {
-    ctx.drawImage(frame, 0, 0, rect.width, rect.height)
-    frame.close()
-    ctx.textAlign = `center`
-    ctx.textBaseline = `middle`
-    for (const text_item of get_overlay_text_items(root, rect)) {
-      ctx.font = text_item.font
-      ctx.fillStyle = text_item.color
-      ctx.fillText(text_item.text, text_item.x, text_item.y)
-    }
-  })
-}
+export const chempot_png_blob = (wrapper: HTMLElement | undefined, png_dpi: number) =>
+  canvas_overlay_png_blob(...canvas_and_labels(wrapper), png_dpi)
 
 // SVG snapshot: the rendered canvas as an embedded image, overlay labels as real text nodes
 // and the view settings as metadata
@@ -144,21 +85,11 @@ export async function chempot_svg_string(
   wrapper: HTMLElement | undefined,
   view_settings: Record<string, unknown>,
 ): Promise<string> {
-  const { canvas, rect, wrapper: root } = require_canvas(wrapper)
-  const frame_url = await blob_to_data_url(await canvas_to_png_blob(canvas))
-  const text_nodes = get_overlay_text_items(root, rect).map(
-    ({ x, y, color, font_size, font_family, font_weight, text }) =>
-      `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="middle" dominant-baseline="central" fill="${xml_escape(color)}" font-size="${xml_escape(font_size)}" font-family="${xml_escape(font_family)}" font-weight="${xml_escape(font_weight)}">${xml_escape(text)}</text>`,
-  )
-  const metadata = xml_escape(JSON.stringify(view_settings))
-  return [
-    `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}" viewBox="0 0 ${rect.width} ${rect.height}">`,
-    `<metadata>${metadata}</metadata>`,
-    `<image href="${frame_url}" x="0" y="0" width="${rect.width}" height="${rect.height}" />`,
-    ...text_nodes,
-    `</svg>`,
-  ].join(``)
+  const svg = await canvas_overlay_svg(...canvas_and_labels(wrapper))
+  const metadata = document.createElementNS(svg.namespaceURI, `metadata`)
+  metadata.textContent = JSON.stringify(view_settings)
+  svg.prepend(metadata)
+  return `<?xml version="1.0" encoding="UTF-8"?>${new XMLSerializer().serializeToString(svg)}`
 }
 
 interface ChemPotGlbParts {

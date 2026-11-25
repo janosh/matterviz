@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation'
 import type { NavGroup } from '#site/state.svelte.js'
 import {
-  file_param,
+  url_param,
   group_nav_routes,
   latest_load,
   loaded_fixture,
@@ -9,7 +9,8 @@ import {
   nav_routes,
   normalize_static_url,
   open_element_page,
-  set_file_param,
+  set_url_param,
+  url_selection,
 } from '#site/state.svelte.js'
 import element_data from '#lib/element/data.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
@@ -18,6 +19,11 @@ vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
 vi.mock(`$app/env`, () => ({ browser: true }))
 vi.mock(`$app/state`, () => ({
   page: { url: new URL(`https://example.test/structure/index.html?file=old.cif&view=slice`) },
+}))
+// url_selection reads the URL on mount: run it at once, outside a component
+vi.mock(`svelte`, async (import_original) => ({
+  ...(await import_original<object>()),
+  onMount: (callback: () => void) => callback(),
 }))
 
 test.each([
@@ -30,17 +36,58 @@ test.each([
   expect(normalize_static_url(url)).toBe(expected),
 )
 
-test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {
-  expect(file_param()).toBe(`old.cif`)
-  set_file_param(`new.cif`)
-  expect(goto).toHaveBeenLastCalledWith(
-    `https://example.test/structure/?file=new.cif&view=slice`,
+test(`url_param reads, set_url_param replaces on a copy of page.url, one goto per tick`, async () => {
+  vi.mocked(goto).mockClear()
+  expect(url_param(`file`)).toBe(`old.cif`)
+  set_url_param(`file`, `new.cif`)
+  set_url_param(`match`, `7`) // same tick (two pickers at once): one navigation carries both
+  expect(goto).not.toHaveBeenCalled()
+  await Promise.resolve()
+  expect(goto).toHaveBeenCalledExactlyOnceWith(
+    `https://example.test/structure/?file=new.cif&view=slice&match=7`,
     { replace: true, reset: false },
   )
   // page.url is read-only reactive state and must not have been mutated in place
-  expect(file_param()).toBe(`old.cif`)
-  set_file_param(null)
+  expect(url_param(`file`)).toBe(`old.cif`)
+  set_url_param(`file`, null)
+  await Promise.resolve()
   expect(goto).toHaveBeenLastCalledWith(
+    `https://example.test/structure/?view=slice`,
+    expect.any(Object),
+  )
+  set_url_param(`file`, `old.cif`) // the current URL: no navigation
+  await Promise.resolve()
+  expect(goto).toHaveBeenCalledTimes(2)
+})
+
+// the URL's value when it is one of the options, else `initial` (default: the first option)
+test.each([
+  [`file`, [`new.cif`, `old.cif`], undefined, `old.cif`],
+  [`file`, [`new.cif`, `a.cif`], undefined, `new.cif`],
+  [`file`, [`new.cif`, `a.cif`], `a.cif`, `a.cif`],
+  [`absent`, [`new.cif`, `old.cif`], undefined, `new.cif`],
+])(`url_selection(%s, %j, %s) starts at %s`, (key, options, initial, expected) => {
+  expect(url_selection(key, options, initial).value).toBe(expected)
+})
+
+// picks by a FilePicker click or by setting value, the initial option dropping the param
+test(`url_selection writes a pick back, its picker lists the options`, async () => {
+  vi.mocked(goto).mockClear()
+  const selection = url_selection(`file`, [`new.cif`, `old.cif`])
+  const label = (name: string) => name.slice(0, 3)
+  const { files, active_files, on_click } = selection.picker(`cif`, label)
+  expect(files).toEqual([
+    { name: `new`, url: `new.cif`, type: `cif` },
+    { name: `old`, url: `old.cif`, type: `cif` },
+  ])
+  expect(active_files).toEqual([`old`])
+  on_click(files[0])
+  expect(selection.value).toBe(`new.cif`)
+  selection.value = `old.cif`
+  selection.value = `new.cif` // same tick: one navigation, to the last pick
+  expect(selection.picker(`cif`).active_files).toEqual([`new.cif`])
+  await Promise.resolve()
+  expect(goto).toHaveBeenCalledExactlyOnceWith(
     `https://example.test/structure/?view=slice`,
     expect.any(Object),
   )
@@ -125,8 +172,8 @@ describe(`group_nav_routes`, () => {
     expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
     expect(new Set(all_children).size).toBe(all_children.length)
     expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
-    // shared electronic/phonon demos first, then electronic-only, then phonon-only, each
-    // run under its own dropdown heading
+    // electronic-only, then phonon-only, then shared electronic/phonon demos, each run under
+    // its own dropdown heading (this order puts the two-column break on a heading)
     const shared = `Electronic & phonon`
     expect(
       nav_routes
@@ -134,15 +181,16 @@ describe(`group_nav_routes`, () => {
         ?.children.map(({ href, section }) => [href, section]),
     ).toEqual(
       [
+        [`electronic-structure`, `Electronic`],
+        [`fermi-surface`, `Electronic`],
+        [`cohp`, `Electronic`],
+        [`ir-raman`, `Phonon`],
+        [`phonon-mode-explorer`, `Phonon`],
         [`brillouin-zone`, shared],
         [`bands`, shared],
         [`dos`, shared],
         [`bands-and-dos`, shared],
         [`brillouin-bands-dos`, shared],
-        [`electronic-structure`, `Electronic`],
-        [`fermi-surface`, `Electronic`],
-        [`ir-raman`, `Phonon`],
-        [`phonon-mode-explorer`, `Phonon`],
       ].map(([slug, section]) => [`/spectral/${slug}`, section]),
     )
     // every Structure and Plots demo sits under a heading, each heading shown once, in order

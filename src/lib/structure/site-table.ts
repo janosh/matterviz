@@ -1,6 +1,7 @@
 // One row per site with its coordinates and every per-site property the parsers keep (forces,
 // magmoms, charges, velocities, selective dynamics, …), shared by the trajectory data inspector
 // and the structure viewer's site sidebar.
+import { is_finite_number } from '#lib/utils.js'
 import type { CellVal, RowData } from 'svelte-widgets/table'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import type { TrajPropertyConfig } from '#lib/labels.js'
@@ -20,7 +21,11 @@ const SITE_PROPERTY_UNITS: Record<string, string> = {
   magmoms: `μB`,
   charge: `e`,
   charges: `e`,
+  displacement: `Å`,
 }
+
+// Short symbols for vector site properties, used as column headers
+const SITE_PROPERTY_SYMBOLS: Record<string, string> = { displacement: `Δ` }
 
 // Property row keys are namespaced so a property literally named `site` or `element` cannot
 // overwrite an identity column. Headers use the display label, so the prefix never reaches the
@@ -95,9 +100,7 @@ export const site_property_specs = (sites: readonly Site[]): [string, SiteProper
 export const has_site_data = (sites: readonly Site[] | undefined): boolean =>
   (sites ?? []).some(({ properties }) =>
     Object.values(properties ?? {}).some(
-      (value) =>
-        (typeof value === `number` && Number.isFinite(value)) ||
-        shape_of(value) === `numeric_vec3`,
+      (value) => is_finite_number(value) || shape_of(value) === `numeric_vec3`,
     ),
   )
 
@@ -105,20 +108,41 @@ export const has_site_data = (sites: readonly Site[] | undefined): boolean =>
 // SITE_PROPERTY_UNITS. `axis` splits a vec3 into one column per axis, `norm` is its magnitude.
 export const property_column = (prop_name: string, axis?: string): Column => {
   const config = property_config(prop_name)
+  // a symbol heads the columns (displacement: |Δr|, Δx), the description spells the name out
+  const symbol = own(SITE_PROPERTY_SYMBOLS, prop_name)
   const label =
     axis === `norm`
-      ? `|${prop_name}|`
+      ? `|${symbol ? `${symbol}r` : prop_name}|`
       : axis
-        ? `${prop_name} ${axis}`
+        ? `${symbol ?? `${prop_name} `}${axis}`
         : (config?.label ?? prop_name)
   const unit = own(SITE_PROPERTY_UNITS, prop_name) ?? config?.unit
-  const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
-  return { id, label: unit ? `${label} (${unit})` : label, description: prop_name }
+  const part = axis === `norm` ? `Magnitude of ` : axis ? `${axis} component of ` : ``
+  return {
+    id: `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`,
+    label: unit ? `${label} (${unit})` : label,
+    description: `${part}site property ${prop_name}${unit ? ` in ${unit}` : ``}`,
+    // lengths get fixed decimals like the Cartesian columns, so sub-1e-4 Å noise reads as 0
+    format: unit === `Å` ? `.4~f` : undefined,
+  }
 }
 
+// Descriptions show as header tooltips
 export const site_columns = (specs: [string, SitePropertyShape][]): Column[] => [
-  { id: `site`, label: `Site`, format: `d`, color_scale: null, pin: `left` },
-  { id: `element`, label: `Element`, color_scale: null },
+  {
+    id: `site`,
+    label: `Site`,
+    format: `d`,
+    color_scale: null,
+    pin: `left`,
+    description: `Site index (1-based)`,
+  },
+  {
+    id: `element`,
+    label: `Element`,
+    color_scale: null,
+    description: `Element(s) on the site, slash-separated for a disordered site`,
+  },
   // Fractional coordinates start hidden (the column toggle shows them) so the per-site
   // properties come right after the Cartesian ones in a narrow sidebar
   ...FRAC_AXES.map((axis) => ({
@@ -126,8 +150,14 @@ export const site_columns = (specs: [string, SitePropertyShape][]): Column[] => 
     label: `${axis}<sub>frac</sub>`,
     format: `.4~f`,
     visible: false,
+    description: `Fractional coordinate along lattice vector ${axis} (unitless)`,
   })),
-  ...VEC3_AXES.map((axis) => ({ id: `cart_${axis}`, label: `${axis} (Å)`, format: `.4~f` })),
+  ...VEC3_AXES.map((axis) => ({
+    id: `cart_${axis}`,
+    label: `${axis} (Å)`,
+    format: `.4~f`,
+    description: `Cartesian ${axis} coordinate in Å`,
+  })),
   ...specs.flatMap(([key, shape]) =>
     shape === `scalar`
       ? [property_column(key)]

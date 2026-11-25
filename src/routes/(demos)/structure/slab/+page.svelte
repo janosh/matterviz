@@ -1,4 +1,6 @@
 <script lang="ts">
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { url_selection } from '#site/state.svelte.js'
   import { SlabBuilder } from '#lib/slab/index.js'
   import type { Slab } from '#lib/slab/index.js'
   import type { Crystal } from '#lib/structure/index.js'
@@ -21,9 +23,9 @@
     'Bi2Zr2O8 (disordered)': bi2zr2o8,
   } as unknown as Record<string, Crystal>
 
-  let selected = $state(`Pd (fcc)`)
+  const selected = url_selection(`bulk`, Object.keys(bulk_structures))
   let slab = $state<Slab | null>(null)
-  const bulk = $derived(bulk_structures[selected])
+  const bulk = $derived(bulk_structures[selected.value])
 </script>
 
 <h1 id="surface-slabs">Surface Slabs</h1>
@@ -37,16 +39,8 @@
 </p>
 
 <div class="bleed-1400">
-  <SlabBuilder structure={bulk} bind:slab>
-    <label>
-      Bulk
-      <select bind:value={selected}>
-        {#each Object.keys(bulk_structures) as key (key)}
-          <option value={key}>{key}</option>
-        {/each}
-      </select>
-    </label>
-  </SlabBuilder>
+  <FilePicker {...selected.picker(`json`)} style="margin-bottom: 1em" />
+  <SlabBuilder structure={bulk} bind:slab />
 
   <section class="demo-2col">
     <!-- planes follow the slab's validated, gcd-reduced indices so invalid input (000) draws
@@ -58,7 +52,7 @@
         lattice_planes: slab ? [{ hkl: slab.slab_info.miller_indices }] : [],
       }}
     >
-      <p class="demo-overlay-label">Bulk · {selected}</p>
+      <p class="demo-overlay-label">Bulk · {selected.value}</p>
     </Structure>
     {#if slab}
       <Structure structure={slab}>

@@ -75,24 +75,20 @@
   // One target per pointer event: the k-path wins over the IBZ wedge inside the zone, which
   // wins over the zone (their pick_rank), else the front-most. A click on a mark pins its
   // tooltip, one on empty space unpins. A k-path click a host handles (e.g. selecting that
-  // q-point) only does that, as a click on its label chips does.
-  const { set_hover_enabled, touch_hover } = scene_interactivity({
+  // q-point) only does that, as a click on its label chips does. No hover while orbiting.
+  const { set_camera_is_moving, touch_hover } = scene_interactivity({
     on_click: () => {
       if (!(on_kpath_click && hovered?.qpoint_idx !== undefined)) pin.toggle(hovered)
     },
     on_empty_click: () => pin.unpin(),
+    clear_hover: () => {
+      hovered = null
+      on_kpath_hover?.(null)
+    },
   })
 
   const bz_size = $derived(k_space_size(bz_data?.k_lattice)) // mean k-vector magnitude
   const mark_sizes = $derived(bz_mark_sizes(bz_size, edge_width))
-  // No hover while orbiting: a drag would raycast the zone, wedge and every k-path proxy on
-  // each pointermove, and the tooltip popping in and out under the cursor reads as flicker
-  const set_camera_is_moving = (moving: boolean) => {
-    set_hover_enabled(!moving)
-    if (!moving) return
-    hovered = null
-    on_kpath_hover?.(null)
-  }
 
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 

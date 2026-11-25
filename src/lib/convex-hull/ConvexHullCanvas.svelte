@@ -30,8 +30,8 @@
     face_color_scale,
     HULL_CANVAS_STRATEGIES,
     hull_face_sets,
-    simplex_centroid,
   } from './canvas-draw'
+  import { mean_point } from '#lib/math.js'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import { hull_distance_range, hull_style_css } from './helpers'
   import type { create_hull_data_pipeline } from './hull-state.svelte'
@@ -126,7 +126,8 @@
   const wheel_gate = wheel_zoom_gate()
   wheel_zoom_surface(() => canvas)
 
-  const centroid = simplex_centroid(strategy.corners)
+  // the simplex corners' mean (triangle or tetrahedron): the rotation centre of the view
+  const centroid = mean_point(strategy.corners)
   // Data coords → canvas position, rebuilt per camera/size change rather than per point
   const project_point = $derived.by((): ProjectPoint => {
     const rotate = strategy.rotation(camera, energy_range)

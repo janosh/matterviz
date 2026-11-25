@@ -1,4 +1,5 @@
 import type { AnyStructure } from '#lib'
+import { get_alphabetical_formula } from '#lib/composition/format.js'
 import type { FileInfo } from '#lib/io/index.js'
 import {
   detect_structure_type,
@@ -65,3 +66,24 @@ export const structure_files: FileInfo[] = Object.entries(raw_structure_modules)
     return { ...file, category, category_icon: category_icons[category] }
   },
 )
+
+// Fixtures that compare site by site (StructureDiff): every pair within a group of equal
+// formula (composition and site count) and periodicity whose cell volumes differ by less than
+// 25%, so polymorphs and re-encodings pair up but not a fixture's distorted test cell
+export function same_composition_pairs<T extends { structure: AnyStructure }>(
+  entries: readonly T[],
+): [T, T][] {
+  const groups = Map.groupBy(entries, ({ structure }) => {
+    const formula = get_alphabetical_formula(structure, { plain_text: true, delim: ` ` })
+    return `${formula} ${is_crystal(structure) ? structure.lattice.pbc : `molecule`}`
+  })
+  const volume = ({ structure }: T) => (is_crystal(structure) ? structure.lattice.volume : 1)
+  return [...groups.values()].flatMap((group) =>
+    group.flatMap((first, idx) =>
+      group
+        .slice(idx + 1)
+        .filter((second) => Math.abs(volume(second) / volume(first) - 1) < 0.25)
+        .map((second): [T, T] => [first, second]),
+    ),
+  )
+}

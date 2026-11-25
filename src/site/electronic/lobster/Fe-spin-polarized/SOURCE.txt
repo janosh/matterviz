@@ -1,0 +1,1 @@
+Real LOBSTER output for a 2×2×2 bcc Fe supercell (16 atoms, spin-polarized, LOBSTER 2 list format) from the [pymatgen test files](https://github.com/materialsproject/pymatgen-test-files/tree/85005108e99e40cbd59e78f067459b0ca664efc6/electronic_structure/cohp).

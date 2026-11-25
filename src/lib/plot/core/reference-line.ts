@@ -1,5 +1,5 @@
 // Reference line utilities: helper functions and coordinate resolution
-import { array_extent, type Vec2, type Vec4 } from '#lib/math.js'
+import { array_extent, to_degrees, to_radians, type Vec2, type Vec4 } from '#lib/math.js'
 import type {
   DecorationPoint,
   DecorationScene,
@@ -202,13 +202,7 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
   return seg && !(seg[0] === seg[2] && seg[1] === seg[3]) ? finite(seg) : null
 }
 
-interface AnnotationPosition {
-  x: number
-  y: number
-  text_anchor: ReferenceAnnotationTextAnchor
-  dominant_baseline: ReferenceAnnotationBaseline
-  rotation?: number
-}
+type AnnotationPosition = Omit<ReferenceAnnotationCandidate, `position` | `side` | `rect`>
 
 const POSITION_TEXT_ANCHOR: Record<
   ReferenceAnnotationPosition,
@@ -287,7 +281,7 @@ export function compute_annotation_position(
   // Keep the text readable: never upside down
   let rotation: number | undefined
   if (annotation.rotate && len > 0) {
-    const angle = Math.atan2(delta_y, delta_x) * (180 / Math.PI)
+    const angle = to_degrees(Math.atan2(delta_y, delta_x))
     rotation = angle > 90 ? angle - 180 : angle < -90 ? angle + 180 : angle
   }
 
@@ -370,7 +364,7 @@ const rotate_rect_around = (
   rotation_degrees: number | undefined,
 ): Rect => {
   if (!rotation_degrees) return rect
-  const rotation_radians = (rotation_degrees * Math.PI) / 180
+  const rotation_radians = to_radians(rotation_degrees)
   const cos_rotation = Math.cos(rotation_radians)
   const sin_rotation = Math.sin(rotation_radians)
   const corners = [

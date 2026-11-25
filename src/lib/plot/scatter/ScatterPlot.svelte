@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { value_key } from '#lib/utils.js'
+  import { value_key, is_finite_number } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
@@ -157,7 +157,6 @@
     lookalike_legend_label,
     filter_series_to_ranges,
     line_reaches_view,
-    is_finite_num,
     legend_row_dedupe,
     materialize_series_points,
     type MaterializedSeries,
@@ -466,8 +465,8 @@
       if (!show_points || !has_marker(srs, `points`)) continue
       const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
       // Scale-sized and style-sized points: a series mixing them reaches as far as the larger
-      const by_size = [srs.size_values?.some(is_finite_num) ?? false]
-      if (by_size[0] && !srs.size_values?.every(is_finite_num)) by_size.push(false)
+      const by_size = [srs.size_values?.some(is_finite_number) ?? false]
+      if (by_size[0] && !srs.size_values?.every(is_finite_number)) by_size.push(false)
       for (const style of [srs.point_style ?? {}].flat())
         for (const sized of by_size) {
           const radius = sized ? size_radius : (point_ctrl?.size ?? style.radius ?? 3)
@@ -904,15 +903,15 @@
       const pt = point.point_style
       const stroke = point_ctrl?.stroke_color ?? pt?.stroke
       return {
-        radius: is_finite_num(point.size_value)
+        radius: is_finite_number(point.size_value)
           ? size_fn(point.size_value)
           : (point_ctrl?.size ?? pt?.radius ?? default_radius),
         // A size_value overrides any static symbol area, so the size legend reads true
-        symbol_size: is_finite_num(point.size_value)
+        symbol_size: is_finite_number(point.size_value)
           ? undefined
           : (pt?.symbol_size ?? undefined),
         symbol_type: pt?.symbol_type ?? default_symbol,
-        fill: is_finite_num(point.color_value)
+        fill: is_finite_number(point.color_value)
           ? color_fn(point.color_value)
           : (point_ctrl?.color ?? pt?.fill ?? default_fill),
         fill_opacity: point_ctrl?.opacity ?? pt?.fill_opacity ?? 1,
@@ -937,12 +936,14 @@
       const by_idx: MarkerStyle[] = []
       const unsafe = new Set<MarkerStyle>()
       for (const point of series_data.points) {
-        const by_value = is_finite_num(point.size_value) || is_finite_num(point.color_value)
+        const by_value =
+          is_finite_number(point.size_value) || is_finite_number(point.color_value)
         let style = by_value ? undefined : shared.get(point.point_style)
         if (!style) {
           style = style_for(point)
           if (!by_value) shared.set(point.point_style, style)
-          const fill_safe = is_finite_num(point.color_value) || canvas_safe_color(style.fill)
+          const fill_safe =
+            is_finite_number(point.color_value) || canvas_safe_color(style.fill)
           if (!fill_safe || !canvas_safe_color(style.stroke)) unsafe.add(style)
         }
         by_idx[point.point_idx] = style
@@ -1602,7 +1603,7 @@
     const hovered_series = assigned_series[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
-    const finite_color_value = is_finite_num(color_value) ? color_value : null
+    const finite_color_value = is_finite_number(color_value) ? color_value : null
     const [cx, cy] = series_projector(hovered_series).point(point)
     const active_x_config = hovered_series.x_axis === `x2` ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis

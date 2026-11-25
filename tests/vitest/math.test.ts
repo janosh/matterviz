@@ -1855,3 +1855,66 @@ describe(`assert_non_negative`, () => {
     },
   )
 })
+
+test.each([
+  [4, 3, Infinity, 4], // fits: same buffer
+  [0, 5, Infinity, 5], // empty start jumps to `needed`
+  [4, 5, Infinity, 8], // doubles
+  [4, 20, Infinity, 20], // past double: exactly `needed`
+  [4, 5, 6, 6], // doubling stops at `cap`
+])(
+  `grow_buffer(length %i, needed %i, cap %s) has length %i`,
+  (length, needed, cap, expected) => {
+    for (const BufferType of [Float32Array, Float64Array, Int32Array, Uint32Array]) {
+      const buffer = new BufferType(Array.from({ length }, (_, idx) => idx + 1))
+      const grown = math.grow_buffer(buffer, needed, cap)
+      expect(grown).toBeInstanceOf(BufferType)
+      expect(grown).toHaveLength(expected)
+      if (expected === length) expect(grown).toBe(buffer)
+      expect([...grown.subarray(0, length)]).toEqual([...buffer])
+    }
+  },
+)
+
+// per-axis mean in the points' own dimension (simplex rotation centres, polyhedron targets)
+test.each([
+  [[[1, 2]], [1, 2]],
+  [
+    [
+      [0, 0],
+      [1, 0],
+      [0.5, 1],
+    ],
+    [0.5, 1 / 3],
+  ],
+  [
+    [
+      [0, 0, 0],
+      [2, 4, 6],
+    ],
+    [1, 2, 3],
+  ],
+  [
+    [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+    ],
+    [0.25, 0.25, 0.25, 0.25],
+  ],
+])(`mean_point(%j) = %j`, (points, expected) => {
+  expect(math.mean_point(points)).toEqual(expected)
+})
+
+// Object.is per element (Svelte's equality): NaN entries never read as a change, -0 and 0 do
+test.each([
+  [[1, 2, 3], [1, 2, 3], true],
+  [[1, 2], [1, 2, 3], false],
+  [[NaN, 1], [NaN, 1], true],
+  [[0], [-0], false],
+  [[`a`, `b`], [`a`, `b`], true],
+  [new Float64Array([1, NaN]), new Float64Array([1, NaN]), true],
+])(`same_values(%j, %j) = %s`, (left, right, expected) => {
+  expect(math.same_values<unknown>(left, right)).toBe(expected)
+})

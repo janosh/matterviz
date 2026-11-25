@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { is_finite_number } from '#lib/utils.js'
   import { InformationOutline } from 'svelte-widgets/icons'
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
   import { display_idx, trajectory_property_config, zero_if_negligible } from '#lib/labels.js'
@@ -11,9 +12,6 @@
     get_frame_time_step,
     summarize_properties,
   } from './plotting'
-
-  const is_valid_number = (val: unknown): val is number =>
-    typeof val === `number` && Number.isFinite(val)
 
   const format_range = (values: number[], unit: string): string | null => {
     if (values.length === 0) return null
@@ -68,14 +66,14 @@
       total_frames > 1 &&
       frame_numbers[0] === 0 &&
       frame_numbers.at(-1) === total_frames - 1 &&
-      is_valid_number(first_step) &&
-      is_valid_number(last_step)
+      is_finite_number(first_step) &&
+      is_finite_number(last_step)
         ? format_range([first_step, last_step], ``)
         : null
     const frame_time_step =
       simulation_time_step && get_frame_time_step(step_samples, simulation_time_step)
     const duration =
-      is_valid_number(frame_time_step) && total_frames > 1
+      is_finite_number(frame_time_step) && total_frames > 1
         ? `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${simulation_time_unit}`
         : null
 
@@ -174,7 +172,7 @@
             `time-step`,
             `Simulation time per recorded MD step`,
           ),
-        is_valid_number(current_time) &&
+        is_finite_number(current_time) &&
           safe_item(
             `Current Time`,
             `${format_num(current_time, `.3~s`)} ${simulation_time_unit}`,

@@ -208,7 +208,7 @@ describe(`marching_cubes`, () => {
           return Reflect.get(target, key)
         },
       })
-      const { positions, indices } = marching_cubes_buffers(
+      const { positions, indices, normals } = marching_cubes_buffers(
         { values: counted, dims, order: `z_fastest` },
         isovalue,
         IDENTITY,
@@ -230,6 +230,7 @@ describe(`marching_cubes`, () => {
       }
       const n_vertices = positions.length / 3
       expect(n_vertices).toBe(crossed_edges)
+      expect(normals).toHaveLength(0) // off means empty, which consumers branch on
       expect(n_reads).toBeLessThan(4 * values.length)
       if (n_closed === null) return
       const edge_uses = new Map<string, number>()

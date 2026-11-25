@@ -2,7 +2,7 @@ import { display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Pbc, Site } from '#lib/structure/index.js'
-import { numeric_sites } from '#lib/structure/site.js'
+import { numeric_sites, site_count } from '#lib/structure/site.js'
 
 export const NO_PBC: Pbc = [false, false, false]
 
@@ -60,19 +60,6 @@ export const MAX_PAIRS_PER_SITE = 16
 // cutoff on a far-flung cluster) get bins wider than `cutoff`, which stays correct since a
 // neighbor is then still within the 27 surrounding bins.
 const MAX_BINS_PER_POSITION = 2
-
-// Amortized doubling, never past `cap` (so a capped buffer fills exactly to its budget)
-export const grow = <Buffer extends Float64Array | Int32Array>(
-  buffer: Buffer,
-  needed: number,
-  cap = Infinity,
-): Buffer => {
-  if (needed <= buffer.length) return buffer
-  const BufferType = buffer.constructor as new (length: number) => Buffer
-  const next = new BufferType(Math.min(cap, Math.max(needed, buffer.length * 2)))
-  next.set(buffer)
-  return next
-}
 
 // Forward offsets for cutoff-wide bins (13 neighbors) and half-width bins (62).
 // Each unordered pair of bins is searched once; own-bin pairs use increasing slots.
@@ -156,6 +143,21 @@ export const site_positions = (
     coordinates: columns?.coordinates,
     stride: columns?.stride ?? 0,
   }
+}
+
+// Site positions as packed xyz triples, written into `out` when its length fits
+export const packed_positions = (
+  structure: AnyStructure,
+  out?: Float64Array,
+): Float64Array => {
+  const { sites, n_sites, coordinates, stride } = site_positions(structure)
+  const xyz = out?.length === n_sites * 3 ? out : new Float64Array(n_sites * 3)
+  for (let idx = 0; idx < n_sites; idx++)
+    for (let axis = 0; axis < 3; axis++)
+      xyz[idx * 3 + axis] = coordinates
+        ? coordinates[idx * stride + axis]
+        : sites[idx].xyz[axis]
+  return xyz
 }
 
 // Per-element-pair distance band: a pair of sites with interned element ids (e_a, e_b) is kept
@@ -356,9 +358,9 @@ export function neighbor_query_cutoff(
       )
     }
     n_cloud = n_sites + n_images
-    cloud_pos = grow(cloud_pos, n_cloud * 3)
-    cloud_src = grow(cloud_src, n_cloud)
-    cloud_shift = grow(cloud_shift, n_cloud * 3)
+    cloud_pos = math.grow_buffer(cloud_pos, n_cloud * 3)
+    cloud_src = math.grow_buffer(cloud_src, n_cloud)
+    cloud_shift = math.grow_buffer(cloud_shift, n_cloud * 3)
     let slot = 0
     const push_cloud = (idx: number, shift_a: number, shift_b: number, shift_c: number) => {
       const face_a = frac[idx * 3] + shift_a
@@ -558,9 +560,9 @@ export function neighbor_query_cutoff(
                   `lower the cutoff or the site count`,
               )
             }
-            pair_a = grow(pair_a, n_pairs + 1, max_pairs)
-            pair_b = grow(pair_b, n_pairs + 1, max_pairs)
-            pair_dist_sq = grow(pair_dist_sq, n_pairs + 1, max_pairs)
+            pair_a = math.grow_buffer(pair_a, n_pairs + 1, max_pairs)
+            pair_b = math.grow_buffer(pair_b, n_pairs + 1, max_pairs)
+            pair_dist_sq = math.grow_buffer(pair_dist_sq, n_pairs + 1, max_pairs)
           }
           pair_a[n_pairs] = slot_a
           pair_b[n_pairs] = slot_b
@@ -601,11 +603,9 @@ export function neighbor_query_cutoff(
   for (let center = 0; center < n_sites; center++) {
     const start = offsets[center]
     const count = offsets[center + 1] - start
-    if (count > block_partner.length) {
-      block_partner = grow(block_partner, count)
-      block_dist_sq = grow(block_dist_sq, count)
-      block_perm = grow(block_perm, count)
-    }
+    block_partner = math.grow_buffer(block_partner, count)
+    block_dist_sq = math.grow_buffer(block_dist_sq, count)
+    block_perm = math.grow_buffer(block_perm, count)
     for (let rank = 0; rank < count; rank++) {
       const entry = entry_at[start + rank]
       block_partner[rank] = entry & 1 ? pair_a[entry >> 1] : pair_b[entry >> 1]
@@ -679,8 +679,8 @@ const k_search_bounds = (
   order: number,
   pbc: Pbc,
 ): { total_volume: number; max_cutoff: number } => {
-  const coords = new Float64Array(structure.sites.flatMap(({ xyz }) => xyz))
-  const [mins, maxs] = bounding_box(coords, structure.sites.length)
+  const coords = packed_positions(structure)
+  const [mins, maxs] = bounding_box(coords, coords.length / 3)
   const extents = [0, 1, 2].map((axis) => Math.max(maxs[axis] - mins[axis], 1))
   // A pair at opposite box corners spans the diagonal exactly, and its distance can round
   // 1 ulp above hypot(extents); the margin keeps that pair inside the last pass's radius
@@ -746,7 +746,7 @@ export function neighbor_query(
   if (!Number.isInteger(order) || order < 1) {
     throw new Error(`neighbor_query: k must be a positive integer, got ${order}`)
   }
-  const n_sites = structure.sites.length
+  const n_sites = site_count(structure)
   if (n_sites === 0) return neighbor_query_cutoff(structure, 1, { pbc, sorted: true })
   const { total_volume, max_cutoff } = k_search_bounds(
     structure,

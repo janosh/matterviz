@@ -89,13 +89,14 @@ export function get_formula_label_segments(label: string): FormulaLabelSegment[]
   return segments.length > 0 ? segments : [{ text: label, subscript: false }]
 }
 
-// Render a compound's markup tokens, wrapping each sub/superscript run with `wrap_script`
+// Render a compound's markup tokens, wrapping each sub/superscript run with `wrap_script`. A
+// caret charge marks up a lone element too, which otherwise passes through (Cu^+ stayed plain).
 const format_formula_markup = (
   formula: string,
   use_subscripts: boolean,
   wrap_script: (script: string, tag: `sub` | `sup`) => string,
 ): string =>
-  use_subscripts && is_compound(formula)
+  use_subscripts && (is_compound(formula) || formula.includes(`^`))
     ? tokenize_formula_markup(formula)
         .map(
           ({ text, sub, sup }) => text ?? wrap_script(sub ?? sup ?? ``, sub ? `sub` : `sup`),

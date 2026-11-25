@@ -4,6 +4,7 @@
   // cursor to follow its hovered temperature and composition (and to move it from here), and
   // its x_frame to share its composition axis.
   import { format_num } from 'svelte-widgets/format'
+  import { clamp } from 'svelte-widgets/utils'
   import { hsl } from 'd3-color'
   import type { Vec2 } from '#lib/math.js'
   import { sanitize_formula } from '#lib/sanitize.js'
@@ -129,7 +130,7 @@
     // the wells and tangents stay readable when a curve shoots up far from its stable range;
     // at least 1 kJ/mol tall when every curve sits on the hull
     const g_cap = hull_min + Math.max(4 * Math.abs(hull_min), 2)
-    const g_top = Math.max(hull_min + 1, Math.min(g_max, g_cap))
+    const g_top = clamp(g_max, hull_min + 1, g_cap)
     const margin = 0.08 * (g_top - hull_min)
     return {
       t_value,
@@ -184,7 +185,6 @@
       points.map(([x_val, g_val]): Vec2 => [x_scale(x_val), y_scale(g_val)]),
     )
   const fmt_g = (g_val: number) => format_num(g_val, `.2f`)
-  const clamp = (val: number, lo: number, hi: number) => Math.min(Math.max(val, lo), hi)
 
   // Hovering moves the shared cursor along this plot's composition axis at the shown T
   const on_pointermove = (event: PointerEvent) => {

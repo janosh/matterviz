@@ -4,6 +4,7 @@
 // buffers, the hover halo) follows the animation.
 
 import { motion_duration } from '#lib/effects.svelte.js'
+import { same_values } from '#lib/math.js'
 import { cubicOut } from 'svelte/easing'
 import type { TweenOptions } from 'svelte/motion'
 import { Color, SRGBColorSpace } from 'three/webgpu'
@@ -32,12 +33,6 @@ export function srgb_parser(): (color: string) => { r: number; g: number; b: num
     }
     return rgb
   }
-}
-
-const same_items = <T>(left: ArrayLike<T>, right: ArrayLike<T>): boolean => {
-  if (left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
-  return true
 }
 
 export interface InstanceTweenClock {
@@ -73,8 +68,8 @@ export function create_instance_tween(): InstanceTweenClock {
     // (mid-flight included), one without a previous counterpart appears at its target.
     // Retargeting to the current target keeps a running animation going.
     retarget(next_keys, next_target, now, options = {}) {
-      const same_keys = same_items(next_keys, keys)
-      if (same_keys && same_items(next_target, target)) return
+      const same_keys = same_values(next_keys, keys)
+      if (same_keys && same_values(next_target, target)) return
       delay = options.delay ?? DEFAULTS.delay
       duration = motion_duration(options.duration ?? DEFAULTS.duration)
       easing = options.easing ?? DEFAULTS.easing

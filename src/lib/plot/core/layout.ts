@@ -44,7 +44,7 @@ export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 export const TITLE_EDGE_AIR = 4
 
 // Height of ChartShell's corner controls row (gear, fullscreen) from the plot's top edge
-const CONTROLS_ROW_HEIGHT = 24
+export const CONTROLS_ROW_HEIGHT = 24
 // Per-side floors; measured ticks and titles win when they need more
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 50, l: 50, r: 12 }
 

@@ -21,6 +21,7 @@ import IsosurfacePage from '#root/src/routes/(demos)/structure/isosurface/+page.
 import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+page.svelte'
 import { auto_isosurface_settings, type IsosurfaceSettings } from '#lib/isosurface/types.js'
 import type { StructureView } from '#lib/structure/index.js'
+import * as symmetry from '#lib/symmetry/index.js'
 import { quaternary_files } from '#site/convex-hull/index.js'
 import { volumetric_files } from '#site/isosurfaces.js'
 import { all_phase_diagram_files, binary_diagrams } from '#site/phase-diagrams.js'
@@ -70,13 +71,15 @@ vi.mock(`#lib/synthesis-planning/index.js`, async (orig) => ({
 }))
 vi.mock(`#lib/symmetry/index.js`, async (orig) => ({
   ...(await orig<object>()),
-  ensure_moyo_wasm_ready: () => Promise.reject(new Error(`wasm fetch failed`)),
+  ensure_moyo_wasm_ready: vi.fn(),
+  analyze_structure_symmetry: () => Promise.reject(new Error(`wasm fetch failed`)),
 }))
 
 afterEach(() => {
   Object.assign(page, { url: new URL(`http://localhost/`) })
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   reset_stub()
 })
 
@@ -220,16 +223,21 @@ test.each<LoadRace>([
   if (stale instanceof Object && `dispose` in stale) expect(stale.dispose).toHaveBeenCalled()
 })
 
-// the spinner branch came first and a failed init never sets wasm_ready: endless spinner
-test(`a failed symmetry WASM init is reported instead of an endless spinner`, async () => {
-  vi.stubGlobal(`fetch`, () => new Promise(() => {})) // the viewers' fixture fetches never land
+// the page never loads moyo's WASM itself (the viewer's analysis runs in a worker), and a
+// failed analysis shows its error instead of an endless spinner
+test(`a failed symmetry analysis is reported instead of an endless spinner`, async () => {
+  vi.stubEnv(`VITEST`, ``) // the viewer skips analysis under vitest
+  const fixture = readFileSync(`static/structures/Bi2Zr2O8-Fm3m.json`, `utf8`)
+  vi.stubGlobal(`fetch`, async () => new Response(fixture))
+  vi.spyOn(console, `error`).mockImplementation(() => {})
   mount(SymmetryPage, { target: document.body })
   await vi.waitFor(() =>
     expect(document.querySelector(`.symmetry-grid pre`)?.textContent).toBe(
-      `WASM init failed: Error: wasm fetch failed`,
+      `Symmetry analysis failed: wasm fetch failed`,
     ),
   )
   expect(document.querySelector(`.loading-placeholder`)).toBeNull()
+  expect(symmetry.ensure_moyo_wasm_ready).not.toHaveBeenCalled()
 })
 
 // picks were looked up in structure_map (plain .json only), so CIF/POSCAR clicks did nothing
@@ -256,7 +264,9 @@ test(`a system switched away from cannot report its load failure`, async () => {
   vi.spyOn(second_system, `load`).mockReturnValue(second.promise)
   mount(SynthesisPage, { target: document.body })
   flushSync()
-  set_select(doc_query<HTMLSelectElement>(`select`), second_system.id)
+  // the systems are a FilePicker; pick the second one
+  const items = [...document.querySelectorAll<HTMLElement>(`.file-item`)]
+  items.find((item) => item.textContent?.includes(second_system.label))?.click()
   first.reject(new Error(`first system failed`))
   await settle(1)
   expect(document.querySelector(`p.error`)).toBeNull()
@@ -344,16 +354,21 @@ test(`RDF compare buttons share their series' color`, () => {
 })
 
 // a dropped local file has no fixture to name: ?file= pointed reloads at a missing fixture
-test(`fermi surface loads write ?file= only for site fixtures`, () => {
+// URL writes land once per tick (set_url_param batches them) and only when the URL changes
+test(`fermi surface loads write ?file= only for site fixtures`, async () => {
   vi.spyOn(lib, `open_material`).mockReturnValue(new Promise(() => {}))
   mount(FermiSurfaceDemo, { target: document.body, props: { sync_url: true } })
   flushSync()
   const { on_file_load } = renderer_stub().read()
   if (typeof on_file_load !== `function`)
     throw new TypeError(`FermiSurface got no on_file_load`)
+  vi.mocked(goto).mockClear()
+  // a dropped file names no fixture: the param stays off, so the URL doesn't change
   on_file_load({ source_filename: `mine.bxsf`, file: new File([`x`], `mine.bxsf`) })
-  expect(goto).toHaveBeenLastCalledWith(`http://localhost/`, expect.any(Object))
+  await Promise.resolve()
+  expect(goto).not.toHaveBeenCalled()
   on_file_load({ source_filename: `pb.bxsf.gz`, source_url: `/fermi-surfaces/pb.bxsf.gz` })
+  await Promise.resolve()
   expect(goto).toHaveBeenLastCalledWith(
     `http://localhost/?file=pb.bxsf.gz`,
     expect.any(Object),

@@ -6,7 +6,7 @@ import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
 import { is_finite_matrix3x3, transpose_3x3 } from '#lib/math.js'
-import { yield_turn } from '#lib/utils.js'
+import { yield_turn, is_finite_number } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import { rows_to_csv } from 'svelte-widgets/format'
 import { zipSync } from 'fflate'
@@ -234,7 +234,7 @@ const numeric_properties = (data: Record<string, unknown>): Record<string, numbe
   const properties: Record<string, number> = {}
   for (const [key, value] of Object.entries(data)) {
     if (key === `Step`) continue
-    if (typeof value === `number` && Number.isFinite(value)) properties[key] = value
+    if (is_finite_number(value)) properties[key] = value
   }
   return properties
 }

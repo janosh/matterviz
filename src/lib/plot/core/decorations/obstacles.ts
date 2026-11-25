@@ -1,7 +1,7 @@
 // Obstacle fields the decoration solver routes around, plus the DOM footprint helpers the
 // hosts use to size auto-placed decorations before and after first render.
 
-import type { Vec2 } from '#lib/math.js'
+import { lerp, type Vec2 } from '#lib/math.js'
 import type { Rect, Sides } from '#lib/plot/core/layout.js'
 import { PLACEMENT_CELL } from '#lib/plot/core/layout.js'
 import type { DecorationPoint, DecorationSize, Obstacle } from './types'
@@ -219,7 +219,7 @@ function walk_mark_cells(
     const n_steps = Math.max(1, Math.ceil(Math.hypot(to_x - from_x, to_y - from_y) / step))
     for (let idx = 0; idx <= n_steps; idx++) {
       const frac = idx / n_steps
-      add_point(from_x + (to_x - from_x) * frac, from_y + (to_y - from_y) * frac)
+      add_point(lerp(from_x, to_x, frac), lerp(from_y, to_y, frac))
     }
   }
   const add_if_inside = (point: DecorationPoint): void => {

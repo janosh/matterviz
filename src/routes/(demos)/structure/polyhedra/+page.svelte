@@ -1,11 +1,10 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { page } from '$app/state'
   import { DEFAULTS } from '#lib/settings.js'
   import type { AnyStructure, Molecule } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
   import type { Vec3 } from '#lib/math.js'
-  import { file_param } from '#site/state.svelte.js'
+  import { url_param } from '#site/state.svelte.js'
   import { parse_structure_fixture } from '#site/structures.js'
   import { onMount } from 'svelte'
 
@@ -14,7 +13,7 @@
   let url_structure = $derived.by(() => {
     // ?file=/?supercell= are a dev-only convenience; url.searchParams is off-limits during
     // prerender (would 500 the static build), so only read them client-side
-    const requested = file_param()
+    const requested = url_param(`file`)
     if (!requested) return null
     try {
       return parse_structure_fixture(requested)
@@ -67,9 +66,9 @@
   // ?supercell=2x2x2 overrides; ?file= structures default to 1x1x1. Read client-side only
   // (prerender forbids url.searchParams) and once on mount so it doesn't fight user changes.
   onMount(() => {
-    const supercell = page.url.searchParams.get(`supercell`)
+    const supercell = url_param(`supercell`)
     if (supercell) supercell_scaling = supercell
-    else if (file_param()) supercell_scaling = `1x1x1`
+    else if (url_param(`file`)) supercell_scaling = `1x1x1`
   })
   let scene_props = $state({
     show_polyhedra: `crystals` as const,

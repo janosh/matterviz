@@ -12,6 +12,7 @@
     draw_face,
     draw_hull_labels,
     draw_hull_points,
+    draw_ring,
     face_color_resolver,
     find_hull_entry_at_mouse,
     hull_face_sets,
@@ -151,18 +152,7 @@
     if (close) ctx.closePath()
     ctx.stroke()
   }
-  const ring = (
-    ctx: CanvasRenderingContext2D,
-    point: Projected,
-    radius: number,
-    color: string,
-  ) => {
-    ctx.strokeStyle = color
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI)
-    ctx.stroke()
-  }
+  const ring = { stroke: { width: 2 } } // draw_ring style of probe, emphasis and selection
 
   // Tie-triangles and their colours, shared by the base (all faces) and the overlay (the
   // hovered face), so a hover doesn't rebuild the face list
@@ -307,7 +297,7 @@
       ctx.setLineDash(pinned ? [5, 3] : [2, 3])
       for (const idx of phases) stroke_path(ctx, [point, project(...model.phases[idx].xy)])
       ctx.setLineDash([])
-      if (pinned) ring(ctx, point, 7 * scale, color)
+      if (pinned) draw_ring(ctx, point, 7 * scale, color, ring)
       ctx.fillStyle = pinned ? color : add_alpha(color, 0.8)
       ctx.beginPath()
       ctx.arc(point.x, point.y, pinned ? 3 : 4, 0, 2 * Math.PI)
@@ -322,7 +312,8 @@
     }
     for (const idx of emphasized_phases) {
       if (Number.isFinite(section.e_above_hull[idx])) {
-        ring(ctx, project(...model.phases[idx].xy), 11 * scale, TERNARY_COLORS.highlight)
+        const point = project(...model.phases[idx].xy)
+        draw_ring(ctx, point, 11 * scale, TERNARY_COLORS.highlight, ring)
       }
     }
     // Selected/highlighted points: ring, then the marker again on top of it
@@ -335,12 +326,8 @@
     for (const point of points) {
       const selected = point.entry === selected_entry
       if (!selected && !highlighted.has(point.entry)) continue
-      ring(
-        ctx,
-        point.projected,
-        9 * scale,
-        selected ? TERNARY_COLORS.selected : TERNARY_COLORS.highlight,
-      )
+      const color = selected ? TERNARY_COLORS.selected : TERNARY_COLORS.highlight
+      draw_ring(ctx, point.projected, 9 * scale, color, ring)
       draw_hull_points(ctx, [point], point_opts)
     }
   }

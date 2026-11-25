@@ -57,7 +57,7 @@
   import Structure from '#lib/structure/Structure.svelte'
   import { is_crystal } from '#lib/structure/validation.js'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
-  import { clamp, html_to_text, is_plain_object } from 'svelte-widgets/utils'
+  import { clamp, html_to_text, is_plain_object, to_error } from 'svelte-widgets/utils'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -188,7 +188,9 @@
     // Densities of states keyed by label. Dropped DOS files replace them.
     doses?: Record<string, DosData>
     phonon?: PhononSpectra // phonon bands and DOS, on their own frequency axis
-    // a sweep along one axis: while set, the panes show its selected frame, not the props above
+    // A sweep along one axis: while set, the panes show its selected frame, not the props above.
+    // Pass it `$state.raw` or frozen: a deep `$state` proxies each frame on its own, so a structure
+    // shared by frames reads as new on every step and rebuilds.
     sweep?: Sweep
     series_id?: string // the shown series (default: the first)
     frame_idx?: number // the shown frame of that series
@@ -806,7 +808,7 @@
       try {
         dropped = normalize_sweep(opened.data)
       } catch (error) {
-        return error instanceof Error ? error.message : String(error)
+        return to_error(error).message
       }
       sweep = Object.freeze(dropped)
       nav.series_id.current = undefined
