@@ -273,7 +273,7 @@ test.each([
   expect(values).toContain(0)
   values.forEach((value, idx) => {
     const ph = ph_lo + (((idx % 36) + 0.5) / 36) * (ph_hi - ph_lo)
-    const potential = e_hi - ((Math.floor(idx / 36) + 0.5) / 27) * (e_hi - e_lo)
+    const potential = e_lo + ((Math.floor(idx / 36) + 0.5) / 27) * (e_hi - e_lo)
     const stable = stable_plane_at(envelope, ph, potential)
     if (stable.plane === plane) expect(value).toBe(0)
     else {

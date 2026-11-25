@@ -217,7 +217,7 @@ export function pourbaix_domains(
 }
 
 // Energy (eV per metal atom) of `plane` above the stable envelope at the centres of an
-// n_ph × n_e grid over the window, row-major from the top (highest E) row down: 0 where its
+// n_ph × n_e grid over the window, row-major from the bottom (lowest E) row up: 0 where its
 // species is stable, the driving force to transform into the stable one elsewhere
 export function energy_above_envelope(
   planes: readonly PourbaixPlane[],
@@ -227,7 +227,7 @@ export function energy_above_envelope(
 ): Float64Array {
   const values = new Float64Array(n_ph * n_e)
   for (let row = 0; row < n_e; row++) {
-    const potential = e_hi - ((row + 0.5) / n_e) * (e_hi - e_lo)
+    const potential = e_lo + ((row + 0.5) / n_e) * (e_hi - e_lo)
     for (let col = 0; col < n_ph; col++) {
       const ph = ph_lo + ((col + 0.5) / n_ph) * (ph_hi - ph_lo)
       let envelope = Infinity // stable_plane_at without its per-cell allocations

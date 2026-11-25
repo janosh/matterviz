@@ -62,8 +62,7 @@
       <SettingsGroup title={side === `substrate` ? `Substrate` : `Film`} collapsible={false}>
         <!-- a new material means a new match list, so #N would name another interface -->
         <FilePicker
-          files={bulk_names.map((name) => ({ name, url: ``, type: `json` }))}
-          active_files={[bulks[side].value]}
+          {...bulks[side].picker(`json`)}
           on_click={({ name }) => ([bulks[side].value, match_idx] = [name, 0])}
           style="margin-bottom: 0.5em"
         />

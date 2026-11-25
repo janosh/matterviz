@@ -142,7 +142,8 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   const active = url_selection(`file`, file_names)
   let pdos_type = $state<'atom' | 'orbital' | null>(null)
 
-  const current_dos = $derived(files.find((file) => file.name === active.value)?.data)
+  const active_file = $derived(files.find((file) => file.name === active.value))
+  const current_dos = $derived(active_file?.data)
   const doses = $derived.by(() => {
     if (pdos_type) {
       const projected = extract_pdos(current_dos, pdos_type)
@@ -153,9 +154,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
     if (!total) throw new Error(`Invalid DOS in ${active.value}`)
     return { '': total }
   })
-  const is_electronic = $derived(
-    files.find((file) => file.name === active.value)?.category === 'Electronic',
-  )
+  const is_electronic = $derived(active_file?.category === 'Electronic')
 </script>
 
 <div

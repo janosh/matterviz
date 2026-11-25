@@ -26,13 +26,6 @@
   let show_water_lines = $state(true)
   let show_labels = $state(true)
   let heatmap_formula = $state<string | null>(null)
-  // one shared type, so the picker shows no file-type badges or per-name type filters, and
-  // no url: a picked system is not fetched, nor dragged onto the plot
-  const system_files = Object.keys(pourbaix_systems).map((name) => ({
-    name,
-    url: ``,
-    type: `system`,
-  }))
 </script>
 
 <h1>Pourbaix Diagram</h1>
@@ -54,7 +47,7 @@
 <section class="controls">
   <!-- a heatmap species of the previous system would name no entry of the new one -->
   <FilePicker
-    files={system_files}
+    {...system.picker(`system`)}
     active_files={dropped ? [] : [system.value]}
     on_click={({ name }) => {
       system.value = name

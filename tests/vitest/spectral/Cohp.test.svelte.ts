@@ -4,7 +4,6 @@ import { type CohpData, parse_cohpcar, parse_doscar } from '#lib/spectral/lobste
 import type { ElectronicDos } from '#lib/spectral/types.js'
 import { lobster_samples } from '#site/electronic/lobster/index.js'
 import { type ComponentProps, flushSync } from 'svelte'
-import { fromStore, writable } from 'svelte/store'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { bind_props, fire, mount_sized, mouse, plot_svg, translate_of } from '../setup'
@@ -140,24 +139,15 @@ describe(`Cohp`, () => {
 
   // the plot binds its view for the DOS link: new data must not keep the last data's view
   it(`new data with a DOS spans its own energies in both panes`, async () => {
-    const data = fromStore(
-      writable<{ cohp: CohpData; doses?: { Total: ElectronicDos } }>({ cohp: cobi }),
-    )
-    const props = {
-      get cohp() {
-        return data.current.cohp
-      },
-      get doses() {
-        return data.current.doses
-      },
-    }
+    const props = $state<{ cohp: CohpData; doses?: { Total: ElectronicDos } }>({ cohp: cobi })
     await mount_sized(Cohp, props, { selector: `.scatter`, width: 800, height: 400 })
     const y_ticks = () =>
       [...document.querySelectorAll(`.scatter`)].map((plot) =>
         [...plot.querySelectorAll(`.y-axis .tick text`)].map((text) => text.textContent),
       )
     expect(y_ticks()).toEqual([[`-8`, `-6`, `-4`, `-2`, `0`, `2`, `4`, `6`]]) // COBI: -7.9..5 eV
-    data.current = { cohp: parse_cohpcar(cohpcar(1), `COHP`), doses: { Total: kf_dos } }
+    props.cohp = parse_cohpcar(cohpcar(1), `COHP`)
+    props.doses = { Total: kf_dos }
     flushSync()
     const ticks = y_ticks()
     expect(ticks).toHaveLength(2)

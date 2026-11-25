@@ -1,7 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { to_error } from 'svelte-widgets/utils'
-  import { page } from '$app/state'
   import FilePicker from '#lib/FilePicker.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import { IDENTITY_3X3, type Matrix3x3, type Vec2 } from '#lib/math.js'
@@ -10,7 +9,7 @@
   import { is_crystal } from '#lib/structure/validation.js'
   import type { WulffFacetInput, WulffShapeData } from '#lib/wulff/index.js'
   import { parse_surface_energies, WulffFacetEditor, WulffShape } from '#lib/wulff/index.js'
-  import { replace_url, url_param, url_selection } from '#site/state.svelte.js'
+  import { set_url_param, url_param, url_selection } from '#site/state.svelte.js'
   import { decode_facets, encode_facets, oxide_example, wulff_examples } from '#site/wulff.js'
   import { onMount } from 'svelte'
 
@@ -78,17 +77,11 @@
   $effect(() => {
     // a dropped file's data can't be linked to
     const shared = examples.includes(dataset)
-    const params = {
-      facets: shared ? encode_facets(facets, dataset.facets) : null,
-      delta_mu: shared && delta_mu !== 0 ? String(delta_mu) : null,
-    }
+    const encoded = shared ? encode_facets(facets, dataset.facets) : null
+    const mu = shared && delta_mu !== 0 ? String(delta_mu) : null
     const timer = setTimeout(() => {
-      const url = new URL(page.url.href)
-      for (const [key, value] of Object.entries(params)) {
-        if (value === null) url.searchParams.delete(key)
-        else url.searchParams.set(key, value)
-      }
-      if (url.href !== page.url.href) void replace_url(url)
+      set_url_param(`facets`, encoded)
+      set_url_param(`delta_mu`, mu)
     }, 300)
     return () => clearTimeout(timer)
   })

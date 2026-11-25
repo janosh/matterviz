@@ -974,12 +974,7 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
   })
 </script>
 
-<FilePicker
-  files={Object.keys(examples).map((name) => ({ name, url: ``, type: `example` }))}
-  active_files={[selected.value]}
-  on_click={({ name }) => (selected.value = name)}
-  style="margin-bottom: 1em"
-/>
+<FilePicker {...selected.picker(`example`)} style="margin-bottom: 1em" />
 
 <ScatterPlot
   {series}

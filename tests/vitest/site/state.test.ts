@@ -70,11 +70,22 @@ test.each([
   expect(url_selection(key, options, initial).value).toBe(expected)
 })
 
-test(`url_selection writes a pick back, the initial option dropping the param`, async () => {
+// picks by a FilePicker click or by setting value, the initial option dropping the param
+test(`url_selection writes a pick back, its picker lists the options`, async () => {
   vi.mocked(goto).mockClear()
   const selection = url_selection(`file`, [`new.cif`, `old.cif`])
-  selection.value = `new.cif`
+  const label = (name: string) => name.slice(0, 3)
+  const { files, active_files, on_click } = selection.picker(`cif`, label)
+  expect(files).toEqual([
+    { name: `new`, url: `new.cif`, type: `cif` },
+    { name: `old`, url: `old.cif`, type: `cif` },
+  ])
+  expect(active_files).toEqual([`old`])
+  on_click(files[0])
   expect(selection.value).toBe(`new.cif`)
+  selection.value = `old.cif`
+  selection.value = `new.cif` // same tick: one navigation, to the last pick
+  expect(selection.picker(`cif`).active_files).toEqual([`new.cif`])
   await Promise.resolve()
   expect(goto).toHaveBeenCalledExactlyOnceWith(
     `https://example.test/structure/?view=slice`,

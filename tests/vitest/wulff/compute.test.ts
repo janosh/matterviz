@@ -1,6 +1,5 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { parse_poscar } from '#lib/structure/parse.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
 import {
   compute_wulff_shape,
@@ -11,7 +10,7 @@ import {
 import { oxide_example, wulff_examples } from '#site/wulff.js'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
-import { cubic_matrix, init_moyo_for_tests } from '../test-fixtures'
+import { cubic_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'
 
 const cubic = cubic_matrix(3)
 const hexagonal = (a_len: number, c_len: number) =>
@@ -96,13 +95,12 @@ describe(`compute_wulff_shape`, () => {
   // The shape keeps its size (a unit sphere's volume) whatever the scale of the energies, and a
   // family off the shape changes nothing (distances of γ/γ_max shrank it as an absent γ rose)
   const [{ lattice: ir_lattice, facets: ir_facets }] = wulff_examples
-  test.each([
-    [
-      `every γ × 0.01`,
-      0.01,
-      ir_facets.map(({ miller, energy }) => fam(miller, energy * 0.01)),
-    ],
-    [`every γ × 1e4`, 1e4, ir_facets.map(({ miller, energy }) => fam(miller, energy * 1e4))],
+  test.each<[string, number, WulffFacetInput[]]>([
+    ...[0.01, 1e4].map((factor): [string, number, WulffFacetInput[]] => [
+      `every γ × ${factor}`,
+      factor,
+      ir_facets.map(({ miller, energy }) => fam(miller, energy * factor)),
+    ]),
     [`absent {110} at γ = 50`, 1, ir_facets.with(1, fam([1, 1, 0], 50))],
   ])(`%s leaves the shape unchanged`, (_label, factor, facets) => {
     const ref = compute_wulff_shape(ir_lattice, ir_facets)
@@ -167,20 +165,8 @@ describe(`compute_wulff_shape`, () => {
   describe(`with moyo point groups`, () => {
     beforeAll(init_moyo_for_tests)
     // ZnO wurtzite (P6₃mc, polar 6mm): textbook a = 3.25, c = 5.21 Å, u = 0.382
-    const wurtzite = parse_poscar(
-      [
-        `ZnO wurtzite`,
-        `1.0`,
-        ...hexagonal(3.25, 5.21).map((row) => row.join(` `)),
-        `Zn O`,
-        `2 2`,
-        `Direct`,
-        `0.3333333333 0.6666666667 0`,
-        `0.6666666667 0.3333333333 0.5`,
-        `0.3333333333 0.6666666667 0.382`,
-        `0.6666666667 0.3333333333 0.882`,
-      ].join(`\n`),
-    )
+    // oxfmt-ignore
+    const wurtzite = make_crystal(hexagonal(3.25, 5.21), [[`Zn`, [1 / 3, 2 / 3, 0]], [`Zn`, [2 / 3, 1 / 3, 0.5]], [`O`, [1 / 3, 2 / 3, 0.382]], [`O`, [2 / 3, 1 / 3, 0.882]]])
 
     // Ir's cell is the one MP used; ω-Ti's is rebuilt from MP slab cells to 4 decimals (a, c
     // off by ~1e-4 Å), which shifts its area fractions by up to 6.4e-5. Both crystals are

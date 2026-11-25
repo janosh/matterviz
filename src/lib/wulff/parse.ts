@@ -14,8 +14,7 @@ export type ParsedSurfaceEnergies = {
   label?: string // material id and formula of an MP document
 }
 
-const is_number = (val: unknown): val is number =>
-  typeof val === `number` && Number.isFinite(val)
+const is_number = (val: unknown): val is number => Number.isFinite(val)
 
 // (h k l), or hexagonal Miller-Bravais (h k i l) as the Materials Project lists them, whose
 // redundant i = -(h + k) is dropped

@@ -3,7 +3,7 @@ import { goto } from '$app/navigation'
 import { page } from '$app/state'
 import { onMount } from 'svelte'
 import type { ChemicalElement } from '#lib/element/types.js'
-import type { FileLoadMeta } from '#lib/io/types.js'
+import type { FileInfo, FileLoadMeta } from '#lib/io/types.js'
 import type { NavGroup as WidgetNavGroup } from 'svelte-widgets'
 
 // Remove adapter-static HTML filenames before SvelteKit client navigation.
@@ -39,25 +39,34 @@ export const set_url_param = (key: string, value: string | null): void => {
 
 // A picker's selection mirrored to `?key=`: the URL's value once mounted (when it names one of
 // `options`), and every later pick written back. `initial` (default: the first option) leaves
-// the param off, so a page's default view keeps a clean URL.
+// the param off, so a page's default view keeps a clean URL. picker() gives the FilePicker
+// props listing the options as chips of one `type` (no badges), named by `label`.
 export const url_selection = <T extends string>(
   key: string,
   options: readonly T[],
   initial: T = options[0],
-): { value: T } => {
+) => {
   let value = $state(initial)
   onMount(() => {
     const requested = options.find((option) => option === url_param(key))
     if (requested !== undefined) value = requested
   })
+  const pick = (next: T) => {
+    value = next
+    set_url_param(key, next === initial ? null : next)
+  }
   return {
     get value() {
       return value
     },
     set value(next: T) {
-      value = next
-      set_url_param(key, next === initial ? null : next)
+      pick(next)
     },
+    picker: (type: string, label = (option: T): string => option) => ({
+      files: options.map((option) => ({ name: label(option), url: option, type })),
+      active_files: [label(value)],
+      on_click: ({ url }: FileInfo) => pick(url as T),
+    }),
   }
 }
 

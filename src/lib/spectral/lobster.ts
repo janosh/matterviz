@@ -4,7 +4,8 @@
 // DOSCAR.lobster (total and projected DOS), plus the mapping from integrated values onto a
 // structure's bonds.
 // Layouts follow pymatgen.io.lobster.outputs (Cohpcar, Icohplist, Doscar) and the LOBSTER manual.
-import type { Vec3 } from '#lib/math.js'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
+import { add, create_frac_to_cart, subtract, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, BondPair } from '#lib/structure/index.js'
 import { bond_at, type BondData } from '#lib/structure/bond-rendering.js'
 import { is_structure_file } from '#lib/structure/format-detect.js'
@@ -96,16 +97,12 @@ export const lobster_quantity_label = (kind: LobsterKind, integrated: boolean): 
 // ICOOPLIST.lobster.gz -> { kind: COOP, list: true }, null for other files (LCFO and
 // multi-center NcICOBILIST files included, whose layouts differ)
 export function lobster_file(filename: string): { kind: LobsterKind; list: boolean } | null {
-  const name = filename.split(/[\\/]/).pop() ?? filename
-  const groups =
-    /^(?<prefix>I?)(?<kind>COHP|COOP|COBI)(?<suffix>CAR|LIST)\.lobster(?:\.(?:gz|bz2|xz|zst))?$/i.exec(
-      name,
-    )?.groups
-  if (!groups) return null
-  const kind = LOBSTER_KINDS.find((candidate) => candidate === groups.kind.toUpperCase())
-  const list = groups.suffix.toUpperCase() === `LIST`
-  // a CAR has no I prefix, a LIST always has one
-  return kind && list === Boolean(groups.prefix) ? { kind, list } : null
+  const { car, list } =
+    /^(?:(?<car>cohp|coop|cobi)car|i(?<list>cohp|coop|cobi)list)\.lobster$/.exec(
+      strip_compression_extensions(filename),
+    )?.groups ?? {}
+  const kind = LOBSTER_KINDS.find((candidate) => candidate.toLowerCase() === (car ?? list))
+  return kind ? { kind, list: Boolean(list) } : null
 }
 
 const parse_atom = (text: string, context: string): LobsterAtom => {
@@ -362,12 +359,8 @@ export function pair_vector(
   const lattice = `lattice` in unit_cell ? unit_cell.lattice.matrix : null
   if (!lattice && translation.some(Boolean))
     throw new Error(`LOBSTER pair ${label} has a translation but the structure no lattice`)
-  const vector = xyz_2.map(
-    (val, axis) =>
-      val -
-      xyz_1[axis] +
-      translation.reduce((sum, step, row) => sum + step * (lattice?.[row][axis] ?? 0), 0),
-  ) as Vec3
+  const shift: Vec3 = lattice ? create_frac_to_cart(lattice)(translation) : [0, 0, 0]
+  const vector = add(subtract(xyz_2, xyz_1), shift)
   const distance = Math.hypot(...vector)
   if (Math.abs(distance - length) > tol)
     throw new Error(
@@ -400,23 +393,18 @@ export function parse_doscar(text: string): LobsterDoscar {
   if (n_total !== 3 && n_total !== 5)
     throw new Error(`${name} line 7: ${n_total} columns, expected 3 or 5`)
   const n_spins = n_total === 5 ? 2 : 1
-  // n_energies rows from line index `start` on, as columns
-  const block = (start: number, n_cols: number) =>
-    read_rows(lines, start, n_energies, n_cols, name)
-  const [energy_col, ...total_cols] = block(6, n_total)
+  const [energy_col, ...total_cols] = read_rows(lines, 6, n_energies, n_total, name)
   const energies = Array.from(energy_col)
-  // DOS of spin channel columns [up, down?]
-  const dos = (up: Float64Array, down?: Float64Array): ElectronicDos => ({
+  // DOS of the `idx`-th spin column group [up, down?]
+  const spins = (columns: Float64Array[], idx: number): ElectronicDos => ({
     type: `electronic`,
     energy_unit: `eV`,
     energies,
-    densities: Array.from(up),
-    ...(down && { spin_down_densities: Array.from(down) }),
+    densities: Array.from(columns[idx * n_spins]),
+    ...(n_spins === 2 && { spin_down_densities: Array.from(columns[idx * n_spins + 1]) }),
     spin_polarized: n_spins === 2,
     efermi: 0,
   })
-  const spins = (columns: Float64Array[], idx: number) =>
-    dos(columns[idx * n_spins], n_spins === 2 ? columns[idx * n_spins + 1] : undefined)
   const atoms = Array.from({ length: n_atoms }, (_, atom_idx) => {
     const header_idx = 6 + n_energies + atom_idx * (n_energies + 1)
     const atom_header = lines[header_idx] ?? ``
@@ -425,7 +413,8 @@ export function parse_doscar(text: string): LobsterDoscar {
         `${name} line ${header_idx + 1}: no "; <orbitals>" header for atom ${atom_idx + 1}`,
       )
     const orbitals = tokens_of(atom_header.slice(atom_header.lastIndexOf(`;`) + 1))
-    const [, ...columns] = block(header_idx + 1, 1 + orbitals.length * n_spins)
+    const n_cols = 1 + orbitals.length * n_spins
+    const [, ...columns] = read_rows(lines, header_idx + 1, n_energies, n_cols, name)
     const sums = Array.from({ length: n_spins }, (_spin_col, spin) =>
       Float64Array.from(energies, (_energy, row_idx) =>
         orbitals.reduce(
@@ -463,8 +452,8 @@ export function parse_lobster_files(files: Record<string, string>): LobsterFiles
   const cars = new Map<LobsterKind, string>()
   const lists = new Map<LobsterKind, string>()
   const structures: string[] = []
-  const doscar = Object.keys(files).filter((filename) =>
-    /^DOSCAR\.lobster(?:\.(?:gz|bz2|xz|zst))?$/i.test(filename.split(/[\\/]/).pop() ?? ``),
+  const doscar = Object.keys(files).filter(
+    (filename) => strip_compression_extensions(filename) === `doscar.lobster`,
   )
   if (doscar.length > 1) throw new Error(`Several DOSCAR.lobster files: ${doscar.join(`, `)}`)
   for (const filename of Object.keys(files)) {
@@ -477,7 +466,7 @@ export function parse_lobster_files(files: Record<string, string>): LobsterFiles
   }
   if (cars.size === 0) throw new Error(`No COHPCAR/COOPCAR/COBICAR.lobster among the files`)
   const poscar = structures.find((name) =>
-    /^POSCAR(?:\.|$)/i.test(name.split(/[\\/]/).pop() ?? ``),
+    /^poscar(?:\.|$)/.test(strip_compression_extensions(name)),
   )
   if (!poscar && structures.length > 1)
     throw new Error(`Several structure files but no POSCAR: ${structures.join(`, `)}`)
@@ -488,7 +477,7 @@ export function parse_lobster_files(files: Record<string, string>): LobsterFiles
 
   const dos = doscar[0] ? parse_doscar(files[doscar[0]]) : null
   const n_sites = structure?.sites.length
-  if (dos && n_sites !== undefined && dos.atoms.length !== n_sites)
+  if (dos && structure && dos.atoms.length !== n_sites)
     throw new Error(`${doscar[0]} has ${dos.atoms.length} atoms, ${structure_name} ${n_sites}`)
   const used = new Set<string | undefined>([structure_name, doscar[0]])
   const by_kind: LobsterFiles[`by_kind`] = new Map()
@@ -534,14 +523,10 @@ export function icohp_bond_colors(
   color_fn: (strength: number, entry: IcohpEntry) => string,
   tol = 0.01,
 ): (bonds: BondData, structure: AnyStructure) => (string | undefined)[] {
-  const by_pair = new Map<string, { entry: IcohpEntry; vector: Vec3 | null }[]>()
-  for (const entry of list.entries) {
-    const key = `${entry.atoms[0].site_idx},${entry.atoms[1].site_idx}`
-    by_pair.set(key, [
-      ...(by_pair.get(key) ?? []),
-      { entry, vector: pair_vector(entry, unit_cell, tol) },
-    ])
-  }
+  const by_pair = Map.groupBy(
+    list.entries.map((entry) => ({ entry, vector: pair_vector(entry, unit_cell, tol) })),
+    ({ entry: { atoms } }) => `${atoms[0].site_idx},${atoms[1].site_idx}`,
+  )
   const match = (bond: BondPair, structure: AnyStructure) => {
     const orig = (idx: number) => get_orig_site_idx(get_site(structure, idx), idx)
     const [idx_1, idx_2] = [orig(bond.site_idx_1), orig(bond.site_idx_2)]
@@ -565,13 +550,10 @@ export function icohp_bond_colors(
   }
   const matched = new WeakMap<BondData, (IcohpEntry | undefined)[]>()
   return (bonds, structure) => {
-    let entries = matched.get(bonds)
-    if (!entries) {
-      entries = Array.from({ length: bonds.length }, (_, idx) =>
-        match(bond_at(bonds, idx), structure),
-      )
-      matched.set(bonds, entries)
-    }
+    const entries =
+      matched.get(bonds) ??
+      Array.from({ length: bonds.length }, (_, idx) => match(bond_at(bonds, idx), structure))
+    matched.set(bonds, entries)
     const colors = new Map(
       list.entries.map((entry) => [
         entry,

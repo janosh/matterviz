@@ -99,8 +99,7 @@ function expand_families(
         )
       }
       // the plane normal is the reciprocal vector G = A⁻¹·hkl
-      const g_vec = math.dot(lattice_inv, hkl)
-      const normal = math.scale(g_vec, 1 / Math.hypot(...g_vec))
+      const normal = math.normalize_vec(math.mul_3x3_vec3(lattice_inv, hkl))
       owners.set(key, { family_idx, miller: hkl, normal })
     }
   }
@@ -150,7 +149,7 @@ function facet_polygon(
   const points = on_plane.map((idx) => vertices[idx])
   const centroid = math.scale(math.add(...points), 1 / points.length)
   const offsets = points.map((point) => math.subtract(point, centroid))
-  const axis_u = math.scale(offsets[0], 1 / Math.hypot(...offsets[0]))
+  const axis_u = math.normalize_vec(offsets[0])
   const axis_w = math.cross_3d(normal, axis_u)
   const angles = offsets.map((off) => Math.atan2(math.dot(off, axis_w), math.dot(off, axis_u)))
   const order = on_plane
@@ -219,7 +218,7 @@ export function compute_wulff_shape(
     const [q_a, q_b, q_c] = face.map((vert_idx) => dual_hull.vertices[vert_idx])
     const face_normal = math.cross_3d(math.subtract(q_b, q_a), math.subtract(q_c, q_a))
     if (math.dot(face_normal, q_a) <= 1e-9 * Math.hypot(...face_normal) * Math.hypot(...q_a)) {
-      const open_dir = math.scale(face_normal, 1 / Math.hypot(...face_normal))
+      const open_dir = math.normalize_vec(face_normal)
       throw new Error(
         `Wulff shape is unbounded: no facet family cuts direction [${open_dir.map((val) => format_num(val, `.3~f`)).join(`, `)}]. Add a family whose normal points that way.`,
       )
@@ -277,11 +276,10 @@ export function compute_wulff_shape(
 
   // every facet edge once, keyed by its sorted vertex pair
   const edges = new Map<string, Vec2>()
-  for (const { vertex_indices } of facets_out) {
-    for (const [pos, from] of vertex_indices.entries()) {
-      const to = vertex_indices[(pos + 1) % vertex_indices.length]
-      const key = from < to ? `${from},${to}` : `${to},${from}`
-      if (!edges.has(key)) edges.set(key, [from, to])
+  for (const { vertex_indices: ring } of facets_out) {
+    for (const [pos, from] of ring.entries()) {
+      const to = ring[(pos + 1) % ring.length]
+      edges.set(from < to ? `${from},${to}` : `${to},${from}`, [from, to])
     }
   }
 

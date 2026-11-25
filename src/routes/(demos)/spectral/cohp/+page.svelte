@@ -19,6 +19,8 @@
   import { hover_links, join_hover_link } from '#lib/tooltip/hover-link.svelte.js'
   import { type LobsterSample, lobster_samples } from '#site/electronic/lobster/index.js'
   import { url_selection } from '#site/state.svelte.js'
+  import { array_extent } from '#lib/math.js'
+  import { toggle_item } from '#lib/utils.js'
 
   const DROPPED = `your files`
   // the bundled sample in ?sample=; dropped files show instead while `show_dropped`
@@ -35,19 +37,16 @@
   let chosen_kind = $state<LobsterKind>(`COHP`)
   const kind = $derived(kinds.includes(chosen_kind) ? chosen_kind : kinds[0])
   const { cohp, icohp } = $derived(sample.by_kind.get(kind) ?? [...sample.by_kind.values()][0])
-  const structure = $derived(sample.structure)
+  const { structure, dos } = $derived(sample)
 
   let show_average = $state(false)
   // LOBSTER lists symmetry-equivalent pairs separately; show the first of each group (same
   // atoms and length) by default. Writable: the table's checkboxes edit it until the data changes
   let hidden_bonds = $derived.by(() => {
-    const groups = new Set<string>()
-    return cohp.bonds.flatMap(({ label, atoms, length }) => {
-      const key = `${atoms[0].label}-${atoms[1].label}-${Math.round(length * 1e3)}`
-      if (groups.has(key)) return [label]
-      groups.add(key)
-      return []
-    })
+    const groups = Map.groupBy(cohp.bonds, ({ atoms, length }) =>
+      [atoms[0].label, atoms[1].label, Math.round(length * 1e3)].join(`-`),
+    )
+    return [...groups.values()].flatMap((group) => group.slice(1).map(({ label }) => label))
   })
   // orbital-resolved curves (Cohp `bonds` keys) checked in the table, none for new data
   let shown_orbitals = $derived.by((): string[] => (void cohp, []))
@@ -59,9 +58,7 @@
   hover_links()
   const atom_link = join_hover_link(() => `cohp-atoms`, `number`)
 
-  const pair_by_label = $derived(
-    new Map(icohp ? icohp.entries.map((entry) => [entry.label, entry]) : []),
-  )
+  const pair_by_label = $derived(new Map(icohp?.entries.map((entry) => [entry.label, entry])))
   // LOBSTER 2 lists carry no translations: their column would be a dash in every row
   const has_translations = $derived(
     icohp?.entries.some(({ translation }) => translation !== null) ?? false,
@@ -91,7 +88,6 @@
       .flatMap(({ atoms }) => atoms),
   )
   // DOSCAR.lobster beside the curves: the total DOS and the highlighted pairs' atoms' DOS
-  const dos = $derived(sample.dos)
   const doses = $derived(
     dos
       ? {
@@ -104,11 +100,11 @@
         }
       : undefined,
   )
-  // bonding strength (-ICOHP for COHP) color scale over the pairs' range
+  // bonding strength (-ICOHP for COHP) color scale over the list's pairs' range (unread without)
   const strength_range = $derived.by((): [number, number] => {
-    const values = icohp?.entries.map((entry) => bonding_strength(entry, kind)) ?? []
-    if (values.length === 0) return [0, 1]
-    const [lo, hi] = [Math.min(...values), Math.max(...values)]
+    const [lo, hi] = array_extent(
+      icohp?.entries.map((entry) => bonding_strength(entry, kind)) ?? [],
+    )
     return lo === hi ? [lo - 0.5, hi + 0.5] : [lo, hi]
   })
   const color_scale = $derived<ColorScaleConfig>({
@@ -138,10 +134,7 @@
     ...shown_orbitals,
   ])
   // Cohp colors the drawn curves by position
-  const drawn_idx_of = $derived(new Map(drawn_keys.map((key, idx) => [key, idx])))
-
-  const toggle = (list: string[], label: string): string[] =>
-    list.includes(label) ? list.filter((item) => item !== label) : [...list, label]
+  const drawn_color = $derived(new Map(drawn_keys.map((key, idx) => [key, plot_color(idx)])))
   const reset_picks = () => {
     picked_bonds = []
     hovered_bond = null
@@ -270,7 +263,7 @@
     {show_average}
     highlighted_bonds={[...highlighted_set]}
     bind:hovered_bond
-    on_bond_click={(label) => (picked_bonds = toggle(picked_bonds, label))}
+    on_bond_click={(label) => (picked_bonds = toggle_item(picked_bonds, label))}
     style="height: 560px"
   />
 </div>
@@ -290,13 +283,12 @@
     {#each cohp.bonds as bond (bond.label)}
       {@const pair = pair_by_label.get(bond.label)}
       {@const strength = pair && bonding_strength(pair, kind)}
-      {@const drawn_idx = drawn_idx_of.get(bond.label)}
       <tr
         class={{ highlighted: highlighted_set.has(bond.label) }}
         onclick={(event) => {
           // clicks in a pair's orbital list don't pick the pair
           if (!(event.target instanceof Element && event.target.closest(`details`)))
-            picked_bonds = toggle(picked_bonds, bond.label)
+            picked_bonds = toggle_item(picked_bonds, bond.label)
         }}
         onmouseenter={() => (hovered_bond = bond.label)}
         onmouseleave={() => (hovered_bond = null)}
@@ -306,12 +298,12 @@
             type="checkbox"
             checked={!hidden_set.has(bond.label)}
             onclick={(event) => event.stopPropagation()}
-            onchange={() => (hidden_bonds = toggle(hidden_bonds, bond.label))}
+            onchange={() => (hidden_bonds = toggle_item(hidden_bonds, bond.label))}
             aria-label="Show pair {bond.label}"
           />
         </td>
-        <td style:color={drawn_idx === undefined ? null : plot_color(drawn_idx)}>
-          {drawn_idx === undefined ? `□` : `■`}
+        <td style:color={drawn_color.get(bond.label)}>
+          {drawn_color.has(bond.label) ? `■` : `□`}
           {bond.label}
         </td>
         <td>
@@ -323,16 +315,13 @@
                 {@const value = pair?.orbitals.find(
                   (row) => orbital_key(bond.label, row.orbitals) === key,
                 )}
-                {@const idx = drawn_idx_of.get(key)}
                 <label style:display="block">
                   <input
                     type="checkbox"
-                    checked={idx !== undefined}
-                    onchange={() => (shown_orbitals = toggle(shown_orbitals, key))}
+                    checked={drawn_color.has(key)}
+                    onchange={() => (shown_orbitals = toggle_item(shown_orbitals, key))}
                   />
-                  <span style:color={idx === undefined ? null : plot_color(idx)}
-                    >{orbitals.join(`–`)}</span
-                  >
+                  <span style:color={drawn_color.get(key)}>{orbitals.join(`–`)}</span>
                   {#if value}{format_num(bonding_strength(value, kind), `.4~f`)}{/if}
                 </label>
               {/each}

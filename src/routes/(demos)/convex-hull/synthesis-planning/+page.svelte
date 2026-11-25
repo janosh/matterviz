@@ -8,8 +8,8 @@
   import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
   import { latest_load, url_selection } from '#site/state.svelte.js'
 
-  const system_ids = synthesis_demo_systems.map(({ id }) => id)
-  const selected_id = url_selection(`system`, system_ids)
+  const labels = Object.fromEntries(synthesis_demo_systems.map(({ id, label }) => [id, label]))
+  const selected_id = url_selection(`system`, Object.keys(labels))
   const selected = $derived(synthesis_demo_systems.find(({ id }) => id === selected_id.value))
   let entries = $state<PhaseData[]>([])
   let target = $state(``)
@@ -56,13 +56,7 @@
 </p>
 
 <FilePicker
-  files={synthesis_demo_systems.map(({ id, label }) => ({
-    name: label,
-    url: id,
-    type: `system`,
-  }))}
-  active_files={selected ? [selected.label] : []}
-  on_click={({ url }) => (selected_id.value = url)}
+  {...selected_id.picker(`system`, (id) => labels[id])}
   style="margin-bottom: 0.5em"
 />
 {#if selected?.description}<p class="description">{selected.description}</p>{/if}

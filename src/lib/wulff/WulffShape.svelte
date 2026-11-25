@@ -14,7 +14,6 @@
   import { normalize_show_controls, track_settings } from '#lib/controls.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, json_source } from '#lib/io/export.js'
-  import type { FileSaver } from '#lib/io/file-export.svelte.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import type { Matrix3x3 } from '#lib/math.js'
@@ -23,7 +22,7 @@
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
-  import { export_scene_as } from '#lib/scene/export.js'
+  import { model_export_items } from '#lib/scene/export.js'
   import CameraSection from '#lib/scene/CameraSection.svelte'
   import {
     create_renderer,
@@ -37,7 +36,7 @@
   import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
   import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import { Canvas } from '@threlte/core'
-  import { untrack } from 'svelte'
+  import { getAbortSignal, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { compute_wulff_shape } from './compute'
   import { wulff_model } from './export'
@@ -89,17 +88,16 @@
     symmetry = {}
     const of = structure
     if (!of?.lattice) return
-    // aborting drops a superseded worker job; its rejection then never lands
-    const controller = new AbortController()
-    analyze_structure_symmetry(of, {}, controller.signal).then(
-      (data) => {
-        if (!controller.signal.aborted) symmetry = { data, of }
-      },
-      (error: unknown) => {
-        if (!controller.signal.aborted) symmetry = { error, of }
-      },
-    )
-    return () => controller.abort()
+    // aborted on rerun or unmount, dropping a superseded worker job; its result never lands
+    const signal = getAbortSignal()
+    analyze_structure_symmetry(of, {}, signal)
+      .then(
+        (data) => ({ data }),
+        (error: unknown) => ({ error }),
+      )
+      .then((outcome) => {
+        if (!signal.aborted) symmetry = { ...outcome, of }
+      })
   })
 
   // rotations undefined: compute_wulff_shape finds the lattice holohedry (inside its try)
@@ -207,18 +205,10 @@
   const export_sections = [
     {
       title: `3D model`,
-      items: (
-        [
-          [`STL`, `stl`, `3D printing`],
-          [`GLB`, `glb`, `web/AR`],
-        ] as const
-      ).map(([label, format, hint]) => ({
-        label,
-        hint,
-        on_download: ({ filename, save }: { filename: string; save: FileSaver }) =>
-          result.data &&
-          export_scene_as(wulff_model(result.data, colors), format, filename, save),
-      })),
+      items: model_export_items(
+        () => result.data && wulff_model(result.data, colors),
+        [`stl`, `glb`],
+      ),
     },
   ]
   const keys = viewer_keys(() => ({

@@ -1,5 +1,5 @@
 // Surface-energy import (MP and pymatgen JSON), the demo's ?facets= codec and STL/GLB export
-import { export_scene_as } from '#lib/scene/export.js'
+import { model_export_items } from '#lib/scene/export.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
@@ -146,11 +146,19 @@ describe(`STL and GLB export`, () => {
       shape.families.map(() => `red`),
     )
     const saved = new Map<string, ArrayBuffer>()
-    for (const format of [`stl`, `glb`] as const) {
-      await export_scene_as(model, format, `shape`, (data, filename) => {
-        saved.set(filename, data as ArrayBuffer)
-      })
-    }
+    const save = (data: unknown, filename: string) =>
+      void saved.set(filename, data as ArrayBuffer)
+    // the export pane's items: none saves while there's no model
+    expect(
+      model_export_items(() => undefined, [`stl`])[0].on_download({ filename: `x`, save }),
+    ).toBeUndefined()
+    const items = model_export_items(() => model, [`stl`, `glb`])
+    expect(items.map(({ label, hint }) => [label, hint])).toEqual([
+      [`STL`, `3D printing`],
+      [`GLB`, `web/AR`],
+    ])
+    for (const { on_download } of items) await on_download({ filename: `shape`, save })
+    expect(saved.size).toBe(2)
     const glb = new Uint8Array(saved.get(`shape.glb`) ?? new ArrayBuffer(0))
     expect(String.fromCharCode(...glb.subarray(0, 4))).toBe(`glTF`)
     const json_len = new DataView(glb.buffer).getUint32(12, true)

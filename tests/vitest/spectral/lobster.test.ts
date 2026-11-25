@@ -12,7 +12,7 @@ import {
   parse_icohplist,
   parse_lobster_files,
 } from '#lib/spectral/lobster.js'
-import type { Vec3 } from '#lib/math.js'
+import { add, create_frac_to_cart, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, BondPair } from '#lib/structure/index.js'
 import { parse_poscar } from '#lib/structure/parse.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
@@ -561,22 +561,16 @@ describe.each(Object.values(lobster_samples))(`sample $name`, (sample) => {
     // every pair's atoms sit at the listed distance (within 5e-4 Å: BiSe's POSCAR is off LOBSTER's
     // by up to 8.4e-5 Å, pymatgen agrees) through its translation, or some translation in LOBSTER
     // 2 lists; the matcher finds each pair on that bond
-    const { matrix } = structure.lattice
+    const to_cart = create_frac_to_cart(structure.lattice.matrix)
     const steps = [-1, 0, 1]
     const shifts = steps.flatMap((step_a) =>
-      steps.flatMap((step_b) => steps.map((step_c) => [step_a, step_b, step_c])),
+      steps.flatMap((step_b) => steps.map((step_c): Vec3 => [step_a, step_b, step_c])),
     )
     const bonds = icohp.entries.map(({ label, atoms, length, translation }) => {
       const [xyz_1, xyz_2] = atoms.map(({ site_idx }) => structure.sites[site_idx].xyz)
       const dist = (pos: Vec3) => Math.hypot(...pos.map((val, axis) => val - xyz_1[axis]))
       const pos_2 = (translation ? [translation] : shifts)
-        .map(
-          (shift) =>
-            xyz_2.map(
-              (val, axis) =>
-                val + shift.reduce((sum, step, row) => sum + step * matrix[row][axis], 0),
-            ) as Vec3,
-        )
+        .map((shift) => add(xyz_2, to_cart(shift)))
         .find((pos) => Math.abs(dist(pos) - length) < 5e-4)
       if (!pos_2)
         throw new Error(`pair ${label}: no image of ${atoms[1].label} at ${length} Å`)

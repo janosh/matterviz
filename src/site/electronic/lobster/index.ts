@@ -9,7 +9,8 @@ export type LobsterSample = LobsterFiles & {
   source: string | null // SOURCE.txt, required for bundled samples
 }
 
-const raw_files = import.meta.glob(`./*/*`, {
+// LICENSE.txt carries the upstream license with the copied files; it isn't sample data
+const raw_files = import.meta.glob([`./*/*`, `!./*/LICENSE.txt`], {
   query: `?raw`,
   import: `default`,
   eager: true,
@@ -18,11 +19,8 @@ const raw_files = import.meta.glob(`./*/*`, {
 const by_folder: Record<string, Record<string, string>> = {}
 for (const [path, text] of Object.entries(raw_files)) {
   const [, folder, filename] = path.split(`/`)
-  // LICENSE.txt carries the upstream license with the copied files; it isn't sample data
   // glob_text: builds hand over the module, dev and tests its default export
-  if (filename !== `LICENSE.txt`) {
-    by_folder[folder] = { ...by_folder[folder], [filename]: glob_text(text) }
-  }
+  by_folder[folder] = { ...by_folder[folder], [filename]: glob_text(text) }
 }
 
 export const lobster_samples: Record<string, LobsterSample> = Object.fromEntries(

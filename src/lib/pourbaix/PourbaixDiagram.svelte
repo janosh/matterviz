@@ -2,13 +2,12 @@
   import { PLOT_COLORS } from '#lib/colors/index.js'
   import { format_formula_html, format_formula_svg } from '#lib/composition/formula-markup.js'
   import { json_source } from '#lib/io/export.js'
+  import { slice_to_rgba } from '#lib/isosurface/slice-rendering.js'
   import { polygon_label_point, type Vec2 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { get_relative_coords } from '#lib/plot/core/interactions.js'
   import { CONTROLS_ROW_HEIGHT } from '#lib/plot/core/layout.js'
-  import { color_interpolator, resolve_color_scale } from '#lib/plot/core/scales.js'
-  import { rgb } from 'd3-color'
   import type {
     AxisConfig,
     AxisRanges,
@@ -182,10 +181,6 @@
   const envelope = $derived(
     data && heatmap_plane ? mix_planes(data.species, heatmap_plane.metal_fractions) : [],
   )
-  const HEATMAP_SCALE = `interpolateViridis`
-  // 256-color lookup table built once, not per repaint
-  const color_at = color_interpolator(HEATMAP_SCALE)
-  const heatmap_lut = Array.from({ length: 256 }, (_, idx) => rgb(color_at(idx / 255)))
   // Painted to one image per view, client-side only. The color range spans the whole initial
   // window, so panning never recolors. Ψ_own - envelope = max_j (Ψ_own - Ψ_j) is convex, so its
   // maximum over the window sits at a corner.
@@ -201,19 +196,19 @@
         ),
       ),
     )
-    const scale = resolve_color_scale(HEATMAP_SCALE, [0, max_value])
+    const value_range: Vec2 = [0, max_value]
+    const color_scale = { scheme: `interpolateViridis` as const, value_range }
     const context = document.createElement(`canvas`).getContext(`2d`)
-    if (!context) return { ...scale, image: null } // e.g. a test DOM without 2D canvas
+    if (!context) return { color_scale, image: null } // e.g. a test DOM without 2D canvas
     const values = energy_above_envelope(envelope, heatmap_plane, visible_window, HEATMAP_GRID)
-    const [n_ph, n_e] = HEATMAP_GRID
-    const pixels = new Uint8ClampedArray(n_ph * n_e * 4).fill(255) // opaque alpha
-    values.forEach((value, idx) => {
-      const { r, g, b } = heatmap_lut[Math.round(scale.position(value) * 255)]
-      pixels.set([r, g, b], idx * 4)
-    })
-    ;[context.canvas.width, context.canvas.height] = [n_ph, n_e]
-    context.putImageData(new ImageData(pixels, n_ph, n_e), 0, 0)
-    return { ...scale, image: context.canvas.toDataURL() }
+    const [width, height] = HEATMAP_GRID
+    // flips the grid's rows, which run up in E, into image rows
+    const slice = { data: values, mask: new Uint8Array(values.length).fill(1), width, height }
+    const pixels = new Uint8ClampedArray(values.length * 4)
+    slice_to_rgba(slice, color_scale, value_range, pixels)
+    ;[context.canvas.width, context.canvas.height] = HEATMAP_GRID
+    context.putImageData(new ImageData(pixels, width, height), 0, 0)
+    return { color_scale, image: context.canvas.toDataURL() }
   })
 
   // === Hover ===
@@ -235,16 +230,6 @@
     hover_info = hovered
   })
 
-  function on_pointer_move(
-    event: PointerEvent & { currentTarget: SVGGElement },
-    { x_scale_fn, y_scale_fn, x_range, y_range }: UserContentProps,
-  ) {
-    const at_svg = get_relative_coords(event, event.currentTarget.ownerSVGElement)
-    if (!at_svg) return
-    const ph = invert(x_scale_fn, x_range, at_svg.x)
-    hover_point = { ph, potential: invert(y_scale_fn, y_range, at_svg.y) }
-  }
-
   // === Export ===
   const export_sources = {
     json: json_source(() => ({
@@ -264,7 +249,7 @@
 </script>
 
 {#snippet domain_layer(props: UserContentProps)}
-  {@const { x_scale_fn: sx, y_scale_fn: sy, pad, width, height } = props}
+  {@const { x_scale_fn: sx, y_scale_fn: sy, x_range, y_range, pad, width, height } = props}
   {@const to_px = (vertices: Vec2[]): Vec2[] => vertices.map(([ph, e]) => [sx(ph), sy(e)])}
   {@const [[ph_lo, ph_hi], [e_lo, e_hi]] = visible_window}
   <defs>
@@ -282,7 +267,11 @@
     class="pourbaix-domains"
     clip-path="url(#{clip_id})"
     role="presentation"
-    onpointermove={(event) => on_pointer_move(event, props)}
+    onpointermove={(event) => {
+      const at = get_relative_coords(event, event.currentTarget.ownerSVGElement)
+      if (at)
+        hover_point = { ph: invert(sx, x_range, at.x), potential: invert(sy, y_range, at.y) }
+    }}
     onpointerleave={() => (hover_point = null)}
   >
     {#if heatmap?.image}

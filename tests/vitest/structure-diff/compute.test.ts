@@ -57,6 +57,8 @@ const shifts: Vec3[] = [
   [0.1, 0, 0], [0, -0.2, 0.05], [0.03, 0.03, -0.03], [0, 0, 0],
   [-0.15, 0.1, 0], [0.2, 0.2, 0.2], [0, 0, -0.12], [0.07, -0.04, 0.01],
 ]
+const rms = (vecs: Vec3[]) =>
+  Math.sqrt(vecs.reduce((sum, vec) => sum + Math.hypot(...vec) ** 2, 0) / vecs.length)
 // matchers for each component within 5e-13 (half a unit in the 12th decimal)
 const close_to = (values: readonly number[]) => values.map((val) => expect.closeTo(val, 12))
 const shifted = (crystal: Crystal, vectors: Vec3[]): Crystal =>
@@ -88,10 +90,7 @@ describe(`compute_structure_diff`, () => {
     expect(diff.displacements.map(({ vector }) => vector)).toEqual(shifts.map(close_to))
     const magnitudes = shifts.map((vec) => Math.hypot(...vec))
     expect(diff.displacements.map(({ magnitude }) => magnitude)).toEqual(close_to(magnitudes))
-    const expected_rmsd = Math.sqrt(
-      shifts.reduce((sum, vec) => sum + Math.hypot(...vec) ** 2, 0) / shifts.length,
-    )
-    expect(diff.rmsd).toBeCloseTo(expected_rmsd, 12)
+    expect(diff.rmsd).toBeCloseTo(rms(shifts), 12)
     expect(diff.max_site_idx).toBe(5)
     expect(diff.max_displacement).toBeCloseTo(Math.hypot(0.2, 0.2, 0.2), 12)
   })
@@ -249,8 +248,6 @@ describe(`compute_structure_diff`, () => {
   const local_moves = shifts.map(
     (vec) => vec.map((val, axis) => val - mean_shift[axis]) as Vec3,
   )
-  const rms = (vecs: Vec3[]) =>
-    Math.sqrt(vecs.reduce((sum, vec) => sum + Math.hypot(...vec) ** 2, 0) / vecs.length)
   test.each([
     [`pure translation`, shifts.map((): Vec3 => [0, 0, 0])],
     [`translation plus local moves`, local_moves],
@@ -338,9 +335,7 @@ describe(`solve_assignment`, () => {
         )
 
   test.each([1, 2, 3, 5, 6])(`matches brute force on random %sx%s matrices`, (size) => {
-    // fixed LCG so the matrices are reproducible
-    let state = 12345 + size
-    const rand = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
+    const rand = mulberry32(12345 + size)
     for (let trial = 0; trial < 20; trial++) {
       const costs = Float64Array.from({ length: size * size }, rand)
       const total = (cols: ArrayLike<number>) =>

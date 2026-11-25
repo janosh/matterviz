@@ -12,6 +12,7 @@ import {
   type Matrix3x3,
   min_image_displacement_into,
   subtract,
+  to_degrees,
   transpose_3x3,
   type Vec3,
 } from '#lib/math.js'
@@ -20,6 +21,7 @@ import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { symmetric_eigen_3x3 } from '#lib/structure/thermal-ellipsoids.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { format_num } from 'svelte-widgets/format'
+import { clamp } from 'svelte-widgets/utils'
 
 // `index` pairs site i with site i. `nearest` pairs each target site with a reference site of
 // the same species, minimizing the summed squared minimum-image distances (for files listing
@@ -246,8 +248,7 @@ function displacement_frame(reference: AnyStructure, target: AnyStructure) {
         `[${reference.lattice.pbc}] vs target pbc [${pbc}]`,
     )
   }
-  const ref_matrix = reference.lattice.matrix
-  const target_matrix = target.lattice.matrix
+  const [ref_matrix, target_matrix] = [reference.lattice.matrix, target.lattice.matrix]
   const converters = create_lattice_converters(target_matrix)
   // Fractional coordinates re-expressed with the target's periodic lattice vectors (the
   // reference's along non-periodic axes). An unchanged cell skips the round trip, so identical
@@ -322,10 +323,7 @@ function remove_rigid_motion(
     for (const axis of [0, 1, 2]) vec[axis] = centered[idx][axis] - fitted[axis]
   }
   const cos_angle = (rotation[0][0] + rotation[1][1] + rotation[2][2] - 1) / 2
-  return {
-    shift,
-    rotation_deg: (Math.acos(Math.min(1, Math.max(-1, cos_angle))) * 180) / Math.PI,
-  }
+  return { shift, rotation_deg: to_degrees(Math.acos(clamp(cos_angle, -1, 1))) }
 }
 
 // Compare `target` against `reference` (see displacement_frame for the cell convention). An
@@ -358,17 +356,16 @@ export function compute_structure_diff(
   const pairing_cost = (pairs: number[]): number =>
     pairs.reduce((sum, ref_idx, target_idx) => sum + sq_dist(ref_idx, target_idx), 0)
 
-  const species_aligned = ref_species.every((key, idx) => key === target_species[idx])
+  const misaligned = ref_species.findIndex((key, idx) => key !== target_species[idx])
+  const species_aligned = misaligned === -1
   if (matching === `index` && !species_aligned) {
-    const idx = ref_species.findIndex((key, site_idx) => key !== target_species[site_idx])
     throw new Error(
-      `Index matching needs the same species order, but site ${display_idx(idx)} is ` +
-        `${ref_species[idx]} in the reference and ${target_species[idx]} in the target. ` +
-        `Use nearest matching for reordered sites.`,
+      `Index matching needs the same species order, but site ${display_idx(misaligned)} ` +
+        `is ${ref_species[misaligned]} in the reference and ${target_species[misaligned]} in ` +
+        `the target. Use nearest matching for reordered sites.`,
     )
   }
   const identity = target.sites.map((_, idx) => idx)
-  let mapping = identity
   const aligned_auto = matching === `auto` && species_aligned
   const half_spacing_sq = aligned_auto ? (0.5 * characteristic_atom_spacing(target)) ** 2 : 0
   const keep_index =
@@ -379,9 +376,10 @@ export function compute_structure_diff(
   const nearest = keep_index
     ? null
     : match_nearest(ref_species, target_species, sq_dist, !aligned_auto)
-  if (nearest && (!aligned_auto || 4 * pairing_cost(nearest) <= pairing_cost(identity))) {
-    mapping = nearest
-  }
+  const mapping =
+    nearest && (!aligned_auto || 4 * pairing_cost(nearest) <= pairing_cost(identity))
+      ? nearest
+      : identity
 
   const target_xyz = target.sites.map(({ xyz }) => xyz)
   const vectors = target_xyz.map((xyz, idx) =>

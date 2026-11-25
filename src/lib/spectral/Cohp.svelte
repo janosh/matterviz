@@ -92,17 +92,15 @@
     if (!hit) spin_sums.set(up, (hit = signed(up).map((val, idx) => val + signed_down[idx])))
     return hit
   }
-  const channels = ({ up, down }: SpinChannels<Float64Array>) =>
-    !down || spin_mode === `up_only`
-      ? ([[`up`, signed(up)]] as const)
-      : spin_mode === `down_only`
-        ? ([[`down`, signed(down)]] as const)
-        : spin_mode === `sum`
-          ? ([[`total`, spin_sum(up, down)]] as const)
-          : ([
-              [`up`, signed(up)],
-              [`down`, signed(down)],
-            ] as const)
+  const channels = ({ up, down }: SpinChannels<Float64Array>) => {
+    if (!down || spin_mode === `up_only`) return [[`up`, signed(up)]] as const
+    if (spin_mode === `down_only`) return [[`down`, signed(down)]] as const
+    if (spin_mode === `sum`) return [[`total`, spin_sum(up, down)]] as const
+    return [
+      [`up`, signed(up)],
+      [`down`, signed(down)],
+    ] as const
+  }
   const energies = $derived(
     energy_offset ? cohp.energies.map((energy) => energy + energy_offset) : cohp.energies,
   )
@@ -205,10 +203,7 @@
     sync.views[1] = undefined
   })
   // secondary axis for the integrals, writable since ScatterPlot binds it
-  let x2_axis = $derived({
-    ...(show_integrated && value_axis(true)),
-    ...rest.x2_axis,
-  })
+  let x2_axis = $derived({ ...(show_integrated && value_axis(true)), ...rest.x2_axis })
 
   const fermi_color = `var(--cohp-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`
   // what a hovered or clicked curve point belongs to
@@ -236,7 +231,97 @@
   bind:clientHeight
 >
   {#if series_data.length > 0}
-    {@render scatter()}
+    {#snippet cohp_tooltip({ x, y, label, series_idx }: ScatterHandlerProps)}
+      {@const meta = meta_of({ series_idx })}
+      {#if label}<strong>{@html sanitize_html(label)}</strong><br />{/if}
+      <TooltipValue label={energy_label} value={format_num(y, `.3~f`)} /><br />
+      <TooltipValue
+        label={lobster_quantity_label(cohp.kind, meta?.integrated ?? false)}
+        value={format_num(x, `.4~f`)}
+      />
+      {#if meta && cohp.spin_polarized}<br />
+        <TooltipValue label="Spin" value={meta.spin} />{/if}
+    {/snippet}
+
+    <ScatterPlot
+      {...rest}
+      tooltip={rest.tooltip ?? cohp_tooltip}
+      series={series_data}
+      x_axis={{ ...value_axis(false), ...rest.x_axis }}
+      y_axis={sync.y_axes[0]}
+      padding={{ ...rest.padding, ...sync.shared_padding }}
+      bind:view={sync.views[0]}
+      bind:resolved_padding={() => undefined, sync.raise_padding}
+      bind:x2_axis
+      bind:display
+      hover_config={{ threshold_px: 30, ...rest.hover_config }}
+      on_point_hover={(event) => {
+        hovered_bond = meta_of(event)?.bond ?? null
+        rest.on_point_hover?.(event)
+      }}
+      on_plot_click={handle_plot_click}
+      bind:controls_open
+    >
+      {#snippet controls_extra()}
+        <SettingsSection title="COHP" layout="flow">
+          {#if cohp.spin_polarized}
+            <label>
+              Spin
+              <select bind:value={spin_mode}>
+                {#each [...SPIN_MODES.filter(({ value }) => value !== `mirror`), { value: `sum`, title: `Sum of both spins` }] as mode (mode.value)}
+                  <option value={mode.value}>{mode.title}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+          <label><input type="checkbox" bind:checked={show_integrated} /> Integrated</label>
+          <label><input type="checkbox" bind:checked={show_average} /> Average</label>
+          <label
+            ><input type="checkbox" bind:checked={shift_to_fermi} /> E − E<sub>F</sub></label
+          >
+        </SettingsSection>
+      {/snippet}
+
+      {#snippet user_content(ctx)}
+        {@const { width, x_scale_fn, y_scale_fn, pad } = ctx}
+        {@const fermi_pos = y_scale_fn(energy_offset)}
+        {#if Number.isFinite(fermi_pos)}
+          <line
+            class="fermi-level-line"
+            {...plot_area_line(fermi_pos, true, ctx)}
+            stroke={fermi_color}
+            stroke-width="var(--cohp-fermi-line-width, 1.5)"
+            stroke-dasharray="var(--cohp-fermi-line-dash, 6,3)"
+            opacity="0.8"
+          />
+          <text
+            x={width - pad.r - 4}
+            y={fermi_pos - 4}
+            text-anchor="end"
+            font-size="10"
+            fill={fermi_color}
+          >
+            E<tspan dy="2" font-size="8">F</tspan>
+          </text>
+        {/if}
+        <!-- bonding/antibonding side labels beside the zero line -->
+        {@const zero_pos = x_scale_fn(0)}
+        {#if zero_pos >= pad.l && zero_pos <= width - pad.r}
+          {#each [`bonding →`, `← antibonding`] as side, idx (side)}
+            <text
+              x={zero_pos + (idx ? -6 : 6)}
+              y={pad.t + 12}
+              text-anchor={idx ? `end` : `start`}
+              font-size="11"
+              fill="var(--cohp-side-label-color, light-dark(#777, #aaa))"
+              pointer-events="none"
+            >
+              {side}
+            </text>
+          {/each}
+        {/if}
+      {/snippet}
+    </ScatterPlot>
   {:else}
     <EmptyState message="No {cohp.kind} pairs to display" />
   {/if}
@@ -259,99 +344,6 @@
     />
   {/if}
 </div>
-
-{#snippet scatter()}
-  {#snippet cohp_tooltip({ x, y, label, series_idx }: ScatterHandlerProps)}
-    {@const meta = meta_of({ series_idx })}
-    {#if label}<strong>{@html sanitize_html(label)}</strong><br />{/if}
-    <TooltipValue label={energy_label} value={format_num(y, `.3~f`)} /><br />
-    <TooltipValue
-      label={lobster_quantity_label(cohp.kind, meta?.integrated ?? false)}
-      value={format_num(x, `.4~f`)}
-    />
-    {#if meta && cohp.spin_polarized}<br />
-      <TooltipValue label="Spin" value={meta.spin} />{/if}
-  {/snippet}
-
-  <ScatterPlot
-    {...rest}
-    tooltip={rest.tooltip ?? cohp_tooltip}
-    series={series_data}
-    x_axis={{ ...value_axis(false), ...rest.x_axis }}
-    y_axis={sync.y_axes[0]}
-    padding={{ ...rest.padding, ...sync.shared_padding }}
-    bind:view={sync.views[0]}
-    bind:resolved_padding={() => undefined, sync.raise_padding}
-    bind:x2_axis
-    bind:display
-    hover_config={{ threshold_px: 30, ...rest.hover_config }}
-    on_point_hover={(event) => {
-      hovered_bond = meta_of(event)?.bond ?? null
-      rest.on_point_hover?.(event)
-    }}
-    on_plot_click={handle_plot_click}
-    bind:controls_open
-  >
-    {#snippet controls_extra()}
-      <SettingsSection title="COHP" layout="flow">
-        {#if cohp.spin_polarized}
-          <label>
-            Spin
-            <select bind:value={spin_mode}>
-              {#each [...SPIN_MODES.filter(({ value }) => value !== `mirror`), { value: `sum`, title: `Sum of both spins` }] as mode (mode.value)}
-                <option value={mode.value}>{mode.title}</option>
-              {/each}
-            </select>
-          </label>
-        {/if}
-        <label><input type="checkbox" bind:checked={show_integrated} /> Integrated</label>
-        <label><input type="checkbox" bind:checked={show_average} /> Average</label>
-        <label><input type="checkbox" bind:checked={shift_to_fermi} /> E − E<sub>F</sub></label
-        >
-      </SettingsSection>
-    {/snippet}
-
-    {#snippet user_content(ctx)}
-      {@const { width, x_scale_fn, y_scale_fn, pad } = ctx}
-      {@const fermi_pos = y_scale_fn(energy_offset)}
-      {#if Number.isFinite(fermi_pos)}
-        <line
-          class="fermi-level-line"
-          {...plot_area_line(fermi_pos, true, ctx)}
-          stroke={fermi_color}
-          stroke-width="var(--cohp-fermi-line-width, 1.5)"
-          stroke-dasharray="var(--cohp-fermi-line-dash, 6,3)"
-          opacity="0.8"
-        />
-        <text
-          x={width - pad.r - 4}
-          y={fermi_pos - 4}
-          text-anchor="end"
-          font-size="10"
-          fill={fermi_color}
-        >
-          E<tspan dy="2" font-size="8">F</tspan>
-        </text>
-      {/if}
-      <!-- bonding/antibonding side labels beside the zero line -->
-      {@const zero_pos = x_scale_fn(0)}
-      {#if zero_pos >= pad.l && zero_pos <= width - pad.r}
-        {#each [`bonding →`, `← antibonding`] as side, idx (side)}
-          <text
-            x={zero_pos + (idx ? -6 : 6)}
-            y={pad.t + 12}
-            text-anchor={idx ? `end` : `start`}
-            font-size="11"
-            fill="var(--cohp-side-label-color, light-dark(#777, #aaa))"
-            pointer-events="none"
-          >
-            {side}
-          </text>
-        {/each}
-      {/if}
-    {/snippet}
-  </ScatterPlot>
-{/snippet}
 
 <style>
   .cohp-and-dos {

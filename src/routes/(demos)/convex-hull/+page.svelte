@@ -569,13 +569,7 @@
     <h2 id="standalone-stats-for-quinary-systems">Standalone Stats for Quinary Systems</h2>
     {@render feature_list(quinary_stats_features)}
     <FilePicker
-      files={quinary_paths.map((path) => ({
-        name: hull_system_name(path),
-        url: path,
-        type: `system`,
-      }))}
-      active_files={[hull_system_name(selected_quinary_path.value)]}
-      on_click={({ url }) => (selected_quinary_path.value = url)}
+      {...selected_quinary_path.picker(`system`, hull_system_name)}
       class="quinary-stats-controls"
       style="margin-bottom: 1em"
     />

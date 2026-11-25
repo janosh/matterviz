@@ -464,7 +464,6 @@
                     </tspan>
                   {/each}
                 {/snippet}
-                {@const label_color = `var(--treemap-label-color, ${label_fill})`}
                 <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
                   {#if label_halo}
                     <!-- Blurred halo for legibility over patterns (style: may be a CSS var) -->
@@ -489,7 +488,7 @@
                     y={lbl.lines[0].y}
                     dominant-baseline="central"
                     transform={lbl.transform}
-                    style:fill={label_color}
+                    style:fill="var(--treemap-label-color, {label_fill})"
                     fill-opacity={label_opacity}
                     font-size={lbl.font_size}
                     style:cursor={cells_clickable ? `pointer` : `text`}

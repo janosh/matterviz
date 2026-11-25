@@ -454,15 +454,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 </script>
 
 <div class="demo-controls">
-  <FilePicker
-    files={Object.entries(distributions).map(([key, { label }]) => ({
-      name: label,
-      url: key,
-      type: `data`,
-    }))}
-    active_files={[current.label]}
-    on_click={({ url }) => (selected.value = url)}
-  />
+  <FilePicker {...selected.picker(`data`, (key) => distributions[key].label)} />
   {#each [`single`, `overlay`] as display_mode (display_mode)}
     <label><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label>
   {/each}

@@ -24,7 +24,7 @@
   } from '#site/structures.js'
   import { format_num } from 'svelte-widgets/format'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
 
   type DiffRole = `reference` | `target`
   type Slot = { structure: AnyStructure; name: string; note?: string; frame?: number }
@@ -241,7 +241,7 @@
                   () => frames[role] + 1,
                   (value) =>
                     (frames[role] =
-                      Math.min(Math.max(Math.round(value ?? 1), 1), run?.frame_count ?? 1) - 1)
+                      clamp(Math.round(value ?? 1), 1, run?.frame_count ?? 1) - 1)
                 }
               />
               of {run.frame_count}{/if}</span

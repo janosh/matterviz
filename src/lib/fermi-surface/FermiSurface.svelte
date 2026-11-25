@@ -15,14 +15,13 @@
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
-  import type { FileSaver } from '#lib/io/file-export.svelte.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import {
     create_renderer,
     key_walk_root,
     wheel_zoom_gate,
-    export_scene_as,
+    model_export_items,
     webgpu_available,
   } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -383,22 +382,14 @@
   })
 
   // PNG of the view plus the visible sheets as 3D models (OBJ also writes its .mtl)
-  const model_formats = [
-    [`STL`, `stl`, `3D printing`],
-    [`OBJ`, `obj`, `Wavefront`],
-    [`GLB`, `glb`, `web/AR`],
-  ] as const
   const export_sections = $derived([
     {
       title: `3D model`,
       tooltip: `Visible Fermi surfaces`,
-      items: model_formats.map(([label, format, hint]) => ({
-        label,
-        hint,
+      items: model_export_items(() => scene, [`stl`, `obj`, `glb`]).map((item) => ({
+        ...item,
         disabled: !scene,
         disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
-        on_download: ({ filename, save }: { filename: string; save: FileSaver }) =>
-          scene && export_scene_as(scene, format, filename, save),
       })),
     },
   ])

@@ -216,6 +216,25 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
   return cloned_scene
 }
 
+const MODEL_HINTS: Record<SceneExportFormat, string> = {
+  stl: `3D printing`,
+  obj: `Wavefront`,
+  glb: `web/AR`,
+}
+// Export pane items saving the model get_model returns (nothing while it has none) per format
+export const model_export_items = (
+  get_model: () => Object3D | null | undefined,
+  formats: SceneExportFormat[],
+) =>
+  formats.map((format) => ({
+    label: format.toUpperCase(),
+    hint: MODEL_HINTS[format],
+    on_download: ({ filename, save }: { filename: string; save: FileSaver }) => {
+      const model = get_model()
+      return model && export_scene_as(model, format, filename, save)
+    },
+  }))
+
 // Download `scene` as `<basename>.<format>` (OBJ plus a companion `.mtl` of material colors,
 // GLB as binary glTF), instanced meshes expanded first. Rejects on exporter errors.
 export async function export_scene_as(

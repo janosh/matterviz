@@ -11,8 +11,9 @@ import {
 import { wulff_examples } from '#site/wulff.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { InstancedMesh, Matrix4, Vector3 } from 'three/webgpu'
-import { afterEach, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeAll, expect, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
+import { init_moyo_for_tests } from '../test-fixtures'
 
 vi.mock(`@threlte/core`, async (original) =>
   (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
@@ -23,6 +24,7 @@ vi.mock(`@threlte/extras`, async () =>
 // a scene's camera always draws the gizmo, which needs a real Threlte parent
 vi.mock(`#lib/scene/Gizmo.svelte`, () => ({ default: () => ({}) }))
 
+beforeAll(init_moyo_for_tests)
 afterEach(() => threlte_stub.reset())
 
 test(`edges are one InstancedMesh, reused and rewritten when the energies change`, () => {
@@ -80,9 +82,13 @@ test.each([
     /Wulff shape is unbounded/,
   ],
   [{ facets: two_families, lattice: wulff_examples[0].lattice }, null],
-])(`WulffShape %#`, (props, error) => {
+  // the crystal's own point group, from an async moyo analysis
+  [{ facets: two_families, structure: wulff_examples[0].structure }, null],
+])(`WulffShape %#`, async (props, error) => {
   const component = mount(WulffShape, { target: document.body, props: props as never })
-  flushSync()
+  await vi.waitFor(() =>
+    expect(document.querySelector(`.viewer-error, .legend`)).not.toBeNull(),
+  )
   const message = document.querySelector(`.viewer-error`)?.textContent ?? null
   if (error) expect(message).toMatch(error)
   else {

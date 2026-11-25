@@ -47,7 +47,6 @@ for (const [tag, spec] of Object.entries(elements)) {
   const { load, props: prop_names, seeded } = spec
   // only bindable props outside DATA_PROPS become proxies: `el.x = obj` keeps obj for the rest
   const proxied = new Set(spec.bindable.filter((name) => !DATA_PROPS.has(name)))
-  const seeded_set = new Set(seeded)
 
   class MatterVizElement extends HTMLElement {
     static observedAttributes = prop_names
@@ -57,7 +56,7 @@ for (const [tag, spec] of Object.entries(elements)) {
     readonly #store = prop_store(
       prop_names,
       (name) => proxied.has(name),
-      (name) => seeded_set.has(name),
+      (name) => seeded.includes(name),
     )
     // Props the page set, as opposed to ones the component wrote back into seeded keys
     readonly #page_set = new Set<string>()

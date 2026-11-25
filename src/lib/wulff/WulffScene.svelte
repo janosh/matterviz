@@ -3,11 +3,11 @@
   // and its hovered facet lights up), all facet edges as one instanced cylinder mesh and
   // optional crystal axes.
   // Camera, lights and fitting follow BrillouinZoneScene (KSpaceCamera).
-  import { bz_fit_extent } from '#lib/brillouin/geometry.js'
+  import { bz_fit_extent, polyhedron_centroid } from '#lib/brillouin/geometry.js'
   import KSpaceCamera from '#lib/brillouin/KSpaceCamera.svelte'
   import PolyhedronMesh from '#lib/brillouin/PolyhedronMesh.svelte'
   import ReciprocalVectors from '#lib/brillouin/ReciprocalVectors.svelte'
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import type { Matrix3x3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {
@@ -87,17 +87,14 @@
     edge_geometry.dispose()
     edge_material.dispose()
   })
-  const edge_capacity = $derived.by(() => {
-    let capacity = 16
-    while (capacity < wulff.edges.length) capacity *= 2
-    return capacity
-  })
-  const edge_mesh = $derived.by(() => {
-    const mesh = new InstancedMesh(edge_geometry, edge_material, edge_capacity)
-    mesh.frustumCulled = false
-    mesh.raycast = () => undefined
-    return mesh
-  })
+  // the next power of two of the edge count, at least 16
+  const edge_capacity = $derived(Math.max(16, 1 << (32 - Math.clz32(wulff.edges.length - 1))))
+  const edge_mesh = $derived(
+    Object.assign(new InstancedMesh(edge_geometry, edge_material, edge_capacity), {
+      frustumCulled: false,
+      raycast: () => undefined,
+    }),
+  )
   dispose_on_change(() => [edge_mesh])
   $effect(() => {
     const { vertices, edges } = wulff
@@ -113,14 +110,13 @@
 
   // Crystal axes from the origin (the shape's center), each poking a fixed margin past the
   // shape's surface along its own direction, so a short axis never ends inside the shape
-  const axes = $derived.by((): Matrix3x3 | null => {
-    if (!lattice) return null
-    return lattice.map((row) => {
+  const axes = $derived(
+    lattice?.map((row) => {
       const unit = math.normalize_vec(row)
       const reach = Math.max(...wulff.vertices.map((vert) => math.dot(vert, unit)))
       return math.scale(unit, reach + 0.3 * radius)
-    }) as Matrix3x3
-  })
+    }) as Matrix3x3 | undefined,
+  )
   let shape_group = $state<Group>()
 
   // Framing follows the lattice (a new example), not every energy edit, which would snap an
@@ -174,8 +170,7 @@
   const pointer_at = scene_pointer()
   const walk_hover = (facet_idx: number) => {
     const corners = wulff.facets[facet_idx].vertex_indices.map((idx) => wulff.vertices[idx])
-    const centroid = math.scale(math.add(...corners), 1 / corners.length)
-    return hover_of(facet_idx, pointer_at(centroid))
+    return hover_of(facet_idx, pointer_at(polyhedron_centroid(corners)))
   }
   scene_key_walk({
     // `wulff` reads undefined while the scene unmounts (the shape went pending or invalid) and

@@ -311,11 +311,7 @@ const output_prop = (prop: string, to_model: (value: unknown) => unknown): Drive
 const pourbaix_domain = (info: unknown) => {
   if (!info) return null
   const { label, species, metal_fractions } = (info as PourbaixHoverInfo).plane
-  const shares = species.map(({ entry: { formula }, aqueous, weight }) => ({
-    formula,
-    aqueous,
-    weight,
-  }))
+  const shares = species.map(({ entry, ...share }) => ({ formula: entry.formula, ...share }))
   return { label, species: shares, metal_fractions }
 }
 // The computed Wulff shape without its geometry: per input family its share of the surface, the
