@@ -261,10 +261,14 @@ describe(`display modes`, () => {
     const props = $state(default_props({ trajectory: run, current_step_idx: 1 }))
     const target = mount_trajectory(props)
     await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(true))
-    await vi.waitFor(() => expect(structure_props().selected_sites).toBeDefined())
+    await vi.waitFor(() =>
+      expect(structure_props().structure?.sites[0].xyz[0]).toBe(Math.fround(Math.PI)),
+    )
     // Atom picks used for distance/angle measurements restore source precision.
     structure_props().selected_sites = [0, 1]
-    await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(false))
+    await vi.waitFor(() => expect(structure_props().structure?.sites[0].xyz[0]).toBe(Math.PI))
+    expect(request.mock.lastCall?.[3]).toBe(false)
+    expect(structure_props().selected_sites).toEqual([0, 1])
     structure_props().selected_sites = []
     await vi.waitFor(() => expect(request.mock.lastCall?.[3]).toBe(true))
     const tab = (name: string) => {
