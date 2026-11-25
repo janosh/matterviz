@@ -215,11 +215,12 @@ jobs:
       # or a rerun reuses the last build of the same site instead of rebuilding (~70 s)
       - name: Site build key
         id: site-key
-        # ls-files, not ls-tree: ls-tree rejects exclude pathspecs, and without pipefail its
-        # error left a key of the dependency versions alone, so every commit reused a stale site
+        # ls-files, not ls-tree: ls-tree rejects exclude pathspecs, and its unnoticed error left a
+        # key of the dependency versions alone, so every commit reused a stale site. && plus
+        # pipefail now fail the step if the listing fails.
         run: |
           set -o pipefail
-          key=$( { git ls-files -s -- . ':!tests' ':!.github'; cat node_modules/.pnpm/lock.yaml; } | sha256sum | cut -c1-40)
+          key=$( { git ls-files -s -- . ':!tests' ':!.github' && cat node_modules/.pnpm/lock.yaml; } | sha256sum | cut -c1-40)
           echo "key=browser-test-site-$key" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         id: site-cache
