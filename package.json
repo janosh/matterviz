@@ -348,7 +348,7 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.5.0",
-    "svelte-widgets": "github:janosh/svelte-widgets#main",
+    "svelte-widgets": "https://github.com/janosh/svelte-widgets/releases/download/main-build/svelte-widgets.tgz",
     "three": "^0.187.0"
   },
   "devDependencies": {
