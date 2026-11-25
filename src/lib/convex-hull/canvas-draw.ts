@@ -23,7 +23,7 @@ import type { ColorScale } from '#lib/plot/core/types.js'
 import type { SpatialIndex } from '#lib/plot/core/spatial-index.js'
 import { build_spatial_index, query_topmost } from '#lib/plot/core/spatial-index.js'
 import { DEFAULTS } from '#lib/settings.js'
-import { clamp01 } from '#lib/utils.js'
+import { clamp01, is_finite_number } from '#lib/utils.js'
 import { ticks } from 'd3-array'
 import { symbol } from 'd3-shape'
 import { TETRAHEDRON_VERTICES, TRIANGLE_VERTICES } from './barycentric-coords'
@@ -401,7 +401,7 @@ function label_priority_energy(entry: ConvexHullEntry): number {
     entry.energy,
     entry.e_above_hull,
   ]) {
-    if (typeof value === `number` && Number.isFinite(value)) return value
+    if (is_finite_number(value)) return value
   }
   return Number.POSITIVE_INFINITY
 }

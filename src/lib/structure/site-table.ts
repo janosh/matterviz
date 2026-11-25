@@ -1,6 +1,7 @@
 // One row per site with its coordinates and every per-site property the parsers keep (forces,
 // magmoms, charges, velocities, selective dynamics, …), shared by the trajectory data inspector
 // and the structure viewer's site sidebar.
+import { is_finite_number } from '#lib/utils.js'
 import type { CellVal, RowData } from 'svelte-widgets/table'
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import type { TrajPropertyConfig } from '#lib/labels.js'
@@ -99,9 +100,7 @@ export const site_property_specs = (sites: readonly Site[]): [string, SiteProper
 export const has_site_data = (sites: readonly Site[] | undefined): boolean =>
   (sites ?? []).some(({ properties }) =>
     Object.values(properties ?? {}).some(
-      (value) =>
-        (typeof value === `number` && Number.isFinite(value)) ||
-        shape_of(value) === `numeric_vec3`,
+      (value) => is_finite_number(value) || shape_of(value) === `numeric_vec3`,
     ),
   )
 

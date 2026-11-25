@@ -1,5 +1,8 @@
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 
+// A finite number (not NaN or ±Infinity), narrowing an unknown value's type
+export const is_finite_number = (value: unknown): value is number => Number.isFinite(value)
+
 // Deep copy of the arrays and plain objects in `value`, the only things Svelte proxies (typed
 // arrays, maps and class instances are kept as they are). $state.snapshot does the same but
 // passes every number through structuredClone, which tripled the copy of 100k sites.

@@ -1733,7 +1733,6 @@ test(`each viewer keeps its own color_scheme and picked colors, page colors unto
 // blocked the first press on a 47k-atom cell; the session's plain copy goes instead
 test(`analyzes the symmetry of a plain copy of a $state structure`, async () => {
   vi.stubEnv(`VITEST`, ``)
-  vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
   const analyze = vi
     .spyOn(symmetry, `analyze_structure_symmetry`)
     .mockReturnValue(new Promise(() => {}))
@@ -1747,7 +1746,6 @@ test(`analyzes the symmetry of a plain copy of a $state structure`, async () => 
 
 test(`shows a dismissible symmetry warning when analysis fails`, async () => {
   vi.stubEnv(`VITEST`, ``)
-  vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValueOnce(undefined)
   vi.spyOn(symmetry, `analyze_structure_symmetry`).mockRejectedValueOnce(
     new Error(`WASM unavailable`),
   )
@@ -1768,7 +1766,6 @@ test.each([`disabled`, `molecule`, `empty`, `unmounted`] as const)(
   `ignores a pending symmetry failure after becoming %s`,
   async (transition) => {
     vi.stubEnv(`VITEST`, ``)
-    vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
     const pending = Promise.withResolvers<never>()
     const analyze = vi
       .spyOn(symmetry, `analyze_structure_symmetry`)
@@ -1791,7 +1788,7 @@ test.each([`disabled`, `molecule`, `empty`, `unmounted`] as const)(
   },
 )
 
-// The ~0.75 MB WASM loads only once the viewer is pressed or focused or the display needs
+// Symmetry analysis (moyo's ~0.75 MB WASM) starts only once the viewer is pressed or focused or the display needs
 // symmetry (never on hover), and a demand sticks: closing the pane or going back to the
 // original cell keeps the data
 const wyckoff_colors: AtomColorConfig = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `wyckoff` }
@@ -1808,7 +1805,6 @@ test.each<[string, Partial<StructureProps>, string | null, boolean]>([
   [`on demand, for an open pane`, { active_pane: `info` }, null, true],
 ])(`symmetry analysis %s`, async (_label, props, event, expected) => {
   vi.stubEnv(`VITEST`, ``)
-  const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
   // never lands: only whether (and how often) analysis starts matters here
   const analyze_spy = vi
     .spyOn(symmetry, `analyze_structure_symmetry`)
@@ -1819,7 +1815,6 @@ test.each<[string, Partial<StructureProps>, string | null, boolean]>([
   const fire_on_viewer = async (type?: string | null) =>
     type ? fire(doc_query(`.structure`), new Event(type, { bubbles: true })) : tick()
   await fire_on_viewer(event)
-  expect(ready_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
   expect(analyze_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
   // the viewer's own handlers compose with the host's instead of being replaced
   const host_handler = props.onpointerdown ?? props.onfocusin

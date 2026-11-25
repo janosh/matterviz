@@ -15,6 +15,7 @@
 // vaspwave.h5 charge density is handled by isosurface/parse-vaspwave.ts.
 //
 // Schema reference: py4vasp's VASP 6.x schema definitions.
+import { is_finite_number } from '#lib/utils.js'
 import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import { create_frac_to_cart, det_3x3, type Vec3 } from '#lib/math.js'
 import type * as h5wasm from 'h5wasm'
@@ -142,8 +143,8 @@ const read_electronic_step_history = (h5_file: h5wasm.File): ScfIonicStep[] | nu
   if (!rows) return null
   const ionic_steps = rows
     .map((row) => {
-      const energies = (Array.isArray(row) ? row : [row]).filter(
-        (val): val is number => typeof val === `number` && Number.isFinite(val),
+      const energies = (Array.isArray(row) ? row : [row]).filter((val): val is number =>
+        is_finite_number(val),
       )
       return {
         energies,

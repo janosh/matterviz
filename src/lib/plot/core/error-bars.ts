@@ -2,6 +2,7 @@
 // between points (a claim scattered data like a parity plot does not support), bars state the
 // uncertainty pointwise and also work in x: measurement error is rarely confined to one axis.
 
+import { is_finite_number } from '#lib/utils.js'
 import type { Vec2 } from '#lib/math.js'
 import type { RunningExtent } from '#lib/plot/core/scales.js'
 
@@ -46,7 +47,7 @@ const side_getter = (side: number | readonly number[]): ((idx: number) => number
   }
   return (idx) => {
     const value = side[idx]
-    return typeof value === `number` && Number.isFinite(value) ? Math.abs(value) : 0
+    return is_finite_number(value) ? Math.abs(value) : 0
   }
 }
 

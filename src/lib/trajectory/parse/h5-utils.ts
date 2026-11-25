@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import { transpose_3x3, type Matrix3x3 } from '#lib/math.js'
 import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import type {
@@ -204,7 +205,7 @@ export const to_finite_number = (value: unknown): number | null => {
   const number = typeof value === `bigint` ? Number(value) : value
   const valid_bigint =
     typeof value !== `bigint` || (typeof number === `number` && Number.isSafeInteger(number))
-  return typeof number === `number` && Number.isFinite(number) && valid_bigint ? number : null
+  return is_finite_number(number) && valid_bigint ? number : null
 }
 
 const not_numeric = (path: string): never => {

@@ -1,4 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
+import { is_finite_number } from '#lib/utils.js'
 import { get_density } from '#lib/structure/density.js'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryMetadata } from './index'
 
@@ -20,7 +21,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     ? [`temperature`, `density`]
     : [`temperature`, `density`, `volume`]) {
     const value = metadata?.[key]
-    if (typeof value === `number` && Number.isFinite(value)) data[key] = value
+    if (is_finite_number(value)) data[key] = value
   }
   if (data.density === undefined && `lattice` in structure) {
     try {

@@ -1,5 +1,6 @@
 // Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
+import { is_finite_number } from '#lib/utils.js'
 import { format_num } from 'svelte-widgets/format'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
@@ -360,10 +361,9 @@ export function apply_gas_corrections(
     // hull distances were measured against the old references and phases
     const moved: PhaseData = {
       ...entry,
-      e_form_per_atom:
-        typeof e_form === `number` && Number.isFinite(e_form)
-          ? e_form + own_shift - ref_sum_of(entry.composition)
-          : undefined,
+      e_form_per_atom: is_finite_number(e_form)
+        ? e_form + own_shift - ref_sum_of(entry.composition)
+        : undefined,
       e_above_hull: undefined,
       is_stable: undefined,
       ...(replaced && { exclude_from_hull: true }),

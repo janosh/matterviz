@@ -4,6 +4,7 @@
 // sum |e|^2 == 1; atom kappa moves by u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes
 // that weighting: consumers needing displacements divide by sqrt(mass) themselves.
 
+import { is_finite_number } from '#lib/utils.js'
 import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { load as yaml_load } from 'js-yaml'
@@ -22,8 +23,6 @@ import type {
 // digits, so anything beyond this is a malformed or non-normalised file, not round-off.
 const EIGENVECTOR_NORM_TOL = 1e-3
 
-const is_finite_number = (val: unknown): val is number =>
-  typeof val === `number` && Number.isFinite(val)
 const is_positive_int = (val: unknown): val is number =>
   Number.isInteger(val) && Number(val) > 0
 

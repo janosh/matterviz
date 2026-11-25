@@ -959,14 +959,9 @@
     const controller = new AbortController()
     const { signal } = controller
     symmetry
-      .ensure_moyo_wasm_ready()
-      .then(() =>
-        signal.aborted
-          ? null
-          : symmetry.analyze_structure_symmetry(current_structure, { symprec, algo }, signal),
-      )
+      .analyze_structure_symmetry(current_structure, { symprec, algo }, signal)
       .then((data) => {
-        if (data && !signal.aborted) untrack(() => (sym_data = data))
+        if (!signal.aborted) untrack(() => (sym_data = data))
       })
       .catch((err) => {
         if (signal.aborted) return
@@ -1204,6 +1199,9 @@
     },
     get sym_data() {
       return sym_data
+    },
+    get symmetry_error() {
+      return symmetry_error
     },
     get displacement_rmsd() {
       return displacement_summary?.rmsd

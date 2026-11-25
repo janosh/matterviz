@@ -12,7 +12,6 @@
   import {
     analyze_structure_symmetry,
     default_sym_settings,
-    ensure_moyo_wasm_ready,
     transform_cell,
     type CellType,
     type SymmetrySettings,
@@ -94,7 +93,6 @@
     settings: Partial<SymmetrySettings> = {},
   ): Promise<AnyStructure> {
     if (cell_type === `original` || !(`lattice` in structure)) return structure
-    await ensure_moyo_wasm_ready()
     const sym_data = await analyze_structure_symmetry(structure, {
       ...default_sym_settings,
       ...settings,

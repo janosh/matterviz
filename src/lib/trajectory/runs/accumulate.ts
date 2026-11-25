@@ -1,6 +1,7 @@
 // Frame-major position accumulation shared by every run that reads frames one at a time
 // (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
+import { is_finite_number } from '#lib/utils.js'
 import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
@@ -364,7 +365,7 @@ export const parse_frame_signal = (
   key: string,
   n_atoms: number,
 ): { values: number[]; sample_shape: number[] } | null => {
-  if (typeof value === `number` && Number.isFinite(value)) {
+  if (is_finite_number(value)) {
     return { values: [value], sample_shape: [] }
   }
   const values = ArrayBuffer.isView(value)

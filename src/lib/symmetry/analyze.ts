@@ -8,7 +8,7 @@ import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site, species_key } from '#lib/structure/site.js'
-import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
 import { is_identity } from './symmetry-elements'
 import type {
   InitInput,
@@ -52,23 +52,24 @@ export interface SymmetryBackend {
   ) => Promise<MoyoDataset>
   // Settings of the ITA space group `number` and each setting's Wyckoff positions, keyed by
   // Hall number (moyo-wasm's hall_symbol_entries_from_number and wyckoff_positions).
-  space_group_database: (number: number) => Promise<{
-    settings: MoyoHallSymbolEntry[]
-    wyckoff_positions: Record<number, MoyoWyckoffPosition[]>
-  }>
+  space_group_database: (number: number) => Promise<SpaceGroupDatabase>
+}
+export type SpaceGroupDatabase = {
+  settings: MoyoHallSymbolEntry[]
+  wyckoff_positions: Record<number, MoyoWyckoffPosition[]>
 }
 
 let symmetry_backend: SymmetryBackend | null = null
-// The backend's database answers, fetched with each analysis so the synchronous lookups below
-// (read inside $derived) can serve them.
-const backend_settings = new Map<number, MoyoHallSymbolEntry[]>()
-const backend_wyckoffs = new Map<number, MoyoWyckoffPosition[]>()
+// Database answers of a backend or the moyo worker, fetched with each analysis so the
+// synchronous lookups below (read inside $derived) serve them without this thread's WASM
+const db_settings = new Map<number, MoyoHallSymbolEntry[]>()
+const db_wyckoffs = new Map<number, MoyoWyckoffPosition[]>()
 
 // Register before the first analysis; null restores the WASM build.
 export function set_symmetry_backend(backend: SymmetryBackend | null): void {
   symmetry_backend = backend
-  backend_settings.clear()
-  backend_wyckoffs.clear()
+  db_settings.clear()
+  db_wyckoffs.clear()
 }
 
 // Memoized so concurrent first callers share one instantiation; a failed attempt is
@@ -101,14 +102,16 @@ export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
 // What the moyo worker needs besides the cell
 export type MoyoWorkerOptions = { symprec: number; setting: `Standard` | `Spglib` }
 
-// moyo's analyze_cell in a Web Worker (a 47k-site supercell held the main thread for 16-19 s).
-// The worker loads the WASM from its default location, so a host serving it elsewhere (the VS
-// Code webview, whose workers fetch nothing, or a relative URL the worker would resolve against
+// moyo's analyze_cell in a Web Worker (a 47k-site supercell held the main thread for 16-19 s),
+// which also returns the space group's database, so this thread never loads the WASM. The
+// worker loads it from its default location, so a host serving it elsewhere (the VS Code
+// webview, whose workers fetch nothing, or a relative URL the worker would resolve against
 // itself) runs here, as does any host without Worker, once ensure_moyo_wasm_ready is done.
+export type MoyoWorkerResult = { dataset: MoyoDataset; database?: SpaceGroupDatabase }
 const analyze_cell_async = create_worker_client<
   { cell: MoyoCell },
   MoyoWorkerOptions,
-  MoyoDataset
+  MoyoWorkerResult
 >({
   label: `Symmetry`,
   create_worker: () =>
@@ -116,7 +119,7 @@ const analyze_cell_async = create_worker_client<
     new Worker(new URL(`./moyo-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: ({ cell }, options) => {
     if (!options) throw new Error(`moyo analysis needs symprec and setting`)
-    return analyze_cell(JSON.stringify(cell), options.symprec, options.setting)
+    return { dataset: analyze_cell(JSON.stringify(cell), options.symprec, options.setting) }
   },
   // Plain copies: positions are the sites' own abc arrays, $state proxies in a viewer
   build_payload: ({ cell: { lattice, positions, numbers } }) => ({
@@ -217,18 +220,24 @@ export async function analyze_structure_symmetry(
     positions,
     numbers: labels,
   }
-  if (!symmetry_backend) await ensure_moyo_wasm_ready()
   const { symprec, algo } = { ...default_sym_settings, ...settings }
   const setting = algo === `Moyo` ? `Standard` : algo
   const backend = symmetry_backend
-  const sym_data = backend
-    ? await backend.analyze_cell(cell, symprec, setting)
+  // this thread needs the WASM only to analyze here itself
+  if (!backend && (registered_source !== undefined || !can_create_worker()))
+    await ensure_moyo_wasm_ready()
+  const { dataset: sym_data, database } = backend
+    ? { dataset: await backend.analyze_cell(cell, symprec, setting) }
     : await analyze_cell_async({ cell }, { symprec, setting }, { signal })
-  if (backend && !backend_settings.has(sym_data.number)) {
-    const database = await backend.space_group_database(sym_data.number)
-    backend_settings.set(sym_data.number, database.settings)
-    for (const [hall_number, wyckoffs] of Object.entries(database.wyckoff_positions))
-      backend_wyckoffs.set(Number(hall_number), wyckoffs)
+  const db =
+    database ??
+    (backend && !db_settings.has(sym_data.number)
+      ? await backend.space_group_database(sym_data.number)
+      : undefined)
+  if (db) {
+    db_settings.set(sym_data.number, db.settings)
+    for (const [hall_number, wyckoffs] of Object.entries(db.wyckoff_positions))
+      db_wyckoffs.set(Number(hall_number), wyckoffs)
   }
   // Standardized cells come back with moyo's labels; display them by majority element
   const number_by_label = new Map(labels.map((label, idx) => [label, numbers[idx]]))
@@ -286,22 +295,25 @@ const is_int_in_range = (value: number, min: number, max: number): boolean =>
   Number.isInteger(value) && value >= min && value <= max
 
 // All Wyckoff positions of the space-group setting given by hall_number (1-530), ordered
-// general-position-first. Returns [] for a hall number outside that range, before the WASM
-// module is initialized (SSR, component tests), and with a host backend for a space group no
-// analysis has returned yet — callers treat the database as an optional enrichment, never a
-// hard requirement. Anything moyo itself throws propagates.
+// general-position-first. Returns [] for a hall number outside that range, and before the WASM
+// module is initialized (SSR, component tests, analyses run in the worker or a host backend) for
+// a space group no analysis has returned yet — callers treat the database as an optional
+// enrichment, never a hard requirement. Anything moyo itself throws propagates.
 export const spacegroup_wyckoff_positions = (hall_number: number): MoyoWyckoffPosition[] => {
   if (!is_int_in_range(hall_number, 1, 530)) return []
-  if (symmetry_backend) return backend_wyckoffs.get(hall_number) ?? []
-  return wasm_ready ? wyckoff_positions(hall_number) : []
+  const known = db_wyckoffs.get(hall_number)
+  return known ?? (wasm_ready && !symmetry_backend ? wyckoff_positions(hall_number) : [])
 }
 
 // All Hall-symbol entries (settings) of the ITA space group `spacegroup_number` (1-230),
 // ordered by Hall number. Returns [] in the same cases as spacegroup_wyckoff_positions.
 export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEntry[] => {
   if (!is_int_in_range(spacegroup_number, 1, 230)) return []
-  if (symmetry_backend) return backend_settings.get(spacegroup_number) ?? []
-  return wasm_ready ? hall_symbol_entries_from_number(spacegroup_number) : []
+  const known = db_settings.get(spacegroup_number)
+  return (
+    known ??
+    (wasm_ready && !symmetry_backend ? hall_symbol_entries_from_number(spacegroup_number) : [])
+  )
 }
 
 export type CellType = `original` | `conventional` | `primitive`

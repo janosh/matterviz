@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { is_finite_number } from '#lib/utils.js'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import { join_hover_link, TooltipValue } from '#lib/tooltip/index.js'
@@ -799,7 +800,7 @@
     {#if typeof band_width === `number` && band_width > 0}
       <br />Projection: {format_num(band_width, `.3~g`)}
     {/if}
-    {#if typeof slope === `number` && Number.isFinite(slope)}
+    {#if is_finite_number(slope)}
       {@const rel = Math.abs(slope) / (slope_scales[series_idx] ?? 1)}
       <br />Dispersion: {rel < 0.15 ? `flat` : rel < 0.5 ? `moderate` : `steep`}
     {/if}

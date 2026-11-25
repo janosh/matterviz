@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import { leading_number } from '#lib/math.js'
 
 export interface FontSpec {
@@ -177,7 +178,7 @@ const get_canvas_context = (): CanvasRenderingContext2D | null => {
 }
 
 const finite_metric = (value: number | undefined, fallback: number): number =>
-  typeof value === `number` && Number.isFinite(value) && value >= 0 ? value : fallback
+  is_finite_number(value) && value >= 0 ? value : fallback
 
 const uncached_line_metrics = (
   text: string,

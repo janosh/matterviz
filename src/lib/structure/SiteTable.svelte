@@ -4,7 +4,7 @@
   import { display_idx, from_display_idx } from '#lib/labels.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { join_hover_link } from '#lib/tooltip/index.js'
-  import { toggle_item } from '#lib/utils.js'
+  import { toggle_item, is_finite_number } from '#lib/utils.js'
   import type { ComponentProps } from 'svelte'
   import type { Site } from './index'
   import { DATA_TABLE_PROPS, site_columns, site_property_specs, site_rows } from './site-table'
@@ -57,7 +57,7 @@
 <!-- Number cell whose tooltip (the table's delegated [title] one) gives the full value when
   the column format rounds it, e.g. a sidebar's 4 significant digits -->
 {#snippet full_value_cell({ val, col }: CellSnippetArgs)}
-  {#if typeof val === `number` && Number.isFinite(val)}
+  {#if is_finite_number(val)}
     {@const text = format_num(val, col.format ?? num_format)}
     <span title={text === String(val) ? undefined : String(val)}>{text}</span>
   {:else if val == null || Number.isNaN(val)}

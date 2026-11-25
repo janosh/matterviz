@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import { is_plain_object } from 'svelte-widgets/utils'
 import type { DefaultSettings } from '../settings'
 import { SETTINGS_CONFIG, validate_setting_value } from '../settings'
@@ -51,7 +52,7 @@ const object_value = (source: object | undefined, key: PropertyKey): unknown =>
   source && Reflect.has(source, key) ? Reflect.get(source, key) : undefined
 
 const in_range = (value: unknown, min: number, max: number): value is number =>
-  typeof value === `number` && Number.isFinite(value) && value >= min && value <= max
+  is_finite_number(value) && value >= min && value <= max
 
 const normalize_pane_size = (value: unknown): StructurePaneSize | undefined => {
   if (!is_plain_object(value)) return undefined

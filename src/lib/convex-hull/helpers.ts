@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import { format_num } from 'svelte-widgets/format'
 import { HIGHLIGHT } from '#lib/colors/index.js'
 import type { CompositionType } from '#lib/composition/index.js'
@@ -44,12 +45,9 @@ export {
 
 type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
 
-const is_finite = (val: unknown): val is number =>
-  typeof val === `number` && Number.isFinite(val)
-
 // Finite hull distances only: NaN/undefined would otherwise poison every range below
 const finite_hull_dists = (entries: readonly StabilityEntry[]): number[] =>
-  entries.map((entry) => entry.e_above_hull).filter(is_finite)
+  entries.map((entry) => entry.e_above_hull).filter(is_finite_number)
 
 // [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
 export const hull_distance_range = (entries: readonly StabilityEntry[]): [number, number] => {
@@ -324,9 +322,9 @@ type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | nul
 // finite energy or no atoms
 function compute_energy_per_atom(entry: PhaseData): number | null {
   if (!(count_atoms_in_composition(entry.composition) > 0)) return null
-  if (!is_finite(entry.energy_per_atom) && !is_finite(entry.energy)) return null
+  if (!is_finite_number(entry.energy_per_atom) && !is_finite_number(entry.energy)) return null
   const energy_per_atom = get_energy_per_atom(entry)
-  return is_finite(energy_per_atom) ? energy_per_atom : null
+  return is_finite_number(energy_per_atom) ? energy_per_atom : null
 }
 
 // Energy per metric (null if unavailable), keys in preference order. Absolute energies come
@@ -336,9 +334,9 @@ const METRIC_ENERGY: Record<
   (entry: PhaseData) => number | null
 > = {
   e_form_per_atom: (entry) =>
-    is_finite(entry.e_form_per_atom) ? entry.e_form_per_atom : null,
+    is_finite_number(entry.e_form_per_atom) ? entry.e_form_per_atom : null,
   energy_per_atom: compute_energy_per_atom,
-  e_above_hull: (entry) => (is_finite(entry.e_above_hull) ? entry.e_above_hull : null),
+  e_above_hull: (entry) => (is_finite_number(entry.e_above_hull) ? entry.e_above_hull : null),
 }
 
 const get_fractional_composition_key = (composition: Record<string, number>): string =>

@@ -1,3 +1,4 @@
+import { is_finite_number } from '#lib/utils.js'
 import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
@@ -261,7 +262,7 @@ function numeric_site_columns(
     const fits = structure.sites.every(({ properties }) => {
       const value = properties?.[key]
       return ncols === 1
-        ? typeof value === `number` && Number.isFinite(value)
+        ? is_finite_number(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
     return fits ? [{ key, name: ASE_COLUMN_NAMES.get(key) ?? key, ncols }] : []

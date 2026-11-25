@@ -1,5 +1,6 @@
 // Surface energies from Materials Project or pymatgen JSON, as compute_wulff_shape's input.
 // Plain TypeScript: no pymatgen needed to read either.
+import { is_finite_number } from '#lib/utils.js'
 import { is_plain_object as is_record } from 'svelte-widgets/utils'
 import { is_finite_matrix3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { WulffFacetInput } from './types'
@@ -13,8 +14,6 @@ export type ParsedSurfaceEnergies = {
   lattice?: Matrix3x3 // pymatgen's WulffShape lattice (an MP document has none)
   label?: string // material id and formula of an MP document
 }
-
-const is_number = (val: unknown): val is number => Number.isFinite(val)
 
 // (h k l), or hexagonal Miller-Bravais (h k i l) as the Materials Project lists them, whose
 // redundant i = -(h + k) is dropped
@@ -49,9 +48,9 @@ export function parse_surface_energies(json: unknown): ParsedSurfaceEnergies {
       const where = `surfaces[${idx}]`
       if (!is_record(surface)) throw new Error(`${where} is not an object`)
       const { surface_energy, surface_energy_EV_PER_ANG2: ev_per_a2 } = surface
-      const energy = is_number(surface_energy)
+      const energy = is_finite_number(surface_energy)
         ? surface_energy
-        : is_number(ev_per_a2)
+        : is_finite_number(ev_per_a2)
           ? ev_per_a2 * EV_PER_A2_TO_J_PER_M2
           : null
       if (energy === null) {
@@ -76,7 +75,7 @@ export function parse_surface_energies(json: unknown): ParsedSurfaceEnergies {
     }
     const facets = miller_list.map((miller: unknown, idx): WulffFacetInput => {
       const energy = e_surf_list[idx]
-      if (!is_number(energy)) throw new Error(`e_surf_list[${idx}] is not a number`)
+      if (!is_finite_number(energy)) throw new Error(`e_surf_list[${idx}] is not a number`)
       return { miller: to_miller(miller, `miller_list[${idx}]`), energy }
     })
     return { facets, lattice: matrix }
