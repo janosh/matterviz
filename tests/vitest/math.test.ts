@@ -1906,3 +1906,15 @@ test.each([
 ])(`mean_point(%j) = %j`, (points, expected) => {
   expect(math.mean_point(points)).toEqual(expected)
 })
+
+// Object.is per element (Svelte's equality): NaN entries never read as a change, -0 and 0 do
+test.each([
+  [[1, 2, 3], [1, 2, 3], true],
+  [[1, 2], [1, 2, 3], false],
+  [[NaN, 1], [NaN, 1], true],
+  [[0], [-0], false],
+  [[`a`, `b`], [`a`, `b`], true],
+  [new Float64Array([1, NaN]), new Float64Array([1, NaN]), true],
+])(`same_values(%j, %j) = %s`, (left, right, expected) => {
+  expect(math.same_values<unknown>(left, right)).toBe(expected)
+})

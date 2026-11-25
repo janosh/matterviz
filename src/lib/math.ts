@@ -189,13 +189,15 @@ export const first_non_increasing_index = (values: ArrayLike<number>): number | 
 export const same_position = (left: Vec3, right: Vec3): boolean =>
   left.every((value, axis) => Math.abs(value - right[axis]) < 1e-6)
 
-// Element-wise === of two array-likes; cheaper than hashing for hot "column changed?" checks
+// Element-wise Object.is of two array-likes (Svelte's equality: NaN matches itself, so NaN
+// entries never read as a change); cheaper than hashing for hot "column changed?" checks
 export const same_values = <Value>(
   left: ArrayLike<Value>,
   right: ArrayLike<Value>,
 ): boolean => {
   if (left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
+  for (let idx = 0; idx < left.length; idx++)
+    if (!Object.is(left[idx], right[idx])) return false
   return true
 }
 

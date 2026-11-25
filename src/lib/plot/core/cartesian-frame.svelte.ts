@@ -9,7 +9,7 @@ import {
   shows_fullscreen_toggle,
   type ShowControlsProp,
 } from '#lib/controls.js'
-import type { Vec2 } from '#lib/math.js'
+import { same_values, type Vec2 } from '#lib/math.js'
 import type {
   DecorationItem,
   DecorationSolution,
@@ -63,11 +63,7 @@ import {
   log_floor_scale,
 } from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
-import {
-  arrays_equal,
-  measured_axis,
-  resolve_tick_layout,
-} from '#lib/plot/core/tick-layout.js'
+import { measured_axis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
 import type {
   AxisConfig,
   AxisRanges,
@@ -675,7 +671,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const ticks = $derived.by(() => {
     const next = compute_ticks(scales, ranges.current)
     const prev = last_ticks
-    if (prev && FACET_AXES.every((axis) => arrays_equal(prev[axis], next[axis]))) return prev
+    if (prev && FACET_AXES.every((axis) => same_values(prev[axis], next[axis]))) return prev
     return (last_ticks = next)
   })
   // What each axis's ticks span: its live range, or a derived x2's forward image of x's
