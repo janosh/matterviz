@@ -1,6 +1,7 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
+  import { url_selection } from '#site/state.svelte.js'
   import { trajectory_files } from '#site/trajectories.js'
   import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 
@@ -16,6 +17,7 @@
   // reads this mapping, so it goes to the empty drop target meant for those dumps, not to
   // the HDF5 / XDATCAR / extXYZ viewers
   const lammps_loading_options = { atom_type_mapping: { 1: `Cu`, 2: `Zr` } } as const
+  const diff_reference = url_selection(`diff`, [`first`, `previous`, `off`] as const)
   const traj_pair = [
     [`Gold cluster trajectory`, `flame-gold-cluster-55-atoms.h5`],
     [`VASP trajectory`, `vasp-XDATCAR-traj.gz`],
@@ -63,6 +65,27 @@
     </LazyDemo>
   {/each}
 </div>
+
+<h2 id="displacements">Displacements against a reference frame</h2>
+<p>
+  <code>bind:diff_reference</code> (or <em>Compare with</em> in the structure settings) diffs
+  each frame of this gold-cluster relaxation against the first or the previous frame: faint
+  ghosts and arrows mark where atoms came from, atoms are colored by |Δr| and
+  <em>RMSD vs frame 1</em>
+  joins the plot. Rigid drift is removed by default: the mean shift, plus the best-fit rotation for
+  a non-periodic cluster like this one.
+</p>
+<LazyDemo label="Gold cluster displacements" height="600px" class="full-bleed">
+  <Trajectory
+    source="/trajectories/flame-gold-cluster-55-atoms.h5"
+    bind:diff_reference={
+      () => diff_reference.value, (value) => (diff_reference.value = value ?? `off`)
+    }
+    visible_properties={[`rmsd`]}
+    style={viewer_style}
+    on_file_load={handle_file_load}
+  />
+</LazyDemo>
 
 <h2 id="bindable-visible_properties">Bindable <code>visible_properties</code></h2>
 <p>Legend toggles update the bound list of displayed trajectory properties.</p>

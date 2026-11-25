@@ -3,6 +3,8 @@
   import { browser } from '$app/env'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { url_selection } from '#site/state.svelte.js'
   import { InterfaceBuilder } from '#lib/interface/index.js'
   import type { Heterostructure } from '#lib/interface/index.js'
   import { SlabBuilder } from '#lib/slab/index.js'
@@ -30,9 +32,15 @@
   // the substrate/film pickers and the slabs SlabBuilder cuts from them
   const SIDES = [`substrate`, `film`] as const
   const sides = $state({
-    substrate: { bulk: `Cu (fcc)`, slab: null as Slab | null },
-    film: { bulk: `Pd (fcc)`, slab: null as Slab | null },
+    substrate: { slab: null as Slab | null },
+    film: { slab: null as Slab | null },
   })
+  // each side's material in ?substrate= / ?film=
+  const bulk_names = Object.keys(bulk_structures)
+  const bulks = {
+    substrate: url_selection(`substrate`, bulk_names, `Cu (fcc)`),
+    film: url_selection(`film`, bulk_names, `Pd (fcc)`),
+  }
   let heterostructure = $state<Heterostructure | null>(null)
   // ?match=7 picks match #7, the number the plot, select and stats show; the pick writes back,
   // #1 leaving it off. Read in the browser only: prerender forbids url.searchParams, and the
@@ -69,23 +77,23 @@
   <section class="demo-2col">
     {#each SIDES as side (side)}
       <SettingsGroup title={side === `substrate` ? `Substrate` : `Film`} collapsible={false}>
+        <!-- a new material means a new match list, so #N would name another interface -->
+        <FilePicker
+          files={Object.keys(bulk_structures).map((name) => ({ name, url: ``, type: `json` }))}
+          active_files={[bulks[side].value]}
+          on_click={({ name }) => {
+            bulks[side].value = name
+            match_idx = 0
+          }}
+          style="margin-bottom: 0.5em"
+        />
         <SlabBuilder
-          structure={bulk_structures[sides[side].bulk]}
+          structure={bulk_structures[bulks[side].value]}
           bind:slab={sides[side].slab}
           min_slab_thickness={6}
           show_info={false}
           show_cell_options={false}
-        >
-          <label>
-            Material
-            <!-- a new material means a new match list, so #N would name another interface -->
-            <select bind:value={sides[side].bulk} onchange={() => (match_idx = 0)}>
-              {#each Object.keys(bulk_structures) as key (key)}
-                <option value={key}>{key}</option>
-              {/each}
-            </select>
-          </label>
-        </SlabBuilder>
+        />
       </SettingsGroup>
     {/each}
   </section>
@@ -102,7 +110,7 @@
   {#if heterostructure}
     <Structure structure={heterostructure} bind:atom_color_config>
       <p class="demo-overlay-label">
-        {sides.film.bulk} on {sides.substrate.bulk}, {heterostructure.sites.length} atoms
+        {bulks.film.value} on {bulks.substrate.value}, {heterostructure.sites.length} atoms
       </p>
     </Structure>
   {/if}

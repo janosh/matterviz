@@ -17,7 +17,7 @@
     WyckoffTable,
   } from '#lib/symmetry/index.js'
   import { structure_files } from '#site/structures.js'
-  import { file_param, loaded_fixture, set_file_param } from '#site/state.svelte.js'
+  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
 
@@ -96,7 +96,7 @@
 
   // Update filename from URL
   $effect(() => {
-    const file = file_param()
+    const file = url_param(`file`)
     if (file && file !== source_filename) {
       source_filename = file
       display_filename = file
@@ -178,7 +178,7 @@
       display_filename = data.filename || source_filename
       const fixture = loaded_fixture(data)
       source_filename = fixture ?? source_filename
-      set_file_param(fixture)
+      set_url_param(`file`, fixture)
     }}
     style="height: 100%; min-height: 500px"
   >

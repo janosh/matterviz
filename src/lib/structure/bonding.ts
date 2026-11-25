@@ -28,12 +28,12 @@ import { BOND_ORDERS, BondFrame, pack_bonds, type BondColumns } from './bond-ren
 import {
   bin_points,
   bounding_box,
-  grow,
   lattice_pbc_or_throw,
   MAX_NEIGHBOR_PAIRS,
   MAX_PAIRS_PER_SITE,
   neighbor_query_cutoff,
   NO_PBC,
+  packed_positions,
   site_positions,
   type NeighborList,
   type PairBand,
@@ -833,18 +833,6 @@ const same_band = (left: PairBand, right: PairBand): boolean =>
   math.same_values(left.lo, right.lo) &&
   math.same_values(left.hi, right.hi)
 
-// Site positions as packed xyz triples, written into `out` when its length fits
-const packed_positions = (structure: AnyStructure, out?: Float64Array): Float64Array => {
-  const { sites, n_sites, coordinates, stride } = site_positions(structure)
-  const xyz = out?.length === n_sites * 3 ? out : new Float64Array(n_sites * 3)
-  for (let idx = 0; idx < n_sites; idx++)
-    for (let axis = 0; axis < 3; axis++)
-      xyz[idx * 3 + axis] = coordinates
-        ? coordinates[idx * stride + axis]
-        : sites[idx].xyz[axis]
-  return xyz
-}
-
 function finite_bond_neighbors(
   structure: AnyStructure,
   cutoff: number,
@@ -1500,11 +1488,11 @@ function perceive_bonds(
       if (norm_dist < shell[orig_idxs[partner]]) shell[orig_idxs[partner]] = norm_dist
 
       if (n_cand === cand_slot.length) {
-        cand_slot = grow(cand_slot, n_cand + 1)
-        cand_center = grow(cand_center, n_cand + 1)
-        cand_norm = grow(cand_norm, n_cand + 1)
-        cand_metallic = grow(cand_metallic, n_cand + 1)
-        cand_strength = grow(cand_strength, n_cand + 1)
+        cand_slot = math.grow_buffer(cand_slot, n_cand + 1)
+        cand_center = math.grow_buffer(cand_center, n_cand + 1)
+        cand_norm = math.grow_buffer(cand_norm, n_cand + 1)
+        cand_metallic = math.grow_buffer(cand_metallic, n_cand + 1)
+        cand_strength = math.grow_buffer(cand_strength, n_cand + 1)
       }
       cand_slot[n_cand] = slot
       cand_center[n_cand] = center

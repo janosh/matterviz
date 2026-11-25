@@ -186,6 +186,10 @@
       "types": "./dist/phase-diagram/index.d.ts",
       "default": "./dist/phase-diagram/index.js"
     },
+    "./pourbaix": {
+      "types": "./dist/pourbaix/index.d.ts",
+      "default": "./dist/pourbaix/index.js"
+    },
     "./convex-hull": {
       "types": "./dist/convex-hull/index.d.ts",
       "default": "./dist/convex-hull/index.js"
@@ -229,6 +233,10 @@
     "./structure": {
       "types": "./dist/structure/index.d.ts",
       "default": "./dist/structure/index.js"
+    },
+    "./structure-diff": {
+      "types": "./dist/structure-diff/index.d.ts",
+      "default": "./dist/structure-diff/index.js"
     },
     "./structure-id": {
       "types": "./dist/structure-id/index.d.ts",
@@ -293,6 +301,10 @@
     "./workers": {
       "types": "./dist/workers.d.ts",
       "default": "./dist/workers.js"
+    },
+    "./wulff": {
+      "types": "./dist/wulff/index.d.ts",
+      "default": "./dist/wulff/index.js"
     },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",

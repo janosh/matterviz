@@ -238,7 +238,9 @@
 /* Native row inputs fill the row; composite widgets manage their own fields. */
 .draggable-pane :where(label > input[type='text'], .setting > input[type='text']) {
   flex: 1;
-  padding: var(--pane-input-padding, 4px 6px);
+  /* line-height: normal, not the pane's 1.5, so a text box is no taller than its text */
+  line-height: normal;
+  padding: var(--pane-input-padding, 2px 6px);
   margin: var(--pane-input-margin, 0 0 0 5pt);
 }
 .draggable-pane input[type='text'].invalid {
@@ -281,6 +283,33 @@
 .draggable-pane :where(.pane-content) :where(button) {
   font-size: 1em;
   padding: var(--pane-btn-padding, 3px 6px);
+}
+/* export panes' download and copy icon buttons: compact, with a hover that stands out from
+   their resting shade (the generic pane hover below barely does) */
+.draggable-pane :is(.export-grid, .export-buttons) button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.7em;
+  height: 1.3em;
+  padding: 0; /* icon-only: the min-width sizes it */
+  --icon-size: 0.9em;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+  /* the download glyph sits small in its box, so it gets more of the button */
+  &[aria-label^='Download'] {
+    --icon-size: 1.05em;
+  }
+  &:hover:not(:disabled) {
+    background-color: color-mix(in srgb, currentColor 22%, transparent);
+    color: var(--accent-color, cornflowerblue);
+  }
+}
+/* tables in panes span the pane, leaving no blank strip beside them */
+.draggable-pane :where(table) {
+  width: 100%;
 }
 .draggable-pane :where(button:hover) {
   background-color: var(
@@ -669,8 +698,12 @@
     border-radius: var(--border-radius);
     background-color: var(--code-bg);
   }
+  /* a key cap a touch smaller than its text, like sub/sup never stretching its line. A font
+     list, not bare `monospace`, which browsers size off 13px instead of the parent's size */
   kbd {
-    font-size: larger;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    line-height: 1;
   }
   pre code {
     background-color: transparent;
@@ -818,4 +851,32 @@
   :where(ul.selected > li button, button.remove-all) {
     background-color: transparent !important;
   }
+}
+/* <details> slide open and closed in CSS alone, so the markup stays plain and find-in-page
+   still opens a collapsed section. Browsers without ::details-content or interpolate-size
+   open and close instantly. Clipped only along the block axis, so content can still overflow
+   sideways. */
+details {
+  interpolate-size: allow-keywords;
+}
+details::details-content {
+  block-size: 0;
+  overflow-y: clip;
+  transition:
+    block-size 0.25s ease,
+    content-visibility 0.25s allow-discrete;
+}
+details[open]::details-content {
+  block-size: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  details::details-content {
+    transition: none;
+  }
+}
+/* Sub- and superscripts (a_frac, Fe2+, A^3) shift without stretching their line, so a table
+   row or label that gains one keeps its height */
+sub,
+sup {
+  line-height: 0;
 }

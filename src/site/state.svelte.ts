@@ -1,6 +1,7 @@
 import { browser } from '$app/env'
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
+import { onMount } from 'svelte'
 import type { ChemicalElement } from '#lib/element/types.js'
 import type { FileLoadMeta } from '#lib/io/types.js'
 import type { NavGroup as WidgetNavGroup } from 'svelte-widgets'
@@ -13,19 +14,43 @@ export const normalize_static_url = (url: string): string =>
 export const replace_url = (url: string | URL): Promise<void> =>
   goto(normalize_static_url(String(url)), { replace: true, reset: false })
 
-// `?file=<fixture name>` deep-links the demo pages. Read client-side only: url.searchParams
-// is off-limits during prerender (it would 500 the static build).
-export const file_param = (): string | null =>
-  browser ? page.url.searchParams.get(`file`) : null
+// `?file=<fixture name>` and the like deep-link the demo pages. Read client-side only:
+// url.searchParams is off-limits during prerender (it would 500 the static build).
+export const url_param = (key: string): string | null =>
+  browser ? page.url.searchParams.get(key) : null
 
-// Write `?file=` (null drops it: a user-dropped file has no fixture entry to name) on a copy
-// of page.url, which is read-only reactive state from $app/state
-export const set_file_param = (filename: string | null): void => {
+// Write `?key=` (null drops it, e.g. a user-dropped file has no fixture entry to name) on a
+// copy of page.url, which is read-only reactive state from $app/state
+export const set_url_param = (key: string, value: string | null): void => {
   if (!browser) return
   const url = new URL(page.url.href)
-  if (filename) url.searchParams.set(`file`, filename)
-  else url.searchParams.delete(`file`)
+  if (value) url.searchParams.set(key, value)
+  else url.searchParams.delete(key)
   void replace_url(url)
+}
+
+// A picker's selection mirrored to `?key=`: the URL's value once mounted (when it names one of
+// `options`), and every later pick written back. `initial` (default: the first option) leaves
+// the param off, so a page's default view keeps a clean URL.
+export const url_selection = <T extends string>(
+  key: string,
+  options: readonly T[],
+  initial: T = options[0],
+): { value: T } => {
+  let value = $state(initial)
+  onMount(() => {
+    const requested = options.find((option) => option === url_param(key))
+    if (requested !== undefined) value = requested
+  })
+  return {
+    get value() {
+      return value
+    },
+    set value(next: T) {
+      value = next
+      set_url_param(key, next === initial ? null : next)
+    },
+  }
 }
 
 // The `?file=` fixture a viewer's load can deep-link: a URL load is a site fixture picked or
@@ -44,13 +69,16 @@ const ROUTE_LABELS: Record<string, string> = {
   '/how-to/hook-up-to-external-api': `Hook up to external API`,
   '/how-to/use-without-svelte': `Use without Svelte`,
   '/neb': `NEB`,
+  '/structure/diff': `Structure Diff`,
   '/structure/rdf': `RDF`,
   '/structure/xrd': `XRD`,
+  '/structure/wulff': `Wulff Shape`,
   '/spectral/dos': `DOS`,
   '/spectral/bands-and-dos': `Bands + DOS`,
   '/spectral/brillouin-bands-dos': `Brillouin + Bands + DOS`,
   '/spectral/ir-raman': `IR + Raman`,
   '/spectral/phonon-mode-explorer': `Phonon Mode Explorer`,
+  '/spectral/cohp': `COHP / COOP / COBI`,
   '/phase-diagram/pressure-temperature': `Pressure–Temperature`,
 }
 
@@ -84,8 +112,9 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`], sections: {
     Viewing: under(`/structure`, [`render`, `gallery`, `vectors`, `polyhedra`, `isosurface`,
       `multi-volume`, `host-tool`]),
-    Building: under(`/structure`, [`slab`, `interface`]),
-    Analysis: under(`/structure`, [`symmetry`, `bond-angles`, `coordination`, `rdf`, `xrd`]),
+    Building: under(`/structure`, [`slab`, `interface`, `wulff`]),
+    Analysis: under(`/structure`, [`symmetry`, `bond-angles`, `coordination`, `rdf`, `xrd`,
+      `diff`]),
     Dynamics: [`/trajectory`, `/neb`],
   } },
   { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
@@ -93,7 +122,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: `Electronic & Phonons`, href: `/spectral`, prefixes: [`/spectral`], sections: {
     'Electronic & phonon': under(`/spectral`, [`brillouin-zone`, `bands`, `dos`, `bands-and-dos`,
       `brillouin-bands-dos`]),
-    Electronic: under(`/spectral`, [`electronic-structure`, `fermi-surface`]),
+    Electronic: under(`/spectral`, [`electronic-structure`, `fermi-surface`, `cohp`]),
     Phonon: under(`/spectral`, [`ir-raman`, `phonon-mode-explorer`]),
   } },
   { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
@@ -198,6 +227,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/optimade-[slug]': [],
   '/periodic-table/element-colors': [`PeriodicTable`],
   '/phase-diagram': [`IsobaricBinaryPhaseDiagram`],
+  '/phase-diagram/pourbaix': [`PourbaixDiagram`],
   '/phase-diagram/pressure-temperature': [`PressureTemperaturePhaseDiagram`],
   '/phase-diagram/ternary': [`IsobaricTernaryPhaseDiagram`],
   '/plot': [],
@@ -214,6 +244,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/spectral/ir-raman': [`IrRamanSpectrum`],
   '/structure/bond-angles': [`BondAnglePlot`],
   '/structure/coordination': [`CoordinationBarPlot`],
+  '/structure/diff': [`StructureDiff`],
   '/structure/gallery': [`StructureGallery`],
   '/structure/host-tool': [`Structure`],
   '/structure/interface': [`InterfaceBuilder`],
@@ -224,6 +255,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/structure/slab': [`SlabBuilder`],
   '/structure/symmetry': [`SymmetryStats`, `WyckoffTable`],
   '/structure/vectors': [`Structure`],
+  '/structure/wulff': [`WulffShape`, `WulffFacetEditor`],
   '/structure/xrd': [`XrdPlot`, `SaedPattern`],
   '/trajectory/render': [`Trajectory`],
 }

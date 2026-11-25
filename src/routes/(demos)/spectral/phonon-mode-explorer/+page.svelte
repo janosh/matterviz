@@ -297,8 +297,8 @@
     index === undefined ? `` : String(index + 1)
 
   const apply_url_state = async (params: QueryParams): Promise<void> => {
-    const file_param = params.get(`file`)
-    const filename = file_param && file_param in FIXTURE_META ? file_param : DEFAULT_FILENAME
+    const url_param = params.get(`file`)
+    const filename = url_param && url_param in FIXTURE_META ? url_param : DEFAULT_FILENAME
     const fixture = await activate_fixture(filename)
     if (!fixture) return
     const next_state = initial_state(fixture.dataset)

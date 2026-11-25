@@ -205,8 +205,8 @@ export const k_cell_fit_extent = (
   return extent > 0 ? extent : Math.sqrt(3) * k_space_size(undefined) * padding
 }
 
-// Reciprocal vector labels sit this far along their arrows (ReciprocalVectors)
-export const VECTOR_LABEL_OFFSET = 1.15
+// Room for the reciprocal vector labels just past the arrow tips (ReciprocalVectors)
+const VECTOR_LABEL_OFFSET = 1.15
 
 // Padded diameter of the origin-centered sphere reaching the reciprocal vector labels: arrows
 // longer than the zone's half-width (every cubic lattice) poke out of a zone-only fit

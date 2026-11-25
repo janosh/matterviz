@@ -21,6 +21,7 @@
     [`brillouin-bands-dos`, `Brillouin + Bands + DOS`, ThreePanels, `Combined 3D Brillouin zone, band structure, and DOS in a synchronized three-panel layout.`],
     [`fermi-surface`, `Fermi Surface`, FermiSurface, `3D Fermi surface visualization with isosurface extraction, Brillouin zone overlay, and spin channels.`],
     [`electronic-structure`, `Electronic Structure`, ThreePanels, `Crystal structure, Fermi surface, band structure and DOS of one calculation in one linked viewer, also stepped along a pressure sweep.`],
+    [`cohp`, `COHP / COOP`, DensityOfStates, `LOBSTER bonding analysis: -COHP per atom pair beside the structure, bonds colored by -ICOHP.`],
     [`ir-raman`, `IR + Raman`, DensityOfStates, `IR and Raman spectra from phonon eigenvectors, Born effective charges and Raman tensors.`],
     [`phonon-mode-explorer`, `Phonon Mode Explorer`, BandStructure, `Click phonon-band points to animate their atomic eigenvectors in a configurable 3D supercell.`],
   ]

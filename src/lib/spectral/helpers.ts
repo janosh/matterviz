@@ -1362,6 +1362,13 @@ export const SPIN_MODES = [
   { value: `up_only`, label: `↑`, title: `Show spin-up only` },
   { value: `down_only`, label: `↓`, title: `Show spin-down only` },
 ] as const satisfies readonly { value: types.SpinMode; label: string; title: string }[]
+const [, overlay_mode, up_only_mode, down_only_mode] = SPIN_MODES
+export const COHP_SPIN_MODES = [
+  overlay_mode,
+  { value: `sum`, label: `Σ`, title: `Sum of both spins` },
+  up_only_mode,
+  down_only_mode,
+] as const satisfies readonly { value: types.CohpSpinMode; label: string; title: string }[]
 
 // Normalization mode options
 export const NORMALIZATION_MODES = [

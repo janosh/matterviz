@@ -12,7 +12,6 @@
 // reimplement it, so we use AFM's model API (on/get/set/save_changes) directly.
 
 import type { AnyModel } from 'anywidget/types'
-import { SvelteMap } from 'svelte/reactivity'
 
 // Read a trait, mapping null to undefined so unset values are simply omitted from the
 // component props.
@@ -108,6 +107,8 @@ export const throttle = <Args extends unknown[]>(
 //                component prop path (prop, then nested keys) it reaches unchanged, or the
 //                JSON kinds a compute that transforms it accepts. Deps without one (read by
 //                another prop that has one) are left out of the schema
+//   - to_model:  makes a writeback prop an output: its trait gets to_model(value), e.g. a compact
+//                summary of a computed result, whenever that changes
 export type DrivenProp = {
   prop: string
   deps: readonly string[]
@@ -115,6 +116,7 @@ export type DrivenProp = {
   writeback?: boolean
   fallback?: unknown
   targets?: Readonly<Record<string, ModelKeyTarget>>
+  to_model?: (value: unknown) => unknown
 }
 
 // JSON kinds of a model value. enum lists the allowed strings when every string the prop
@@ -166,12 +168,18 @@ const as_state = <T>(value: T): T => {
   return state
 }
 
+// A prop's value as one signal, unproxied: reactive_widget's store picks what gets a proxy
+class PropSlot {
+  value = $state.raw<unknown>()
+}
+
 // Data props the components read but never mutate in place, so they stay unproxied: a deep
 // proxy over a 30k-site structure put every read behind proxy traps and mounted the
 // Structure widget 10x slower
 export const DATA_PROPS = new Set(
   words(`structure structures series surfaces entries patterns x_items y_items values phonons
-    band_structs doses fermi_data band_data bz_data trajectory volumetric_data paths tile_plots`),
+    band_structs doses fermi_data band_data bz_data trajectory volumetric_data paths tile_plots
+    reference target cohp wulff_data`),
 )
 
 export interface ReactiveWidget {
@@ -201,33 +209,47 @@ export function reactive_widget(
     return spec.writeback ? (spec.fallback ?? null) : undefined
   }
 
-  // One reactive slot per prop. Values other than DATA_PROPS become $state proxies, so
+  // One reactive slot per prop, made on first read or write, so reading an unset prop tracks
+  // that prop alone. (A SvelteMap's missing-key reads track its version, which a write to any
+  // other key bumps: WulffShape writing wulff_data from an effect re-ran its readers of unset
+  // props, so the effect, without end.) Values other than DATA_PROPS become $state proxies, so
   // components re-render when they mutate one in place (a controls pane toggling display.x_grid)
-  const values = new SvelteMap<string, unknown>()
-  // An undefined value removes the key, so the component uses its own fallback: passing
-  // undefined for a $bindable-with-fallback trips Svelte's props_invalid_value. DATA_PROPS keep
-  // their key (no widget binds one with a fallback), whose setter lets a component write data
-  // it loads itself (a data_url structure) back as is: without one, Svelte proxies it.
+  const slots = new Map<string, PropSlot>()
+  const slot = (key: string): PropSlot => {
+    let found = slots.get(key)
+    if (!found) slots.set(key, (found = new PropSlot()))
+    return found
+  }
+  // The keys the component sees. An undefined value removes the key, so the component uses its
+  // own fallback: passing undefined for a $bindable-with-fallback trips Svelte's
+  // props_invalid_value. DATA_PROPS keep their key (no widget binds one with a fallback), whose
+  // setter lets a component write data it loads itself (a data_url structure) back as is:
+  // without one, Svelte proxies it.
+  const held = new Set<string>()
+  let held_keys = $state.raw<string[]>([])
   const store = (key: string, value: unknown): void => {
-    if (DATA_PROPS.has(key)) values.set(key, value)
-    else if (value === undefined) values.delete(key)
-    else values.set(key, as_state(value))
+    const keep = DATA_PROPS.has(key) || value !== undefined
+    slot(key).value = DATA_PROPS.has(key) || !keep ? value : as_state(value)
+    if (keep === held.has(key)) return
+    if (keep) held.add(key)
+    else held.delete(key)
+    held_keys = [...held]
   }
   // Keys held at mount get a setter, through which Svelte writes $bindable props back
   const props = new Proxy<Record<string, unknown>>(
     {},
     {
-      get: (_, key) => (typeof key === `string` ? values.get(key) : undefined),
+      get: (_, key) => (typeof key === `string` ? slot(key).value : undefined),
       set: (_, key, value) => {
         if (typeof key === `string`) store(key, value)
         return typeof key === `string`
       },
-      has: (_, key) => typeof key === `string` && values.has(key),
-      ownKeys: () => [...values.keys()],
+      has: (_, key) => typeof key === `string` && held_keys.includes(key),
+      ownKeys: () => held_keys,
       getOwnPropertyDescriptor: (_, key) =>
-        typeof key === `string` && values.has(key)
+        typeof key === `string` && held_keys.includes(key)
           ? {
-              get: () => values.get(key),
+              get: () => slot(key).value,
               set: (value: unknown) => store(key, value),
               enumerable: true,
               configurable: true,
@@ -243,7 +265,7 @@ export function reactive_widget(
   // Re-apply one prop after a relevant trait changed. Data props compare by identity (their
   // change event means a new payload; stringifying a 30k-site structure took 12 ms)
   const apply = (spec: DrivenProp): void => {
-    const [value, prev] = [value_of(spec), values.get(spec.prop)]
+    const [value, prev] = [value_of(spec), slot(spec.prop).value]
     const changed = DATA_PROPS.has(spec.prop) ? prev !== value : !equal(prev, value)
     // drive-only trait cleared (None): store drops the key so the component falls back
     if (value === undefined || changed) store(spec.prop, value)
@@ -277,10 +299,12 @@ export function reactive_widget(
     for (const spec of driven.filter((driven_spec) => driven_spec.writeback)) {
       $effect(() => {
         const value = $state.snapshot(props[spec.prop])
-        // Only write genuine component mutations: skip values still matching the
+        // An output's summary goes to Python whenever it differs (set_model skips equal ones).
+        // Others write only genuine component mutations: skip values still matching the
         // model-derived value (the mount seed/fallback, or a Python clear/drive
         // echo), so an absent/None trait doesn't save_changes() before interaction.
-        if (!equal(value, value_of(spec))) set_model(model, spec.prop, value)
+        if (spec.to_model) set_model(model, spec.prop, spec.to_model(value))
+        else if (!equal(value, value_of(spec))) set_model(model, spec.prop, value)
       })
     }
   })

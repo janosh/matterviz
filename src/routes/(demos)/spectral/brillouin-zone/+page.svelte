@@ -1,9 +1,9 @@
 <script lang="ts">
+  import { url_selection } from '#site/state.svelte.js'
   import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
   import { BrillouinZone } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { FileInfo } from '#lib/io/types.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { parse_structure_fixture, structure_files, structure_map } from '#site/structures.js'
@@ -12,11 +12,17 @@
   // A Brillouin zone needs a lattice, so molecules stay out of the picker
   const crystal_files = structure_files.filter((file) => file.category === `crystal`)
 
-  // any fixture format (CIF, POSCAR, ...), not only the plain-JSON ones in structure_map
-  function handle_file_pick(file: FileInfo) {
-    const struct = parse_structure_fixture(file.name)
+  // the picked fixture in ?file=, any format (CIF, POSCAR, ...), not only structure_map's JSON
+  const picked = url_selection(
+    `file`,
+    crystal_files.map(({ name }) => name),
+    ``,
+  )
+  $effect(() => {
+    if (!picked.value) return
+    const struct = parse_structure_fixture(picked.value)
     if (is_crystal(struct)) dropped_structure = struct
-  }
+  })
 
   // [structure id, label, description]
   // oxfmt-ignore
@@ -85,7 +91,8 @@
   <FilePicker
     files={crystal_files}
     show_category_filters
-    on_click={handle_file_pick}
+    active_files={picked.value ? [picked.value] : []}
+    on_click={({ name }) => (picked.value = name)}
     style="max-width: 600px; margin-inline: auto"
   />
   <LazyDemo label="Try Your Own Structure" height="450px">

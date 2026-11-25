@@ -38,7 +38,7 @@
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
-  import { Camera } from 'svelte-widgets/icons'
+  import { Camera, Download } from 'svelte-widgets/icons'
   import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight.js'
 
   let {
@@ -484,7 +484,7 @@
                 : `AV1 recording in ${label} is not supported in this browser`,
             })}
           >
-            ⬇
+            <Icon icon={Download} />
           </button>
         </div>
       {/each}

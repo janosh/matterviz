@@ -4,14 +4,20 @@
 
 import { is_plain_object } from 'svelte-widgets/utils'
 import type { AnyModel, Render } from 'anywidget/types'
+import type { LobsterKind, PourbaixHoverInfo, WulffShapeData } from 'matterviz'
 import {
+  import_pymatgen_pourbaix,
   normalize_band_structure,
   normalize_dos,
+  parse_lobster_files,
+  parse_surface_energies,
+  POURBAIX_DEFAULTS,
   set_moyo_wasm_source,
   trajectory_from_binary,
   trajectory_from_json,
   volume_from_binary,
   volume_from_json,
+  WULFF_DEFAULTS,
 } from 'matterviz'
 import {
   html_to_svg,
@@ -247,6 +253,96 @@ const doses_prop = derived_prop(
   [`doses`],
   (model) => spectral_record(get_prop(model, `doses`), normalize_dos, `DOS`),
   { doses: { type: [`object`] } },
+)
+
+// Parse of a trait's latest value, so the props reading it parse each value once
+const last_parse = <T>(key: string, parse: (raw: unknown) => T) => {
+  let last: { raw: unknown; parsed: T } | undefined
+  return (model: AnyModel): T => {
+    const raw = get_prop(model, key)
+    if (!last || last.raw !== raw) last = { raw, parsed: parse(raw) }
+    return last.parsed
+  }
+}
+// A data trait taking matterviz's own shape (`is_native`) or a foreign document `parse` imports
+// (pymatgen, Materials Project) into that shape, plus the traits `keys` the import may also
+// fill, e.g. the water energy pymatgen's Pourbaix energies are referenced to. Set traits win.
+// Those of `writebacks` the component's controls change sync back, falling back to its default.
+const imported_props = (
+  data_key: string,
+  is_native: (raw: unknown) => boolean,
+  parse: (raw: unknown) => object,
+  keys: string,
+  writebacks: Record<string, unknown> = {},
+): DrivenProp[] => {
+  const imported = last_parse(data_key, (raw): Record<string, unknown> =>
+    raw == null || is_native(raw) ? { [data_key]: raw } : { ...parse(raw) },
+  )
+  return [
+    derived_prop(data_key, [data_key], (model) => imported(model)[data_key], {
+      [data_key]: { type: [`object`, `array`] },
+    }),
+    ...words(keys).map((key) => ({
+      ...derived_prop(
+        key,
+        [key, data_key],
+        (model) => get_prop(model, key) ?? imported(model)[key],
+        { [key]: [key] },
+      ),
+      ...(key in writebacks && { writeback: true, fallback: writebacks[key] }),
+    })),
+  ]
+}
+// Settings a component's controls change, synced both ways, unset ones at the given defaults
+const writeback_props = (defaults: Record<string, unknown>): DrivenProp[] =>
+  Object.entries(defaults).map(([key, fallback]) => writeback_prop(key, fallback))
+// Output prop: what the component computes, sent to Python as to_model(value), never driven
+const output_prop = (prop: string, to_model: (value: unknown) => unknown): DrivenProp => ({
+  prop,
+  deps: [],
+  compute: () => undefined,
+  writeback: true,
+  fallback: null,
+  to_model,
+})
+const output_key = { type: [`object`, `null`] } as const
+// The Pourbaix domain under the pointer, without the pointer's pH and potential, so Python
+// hears of domain crossings rather than every mouse move
+const pourbaix_domain = (info: unknown) => {
+  if (!info) return null
+  const { label, species, metal_fractions } = (info as PourbaixHoverInfo).plane
+  return {
+    label,
+    species: species.map(({ entry, aqueous, weight }) => ({
+      formula: entry.formula,
+      aqueous,
+      weight,
+    })),
+    metal_fractions,
+  }
+}
+// The computed Wulff shape for Python without its geometry: per input family its share of the
+// surface, the absent families' Miller indices and the shape's summary numbers
+const wulff_summary = (data: unknown) => {
+  if (!data) return null
+  const { families, surface_area, weighted_surface_energy, shape_factor, anisotropy } =
+    data as WulffShapeData
+  const absent_families = families
+    .filter(({ n_facets }) => n_facets === 0)
+    .map(({ miller }) => miller)
+  return {
+    families,
+    absent_families,
+    surface_area,
+    weighted_surface_energy,
+    shape_factor,
+    anisotropy,
+  }
+}
+// LOBSTER output as { file name: text } (COHPCAR/COOPCAR/COBICAR.lobster, their ICOHPLIST etc.,
+// DOSCAR.lobster, POSCAR), parsed once for the curves and the DOS beside them
+const lobster_files = last_parse(`lobster_files`, (files) =>
+  files == null ? null : parse_lobster_files(files as Record<string, string>),
 )
 
 // Shape pushed back to Python for scatter point click/hover interactions.
@@ -689,6 +785,96 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // The animated mode { qpoint_idx, mode_idx }: follows clicks on the dispersion/spectrum
       writeback_prop(`selection`),
     ],
+  },
+  pourbaix_diagram: {
+    // entries: PourbaixEntry list, or pymatgen PourbaixEntry/IonEntry/ComputedEntry dicts or a
+    // PourbaixDiagram dict (with comp_dict and conc_dict)
+    drive: [
+      ...imported_props(
+        `entries`,
+        (raw) =>
+          Array.isArray(raw) && raw.every((entry) => typeof entry?.formula === `string`),
+        import_pymatgen_pourbaix,
+        `water_energy composition log_conc element_log_conc`,
+        { log_conc: POURBAIX_DEFAULTS.log_conc, composition: null },
+      ),
+      ...with_plot_controls(`ph_range potential_range`),
+      ...writeback_props({
+        temperature: POURBAIX_DEFAULTS.temperature,
+        show_water_lines: true,
+        show_labels: true,
+        heatmap_formula: null,
+      }),
+      output_prop(`hover_info`, pourbaix_domain),
+    ],
+    interaction_model_keys: { hover_info: output_key },
+  },
+  structure_diff: {
+    drive: [
+      ...drive_props(`reference target`),
+      ...writeback_props({
+        matching: `auto`,
+        remove_drift: true,
+        show_ghost: true,
+        show_arrows: true,
+        arrow_scale: 1,
+      }),
+      // the inner Structure viewer is a drop zone, off in notebooks like the others
+      derived_prop(
+        `structure_props`,
+        [`structure_props`],
+        (model) => ({
+          ...no_file_drop,
+          ...(get_prop(model, `structure_props`) as Record<string, unknown> | undefined),
+        }),
+        { structure_props: [`structure_props`] },
+      ),
+      writeback_prop(`hovered_site_idx`),
+    ],
+  },
+  cohp: {
+    drive: [
+      // kind picks COHP, COOP or COBI (default: the first of these the files hold)
+      derived_prop(
+        `cohp`,
+        [`lobster_files`, `kind`],
+        (model) => {
+          const files = lobster_files(model)
+          const kind = get_prop(model, `kind`) as LobsterKind | undefined
+          const curves = kind ? files?.by_kind.get(kind) : files?.by_kind.values().next().value
+          if (files && !curves) throw new Error(`lobster_files hold no ${kind}CAR.lobster`)
+          return curves?.cohp
+        },
+        {
+          lobster_files: { type: [`object`] },
+          kind: { type: [`string`], enum: [`COBI`, `COHP`, `COOP`] },
+        },
+      ),
+      derived_prop(`doses`, [`lobster_files`], (model) => {
+        const dos = lobster_files(model)?.dos
+        return dos ? { Total: dos.total } : undefined
+      }),
+      ...with_plot_controls(`bonds highlighted_bonds dos_props`),
+      ...writeback_props({
+        spin_mode: `overlay`,
+        show_integrated: false,
+        shift_to_fermi: true,
+        show_average: false,
+      }),
+      // pair (CohpBond.label), orbital pair or `average` under the pointer
+      writeback_prop(`hovered_bond`),
+    ],
+  },
+  wulff_shape: {
+    // facets: WulffFacetInput list, or a Materials Project surface document or pymatgen
+    // WulffShape fields ({ lattice, miller_list, e_surf_list }, whose lattice it brings)
+    drive: [
+      ...imported_props(`facets`, Array.isArray, parse_surface_energies, `lattice`),
+      ...drive_props(`structure delta_mu`),
+      ...writeback_props(WULFF_DEFAULTS),
+      output_prop(`wulff_data`, wulff_summary),
+    ],
+    interaction_model_keys: { wulff_data: output_key },
   },
 } satisfies Record<keyof typeof COMPONENTS, WidgetSpec>
 

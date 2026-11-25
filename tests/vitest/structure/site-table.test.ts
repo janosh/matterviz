@@ -1,4 +1,9 @@
-import { has_site_data, property_column } from '#lib/structure/site-table.js'
+import {
+  has_site_data,
+  property_column,
+  site_columns,
+  site_property_specs,
+} from '#lib/structure/site-table.js'
 import { make_site } from '#lib/structure/site.js'
 import { expect, test } from 'vite-plus/test'
 
@@ -19,11 +24,25 @@ test.each([
 
 // Column labels read units from own config entries only: `constructor` once got
 // "constructor (function Object() { [native code] })"
+// Å columns get fixed decimals (sub-1e-4 Å noise reads 0), others the table default
 test.each([
-  [`force`, undefined, `force (eV/Å)`],
-  [`force`, `norm`, `|force| (eV/Å)`],
-  [`constructor`, undefined, `constructor`],
-  [`toString`, `x`, `toString x`],
-])(`property_column(%s, %s) is labeled %s`, (prop_name, axis, label) => {
-  expect(property_column(prop_name, axis).label).toBe(label)
+  [`force`, undefined, `force (eV/Å)`, `site property force in eV/Å`, undefined],
+  [`force`, `norm`, `|force| (eV/Å)`, `Magnitude of site property force in eV/Å`, undefined],
+  // a symbol (Δ) heads displacement columns; the tooltip spells the property out
+  [`displacement`, `x`, `Δx (Å)`, `x component of site property displacement in Å`, `.4~f`],
+  [`displacement`, `norm`, `|Δr| (Å)`, `Magnitude of site property displacement in Å`, `.4~f`],
+  [`constructor`, undefined, `constructor`, `site property constructor`, undefined],
+  [`toString`, `x`, `toString x`, `x component of site property toString`, undefined],
+])(`property_column(%s, %s) is labeled %s`, (prop_name, axis, label, description, format) => {
+  const column = property_column(prop_name, axis)
+  expect(column).toMatchObject({ label, description })
+  expect(column.format).toBe(format)
+})
+
+// every header explains itself in a tooltip (DataTable renders `description` as one)
+test(`site_columns describe every column`, () => {
+  const specs = site_property_specs([site({ force: [0.1, 0, 0], charge: 0.3 })])
+  const columns = site_columns(specs)
+  expect(columns).toHaveLength(2 + 3 + 3 + 4 + 1)
+  for (const { id, description } of columns) expect(description, id).toMatch(/\w{4}/)
 })

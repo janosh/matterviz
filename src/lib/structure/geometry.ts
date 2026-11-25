@@ -59,7 +59,7 @@ export function arrow_axis_geometry(
     Number.isFinite(scaled_length) && scaled_length > EPS ? scaled_length : 0
   const head_length =
     vector_length === 0 ? 0 : resolve_arrow_size(arrow_head_length, vector_length)
-  const shaft_length = Math.max(0, vector_length - head_length * 0.5)
+  const shaft_length = Math.max(0, vector_length - head_length) // tip on the vector's end
   const rotation: Vec3 = vector_length === 0 ? [0, 0, 0] : rotation_from_direction(vector)
   return {
     head_length,

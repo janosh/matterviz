@@ -864,11 +864,13 @@ test.each<[string, Partial<ComponentProps<typeof Structure>>]>([
 })
 
 // === sweeps ===
-// Two series along pressure: each frame's own DOS (density 1 or 2 at E_F) tells them apart
+// Two series along pressure: each frame's own DOS (density 1 or 2 at E_F) tells them apart.
+// Each frame owns its structure and band grid: deep $state proxies a shared one per frame.
+const frame_structure = () => structuredClone(structure)
 const sweep_frame = (value: number, density: number): SweepFrame => ({
   value,
-  structure,
-  band_data,
+  structure: frame_structure(),
+  band_data: structuredClone(band_data),
   band_structs: { Cu: band_struct },
   doses: { total: { ...dos, densities: [0, density, density, 0] } },
   scalars: { tc: value / 10 },
@@ -923,7 +925,11 @@ const choose = (select: HTMLSelectElement, value: string) => {
 const lazy_sweep = () => {
   const sweep = make_sweep()
   for (const series of sweep.series) {
-    series.frames = series.frames.map(({ value, scalars }) => ({ value, structure, scalars }))
+    series.frames = series.frames.map(({ value, structure: crystal, scalars }) => ({
+      value,
+      structure: crystal,
+      scalars,
+    }))
   }
   const load_frame = vi.fn(async (series_id: string, frame_idx: number) => ({
     doses: { total: { ...dos, densities: [0, 10 + frame_idx, 10 + frame_idx, 0] } },
@@ -1058,9 +1064,9 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
 
 test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, async () => {
   const sweep = make_sweep()
-  sweep.series[0].frames = sweep.series[0].frames.map(({ value }) => ({
+  sweep.series[0].frames = sweep.series[0].frames.map(({ value, structure: crystal }) => ({
     value,
-    structure,
+    structure: crystal,
     phonon: { a2f: phonon.a2f },
   }))
   sweep.load_frame = async () => ({ phonon: { band_structs: phonon.band_structs } })
@@ -1238,7 +1244,10 @@ test.each([false, true])(
 
 test(`a lazy sweep's default panes are those any frame has, so loads only add panes`, async () => {
   const sweep = make_sweep()
-  sweep.series[0].frames = sweep.series[0].frames.map(({ value }) => ({ value, structure }))
+  sweep.series[0].frames = sweep.series[0].frames.map(({ value, structure: crystal }) => ({
+    value,
+    structure: crystal,
+  }))
   // only frame 0 brings a DOS
   const load_frame = vi.fn(async (_series_id: string, frame_idx: number) =>
     frame_idx === 0 ? { doses: { total: dos } } : {},
@@ -1284,12 +1293,14 @@ test(`an equal copy of a lazy sweep reuses its loaded frames, a changed one load
   const { sweep, loads } = lazy_sweep()
   const { props } = mount_live({ sweep, frame_idx: 0, panes: [`structure`, `dos`] })
   await vi.waitFor(() => expect(shown_density()).toBe(10))
+  // all new objects, as a re-render hands over
   const copy = (frame_value = 0): Sweep => ({
     ...sweep,
     series: sweep.series.map((entry) => ({
       ...entry,
       frames: entry.frames.map((frame, idx) => ({
         ...frame,
+        structure: structuredClone(frame.structure),
         value: frame.value + (idx === 2 ? frame_value : 0),
       })),
     })),
@@ -1702,7 +1713,7 @@ function fill_setup(
     id,
     frames: Array.from({ length: n_frames }, (_, idx) => ({
       value: 50 * idx,
-      structure,
+      structure: frame_structure(),
       scalars: { tc: idx },
     })),
   }))

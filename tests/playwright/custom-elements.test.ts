@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname } from 'node:path'
 import { COMPONENTS, tag_name } from '../../src/elements/components'
-import { open_settings_pane } from './helpers'
+import { open_settings_pane, require_bbox } from './helpers'
 
 // The prebuilt custom-element bundle (src/elements) on a plain HTML page: no Svelte, no bundler.
 // Served from a routed https origin (navigator.gpu needs a secure context) so worker and chunk
@@ -242,6 +242,44 @@ test.describe(`custom-element bundle`, () => {
     ).toBe(true)
     // a second copy of the bundle fails loudly instead of half-defining its tags
     expect(errors).toEqual([expect.stringContaining(`MatterViz elements loaded twice`)])
+  })
+
+  // the headline row on top, the viewer (with its docked site table, or alone once that's
+  // closed) filling the rest of the host's height
+  test(`mv-structure-diff fills a fixed-height host without overflowing it`, async ({
+    page,
+  }) => {
+    const structure = readFileSync(`src/site/structures/Fe-BCC.json`, `utf8`)
+    await page.route(`${origin}/`, (route) =>
+      route.fulfill({
+        contentType: `text/html`,
+        body: page_html(`
+          <mv-structure-diff style="height: 300px"></mv-structure-diff>
+          <script>
+            const diff = document.querySelector('mv-structure-diff')
+            diff.reference = diff.target = ${structure}
+          </script>
+          <script type="module" src="/matterviz-elements.js"></script>`),
+      }),
+    )
+    await page.goto(`${origin}/`)
+    const element = page.locator(`mv-structure-diff`)
+    const [viewer, sidebar] = [`.structure`, `.structure-site-sidebar`].map((selector) =>
+      element.locator(selector),
+    )
+    await expect(viewer.locator(`canvas`)).toBeVisible()
+    const host = await require_bbox(element, `host`)
+    expect(host.height).toBe(300)
+    const bottom = async (part: typeof viewer) => {
+      const box = await require_bbox(part)
+      return box.y + box.height
+    }
+    for (const part of [viewer, sidebar]) {
+      expect(Math.abs((await bottom(part)) - (host.y + host.height))).toBeLessThan(1)
+    }
+    await sidebar.locator(`.close-btn`).first().click()
+    await expect(sidebar).toHaveCount(0)
+    expect(Math.abs((await bottom(viewer)) - (host.y + host.height))).toBeLessThan(1)
   })
 
   test(`mv-trajectory parses HDF5 in its self-contained worker`, async ({ page }) => {

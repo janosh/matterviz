@@ -108,6 +108,7 @@
       flex: 1;
       min-width: 0;
       font: inherit;
+      line-height: normal; /* the shorthand above resets it to the pane's taller 1.5 */
     }
     .folder-name {
       flex: 1;

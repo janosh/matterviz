@@ -30,12 +30,7 @@
     binary_observations,
     find_precomputed_diagram,
   } from '#site/phase-diagrams.js'
-  import {
-    file_param,
-    latest_load,
-    loaded_fixture,
-    set_file_param,
-  } from '#site/state.svelte.js'
+  import { url_param, latest_load, loaded_fixture, set_url_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
 
   // Track currently loaded diagram
@@ -108,7 +103,7 @@
       )
     }
     current_file = filename
-    if (sync_url) set_file_param(filename)
+    if (sync_url) set_url_param(`file`, filename)
   }
 
   // Load a picker entry: built-in diagrams come precomputed from #site/phase-diagrams, the
@@ -125,7 +120,7 @@
         if (!diagram) throw new Error(`Unknown built-in phase diagram: ${system}`)
         current_data = diagram
         current_file = filename
-        if (sync_url) set_file_param(filename)
+        if (sync_url) set_url_param(`file`, filename)
       } else {
         await load_from_url(url, (content) => {
           if (is_current()) apply_content(content, filename, sync_url)
@@ -152,7 +147,7 @@
   // ?file= deep link, else the example A-B eutectic diagram. A link to a diagram that no longer
   // exists says so instead of quietly showing the example.
   onMount(() => {
-    const requested = file_param()
+    const requested = url_param(`file`)
     const match = all_phase_diagram_files.find((file) => file.name === requested)
     const target = match ?? all_phase_diagram_files.find((file) => file.name === `A-B.json`)
     if (target?.url) void load_file(target.url, target.name, false)
@@ -200,7 +195,7 @@
       loads.cancel()
       error_message = null
       apply_content(content, filename, false)
-      set_file_param(loaded_fixture(metadata)) // a dropped local file has no fixture to name
+      set_url_param(`file`, loaded_fixture(metadata)) // a dropped local file has no fixture to name
     },
     on_error: (msg) => (error_message = msg),
     set_loading: (value) => (loading = value),

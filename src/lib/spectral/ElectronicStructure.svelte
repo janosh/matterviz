@@ -188,7 +188,9 @@
     // Densities of states keyed by label. Dropped DOS files replace them.
     doses?: Record<string, DosData>
     phonon?: PhononSpectra // phonon bands and DOS, on their own frequency axis
-    // a sweep along one axis: while set, the panes show its selected frame, not the props above
+    // A sweep along one axis: while set, the panes show its selected frame, not the props above.
+    // Prefer `$state.raw` or a frozen sweep (replace it to change it): a deep `$state` proxies each
+    // frame on its own, so a structure shared by frames reads as new on every step and rebuilds.
     sweep?: Sweep
     series_id?: string // the shown series (default: the first)
     frame_idx?: number // the shown frame of that series

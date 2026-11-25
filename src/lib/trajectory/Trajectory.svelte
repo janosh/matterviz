@@ -65,11 +65,14 @@
     StructureOptions,
     StructureSettings,
   } from '#lib/structure/index.js'
-  import { site_stride } from '#lib/structure/site.js'
+  import { get_orig_site_idx, site_stride } from '#lib/structure/site.js'
   import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
   import { strategy_bonding_options } from '#lib/structure/bonding.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
-  import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+  import {
+    type AtomColorConfig,
+    DEFAULT_ATOM_COLOR_CONFIG,
+  } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
   import { is_vector_key } from '#lib/structure/vectors.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
@@ -106,7 +109,15 @@
     TrajHandlerData,
   } from './index'
   import { TrajectoryDataInspector, TrajectoryExportPane, TrajectoryInfoPane } from './index'
-  import { collect_trajectory_positions } from './analysis'
+  import { collect_trajectory_positions, no_full_pass_message } from './analysis'
+  import DisplacementOverlay from '#lib/structure-diff/DisplacementOverlay.svelte'
+  import { format_drift } from '#lib/structure-diff/compute.js'
+  import {
+    create_trajectory_differ,
+    type DiffReference,
+    rmsd_rows,
+  } from '#lib/structure-diff/trajectory.js'
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { suggest_frame_stride } from './runs/accumulate'
   import {
     available_x_quantities,
@@ -213,6 +224,7 @@
     property_labels,
     x_quantity = $bindable(),
     visible_properties = $bindable(),
+    diff_reference = $bindable(`off`),
     relative_energy = $bindable(false),
     step_labels = DEFAULTS.trajectory.step_labels,
     plot_skimming = true,
@@ -300,6 +312,9 @@
     // [] hides every series. Legend clicks and isolation edit it; histograms use
     // distribution_property instead.
     visible_properties?: string[]
+    // Displacements of each frame against the first or the previous frame: reference ghosts,
+    // arrows and atoms colored by |Δr|, plus an RMSD-vs-first-frame plot series (`rmsd`)
+    diff_reference?: DiffReference
     // Plot each energy relative to its first finite recorded value; source data is unchanged.
     relative_energy?: boolean
     // Slider labels: n evenly spaced ticks (n > 0), every |n|th step (n < 0), or exact indices
@@ -967,7 +982,9 @@
   )
   $effect(() => {
     const owner = trajectory
-    const enabled = show_trajectory_lines && trajectory_lines_available
+    // the displacement overlay reads the same stream
+    const enabled =
+      (show_trajectory_lines || diff_reference !== `off`) && trajectory_lines_available
     trail_stream = null
     if (!enabled || !owner) return
     const signal = getAbortSignal()
@@ -998,6 +1015,57 @@
     trail_stream ? collected_frame_idx(trail_stream, current_step_idx) : undefined,
   )
   let spectroscopy_open = $derived(active_pane === `spectroscopy`)
+
+  // === displacements ===
+  let diff_remove_drift = $state(true)
+  const has_frame = $derived(session.current_structure !== undefined)
+  // Built once per position stream (and drift setting): the per-frame differ and the RMSD
+  // rows, or why there are none
+  const stream_diff = $derived.by(() => {
+    if (diff_reference === `off` || !trajectory || total_frames < 2 || !has_frame) return null
+    if (!trajectory.collect_positions) return no_full_pass_message(trajectory, `Displacements`)
+    if (!trail_stream) return `Collecting frame positions…`
+    const template = untrack(() => session.current_structure)
+    if (!template) return null
+    try {
+      return {
+        differ: create_trajectory_differ(trail_stream, template),
+        rows: rmsd_rows(trail_stream, template, diff_remove_drift),
+      }
+    } catch (exc) {
+      return to_error(exc).message
+    }
+  })
+  // The displayed frame against its reference, or why there is none; null when off and in
+  // `previous` mode on the first frame
+  const frame_diff = $derived.by(() => {
+    if (!stream_diff || typeof stream_diff === `string`) return stream_diff
+    if (diff_reference === `off`) return null
+    const [target, frame_idx] = [session.current_structure, session.scene_frame?.idx]
+    if (!target || frame_idx === undefined) return null
+    try {
+      return stream_diff.differ(target, frame_idx, diff_reference, diff_remove_drift)
+    } catch (exc) {
+      return to_error(exc).message
+    }
+  })
+  // RMSD against the first frame joins the plot's property rows
+  const plot_rows = $derived(
+    stream_diff && typeof stream_diff === `object`
+      ? [...session.property_rows, ...stream_diff.rows]
+      : session.property_rows,
+  )
+  const diff_color_config = $derived<AtomColorConfig | null>(
+    frame_diff && typeof frame_diff === `object`
+      ? {
+          mode: `custom`,
+          color_fn: (site: Site, idx: number) =>
+            frame_diff.diff.displacements[get_orig_site_idx(site, idx)].magnitude,
+          color_scale: `interpolateViridis`,
+          scale_type: `continuous`,
+        }
+      : null,
+  )
   let trail_scene_props = $derived({
     ...structure_props.scene_props,
     get show_trajectory_lines() {
@@ -1078,7 +1146,7 @@
 
   // Prepare arrays only when data/configuration changes, not on legend interactions.
   let base_plot_series = $derived(
-    generate_plot_series(session.property_rows, {
+    generate_plot_series(plot_rows, {
       property_config: extended_config,
       relative_energy,
       x_map,
@@ -1119,7 +1187,7 @@
   // A distribution has one value axis. Keep its selection separate from the time plot's
   // multi-property visibility so switching plots cannot mix units or discard that selection.
   const distribution_properties = $derived(
-    generate_plot_series(session.property_rows, {
+    generate_plot_series(plot_rows, {
       property_config: extended_config,
       relative_energy,
       include_all_properties: true,
@@ -1845,7 +1913,10 @@
               () => trail_scene_props,
               (value) => (trail_scene_props = live_scene_props = value)
             }
-            bind:atom_color_config
+            bind:atom_color_config={
+              () => diff_color_config ?? atom_color_config,
+              (value) => (atom_color_config = value)
+            }
             {atom_color_field}
             {volume_color_field}
             {cutaway}
@@ -1859,7 +1930,9 @@
             on_rendered={session.mark_rendered}
             {structure_series_key}
             bind:display_mode={structure_display_mode}
-            trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
+            trajectory_position_stream={spectroscopy_open || !show_trajectory_lines
+              ? undefined
+              : trail_stream}
             trajectory_line_end_frame={spectroscopy_open
               ? undefined
               : trajectory_line_end_frame}
@@ -1882,7 +1955,48 @@
             bind:selected_sites
             bind:highlighted_sites
             site_sidebar={false}
-          />
+          >
+            {#snippet scene_children({ site_radius })}
+              {#if frame_diff && typeof frame_diff === `object` && session.current_structure}
+                <DisplacementOverlay
+                  diff={frame_diff.diff}
+                  target={session.current_structure}
+                  {site_radius}
+                />
+              {/if}
+            {/snippet}
+            {#snippet controls_extra()}
+              <SettingsGroup title="Displacements" open={diff_reference !== `off`}>
+                <label
+                  title="Ghosts, arrows and |Δr| atom colors against a reference frame, plus an RMSD-vs-first-frame plot series"
+                >
+                  Compare with
+                  <select bind:value={diff_reference}>
+                    <option value="off">nothing</option>
+                    <option value="first">first frame</option>
+                    <option value="previous">previous frame</option>
+                  </select>
+                </label>
+                <label
+                  title="Subtract the mean displacement (and for molecules the best-fit rotation) from every site"
+                >
+                  <input type="checkbox" bind:checked={diff_remove_drift} /> Remove rigid drift
+                </label>
+                {#if typeof frame_diff === `string`}
+                  <small>{frame_diff}</small>
+                {:else if frame_diff}
+                  {@const { diff, reference_frame } = frame_diff}
+                  <small>
+                    RMSD {format_num(diff.rmsd, `.3~f`)} Å vs frame {display_idx(
+                      reference_frame,
+                    )}{diff.drift ? ` · ${format_drift(diff.drift)}` : ``}
+                  </small>
+                {:else if diff_reference === `previous`}
+                  <small>The first frame has no previous frame</small>
+                {/if}
+              </SettingsGroup>
+            {/snippet}
+          </Structure>
         {/if}
 
         {#if show_structure && show_plot}

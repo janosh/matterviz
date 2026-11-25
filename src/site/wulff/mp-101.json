@@ -1,0 +1,105 @@
+{
+  "material_id": "mp-101",
+  "pretty_formula": "Ir",
+  "spacegroup": {
+    "number": 225,
+    "symbol": "Fm-3m"
+  },
+  "weighted_surface_energy": 2.4211051292145527,
+  "weighted_surface_energy_EV_PER_ANG2": 0.15111350332166593,
+  "shape_factor": 5.252679819228766,
+  "surface_anisotropy": 0.08446215185062898,
+  "surfaces": [
+    {
+      "miller_index": [1, 0, 0],
+      "surface_energy": 2.817712843555761,
+      "surface_energy_EV_PER_ANG2": 0.1758678109456152,
+      "area_fraction": 0.12411860347027559,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [1, 1, 0],
+      "surface_energy": 2.7719983088321705,
+      "surface_energy_EV_PER_ANG2": 0.17301453398071,
+      "area_fraction": 0.0,
+      "is_reconstructed": true
+    },
+    {
+      "miller_index": [1, 1, 1],
+      "surface_energy": 2.2844724481285525,
+      "surface_energy_EV_PER_ANG2": 0.14258556173912273,
+      "area_fraction": 0.6685154978804296,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [2, 1, 0],
+      "surface_energy": 3.036825336964112,
+      "surface_energy_EV_PER_ANG2": 0.189543737736627,
+      "area_fraction": 0.0,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [2, 1, 1],
+      "surface_energy": 2.709053988394063,
+      "surface_energy_EV_PER_ANG2": 0.16908585832725348,
+      "area_fraction": 0.05368967416786348,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [2, 2, 1],
+      "surface_energy": 2.5863299928859393,
+      "surface_energy_EV_PER_ANG2": 0.16142602865728728,
+      "area_fraction": 0.09238385051145384,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 1, 0],
+      "surface_energy": 3.018766762529296,
+      "surface_energy_EV_PER_ANG2": 0.18841661012250088,
+      "area_fraction": 0.0,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 1, 1],
+      "surface_energy": 2.8466341471333063,
+      "surface_energy_EV_PER_ANG2": 0.1776729368162337,
+      "area_fraction": 0.010436301544043717,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 2, 0],
+      "surface_energy": 2.946067490445144,
+      "surface_energy_EV_PER_ANG2": 0.18387907824872585,
+      "area_fraction": 0.0,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 2, 1],
+      "surface_energy": 2.857059973001418,
+      "surface_energy_EV_PER_ANG2": 0.1783236657139347,
+      "area_fraction": 0.0,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 2, 2],
+      "surface_energy": 2.5577600099902678,
+      "surface_energy_EV_PER_ANG2": 0.15964283049992117,
+      "area_fraction": 0.05085607242593379,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 3, 1],
+      "surface_energy": 2.707938579664864,
+      "surface_energy_EV_PER_ANG2": 0.16901623998698773,
+      "area_fraction": 0.0,
+      "is_reconstructed": false
+    },
+    {
+      "miller_index": [3, 3, 2],
+      "surface_energy": 2.498946652047587,
+      "surface_energy_EV_PER_ANG2": 0.15597198925738792,
+      "area_fraction": 0.0,
+      "is_reconstructed": false
+    }
+  ]
+}

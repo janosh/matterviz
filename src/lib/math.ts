@@ -13,6 +13,21 @@ type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export const grow_capacity = (capacity: number, required: number): number =>
   required > capacity ? Math.max(required, Math.ceil(capacity * 1.5)) : capacity
 
+type GrowableBuffer = Float32Array | Float64Array | Int32Array | Uint32Array
+// Typed array holding at least `needed` entries (contents kept): amortized doubling, never
+// past `cap` (so a capped buffer fills exactly to its budget; callers keep `needed <= cap`)
+export const grow_buffer = <Buffer extends GrowableBuffer>(
+  buffer: Buffer,
+  needed: number,
+  cap = Infinity,
+): Buffer => {
+  if (needed <= buffer.length) return buffer
+  const BufferType = buffer.constructor as new (length: number) => Buffer
+  const next = new BufferType(Math.min(cap, Math.max(needed, buffer.length * 2)))
+  next.set(buffer)
+  return next
+}
+
 // Any array-like (Array, typed array, arguments) holding exactly three finite numbers
 export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
   if (typeof values !== `object` || values === null) return false

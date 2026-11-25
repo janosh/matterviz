@@ -8,7 +8,7 @@
   import { molecule_files } from '#site/molecules.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import { decode_url_safe_base64 } from '#lib/utils.js'
-  import { file_param, loaded_fixture, set_file_param } from '#site/state.svelte.js'
+  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte.js'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
@@ -38,7 +38,7 @@
       }
       return
     }
-    const file = file_param()
+    const file = url_param(`file`)
     if (file && file !== source_filename) {
       source_filename = file
       display_filename = file
@@ -55,7 +55,7 @@
     if (hash_structure_string) return
     const fixture = loaded_fixture(data)
     source_filename = fixture ?? source_filename
-    set_file_param(fixture)
+    set_url_param(`file`, fixture)
   }}
 >
   <h3 class="demo-overlay-label">{display_filename}</h3>
@@ -312,7 +312,8 @@ Load structures from text with `Structure source={{ data: text, filename }}` (CI
 ```svelte example
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { Structure } from 'matterviz'
+  import { FilePicker, Structure } from 'matterviz'
+  import { url_selection } from '#site/state.svelte.js'
   import c2ho_scientific_notation_xyz from '#site/molecules/C2HO-scientific-notation.xyz?raw'
   import c5_extra_data_xyz from '#site/molecules/C5-extra-data.xyz?raw'
   import cyclohexane from '#site/molecules/cyclohexane.xyz?raw'
@@ -329,41 +330,50 @@ Load structures from text with `Structure source={{ data: text, filename }}` (CI
   import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
 
   const structure_files = [
-    { name: `MOF (CIF)`, content: mof_issue_127 },
-    { name: `Ru Complex (CIF)`, content: ru_p_complex_cif },
-    { name: `PF Structure (CIF)`, content: pf_sd_1601634_cif },
-    { name: `Cyclohexane (XYZ)`, content: cyclohexane },
-    { name: `C2HO (XYZ)`, content: c2ho_scientific_notation_xyz },
-    { name: `C5 (XYZ)`, content: c5_extra_data_xyz },
-    { name: `CuF3K (POSCAR)`, content: aviary_CuF3K_triolith },
-    { name: `BaTiO3 (POSCAR)`, content: ba_ti_o3_tetragonal },
-    { name: `NaCl (POSCAR)`, content: na_cl_cubic },
-    { name: `Quartz (ExtXYZ)`, content: extended_xyz_quartz },
-    { name: `Scientific Notation (POSCAR)`, content: scientific_notation_poscar },
-    { name: `Selective Dynamics (POSCAR)`, content: selective_dynamics },
-    { name: `TiO2 (CIF)`, content: tio2_cif },
-    { name: `VASP4 Format (POSCAR)`, content: vasp4_format },
+    { name: `MOF`, type: `cif`, content: mof_issue_127 },
+    { name: `Ru Complex`, type: `cif`, content: ru_p_complex_cif },
+    { name: `PF Structure`, type: `cif`, content: pf_sd_1601634_cif },
+    { name: `Cyclohexane`, type: `xyz`, content: cyclohexane },
+    { name: `C2HO`, type: `xyz`, content: c2ho_scientific_notation_xyz },
+    { name: `C5`, type: `xyz`, content: c5_extra_data_xyz },
+    { name: `CuF3K`, type: `poscar`, content: aviary_CuF3K_triolith },
+    { name: `BaTiO3`, type: `poscar`, content: ba_ti_o3_tetragonal },
+    { name: `NaCl`, type: `poscar`, content: na_cl_cubic },
+    { name: `Quartz`, type: `extxyz`, content: extended_xyz_quartz },
+    { name: `Scientific Notation`, type: `poscar`, content: scientific_notation_poscar },
+    { name: `Selective Dynamics`, type: `poscar`, content: selective_dynamics },
+    { name: `TiO2`, type: `cif`, content: tio2_cif },
+    { name: `VASP4 Format`, type: `poscar`, content: vasp4_format },
   ]
 
-  let selected_idx = $state(0)
+  // the shown example in ?example=
+  const selected = url_selection(
+    `example`,
+    structure_files.map(({ name }) => name),
+  )
+  const selected_file = $derived(
+    structure_files.find(({ name }) => name === selected.value) ?? structure_files[0],
+  )
   let parsed_structure = $state(undefined)
-  let selected_file = $derived(structure_files[selected_idx])
 </script>
 
-<label style="display: block; margin-block: 1em">
-  Structure:
-  <select bind:value={selected_idx}>
-    {#each structure_files as file, idx (file.name)}
-      <option value={idx}>{file.name}</option>
-    {/each}
-  </select>
-  &ensp;(parsed <strong>{parsed_structure?.sites?.length || 0}</strong> atoms from {format_num(
+<FilePicker
+  files={structure_files.map(({ name, type }) => ({ name, label: name, type, url: `` }))}
+  active_files={[selected_file.name]}
+  on_click={({ name }) => (selected.value = name)}
+  style="margin-block: 1em 0.5em"
+/>
+<p>
+  Parsed <strong>{parsed_structure?.sites?.length || 0}</strong> atoms from {format_num(
     selected_file.content.length,
-  )}B)
-</label>
+  )}B of {selected_file.type.toUpperCase()}
+</p>
 
 <Structure
-  source={{ data: selected_file.content, filename: selected_file.name }}
+  source={{
+    data: selected_file.content,
+    filename: `${selected_file.name}.${selected_file.type}`,
+  }}
   bind:structure={parsed_structure}
 />
 ```

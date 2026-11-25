@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation'
 import type { NavGroup } from '#site/state.svelte.js'
 import {
-  file_param,
+  url_param,
   group_nav_routes,
   latest_load,
   loaded_fixture,
@@ -9,7 +9,7 @@ import {
   nav_routes,
   normalize_static_url,
   open_element_page,
-  set_file_param,
+  set_url_param,
 } from '#site/state.svelte.js'
 import element_data from '#lib/element/data.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
@@ -30,16 +30,16 @@ test.each([
   expect(normalize_static_url(url)).toBe(expected),
 )
 
-test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {
-  expect(file_param()).toBe(`old.cif`)
-  set_file_param(`new.cif`)
+test(`url_param reads, set_url_param replaces on a copy of page.url`, () => {
+  expect(url_param(`file`)).toBe(`old.cif`)
+  set_url_param(`file`, `new.cif`)
   expect(goto).toHaveBeenLastCalledWith(
     `https://example.test/structure/?file=new.cif&view=slice`,
     { replace: true, reset: false },
   )
   // page.url is read-only reactive state and must not have been mutated in place
-  expect(file_param()).toBe(`old.cif`)
-  set_file_param(null)
+  expect(url_param(`file`)).toBe(`old.cif`)
+  set_url_param(`file`, null)
   expect(goto).toHaveBeenLastCalledWith(
     `https://example.test/structure/?view=slice`,
     expect.any(Object),

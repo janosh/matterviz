@@ -6,7 +6,7 @@
   import { format_reaction, IsobaricTernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
   import { to_error } from 'svelte-widgets/utils'
   import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
-  import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
+  import { url_param, latest_load, set_url_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
 
   const DEFAULT_FILE = `Li-Mn-O.json.gz`
@@ -33,7 +33,7 @@
       if (!is_current()) return
       current_entries = entries
       current_file = filename
-      if (update_url_param) set_file_param(filename)
+      if (update_url_param) set_url_param(`file`, filename)
     } catch (exc) {
       if (is_current()) error_message = `Failed to load ${filename}: ${to_error(exc).message}`
     } finally {
@@ -54,7 +54,7 @@
 
   // ?file= deep link, else the default system
   onMount(() => {
-    const requested = file_param()
+    const requested = url_param(`file`)
     const known = ternary_system_files.some((file) => file.name === requested)
     void load_system(known && requested ? requested : DEFAULT_FILE, false)
   })
@@ -144,7 +144,7 @@
         error_message = null
         current_entries = entries
         current_file = filename
-        set_file_param(null) // a dropped user file has no picker entry to name
+        set_url_param(`file`, null) // a dropped user file has no picker entry to name
       }}
     />
   {/if}

@@ -115,6 +115,7 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   import { shift_to_fermi, normalize_dos, extract_pdos } from '#lib/spectral/helpers.js'
   import { dos_spin_polarization, get_dos } from '#site/electronic/dos/index.js'
   import { phonon_dos } from '#site/phonons/index.js'
+  import { url_selection } from '#site/state.svelte.js'
 
   const files = [
     {
@@ -137,7 +138,12 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
     })),
   ]
 
-  let active_file = $state(files[0].name)
+  // the shown file in ?file=
+  const active = url_selection(
+    `file`,
+    files.map(({ name }) => name),
+  )
+  const active_file = $derived(active.value)
   let pdos_type = $state<'atom' | 'orbital' | null>(null)
 
   const current_dos = $derived(files.find((file) => file.name === active_file)?.data)
@@ -167,7 +173,10 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
     }))}
     active_files={[active_file]}
     show_category_filters
-    on_click={(file) => ([active_file, pdos_type] = [file.name, null])}
+    on_click={(file) => {
+      active.value = file.name
+      pdos_type = null
+    }}
   />
   {#if is_electronic}
     <select bind:value={pdos_type} style="padding: 4px">

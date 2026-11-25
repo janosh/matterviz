@@ -151,10 +151,13 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     placements: BondPlacements,
     site_colors: readonly string[],
     uniform_color: string | undefined,
+    // per-bond color for both ends, overriding the endpoint-site gradient where defined
+    bond_colors?: readonly (string | undefined)[],
   ): boolean {
     // Packed endpoints are unsigned indices. A uniform palette covering its highest index
     // makes every cylinder color independent of topology and bond order between frames.
     if (
+      !bond_colors &&
       uniform_color !== undefined &&
       bonds instanceof BondFrame &&
       placements.max_site_idx < site_colors.length
@@ -166,6 +169,7 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     const columns = bonds instanceof BondFrame ? bonds.columns : undefined
     const last = this.colored
     if (
+      !bond_colors &&
       columns &&
       last &&
       same_values(site_colors, last.site_colors) &&
@@ -177,8 +181,9 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     for (let idx = 0; idx < bonds.length; idx++) {
       const site_idx_1 = bond_site_1(bonds, idx)
       const site_idx_2 = bond_site_2(bonds, idx)
-      const color_start = site_colors[site_idx_1]
-      const color_end = site_colors[site_idx_2]
+      const override = bond_colors?.[idx]
+      const color_start = override ?? site_colors[site_idx_1]
+      const color_end = override ?? site_colors[site_idx_2]
       if (color_start === undefined || color_end === undefined)
         throw new RangeError(
           `Missing bond endpoint color for site indices ${site_idx_1}, ${site_idx_2}`,
@@ -189,11 +194,14 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
         this.colors_end.write_color(instance_idx, color_end)
       }
     }
-    this.colored = columns && {
-      indices: columns.indices.slice(),
-      orders: columns.orders.slice(),
-      site_colors: site_colors.slice(),
-    }
+    this.colored =
+      bond_colors || !columns
+        ? undefined
+        : {
+            indices: columns.indices.slice(),
+            orders: columns.orders.slice(),
+            site_colors: site_colors.slice(),
+          }
     const changed = this.colors_start.flush(placements.instance_count)
     return this.colors_end.flush(placements.instance_count) || changed
   }

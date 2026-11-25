@@ -194,7 +194,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5em;
-    flex: 1;
+    /* as wide as its chips on one line, not stretched across a flex row of controls; only a
+       picker wider than its row wraps its chips */
+    flex: none;
+    max-width: 100%;
     align-content: start;
     -webkit-user-select: text;
     user-select: text;
@@ -205,7 +208,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 2pt 5pt;
-    font-size: 0.6em;
+    font-size: 0.7em;
     opacity: 0.8;
     margin: 0 0 0.5em;
   }
@@ -270,22 +273,25 @@
     &:has(.file-type-badge) {
       padding-left: 3pt;
     }
+    /* a slight shade over the item's own (inline, per file type) background */
     &.active {
-      border-color: var(--success-color, #00ff00);
-      background: light-dark(rgba(0, 255, 0, 0.12), rgba(0, 255, 0, 0.2));
-      box-shadow: 0 0 8px light-dark(rgba(0, 255, 0, 0.25), rgba(0, 255, 0, 0.35));
+      background-image: linear-gradient(
+        color-mix(in srgb, currentColor 14%, transparent),
+        color-mix(in srgb, currentColor 14%, transparent)
+      );
     }
     &:active {
       cursor: grabbing;
     }
+    /* border and brightness only: a `background` shorthand here would reset the active
+       item's shade (its background-image) */
     &:hover {
       border-color: var(--accent-color, #007acc);
-      background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
       filter: brightness(1.1);
     }
   }
   .file-type-badge {
-    font-size: 0.5em;
+    font-size: 0.6em;
     font-weight: 700;
     letter-spacing: 0.03em;
     padding: 1px 5px;
@@ -294,7 +300,7 @@
     line-height: 1.4;
   }
   .file-name {
-    font-size: 0.7em;
+    font-size: 0.85em;
     line-height: 1.1;
     white-space: pre-line;
     min-width: 0;

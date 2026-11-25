@@ -929,7 +929,8 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
 
 ```svelte example
 <script lang="ts">
-  import { ScatterPlot } from 'matterviz'
+  import { FilePicker, ScatterPlot } from 'matterviz'
+  import { url_selection } from '#site/state.svelte.js'
 
   const hc = 1239.84198 // eV nm
   const cu_ka = 1.5406 // Å
@@ -964,8 +965,8 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
       y_label: `Intensity`,
     },
   }
-  let selected = $state(`Energy → wavelength`)
-  const example = $derived(examples[selected])
+  const selected = url_selection(`example`, Object.keys(examples))
+  const example = $derived(examples[selected.value])
   const series = $derived.by(() => {
     const [lo, hi] = example.x.range
     const x = Array.from({ length: 300 }, (_, idx) => lo + ((hi - lo) * idx) / 299)
@@ -973,11 +974,12 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
   })
 </script>
 
-<select bind:value={selected}>
-  {#each Object.keys(examples) as name (name)}
-    <option value={name}>{name}</option>
-  {/each}
-</select>
+<FilePicker
+  files={Object.keys(examples).map((name) => ({ name, url: ``, type: `example` }))}
+  active_files={[selected.value]}
+  on_click={({ name }) => (selected.value = name)}
+  style="margin-bottom: 1em"
+/>
 
 <ScatterPlot
   {series}

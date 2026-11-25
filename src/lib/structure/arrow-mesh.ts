@@ -65,7 +65,7 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
     const length = Math.abs(encoded_length)
     const [shaft_size, head_size, head_length] = this.dimensions.map(Math.fround)
     const head_len = resolve_arrow_size(head_length, length)
-    const shaft_len = Math.max(0, length - head_len * 0.5)
+    const shaft_len = Math.max(0, length - head_len) // the tip lands on the vector's end
     const rotation = new Quaternion().fromArray(this.rotations.array, idx * 4)
     const position = new Vector3().fromBufferAttribute(this.origins, idx)
     let radius = 0,
@@ -142,7 +142,7 @@ export function arrow_material(part: number) {
   const head_len = dimensions.z
     .lessThan(0)
     .select(length.mul(dimensions.z.negate()), dimensions.z)
-  const shaft_len = length.sub(head_len.mul(0.5)).max(0)
+  const shaft_len = length.sub(head_len).max(0)
   const size = part === 0 ? dimensions.x : dimensions.y
   const radius = size.lessThan(0).select(shaft_len.mul(size.negate()), size)
   const visible =

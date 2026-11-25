@@ -21,6 +21,7 @@ import {
 import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import { parse_chgcar } from '#lib/isosurface/parse.js'
+import { parse_cohpcar } from '#lib/spectral/lobster.js'
 import { JsonTree } from 'svelte-widgets/json-tree'
 import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
@@ -47,6 +48,15 @@ import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/fra
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
 import { compute_xrd_pattern } from '#lib/xrd/compute-xrd.js'
+import {
+  compute_pourbaix_diagram,
+  energy_above_envelope,
+  pourbaix_domains,
+} from '#lib/pourbaix/compute.js'
+import { pourbaix_systems, water_energy } from '#site/pourbaix.js'
+import { compute_wulff_shape } from '#lib/wulff/compute.js'
+import { wulff_examples } from '#site/wulff.js'
+import { compute_structure_diff } from '#lib/structure-diff/compute.js'
 import { match_lattices } from '#lib/interface/lattice-match.js'
 import { symmetry_elements_from_ops } from '#lib/symmetry/symmetry-elements.js'
 import type { MoyoOperation } from '@spglib/moyo-wasm'
@@ -83,6 +93,9 @@ const BASELINES = {
   'HeatmapTable 10k x 30 virtual mount': 730,
   'e_above_hull 10k ternary entries': 26,
   'CHGCAR 80x80x96 parse': 39,
+  // 2026-11-25: M4 Pro/Node 26.13/Vitest 5; median of 5 (reference 38.0 ms). 187 ms when rows
+  // were split into token strings and number arrays before the char-code scan.
+  'COHPCAR 300 pairs x 2 spins x 2000 energies parse': (116 * REFERENCE_MS) / 38.0,
   'marching cubes 64^3': 6.3,
   'neighbor_query 1792 sites': 4.6,
   'XRD 444 sites': 86,
@@ -125,6 +138,17 @@ const BASELINES = {
   // neighbor query takes the slower of 2 runs (reference 72.9 ms); a full search takes ~9x.
   'Structure 97k-atom drag frame + release': (38.7 * REFERENCE_MS) / 82.4,
   'drag bond neighbor query 97k atoms': (13.9 * REFERENCE_MS) / 72.9,
+  // 2026-11-25: M4 Pro/Node 26.13/Vitest 5; median of 3 runs (reference 41.8 ms). 5.4 ms before
+  // the heatmap envelope dropped stable_plane_at's per-cell allocations.
+  'Pourbaix Fe 21 slider ticks + heatmap': (4.2 * REFERENCE_MS) / 41.8,
+  // 2026-11-25: M4 Pro/Node 26.13/Vitest 5; median of 3 runs (reference 41.6 ms). Before auto
+  // stopped recomputing the characteristic atom spacing per site, its index pass on 444 sites
+  // took 4.1 ms instead of 0.18 ms.
+  'structure diff 1000 sites index + shuffled': (34.8 * REFERENCE_MS) / 41.6,
+  // 2026-11-25: M4 Pro/Node 26.13/Vitest 5; median of 3 runs (reference 42.1 ms). Each tick
+  // reran the point-group checks and symmetry expansion (3.5 vs 1.3 ms per tick in Chrome)
+  // before compute_wulff_shape cached them across energy edits.
+  'Wulff Ir 21 slider ticks': (38.2 * REFERENCE_MS) / 42.1,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -227,6 +251,27 @@ const make_entries = (
     })
   }
   return entries
+}
+
+// A LOBSTER COHPCAR in its fixed-width layout: `n_pairs` pairs, both spins (22 MB at 300 x 2000)
+const make_cohpcar = (n_pairs: number, n_energies: number): string => {
+  const rng = make_rng(7)
+  const n_values = 4 * (n_pairs + 1)
+  const pair_lines = Array.from(
+    { length: n_pairs },
+    (_, idx) => `No.${idx + 1}:Bi1->Se7(2.88)`,
+  )
+  const rows = Array.from({ length: n_energies }, (_, row) => {
+    const values = Array.from({ length: n_values }, () => (rng() - 0.5).toFixed(5).padStart(8))
+    return `${(-10 + (15 * row) / n_energies).toFixed(5).padStart(9)} ${values.join(` `)}`
+  })
+  return [
+    `COHPCAR.lobster`,
+    `${n_pairs + 1} 2 ${n_energies} -10 5 1.2`,
+    `Average`,
+    ...pair_lines,
+    ...rows,
+  ].join(`\n`)
 }
 
 const make_chgcar = (dims: Vec3): string => {
@@ -536,6 +581,13 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     })
   })
 
+  test(`COHPCAR 300 pairs x 2 spins x 2000 energies parse`, async () => {
+    const text = make_cohpcar(300, 2000)
+    await measure(`COHPCAR 300 pairs x 2 spins x 2000 energies parse`, () => {
+      expect(parse_cohpcar(text, `COHP`).bonds).toHaveLength(300)
+    })
+  })
+
   test(`marching cubes 64^3`, async () => {
     const grid = make_grid(64)
     await measure(`marching cubes 64^3`, () => {
@@ -586,6 +638,34 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     const points = make_hull_points(775)
     await measure(`quickhull 4D 775 entries`, () => {
       expect(compute_lower_hull_nd(points).length).toBeGreaterThan(20)
+    })
+  })
+
+  // What one log a sweep recomputes per tick: planes, the visible domains and the 180x120
+  // stability heatmap values
+  test(`Pourbaix Fe 21 slider ticks + heatmap`, async () => {
+    const { entries } = pourbaix_systems[`Fe–H2O`]
+    await measure(`Pourbaix Fe 21 slider ticks + heatmap`, () => {
+      for (let step = 0; step <= 20; step++) {
+        const config = { water_energy, log_conc: -10 + step / 2 }
+        const data = compute_pourbaix_diagram(entries, config)
+        const window: [Vec2, Vec2] = [data.ph_range, data.potential_range]
+        expect(pourbaix_domains(data.planes, ...window).length).toBeGreaterThan(3)
+        energy_above_envelope(data.planes, data.planes[4], window, [180, 120])
+      }
+    })
+  })
+
+  // A γ slider sweep on the demo's 13 Ir families (290 planes): the symmetry expansion is cached
+  // across ticks, so each one is the dual hull, corners, facet polygons and statistics
+  test(`Wulff Ir 21 slider ticks`, async () => {
+    const [{ lattice, facets }] = wulff_examples
+    await measure(`Wulff Ir 21 slider ticks`, () => {
+      for (let tick_idx = 0; tick_idx <= 20; tick_idx++) {
+        const energy = 2.2 + tick_idx * 0.01 // {111} sweeps through the other families' range
+        const shape = compute_wulff_shape(lattice, facets.with(2, { ...facets[2], energy }))
+        expect(shape.facets.length).toBeGreaterThan(30)
+      }
     })
   })
 
@@ -783,6 +863,18 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   })
 
   // 3x3x3 of 1000 sites: 4x4x4 (64k sites) spent most reps in major GC (18 ms to 2.9 s)
+  // Index pairing (an O(n) pass) plus nearest matching of the same pair listed in reverse,
+  // one 1000-site species group (10^6 minimum-image distances)
+  test(`structure diff 1000 sites index + shuffled`, async () => {
+    const reference = thousand_site_crystal()
+    const moved = with_random_displacements(reference, 0.01, 3)
+    const shuffled = { ...moved, sites: moved.sites.toReversed() }
+    await measure(`structure diff 1000 sites index + shuffled`, () => {
+      expect(compute_structure_diff(reference, moved).reordered).toBe(false)
+      expect(compute_structure_diff(reference, shuffled).reordered).toBe(true)
+    })
+  })
+
   test(`make_supercell 1000 sites x 3x3x3`, async () => {
     const structure = thousand_site_crystal()
     await measure(`make_supercell 1000 sites x 3x3x3`, () => {

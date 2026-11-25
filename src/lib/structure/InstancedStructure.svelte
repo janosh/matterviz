@@ -42,6 +42,7 @@
     atom_events,
     bonds,
     bond_color,
+    bond_colors,
     bond_thickness,
     bonds_capped,
     ambient_light,
@@ -63,6 +64,8 @@
     atom_events: (atoms: RenderAtom[]) => HoverHandlers // pointer handlers for one mesh's records
     bonds: BondData
     bond_color: string // fallback for sites without an element color
+    // per-bond color for both ends (e.g. by a bond property); undefined keeps the site gradient
+    bond_colors?: (bonds: BondData, structure: AnyStructure) => readonly (string | undefined)[]
     bond_thickness: number
     bonds_capped: boolean
     ambient_light: number
@@ -160,6 +163,8 @@
     return resolved_colors
   })
 
+  const bond_override_colors = $derived(structure && bond_colors?.(bonds, structure))
+
   // Face opacity and edge visibility don't rebuild buffers; recoloring doesn't rebuild hulls.
   let polyhedra_buffers = $derived.by(() => {
     if (polyhedra.length === 0) return null
@@ -236,6 +241,7 @@
   <Bond
     {bonds}
     site_colors={bond_site_colors}
+    bond_colors={bond_override_colors}
     thickness={bond_thickness}
     capped={bonds_capped}
     {ambient_light}

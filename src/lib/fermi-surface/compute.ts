@@ -8,7 +8,7 @@ import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
-import { grow, marching_cubes } from '#lib/marching-cubes.js'
+import { marching_cubes } from '#lib/marching-cubes.js'
 import type {
   BandEnergyGrid,
   BandGridData,
@@ -494,7 +494,7 @@ export function fold_to_wigner_seitz(
   let out_indices = new Uint32Array(indices.length)
   let n_out_indices = 0
   const push_triangle = (idx_0: number, idx_1: number, idx_2: number): void => {
-    out_indices = grow(out_indices, n_out_indices + 3)
+    out_indices = math.grow_buffer(out_indices, n_out_indices + 3)
     out_indices[n_out_indices++] = idx_0
     out_indices[n_out_indices++] = idx_1
     out_indices[n_out_indices++] = idx_2

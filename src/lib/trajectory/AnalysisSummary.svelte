@@ -6,6 +6,8 @@
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import { columns_to_csv } from '#lib/trajectory/analysis.js'
   import type { Snippet } from 'svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import { Download } from 'svelte-widgets/icons'
 
   type Download = { label: string; filename: string } & (
     | { columns: () => Record<string, ArrayLike<number>> }
@@ -66,7 +68,8 @@
           return save(text, `${filename}${suffix}`, mime)
         })}
     >
-      ⬇ {item.label}
+      <Icon icon={Download} />
+      {item.label}
     </button>
   {/each}
 </details>

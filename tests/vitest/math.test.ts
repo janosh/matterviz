@@ -1855,3 +1855,23 @@ describe(`assert_non_negative`, () => {
     },
   )
 })
+
+test.each([
+  [4, 3, Infinity, 4], // fits: same buffer
+  [0, 5, Infinity, 5], // empty start jumps to `needed`
+  [4, 5, Infinity, 8], // doubles
+  [4, 20, Infinity, 20], // past double: exactly `needed`
+  [4, 5, 6, 6], // doubling stops at `cap`
+])(
+  `grow_buffer(length %i, needed %i, cap %s) has length %i`,
+  (length, needed, cap, expected) => {
+    for (const BufferType of [Float32Array, Float64Array, Int32Array, Uint32Array]) {
+      const buffer = new BufferType(Array.from({ length }, (_, idx) => idx + 1))
+      const grown = math.grow_buffer(buffer, needed, cap)
+      expect(grown).toBeInstanceOf(BufferType)
+      expect(grown).toHaveLength(expected)
+      if (expected === length) expect(grown).toBe(buffer)
+      expect([...grown.subarray(0, length)]).toEqual([...buffer])
+    }
+  },
+)

@@ -5,7 +5,7 @@
   import type { AnyStructure, Molecule } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
   import type { Vec3 } from '#lib/math.js'
-  import { file_param } from '#site/state.svelte.js'
+  import { url_param } from '#site/state.svelte.js'
   import { parse_structure_fixture } from '#site/structures.js'
   import { onMount } from 'svelte'
 
@@ -14,7 +14,7 @@
   let url_structure = $derived.by(() => {
     // ?file=/?supercell= are a dev-only convenience; url.searchParams is off-limits during
     // prerender (would 500 the static build), so only read them client-side
-    const requested = file_param()
+    const requested = url_param(`file`)
     if (!requested) return null
     try {
       return parse_structure_fixture(requested)
@@ -69,7 +69,7 @@
   onMount(() => {
     const supercell = page.url.searchParams.get(`supercell`)
     if (supercell) supercell_scaling = supercell
-    else if (file_param()) supercell_scaling = `1x1x1`
+    else if (url_param(`file`)) supercell_scaling = `1x1x1`
   })
   let scene_props = $state({
     show_polyhedra: `crystals` as const,

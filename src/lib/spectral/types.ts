@@ -112,6 +112,9 @@ export interface ElectronicDos {
 export type SpinMode = `mirror` | `overlay` | `up_only` | `down_only` | null
 // Spin display mode for band structure visualization (no mirror mode)
 export type BandsSpinMode = Exclude<SpinMode, `mirror`>
+// Spin display mode for COHP/COOP curves: no mirror (COHP is signed, so negating spin-down
+// would flip bonding and antibonding), but the sum of both spins
+export type CohpSpinMode = Exclude<SpinMode, `mirror` | null> | `sum`
 
 // Projection of a pymatgen CompleteDos
 export type PdosType = `atom` | `orbital`

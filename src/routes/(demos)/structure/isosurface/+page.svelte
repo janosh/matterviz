@@ -7,7 +7,7 @@
   import FilePicker from '#lib/FilePicker.svelte'
   import { humanize } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
-  import { file_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
+  import { url_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
   import type {
     AnyStructure,
     IsosurfaceSettings,
@@ -144,7 +144,7 @@
 
   // Load file from URL param or default on mount
   onMount(() => {
-    const requested = file_param()
+    const requested = url_param(`file`)
     const view = page.url.searchParams.get(`view`)
     display_mode = view === `slice` || view === `split` ? view : `structure`
     // an unknown ?file= (e.g. a stale link) falls back to the first fixture, not a blank page

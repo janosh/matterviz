@@ -5,11 +5,13 @@
   import { T, useThrelte } from '@threlte/core'
   import { attribute, dot, mix, normalView, positionGeometry, uniform, vec3 } from 'three/tsl'
   import { BondMesh, set_bond_placement } from './bond-mesh'
-  import { CylinderGeometry, MeshBasicNodeMaterial } from 'three/webgpu'
+  import { Color, CylinderGeometry, MeshBasicNodeMaterial } from 'three/webgpu'
+  import { css_to_linear_rgb } from '#lib/scene/colors.js'
 
   let {
     bonds,
     site_colors,
+    bond_colors,
     thickness,
     ambient_light,
     directional_light,
@@ -17,6 +19,9 @@
   }: {
     bonds: BondData
     site_colors: string[]
+    // per-bond colors (index-aligned with bonds) replacing the site gradient where defined,
+    // drawn as given so they match a color bar (the site-colored rest stays muted)
+    bond_colors?: readonly (string | undefined)[]
     thickness: number
     ambient_light: number
     directional_light: number
@@ -58,7 +63,24 @@
   const cylinder_t = positionGeometry.y.add(0.5).toVarying(`vBondCylinderT`)
   const gradient = mix(color_start, color_end, cylinder_t)
   const luma = dot(gradient, vec3(0.299, 0.587, 0.114))
-  const tinted = mix(vec3(luma), gradient, uniform(0.5)).mul(uniform(0.7))
+  // Atom-colored bonds are muted (half saturation, 70% brightness) so atoms stand out. With
+  // bond_colors the shader draws colors as given and the site colors are muted on the CPU
+  // instead (the same linear-space operation), so only explicit colors come out vivid.
+  const [muted_saturation, muted_brightness] = [0.5, 0.7]
+  const saturation = uniform(muted_saturation)
+  const brightness = uniform(muted_brightness)
+  const tinted = mix(vec3(luma), gradient, saturation).mul(brightness)
+  const scratch_color = new Color()
+  const mute = (css: string): string => {
+    const [red, green, blue] = css_to_linear_rgb(css)
+    const luma_value = 0.299 * red + 0.587 * green + 0.114 * blue
+    const tone = (val: number) =>
+      muted_brightness * (luma_value + muted_saturation * (val - luma_value))
+    return scratch_color.setRGB(tone(red), tone(green), tone(blue)).getStyle()
+  }
+  // a boolean, so per-hover override arrays don't re-mute every site color
+  const overriding = $derived(bond_colors !== undefined)
+  const drawn_site_colors = $derived(overriding ? site_colors.map(mute) : site_colors)
   const diffuse = dot(normalView, vec3(1, 1, 1).normalize()).max(0)
   const bond_color = tinted.mul(ambient_intensity.add(directional_intensity.mul(diffuse)))
   // Colors are uploaded in linear space; the renderer applies tone mapping and sRGB output.
@@ -78,7 +100,13 @@
   })
 
   $effect(() => {
-    if (mesh.update_colors(bonds, placements, site_colors, uniform_color)) invalidate()
+    saturation.value = overriding ? 1 : muted_saturation
+    brightness.value = overriding ? 1 : muted_brightness
+    invalidate()
+  })
+  $effect(() => {
+    if (mesh.update_colors(bonds, placements, drawn_site_colors, uniform_color, bond_colors))
+      invalidate()
   })
 
   $effect(() => {

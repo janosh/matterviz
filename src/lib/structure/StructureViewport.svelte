@@ -47,6 +47,7 @@
     | `slice_polygon`
     | `bonding_options`
     | `bonding_strategy`
+    | `scene_children`
 
   // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
   // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
@@ -546,6 +547,7 @@
         slice_polygon={scene_input(`slice_polygon`)}
         bonding_options={scene_input(`bonding_options`)}
         bonding_strategy={scene_input(`bonding_strategy`)}
+        scene_children={scene_input(`scene_children`)}
         auto_rotate={in_grid ? 0 : scene_props.auto_rotate}
         symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
         lattice_planes={session.shows_input_frame ? scene_props.lattice_planes : []}
