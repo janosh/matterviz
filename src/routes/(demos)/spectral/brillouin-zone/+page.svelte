@@ -13,11 +13,8 @@
   const crystal_files = structure_files.filter((file) => file.category === `crystal`)
 
   // the picked fixture in ?file=, any format (CIF, POSCAR, ...), not only structure_map's JSON
-  const picked = url_selection(
-    `file`,
-    crystal_files.map(({ name }) => name),
-    ``,
-  )
+  const crystal_names = crystal_files.map(({ name }) => name)
+  const picked = url_selection(`file`, crystal_names, ``)
   $effect(() => {
     if (!picked.value) return
     const struct = parse_structure_fixture(picked.value)

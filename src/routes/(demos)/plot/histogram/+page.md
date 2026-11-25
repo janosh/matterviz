@@ -422,14 +422,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   import * as utils from '#site/histogram-data.js'
   import { url_selection } from '#site/state.svelte.js'
 
-  // the shown distribution in ?distribution=
-  const selected = url_selection(`distribution`, [
-    `bimodal`,
-    `skewed`,
-    `discrete`,
-    `age`,
-    `mixture`,
-  ])
+  const selected = url_selection(`dist`, [`bimodal`, `skewed`, `discrete`, `age`, `mixture`])
   let mode = $state(`single`)
   let x_axis = $state({})
   let y_axis = $state({ label: `Count` })

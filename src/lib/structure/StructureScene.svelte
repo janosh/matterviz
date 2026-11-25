@@ -335,9 +335,8 @@
     hovered_idx?: number | null
     bond_thickness?: number
     bond_color?: string
-    // Per-bond colors for both ends (e.g. by a bond property such as -ICOHP), one per rendered
-    // bond; undefined keeps a bond's atom-color gradient. `structure` is the rendered one (image
-    // sites too).
+    // Per-bond colors (e.g. by -ICOHP), one per rendered bond of the rendered structure (image
+    // sites too); undefined keeps a bond's atom-color gradient
     bond_colors?: (bonds: BondData, structure: AnyStructure) => readonly (string | undefined)[]
     bonding_strategy?: BondingStrategy
     auto_bond_order?: boolean
@@ -379,8 +378,7 @@
     // axes/planes/centers stay readable (derived: hiding the overlay restores the rest)
     symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
-    // Extra 3D content (threlte components) drawn in the atoms' Cartesian frame, e.g. ghost
-    // atoms or custom arrows. `site_radius` gives the drawn radius of a site.
+    // Extra 3D content (threlte components) in the atoms' Cartesian frame, e.g. ghost atoms
     scene_children?: Snippet<[{ site_radius: (site: Site, site_idx: number) => number }]>
     // false hides the hovered-atom tooltip, a snippet adds rows below the built-in site info
     tooltip?: TooltipProp<{ site: Site; site_idx: number }>

@@ -256,7 +256,9 @@ test(`a system switched away from cannot report its load failure`, async () => {
   vi.spyOn(second_system, `load`).mockReturnValue(second.promise)
   mount(SynthesisPage, { target: document.body })
   flushSync()
-  set_select(doc_query<HTMLSelectElement>(`select`), second_system.id)
+  // the systems are a FilePicker; pick the second one
+  const items = [...document.querySelectorAll<HTMLElement>(`.file-item`)]
+  items.find((item) => item.textContent?.includes(second_system.label))?.click()
   first.reject(new Error(`first system failed`))
   await settle(1)
   expect(document.querySelector(`p.error`)).toBeNull()
@@ -344,16 +346,21 @@ test(`RDF compare buttons share their series' color`, () => {
 })
 
 // a dropped local file has no fixture to name: ?file= pointed reloads at a missing fixture
-test(`fermi surface loads write ?file= only for site fixtures`, () => {
+// URL writes land once per tick (set_url_param batches them) and only when the URL changes
+test(`fermi surface loads write ?file= only for site fixtures`, async () => {
   vi.spyOn(lib, `open_material`).mockReturnValue(new Promise(() => {}))
   mount(FermiSurfaceDemo, { target: document.body, props: { sync_url: true } })
   flushSync()
   const { on_file_load } = renderer_stub().read()
   if (typeof on_file_load !== `function`)
     throw new TypeError(`FermiSurface got no on_file_load`)
+  vi.mocked(goto).mockClear()
+  // a dropped file names no fixture: the param stays off, so the URL doesn't change
   on_file_load({ source_filename: `mine.bxsf`, file: new File([`x`], `mine.bxsf`) })
-  expect(goto).toHaveBeenLastCalledWith(`http://localhost/`, expect.any(Object))
+  await Promise.resolve()
+  expect(goto).not.toHaveBeenCalled()
   on_file_load({ source_filename: `pb.bxsf.gz`, source_url: `/fermi-surfaces/pb.bxsf.gz` })
+  await Promise.resolve()
   expect(goto).toHaveBeenLastCalledWith(
     `http://localhost/?file=pb.bxsf.gz`,
     expect.any(Object),

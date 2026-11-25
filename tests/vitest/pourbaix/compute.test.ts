@@ -4,17 +4,17 @@ import {
   clip_to_half_plane,
   compute_pourbaix_diagram,
   energy_above_envelope,
+  mix_planes,
   nernst_slope,
   parse_species,
+  POURBAIX_DEFAULTS,
+  pourbaix_domains,
   pourbaix_energy,
   pourbaix_plane,
   stable_plane_at,
+  water_lines,
 } from '#lib/pourbaix/compute.js'
-import type {
-  PourbaixConfig,
-  PourbaixDiagramData,
-  PourbaixEntry,
-} from '#lib/pourbaix/types.js'
+import type { PourbaixConfig, PourbaixEntry } from '#lib/pourbaix/types.js'
 import { pourbaix_systems, water_energy } from '#site/pourbaix.js'
 import { expect, test } from 'vite-plus/test'
 
@@ -22,15 +22,27 @@ const [Fe, Cu, Zn] = [`Fe–H2O`, `Cu–H2O`, `Zn–H2O`].map(
   (name) => pourbaix_systems[name].entries,
 )
 const { entries: ag_te, ...ag_te_config } = pourbaix_systems[`Ag–Te–H2O (MP)`]
-const diagram = (entries: PourbaixEntry[], config: PourbaixConfig = {}) =>
-  compute_pourbaix_diagram(entries, { water_energy, ...config })
+// The diagram and its domains over a window, by default the component's
+const diagram = (
+  entries: PourbaixEntry[],
+  {
+    ph_range = POURBAIX_DEFAULTS.ph_range,
+    potential_range = POURBAIX_DEFAULTS.potential_range,
+    ...config
+  }: PourbaixConfig & { ph_range?: Vec2; potential_range?: Vec2 } = {},
+) => {
+  const data = compute_pourbaix_diagram(entries, { water_energy, ...config })
+  const domains = pourbaix_domains(data.planes, ph_range, potential_range)
+  return { ...data, domains, window: [ph_range, potential_range] as [Vec2, Vec2] }
+}
+type Diagram = ReturnType<typeof diagram>
 
 // Formulas of the domains whose polygon holds (pH, E)
-const domain_at = ({ domains }: PourbaixDiagramData, [ph, potential]: Vec2): string[] =>
+const domain_at = ({ domains }: Diagram, [ph, potential]: Vec2): string[] =>
   domains
     .filter(({ vertices }) => point_in_polygon(ph, potential, vertices))
     .map(({ plane }) => plane.label)
-const plane_of = ({ planes }: PourbaixDiagramData, formula: string) => {
+const plane_of = ({ planes }: Diagram, formula: string) => {
   const plane = planes.find(({ label }) => label === formula)
   if (!plane) throw new Error(`no ${formula} plane`)
   return plane
@@ -103,7 +115,7 @@ test.each([
   [ag_te, { ...ag_te_config, composition: { Ag: 2, Te: 1 }, element_log_conc: { Te: -4 } }],
 ])(`domains tile the window (%#)`, (entries, config) => {
   const data = diagram(entries, config)
-  const [[ph_lo, ph_hi], [e_lo, e_hi]] = [data.ph_range, data.potential_range]
+  const [[ph_lo, ph_hi], [e_lo, e_hi]] = data.window
   const window_area = (ph_hi - ph_lo) * (e_hi - e_lo)
   const total = data.domains.reduce((sum, { area }) => sum + area, 0)
   expect(Math.abs(total - window_area) / window_area).toBeLessThan(1e-12)
@@ -157,7 +169,7 @@ test.each([
   [373.15, -0.07405],
 ])(`at %s K water lines have slope %s V/pH and Zn^2+/ZnO moves`, (temperature, slope) => {
   const data = diagram(Zn, { temperature })
-  const { h2, o2 } = data.water_lines
+  const { h2, o2 } = water_lines(temperature, water_energy)
   expect(h2.slope).toBeCloseTo(slope, 4)
   expect([o2.slope, h2.intercept]).toEqual([h2.slope, 0])
   expect(o2.intercept).toBeCloseTo(1.2287, 4)
@@ -186,7 +198,7 @@ test(`coincident planes keep only the first`, () => {
     { formula: `ZnO`, energy: -3.3 },
     { formula: `Zn(OH)2`, energy: -3.3 + -2.4577 }, // ZnO + H2O
   ]
-  const data = compute_pourbaix_diagram(entries, { water_energy: -2.4577 })
+  const data = diagram(entries, { water_energy: -2.4577 })
   expect(data.domains.map(({ plane }) => plane.label)).toEqual([`Zn`, `ZnO`])
 })
 
@@ -213,11 +225,17 @@ test.each([
   [Fe, { log_conc: Number.NaN }, /T > 0 K and finite/],
   [Fe, { water_energy: Number.NaN }, /T > 0 K and finite/],
   [Fe, { ph_range: [5, 5] as Vec2 }, /must be finite with min < max/],
+  [Fe, { potential_range: [0, Number.NaN] as Vec2 }, /must be finite with min < max/],
   [Fe, { element_log_conc: { Fe: Number.NaN } }, /T > 0 K and finite/],
   [[...Fe, ...Zn, ...Cu], {}, /up to two elements besides H and O, got \[Fe, Zn, Cu\]/],
   [[...Fe, ...Zn], { composition: { Fe: 1, Zn: 0 } }, /positive amount of each of \[Fe,Zn\]/],
   [Fe, { composition: { Cr: 1 } }, /positive amount/],
   [Fe, { element_log_conc: { Zn: -4 } }, /element_log_conc only those/],
+  [
+    [...Fe, { formula: `ZnFe2O4`, energy: -10.7 }],
+    {},
+    /species can't mix to \{"Fe":0.5,"Zn":0.5\}/,
+  ],
   [[...Fe, Fe[4]], {}, /unique formulas.*\[Fe2O3\]/],
   [[{ formula: `H2O2(aq)`, energy: -1.4 }], {}, /needs an element besides H and O/],
   [[{ formula: `Fe`, energy: Number.NaN }], {}, /non-finite energy/],
@@ -232,26 +250,31 @@ test.each([
   [[{ formula: `Fe^`, energy: -1 }], {}, /Unexpected character/],
   [[{ formula: `fe2O3`, energy: -1 }], {}, /Unexpected character/],
 ])(`compute_pourbaix_diagram rejects invalid input (%#)`, (entries, config, message) => {
-  expect(() => compute_pourbaix_diagram(entries, config)).toThrow(message)
+  expect(() => diagram(entries, config)).toThrow(message)
 })
 
-// 0 exactly inside the species' own domain, the energy above the stable species elsewhere
-test.each([`Fe^2+`, `Fe2O3`, `Fe`])(`energy_above_envelope of %s`, (formula) => {
-  const data = diagram(Fe)
-  expect(data.planes).toEqual(data.species) // one metal: its phases are its species
-  const plane = plane_of(data, formula)
-  const [[ph_lo, ph_hi], [e_lo, e_hi]] = [data.ph_range, data.potential_range]
-  const values = energy_above_envelope(
-    data.planes,
-    plane,
-    [data.ph_range, data.potential_range],
-    [36, 27],
-  )
+// 0 exactly where the species is stable among the phases at its own composition, the energy
+// above the stable phase elsewhere. In Ag–Te, TeH^- is held to the Te-only phases and Ag^+
+// to the Ag-only ones, not to Ag–Te mixtures (which reached -1.19 eV below TeO2).
+test.each([
+  [`Fe^2+`, Fe],
+  [`Fe2O3`, Fe],
+  [`Fe`, Fe],
+  [`TeH^-`, ag_te],
+  [`Ag^+`, ag_te],
+])(`energy_above_envelope of %s`, (formula, entries) => {
+  const data = diagram(entries, entries === ag_te ? ag_te_config : {})
+  const plane = plane_of({ ...data, planes: data.species }, formula) // species, not phases
+  const envelope = mix_planes(data.species, plane.metal_fractions)
+  if (entries === Fe) expect(envelope).toEqual(data.planes) // one metal: its phases are its species
+  const [[ph_lo, ph_hi], [e_lo, e_hi]] = data.window
+  const values = energy_above_envelope(envelope, plane, data.window, [36, 27])
   expect(values).toHaveLength(36 * 27)
+  expect(values).toContain(0)
   values.forEach((value, idx) => {
     const ph = ph_lo + (((idx % 36) + 0.5) / 36) * (ph_hi - ph_lo)
     const potential = e_hi - ((Math.floor(idx / 36) + 0.5) / 27) * (e_hi - e_lo)
-    const stable = stable_plane_at(data.planes, ph, potential)
+    const stable = stable_plane_at(envelope, ph, potential)
     if (stable.plane === plane) expect(value).toBe(0)
     else {
       expect(value).toBeGreaterThan(0)

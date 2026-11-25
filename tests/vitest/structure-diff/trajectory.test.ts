@@ -1,7 +1,7 @@
 import { type Matrix3x3, mulberry32, type Vec3 } from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { compute_structure_diff } from '#lib/structure-diff/compute.js'
-import { create_trajectory_differ, rmsd_rows } from '#lib/structure-diff/trajectory.js'
+import { trajectory_diffs } from '#lib/structure-diff/trajectory.js'
 import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix, make_crystal, make_position_stream } from '../test-fixtures'
 
@@ -29,7 +29,10 @@ const trajectory = (matrices: Matrix3x3[]) => {
     return make_crystal(matrices[frame_idx], sites)
   })
   const positions = crystals.map(({ sites }) => sites.map(({ xyz }) => xyz))
-  return { crystals, stream: make_position_stream(positions, [...elements]) }
+  return {
+    crystals,
+    stream: make_position_stream(positions, [...elements], { lattice_matrices: matrices }),
+  }
 }
 const cells = {
   fixed: walk.map(() => cubic_matrix(10)),
@@ -40,48 +43,36 @@ const cases = Object.keys(cells).flatMap((cell) =>
   [false, true].map((remove_drift) => [cell as keyof typeof cells, remove_drift] as const),
 )
 
-describe(`trajectory structure diffs`, () => {
+describe(`trajectory_diffs`, () => {
   test.each(cases)(
-    `%s cell, remove_drift %s: RMSD rows match direct diffs against frame 0`,
+    `%s cell, remove_drift %s: RMSD rows and first/previous frames match direct diffs`,
     (cell, remove_drift) => {
       const { crystals, stream } = trajectory(cells[cell])
-      stream.lattice_matrices = cells[cell]
-      const rows = rmsd_rows(stream, crystals[0], remove_drift)
-      expect(rows.map(({ frame_number, step }) => [frame_number, step])).toEqual(
-        walk.map((_, idx) => [idx, idx]),
-      )
-      const direct = crystals.map(
-        (crystal) =>
-          compute_structure_diff(crystals[0], crystal, { matching: `index`, remove_drift })
-            .rmsd,
-      )
-      expect(rows.map(({ properties }) => properties.rmsd)).toEqual(direct)
-    },
-  )
-
-  test.each(cases)(
-    `%s cell, remove_drift %s: first and previous modes match direct diffs`,
-    (cell, remove_drift) => {
-      const { crystals, stream } = trajectory(cells[cell])
-      stream.lattice_matrices = cells[cell]
       const template = structuredClone(crystals[0])
-      const differ = create_trajectory_differ(stream, template)
-      expect(differ(crystals[0], 0, `previous`, remove_drift)).toBeNull()
-      for (const [frame_idx, crystal] of crystals.entries()) {
-        for (const [mode, ref_idx] of [
-          [`first`, 0],
-          [`previous`, frame_idx - 1],
-        ] as const) {
-          if (ref_idx < 0) continue
-          const result = differ(crystal, frame_idx, mode, remove_drift)
-          const options = { matching: `index`, remove_drift } as const
-          expect(result?.reference_frame).toBe(ref_idx)
-          expect(result?.diff).toEqual(
-            compute_structure_diff(crystals[ref_idx], crystal, options),
-          )
-        }
+      const { rows, frame } = trajectory_diffs(stream, template, remove_drift)
+      const options = { matching: `index`, remove_drift } as const
+      const direct = (ref_idx: number, frame_idx: number) =>
+        compute_structure_diff(crystals[ref_idx], crystals[frame_idx], options)
+      expect(rows).toEqual(
+        crystals.map((_, idx) => ({
+          frame_number: idx,
+          step: idx,
+          properties: { rmsd: direct(0, idx).rmsd },
+        })),
+      )
+      expect(frame(crystals[0], 0, `previous`)).toBe(`The first frame has no previous frame`)
+      for (const frame_idx of crystals.keys()) {
+        expect(frame(crystals[frame_idx], frame_idx, `first`)).toEqual({
+          diff: direct(0, frame_idx),
+          reference_frame: 0,
+        })
+        if (frame_idx === 0) continue
+        expect(frame(crystals[frame_idx], frame_idx, `previous`)).toEqual({
+          diff: direct(frame_idx - 1, frame_idx),
+          reference_frame: frame_idx - 1,
+        })
       }
-      // the scratch reference is a copy: the template keeps its positions
+      // the scratch structures are copies: the template keeps its positions
       expect(template).toEqual(crystals[0])
     },
   )
@@ -93,19 +84,17 @@ describe(`trajectory structure diffs`, () => {
       frame_stride: 2,
       steps: [0, 2, 4],
     })
-    const differ = create_trajectory_differ(stream, crystals[0])
-    expect(
-      [1, 2, 3, 5].map((idx) => differ(crystals[idx], idx, `previous`, true)?.reference_frame),
-    ).toEqual([0, 0, 2, 4])
-    expect(
-      rmsd_rows(stream, crystals[0], true).map(({ frame_number }) => frame_number),
-    ).toEqual([0, 2, 4])
+    const { rows, frame } = trajectory_diffs(stream, crystals[0], true)
+    expect([1, 2, 3, 5].map((idx) => frame(crystals[idx], idx, `previous`))).toMatchObject(
+      [0, 0, 2, 4].map((reference_frame) => ({ reference_frame })),
+    )
+    expect(rows.map(({ frame_number }) => frame_number)).toEqual([0, 2, 4])
   })
 
   test(`a stream with a different atom count throws`, () => {
     const { crystals } = trajectory(cells.fixed)
     const stream = make_position_stream([[[0, 0, 0]]], [`Na`])
-    expect(() => create_trajectory_differ(stream, crystals[0])).toThrow(
+    expect(() => trajectory_diffs(stream, crystals[0], true)).toThrow(
       `Frame has 4 sites but the position stream 1 atoms`,
     )
   })

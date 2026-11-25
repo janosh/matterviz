@@ -1,16 +1,15 @@
-// LOBSTER samples for the /spectral/cohp demo: one folder per sample holding its
-// COHPCAR/COOPCAR/COBICAR.lobster, optionally ICOHPLIST-type lists and a POSCAR, and a
-// SOURCE.txt saying where the data comes from (shown with the demo, `[text](url)` links allowed). Adding a folder adds a
-// sample.
+// LOBSTER samples for the /spectral/cohp demo, one folder each (adding a folder adds a sample):
+// COHPCAR/COOPCAR/COBICAR.lobster, optional ICOHPLIST-type lists and POSCAR, and a SOURCE.txt
+// saying where the data comes from (shown with the demo, `[text](url)` links allowed)
 import { type LobsterFiles, parse_lobster_files } from '#lib/spectral/lobster.js'
+import { glob_text } from '#site/imports.js'
 
 export type LobsterSample = LobsterFiles & {
   name: string
   source: string | null // SOURCE.txt, required for bundled samples
 }
 
-// LICENSE.txt carries the upstream license with the copied files; it isn't sample data
-const raw_files = import.meta.glob<string>([`./*/*`, `!./*/LICENSE.txt`], {
+const raw_files = import.meta.glob(`./*/*`, {
   query: `?raw`,
   import: `default`,
   eager: true,
@@ -19,7 +18,11 @@ const raw_files = import.meta.glob<string>([`./*/*`, `!./*/LICENSE.txt`], {
 const by_folder: Record<string, Record<string, string>> = {}
 for (const [path, text] of Object.entries(raw_files)) {
   const [, folder, filename] = path.split(`/`)
-  by_folder[folder] = { ...by_folder[folder], [filename]: text }
+  // LICENSE.txt carries the upstream license with the copied files; it isn't sample data
+  // glob_text: builds hand over the module, dev and tests its default export
+  if (filename !== `LICENSE.txt`) {
+    by_folder[folder] = { ...by_folder[folder], [filename]: glob_text(text) }
+  }
 }
 
 export const lobster_samples: Record<string, LobsterSample> = Object.fromEntries(

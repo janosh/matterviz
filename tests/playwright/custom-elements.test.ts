@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname } from 'node:path'
 import { COMPONENTS, tag_name } from '../../src/elements/components'
-import { open_settings_pane, require_bbox } from './helpers'
+import { collect_console_errors, collect_page_errors, open_settings_pane } from './helpers'
 
 // The prebuilt custom-element bundle (src/elements) on a plain HTML page: no Svelte, no bundler.
 // Served from a routed https origin (navigator.gpu needs a secure context) so worker and chunk
@@ -264,22 +264,48 @@ test.describe(`custom-element bundle`, () => {
     )
     await page.goto(`${origin}/`)
     const element = page.locator(`mv-structure-diff`)
-    const [viewer, sidebar] = [`.structure`, `.structure-site-sidebar`].map((selector) =>
-      element.locator(selector),
+    await expect(element.locator(`.structure canvas`)).toBeVisible()
+    // the host's height and bottom edge, then the viewer's and the docked site table's bottoms
+    const fits = async (n_parts: number) => {
+      const [height, host_bottom, ...bottoms] = await element.evaluate((node) => [
+        node.getBoundingClientRect().height,
+        ...[node, ...node.querySelectorAll(`.structure, .structure-site-sidebar`)].map(
+          (part) => part.getBoundingClientRect().bottom,
+        ),
+      ])
+      expect(height).toBe(300)
+      expect(bottoms).toHaveLength(n_parts)
+      for (const bottom of bottoms) expect(bottom).toBeCloseTo(host_bottom, 0)
+    }
+    await fits(2)
+    await element.locator(`.structure-site-sidebar .close-btn`).first().click()
+    await fits(1)
+  })
+
+  // WulffShape writes wulff_data from an effect reading its unset `structure`: a prop store whose
+  // unset-key reads track every write re-ran that effect without end
+  test(`mv-wulff-shape computes its shape once and writes it back`, async ({ page }) => {
+    const [console_errors, page_errors] = [
+      collect_console_errors(page),
+      collect_page_errors(page),
+    ]
+    const facets = `[{"miller": [1, 0, 0], "energy": 2.2}, {"miller": [1, 1, 1], "energy": 1.9}]`
+    await page.route(`${origin}/`, (route) =>
+      route.fulfill({
+        contentType: `text/html`,
+        body: page_html(`
+          <mv-wulff-shape facets='${facets}' lattice='[[3.84, 0, 0], [0, 3.84, 0], [0, 0, 3.84]]'></mv-wulff-shape>
+          <script type="module" src="/matterviz-elements.js"></script>`),
+      }),
     )
-    await expect(viewer.locator(`canvas`)).toBeVisible()
-    const host = await require_bbox(element, `host`)
-    expect(host.height).toBe(300)
-    const bottom = async (part: typeof viewer) => {
-      const box = await require_bbox(part)
-      return box.y + box.height
-    }
-    for (const part of [viewer, sidebar]) {
-      expect(Math.abs((await bottom(part)) - (host.y + host.height))).toBeLessThan(1)
-    }
-    await sidebar.locator(`.close-btn`).first().click()
-    await expect(sidebar).toHaveCount(0)
-    expect(Math.abs((await bottom(viewer)) - (host.y + host.height))).toBeLessThan(1)
+    await page.goto(`${origin}/`)
+    const element = page.locator(`mv-wulff-shape`)
+    await expect(element.locator(`canvas`)).toBeVisible()
+    await expect
+      .poll(() => element.evaluate((node) => Reflect.get(node, `wulff_data`)?.families.length))
+      .toBe(2)
+    expect(console_errors.filter((msg) => msg.includes(`svelte.dev/e/`))).toEqual([])
+    expect(page_errors).toEqual([])
   })
 
   test(`mv-trajectory parses HDF5 in its self-contained worker`, async ({ page }) => {

@@ -588,8 +588,7 @@
     right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
     gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
   }
-  /* The min/max ticks sit on the bar ends: flush them inward so the legend, pinned to the
-     viewer's corner, never pushes a centered label past the viewer edge */
+  /* min/max ticks flush inward from the bar ends, never centered past the viewer's edge */
   .property-colorbar :global(.tick-label.horizontal:first-child) {
     transform: none;
   }

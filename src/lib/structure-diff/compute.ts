@@ -278,26 +278,21 @@ function displacement_frame(reference: AnyStructure, target: AnyStructure) {
 }
 
 // Proper rotation R minimizing sum |R from_i - to_i|^2 over centered point sets (Kabsch):
-// the polar factor of M = sum to_i from_i^T, built from the eigenvectors of M^T M. The
-// smallest singular pair is completed by cross products, which keeps det R = +1 and covers
-// planar sets. A linear or single-point set has no unique rotation: null.
+// the polar factor of M = sum to_i from_i^T, sum_k left_k right_k^T over its singular vector
+// pairs, with right_k the eigenvectors of M^T M (a proper rotation). The smallest pair's left
+// vector is a cross product, which keeps det R = +1 and covers planar sets. A linear or
+// single-point set has no unique rotation: null.
 function kabsch(from: Vec3[], to: Vec3[]): Matrix3x3 | null {
   const mat = [0, 1, 2].map((row) =>
     [0, 1, 2].map((col) => to.reduce((sum, vec, idx) => sum + vec[row] * from[idx][col], 0)),
   ) as Matrix3x3
   const { values, vectors } = symmetric_eigen_3x3(dot(transpose_3x3(mat), mat))
-  if (!(values[1] > 1e-20 * values[2])) return null
-  const [, right_1, right_2] = transpose_3x3(vectors) // eigenvectors, ascending
-  const [left_1, left_2] = [right_1, right_2].map((right, idx) =>
-    dot(mat, right).map((val) => val / Math.sqrt(values[idx + 1])),
+  if (!(values[1] > 1e-12 * values[2])) return null
+  const right = transpose_3x3(vectors) // rows: eigenvectors, ascending
+  const [left_1, left_2] = [1, 2].map((idx) =>
+    dot(mat, right[idx]).map((val) => val / Math.sqrt(values[idx])),
   )
-  const left = [cross_3d(left_1, left_2), left_1, left_2]
-  const right = [cross_3d(right_1, right_2), right_1, right_2]
-  return [0, 1, 2].map((row) =>
-    [0, 1, 2].map((col) =>
-      left.reduce((sum, vec, idx) => sum + vec[row] * right[idx][col], 0),
-    ),
-  ) as Matrix3x3
+  return dot(transpose_3x3([cross_3d(left_1, left_2), left_1, left_2] as Matrix3x3), right)
 }
 
 // Subtracts the least-squares rigid motion of the reference onto the target from `vectors`

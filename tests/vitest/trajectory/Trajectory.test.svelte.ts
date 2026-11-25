@@ -1913,16 +1913,17 @@ describe(`diff_reference`, () => {
       }),
     )
   test.each([
-    [`first`, `RMSD 0.5 Å vs frame 1 · drift 0.5 Å removed`],
-    [`previous`, `RMSD 0.25 Å vs frame 2 · drift 0.25 Å removed`],
+    [`first`, 2, `RMSD 0.5 Å vs frame 1 · drift 0.5 Å removed`],
+    [`previous`, 2, `RMSD 0.25 Å vs frame 2 · drift 0.25 Å removed`],
+    [`previous`, 0, `The first frame has no previous frame`],
   ] as const)(
-    `%s: RMSD series on the plot and the frame's diff in the settings`,
-    async (mode, status) => {
+    `%s, frame index %s: RMSD series on the plot and the frame's diff in the settings`,
+    async (mode, current_step_idx, status) => {
       const target = mount_trajectory(
         default_props({
           trajectory: moving_run(),
           diff_reference: mode,
-          current_step_idx: 2,
+          current_step_idx,
           active_pane: `controls`,
           visible_properties: [`rmsd`],
         }),

@@ -441,7 +441,6 @@ export function marching_cubes(
     }
   }
 
-  // grown by grow_buffer as vertices land, sliced to size on return
   let positions = new Float32Array(1024)
   let normals = new Float32Array(compute_norms ? 1024 : 0)
   let indices = new Uint32Array(1024)

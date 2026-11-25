@@ -603,11 +603,9 @@ export function neighbor_query_cutoff(
   for (let center = 0; center < n_sites; center++) {
     const start = offsets[center]
     const count = offsets[center + 1] - start
-    if (count > block_partner.length) {
-      block_partner = math.grow_buffer(block_partner, count)
-      block_dist_sq = math.grow_buffer(block_dist_sq, count)
-      block_perm = math.grow_buffer(block_perm, count)
-    }
+    block_partner = math.grow_buffer(block_partner, count)
+    block_dist_sq = math.grow_buffer(block_dist_sq, count)
+    block_perm = math.grow_buffer(block_perm, count)
     for (let rank = 0; rank < count; rank++) {
       const entry = entry_at[start + rank]
       block_partner[rank] = entry & 1 ? pair_a[entry >> 1] : pair_b[entry >> 1]

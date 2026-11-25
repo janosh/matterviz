@@ -42,7 +42,7 @@ const hover = (root: ParentNode, polygon: Element) => {
   )
   root
     .querySelector(`.pourbaix-domains`)
-    ?.dispatchEvent(pointer(`pointermove`, { bubbles: true, clientX, clientY }))
+    ?.dispatchEvent(pointer(`pointermove`, { clientX, clientY }))
   flushSync()
 }
 
@@ -54,19 +54,15 @@ test.each([
   expect(polygons((await render({ entries })).root)).toHaveLength(count)
 })
 
-test(`labels show charges as superscripts and water lines as diagonal ref lines`, async () => {
-  const { root } = await render()
+test(`labels show charges as superscripts, water lines as ref lines, both toggle`, async () => {
+  const { root, props } = await render()
   expect(labels(root)).toEqual(expect.arrayContaining([`Fe2+`, `Fe3+`, `Fe2O3`]))
-  const fe2_label = [...root.querySelectorAll(`.domain-label`)].find(
-    (node) => node.textContent?.trim() === `Fe2+`,
-  )
-  expect(fe2_label?.querySelector(`tspan[baseline-shift="0.4em"]`)?.textContent).toBe(`2+`)
+  const fe2_label = root.querySelectorAll(`.domain-label`)[labels(root).indexOf(`Fe2+`)]
+  expect(fe2_label.querySelector(`tspan[baseline-shift="0.4em"]`)?.textContent).toBe(`2+`)
   expect(root.textContent).toContain(`O₂/H₂O`)
   expect(root.textContent).toContain(`H⁺/H₂`)
-})
-
-test(`show_water_lines and show_labels toggle their layers`, async () => {
-  const { root } = await render({ show_water_lines: false, show_labels: false })
+  ;[props.show_water_lines, props.show_labels] = [false, false]
+  flushSync()
   expect(labels(root)).toEqual([])
   expect(root.textContent).not.toContain(`O₂/H₂O`)
 })
@@ -146,6 +142,7 @@ test(`a new ph_range re-projects the domains`, async () => {
 test.each([
   [{ entries: [...Fe, ...Zn, ...Cu] }, `up to two elements besides H and O, got [Fe, Zn, Cu]`],
   [{ heatmap_formula: `ZnO` }, `heatmap_formula ZnO names no entry`],
+  [{ ph_range: [5, 5] as Vec2 }, `must be finite with min < max`],
 ])(`invalid input shows the error instead of a plot (%#)`, async (props, message) => {
   const { root } = await render(props)
   expect(root.textContent).toContain(message)

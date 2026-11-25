@@ -28,27 +28,23 @@
     delta_mu?: number // eV, chemical potential of families with a slope
     delta_mu_range?: Vec2 // Δμ slider bounds in eV, no slider without them
   } = $props()
-  const edited = $derived(
-    default_facets !== undefined && JSON.stringify(facets) !== JSON.stringify(default_facets),
-  )
 
   const colors = $derived(family_colors(facets))
   let new_miller = $state<Vec3>([1, 1, 0])
   let new_energy = $state(2)
 
-  // a non-positive or empty γ is refused and the input shows the kept value again
+  // a non-positive or empty γ is refused and the input shows the kept value again (to 4 digits)
   const set_energy = (idx: number, input: HTMLInputElement) => {
     const energy = input.valueAsNumber
     if (Number.isFinite(energy) && energy > 0) {
       facets = facets.with(idx, { ...facets[idx], energy })
-    } else input.value = String(facets[idx].energy)
+    } else input.value = String(Number(facets[idx].energy.toPrecision(4)))
   }
-  const energy_valid = $derived(Number.isFinite(new_energy) && new_energy > 0)
   // the typed facet is listed already (an equivalent one is compute_wulff_shape's to report)
   const listed = $derived(
     facets.some(({ miller }) => miller.join(`,`) === new_miller.join(`,`)),
   )
-  const can_add = $derived(energy_valid && !listed)
+  const can_add = $derived(Number.isFinite(new_energy) && new_energy > 0 && !listed)
 </script>
 
 <div class="wulff-facet-editor">
@@ -81,10 +77,10 @@
         <th colspan="2">{delta_mu_range ? `γ at Δμ = 0` : `γ`} (J/m²)</th>
         <th class="area" title="Share of the shape's surface">Area</th>
         <th>
-          {#if edited && default_facets}
+          {#if default_facets && JSON.stringify(facets) !== JSON.stringify(default_facets)}
             <button
               type="button"
-              class="icon-btn"
+              class="round-icon-btn"
               onclick={() => (facets = $state.snapshot(default_facets))}
               title="Reset surface energies"
             >
@@ -127,7 +123,7 @@
           <td>
             <button
               type="button"
-              class="icon-btn"
+              class="round-icon-btn"
               disabled={facets.length === 1}
               onclick={() => (facets = facets.toSpliced(idx, 1))}
               title="Remove {family_label(miller)}"
@@ -195,28 +191,6 @@
     width: 0.8em;
     height: 0.8em;
     border-radius: 2px;
-  }
-  /* reset and remove: a circle, never taller than wide, shaded only faintly on hover */
-  .icon-btn {
-    display: grid;
-    place-items: center;
-    box-sizing: border-box;
-    width: 1em;
-    height: 1em;
-    padding: 0;
-    --icon-size: 0.85em;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    &:hover:not(:disabled) {
-      background: color-mix(in srgb, currentColor 10%, transparent);
-    }
-    &:disabled {
-      opacity: 0.3;
-      cursor: default;
-    }
   }
   .delta-mu {
     display: flex;

@@ -255,12 +255,13 @@ const doses_prop = derived_prop(
   { doses: { type: [`object`] } },
 )
 
-// Parse of a trait's latest value, so the props reading it parse each value once
+// Parse of a widget's latest trait value, so the props reading it parse each value once
 const last_parse = <T>(key: string, parse: (raw: unknown) => T) => {
-  let last: { raw: unknown; parsed: T } | undefined
+  const cache = new WeakMap<AnyModel, { raw: unknown; parsed: T }>()
   return (model: AnyModel): T => {
     const raw = get_prop(model, key)
-    if (!last || last.raw !== raw) last = { raw, parsed: parse(raw) }
+    let last = cache.get(model)
+    if (!last || last.raw !== raw) cache.set(model, (last = { raw, parsed: parse(raw) }))
     return last.parsed
   }
 }
@@ -296,48 +297,34 @@ const imported_props = (
 // Settings a component's controls change, synced both ways, unset ones at the given defaults
 const writeback_props = (defaults: Record<string, unknown>): DrivenProp[] =>
   Object.entries(defaults).map(([key, fallback]) => writeback_prop(key, fallback))
-// Output prop: what the component computes, sent to Python as to_model(value), never driven
+// What the component computes, sent to Python as to_model(value) (an object or null), never driven
 const output_prop = (prop: string, to_model: (value: unknown) => unknown): DrivenProp => ({
   prop,
   deps: [],
   compute: () => undefined,
   writeback: true,
-  fallback: null,
+  targets: { [prop]: { type: [`object`, `null`] } },
   to_model,
 })
-const output_key = { type: [`object`, `null`] } as const
-// The Pourbaix domain under the pointer, without the pointer's pH and potential, so Python
-// hears of domain crossings rather than every mouse move
+// The Pourbaix domain under the pointer without its pH and potential, so Python hears of domain
+// crossings rather than every mouse move
 const pourbaix_domain = (info: unknown) => {
   if (!info) return null
   const { label, species, metal_fractions } = (info as PourbaixHoverInfo).plane
-  return {
-    label,
-    species: species.map(({ entry, aqueous, weight }) => ({
-      formula: entry.formula,
-      aqueous,
-      weight,
-    })),
-    metal_fractions,
-  }
+  const shares = species.map(({ entry: { formula }, aqueous, weight }) => ({
+    formula,
+    aqueous,
+    weight,
+  }))
+  return { label, species: shares, metal_fractions }
 }
-// The computed Wulff shape for Python without its geometry: per input family its share of the
-// surface, the absent families' Miller indices and the shape's summary numbers
+// The computed Wulff shape without its geometry: per input family its share of the surface, the
+// absent families' Miller indices and the shape's summary numbers
 const wulff_summary = (data: unknown) => {
   if (!data) return null
-  const { families, surface_area, weighted_surface_energy, shape_factor, anisotropy } =
-    data as WulffShapeData
-  const absent_families = families
-    .filter(({ n_facets }) => n_facets === 0)
-    .map(({ miller }) => miller)
-  return {
-    families,
-    absent_families,
-    surface_area,
-    weighted_surface_energy,
-    shape_factor,
-    anisotropy,
-  }
+  const { vertices, facets, edges, point_group, ...summary } = data as WulffShapeData
+  const absent = summary.families.filter(({ n_facets }) => n_facets === 0)
+  return { ...summary, absent_families: absent.map(({ miller }) => miller) }
 }
 // LOBSTER output as { file name: text } (COHPCAR/COOPCAR/COBICAR.lobster, their ICOHPLIST etc.,
 // DOSCAR.lobster, POSCAR), parsed once for the curves and the DOS beside them
@@ -807,7 +794,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       }),
       output_prop(`hover_info`, pourbaix_domain),
     ],
-    interaction_model_keys: { hover_info: output_key },
   },
   structure_diff: {
     drive: [
@@ -874,17 +860,19 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       ...writeback_props(WULFF_DEFAULTS),
       output_prop(`wulff_data`, wulff_summary),
     ],
-    interaction_model_keys: { wulff_data: output_key },
   },
 } satisfies Record<keyof typeof COMPONENTS, WidgetSpec>
 
 // Machine-readable trait contract: for each widget_type, every model trait the JS
-// side reads (drive/derived/writeback deps + style) or writes (interaction
+// side reads (drive/derived/writeback deps + style) or writes (outputs, interaction
 // callbacks). Consumed by pymatviz's prop-parity test to flag Python widget traits
 // the frontend would silently ignore (and frontend props Python cannot set).
 export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromEntries(
   Object.entries(WIDGETS).map(([widget_type, spec]) => {
-    const model_keys = driven_props(spec).flatMap(({ deps }) => deps)
+    const model_keys = driven_props(spec).flatMap(({ deps, targets = {} }) => [
+      ...deps,
+      ...Object.keys(targets),
+    ])
     return [
       widget_type,
       [

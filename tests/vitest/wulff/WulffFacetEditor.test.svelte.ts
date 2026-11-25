@@ -54,9 +54,9 @@ const mount_editor = (
   }
 }
 
-test(`rows show family, energy and area; inputs set γ; reset restores the defaults`, () => {
+test(`rows set γ and show area; reset restores the defaults; remove keeps the last row`, () => {
   const defaults: WulffFacetInput[] = [
-    { miller: [1, 0, 0], energy: 1 },
+    { miller: [1, 0, 0], energy: 1.234567 },
     { miller: [1, 1, 1], energy: 1 },
   ]
   const editor = mount_editor(structuredClone(defaults), defaults)
@@ -68,25 +68,29 @@ test(`rows show family, energy and area; inputs set γ; reset restores the defau
     `{100}`,
     `{111}`,
   ])
-  set_input(doc_query<HTMLInputElement>(`input[aria-label="Surface energy of {111}"]`), `2`)
-  flushSync()
-  expect(editor.facets[1].energy).toBe(2)
-  // γ111/γ100 = 2 > √3: {111} vanishes and the area column says so
-  expect(rows[1].classList.contains(`absent`)).toBe(true)
-  expect(rows[0].querySelector(`td.area`)?.textContent).toBe(`100%`)
   const number = doc_query<HTMLInputElement>(
     `input[aria-label="Surface energy of {100} (number)"]`,
   )
+  expect(number.value).toBe(`1.235`) // 4 significant digits shown, γ kept in full
+  set_input(doc_query<HTMLInputElement>(`input[aria-label="Surface energy of {111}"]`), `2.5`)
+  flushSync()
+  expect(editor.facets[1].energy).toBe(2.5)
+  // γ111/γ100 > √3: {111} vanishes and the area column says so
+  expect(rows[1].classList.contains(`absent`)).toBe(true)
+  expect(rows[0].querySelector(`td.area`)?.textContent).toBe(`100%`)
   number.value = `0`
   number.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
-  expect(editor.facets[0].energy).toBe(1) // non-positive γ is refused
-  expect(number.value).toBe(`1`) // and the input shows the kept value again
-  expect(reset_btn()).not.toBeNull() // γ111 was edited
+  expect(editor.facets[0].energy).toBe(1.234567) // non-positive γ is refused
+  expect(number.value).toBe(`1.235`) // and the input shows the kept value again
   reset_btn()?.click()
   flushSync()
   expect(editor.facets).toEqual(defaults)
   expect(reset_btn()).toBeNull()
+  doc_query<HTMLButtonElement>(`button[title="Remove {100}"]`).click()
+  flushSync()
+  expect(editor.facets.map(({ miller }) => miller)).toEqual([[1, 1, 1]])
+  expect(doc_query<HTMLButtonElement>(`button[title="Remove {111}"]`).disabled).toBe(true)
 })
 
 // Any family with a positive γ is added: one equivalent to a listed one is
@@ -110,26 +114,6 @@ test.each([
   flushSync()
   expect(editor.facets).toHaveLength(added ? 2 : 1)
   expect(document.querySelectorAll(`.wulff-facet-editor tbody tr`)).toHaveLength(added ? 2 : 1)
-})
-
-test(`remove drops a family but never the last one`, () => {
-  const editor = mount_editor([
-    { miller: [1, 0, 0], energy: 1 },
-    { miller: [1, 1, 1], energy: 1.2 },
-  ])
-  doc_query<HTMLButtonElement>(`button[title="Remove {100}"]`).click()
-  flushSync()
-  expect(editor.facets.map(({ miller }) => miller)).toEqual([[1, 1, 1]])
-  expect(doc_query<HTMLButtonElement>(`button[title="Remove {111}"]`).disabled).toBe(true)
-})
-
-test(`number inputs show 4 significant digits while γ keeps its full precision`, () => {
-  const editor = mount_editor([{ miller: [1, 0, 0], energy: 2.817712 }])
-  const number = doc_query<HTMLInputElement>(
-    `input[aria-label="Surface energy of {100} (number)"]`,
-  )
-  expect(number.value).toBe(`2.818`)
-  expect(editor.facets[0].energy).toBe(2.817712)
 })
 
 // γ{111} = 1 + 0.5·Δμ falls below γ{100}/√3 at Δμ < -0.85: the cube's corners grow into an

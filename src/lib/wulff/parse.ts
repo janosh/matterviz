@@ -1,6 +1,7 @@
 // Surface energies from Materials Project or pymatgen JSON, as compute_wulff_shape's input.
 // Plain TypeScript: no pymatgen needed to read either.
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { is_plain_object as is_record } from 'svelte-widgets/utils'
+import { is_finite_matrix3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { WulffFacetInput } from './types'
 
 // J/m² per eV/Å²: e / 1e-20 m² with CODATA 2018's exact e. The Materials Project's own
@@ -13,8 +14,6 @@ export type ParsedSurfaceEnergies = {
   label?: string // material id and formula of an MP document
 }
 
-const is_record = (val: unknown): val is Record<string, unknown> =>
-  typeof val === `object` && val !== null && !Array.isArray(val)
 const is_number = (val: unknown): val is number =>
   typeof val === `number` && Number.isFinite(val)
 
@@ -73,11 +72,7 @@ export function parse_surface_energies(json: unknown): ParsedSurfaceEnergies {
       )
     }
     const matrix = is_record(data.lattice) ? data.lattice.matrix : data.lattice
-    const rows = Array.isArray(matrix) ? (matrix as unknown[]) : []
-    if (
-      rows.length !== 3 ||
-      !rows.every((row) => Array.isArray(row) && row.length === 3 && row.every(is_number))
-    ) {
+    if (!is_finite_matrix3x3(matrix)) {
       throw new Error(`lattice must be a 3x3 matrix or a pymatgen Lattice dict with one`)
     }
     const facets = miller_list.map((miller: unknown, idx): WulffFacetInput => {
@@ -85,7 +80,7 @@ export function parse_surface_energies(json: unknown): ParsedSurfaceEnergies {
       if (!is_number(energy)) throw new Error(`e_surf_list[${idx}] is not a number`)
       return { miller: to_miller(miller, `miller_list[${idx}]`), energy }
     })
-    return { facets, lattice: rows as Matrix3x3 }
+    return { facets, lattice: matrix }
   }
   throw new Error(
     `Unsupported surface-energy JSON: expected a Materials Project surface document ({ surfaces: [{ miller_index, surface_energy }] }) or pymatgen WulffShape fields ({ lattice, miller_list, e_surf_list })`,

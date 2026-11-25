@@ -109,22 +109,18 @@ export const has_site_data = (sites: readonly Site[] | undefined): boolean =>
 // SITE_PROPERTY_UNITS. `axis` splits a vec3 into one column per axis, `norm` is its magnitude.
 export const property_column = (prop_name: string, axis?: string): Column => {
   const config = property_config(prop_name)
-  // a property with a symbol heads its columns by it (displacement: |Δr|, Δx); the tooltip
-  // (description) spells it out
+  // a symbol heads the columns (displacement: |Δr|, Δx), the description spells the name out
   const symbol = own(SITE_PROPERTY_SYMBOLS, prop_name)
   const label =
     axis === `norm`
       ? `|${symbol ? `${symbol}r` : prop_name}|`
       : axis
-        ? symbol
-          ? `${symbol}${axis}`
-          : `${prop_name} ${axis}`
+        ? `${symbol ?? `${prop_name} `}${axis}`
         : (config?.label ?? prop_name)
   const unit = own(SITE_PROPERTY_UNITS, prop_name) ?? config?.unit
-  const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
   const part = axis === `norm` ? `Magnitude of ` : axis ? `${axis} component of ` : ``
   return {
-    id,
+    id: `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`,
     label: unit ? `${label} (${unit})` : label,
     description: `${part}site property ${prop_name}${unit ? ` in ${unit}` : ``}`,
     // lengths get fixed decimals like the Cartesian columns, so sub-1e-4 Å noise reads as 0

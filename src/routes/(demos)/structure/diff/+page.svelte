@@ -43,25 +43,21 @@
     structure_files.map(({ name }) => ({ name, structure: parse_structure_fixture(name) })),
   )
   const pair_key = (pair: (typeof pairs)[number]) => pair.map(({ name }) => name).join(` vs `)
-  // name is the url_selection key, label what the chip shows next to its type badge
+  const formula = (structure: AnyStructure) =>
+    get_alphabetical_formula(structure, { plain_text: true, delim: `` })
+  // name: the url_selection key, label: what the chip shows next to its type badge
   const examples = [
-    ...TRAJECTORIES.map((name) => ({ name, label: name, url: name, type: `trajectory` })),
-    ...pairs.map((pair) => ({
-      name: pair_key(pair),
-      label: `${get_alphabetical_formula(pair[0].structure, { plain_text: true, delim: `` })}: ${pair.map(({ name }) => name.split(`.`)[0]).join(` vs `)}`,
-      url: pair_key(pair),
-      type: `same formula`,
-    })),
-    {
-      name: `illustrative`,
-      label: `Ag13Bi14I56 seeded perturbation`,
-      url: `illustrative`,
-      type: `illustrative`,
-    },
-  ]
+    ...TRAJECTORIES.map((name) => [name, name, `trajectory`]),
+    ...pairs.map((pair) => [
+      pair_key(pair),
+      `${formula(pair[0].structure)}: ${pair.map(({ name }) => name.split(`.`)[0]).join(` vs `)}`,
+      `same formula`,
+    ]),
+    [`illustrative`, `Ag13Bi14I56 seeded perturbation`, `illustrative`],
+  ].map(([name, label, type]) => ({ name, label, url: name, type }))
   const example = url_selection(
     `example`,
-    examples.map(({ url }) => url),
+    examples.map(({ name }) => name),
   )
 
   let slots = $state.raw<Record<DiffRole, Slot | null>>({ reference: null, target: null })
@@ -215,7 +211,7 @@
         class="slot"
         title={[
           slot &&
-            `${slot.name}: ${get_alphabetical_formula(slot.structure, { plain_text: true, delim: `` })}, ${slot.structure.sites.length} sites`,
+            `${slot.name}: ${formula(slot.structure)}, ${slot.structure.sites.length} sites`,
           slot?.note,
           `Drop a structure file here`,
         ]

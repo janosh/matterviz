@@ -205,49 +205,47 @@
       {/snippet}
       {#snippet controls_extra()}
         <SettingsGroup title="Structure diff" open>
-          <div class="diff-settings">
-            <label
-              title="How sites pair up: index keeps the file order, nearest pairs each atom with the closest one of its species, auto picks"
+          <label
+            title="How sites pair up: index keeps the file order, nearest pairs each atom with the closest one of its species, auto picks"
+          >
+            Site matching
+            <select bind:value={matching}>
+              <option value="auto">auto</option>
+              <option value="index">index</option>
+              <option value="nearest">nearest</option>
+            </select>
+          </label>
+          <label
+            title="Subtract the mean displacement (and for molecules the best-fit rotation) from every site"
+          >
+            <input type="checkbox" bind:checked={remove_drift} /> Remove rigid drift
+          </label>
+          <label>
+            <input type="checkbox" bind:checked={show_ghost} /> Reference ghosts
+          </label>
+          <label>
+            <input type="checkbox" bind:checked={show_arrows} /> Displacement arrows
+          </label>
+          <div class="exaggeration">
+            <NumberRangeInput
+              min={1}
+              max={100}
+              step="any"
+              scale="log"
+              title="Multiplies arrow lengths and ghost offsets; 1 shows the true displacements"
+              bind:value={() => arrow_scale, (value) => (arrow_scale = value ?? 1)}
+              >Exaggeration</NumberRangeInput
             >
-              Site matching
-              <select bind:value={matching}>
-                <option value="auto">auto</option>
-                <option value="index">index</option>
-                <option value="nearest">nearest</option>
-              </select>
-            </label>
-            <label
-              title="Subtract the mean displacement (and for molecules the best-fit rotation) from every site"
+            <!-- hidden, not removed, at ×1 so the slider keeps its width -->
+            <button
+              type="button"
+              class="round-icon-btn"
+              style:visibility={arrow_scale === 1 ? `hidden` : null}
+              onclick={() => (arrow_scale = 1)}
+              title="Reset exaggeration to true size (×1)"
             >
-              <input type="checkbox" bind:checked={remove_drift} /> Remove rigid drift
-            </label>
-            <label>
-              <input type="checkbox" bind:checked={show_ghost} /> Reference ghosts
-            </label>
-            <label>
-              <input type="checkbox" bind:checked={show_arrows} /> Displacement arrows
-            </label>
-            <div class="exaggeration">
-              <NumberRangeInput
-                min={1}
-                max={100}
-                step="any"
-                scale="log"
-                title="Multiplies arrow lengths and ghost offsets; 1 shows the true displacements"
-                bind:value={() => arrow_scale, (value) => (arrow_scale = value ?? 1)}
-                >Exaggeration</NumberRangeInput
-              >
-              <!-- hidden, not removed, at ×1 so the slider keeps its width -->
-              <button
-                type="button"
-                class="icon-btn"
-                style:visibility={arrow_scale === 1 ? `hidden` : null}
-                onclick={() => (arrow_scale = 1)}
-                title="Reset exaggeration to true size (×1)"
-              >
-                <Icon icon={Reset} />
-              </button>
-            </div>
+              <Icon icon={Reset} />
+            </button>
           </div>
         </SettingsGroup>
       {/snippet}
@@ -296,38 +294,12 @@
       }
     }
   }
-  .diff-settings {
-    display: grid;
-    gap: 4pt;
-    label {
-      display: flex;
-      align-items: center;
-      gap: 0.4em;
-    }
-  }
   .exaggeration {
     display: flex;
     align-items: center;
     gap: 0.4em;
     > :global(label) {
       flex: 1;
-    }
-  }
-  /* a circle, never taller than wide, shaded only faintly on hover (as WulffFacetEditor's) */
-  .icon-btn {
-    display: grid;
-    place-items: center;
-    width: 1em;
-    height: 1em;
-    padding: 0;
-    --icon-size: 0.85em;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    &:hover {
-      background: color-mix(in srgb, currentColor 10%, transparent);
     }
   }
 </style>

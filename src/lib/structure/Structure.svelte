@@ -404,8 +404,7 @@
     // Extra 3D content drawn inside every 3D pane in the atoms' Cartesian frame (threlte
     // components such as ArrowInstances or InstancedAtoms), e.g. a comparison overlay
     scene_children?: Snippet<[{ site_radius: (site: Site, site_idx: number) => number }]>
-    // Extra settings rendered at the top of the controls (gear) pane
-    controls_extra?: Snippet
+    controls_extra?: Snippet // extra settings at the top of the controls (gear) pane
     // Extra props for the docked site table, e.g. its initial `sort`
     site_table_props?: Partial<
       Omit<ComponentProps<typeof SiteTable>, `sites` | `selected_atoms` | `hovered_atom`>
@@ -1934,10 +1933,9 @@
     }
   }
   /* The site table's toolbar (up to six 22px buttons, 142px) shares the header row, left of
-     the close button; the gap keeps the title clear of it when the sidebar fits its content.
+     the close button; the gap keeps the title clear of it when the sidebar fits its content,
+     and the 22px line height centers the title on the toolbar hanging from its bottom edge.
      An open search box outgrows that, so the toolbar takes its own row meanwhile. */
-  /* The toolbar hangs from the header's bottom edge, so a header exactly one button tall
-     (22px) centers both on the same line */
   :global(.structure-site-sidebar > h4) {
     column-gap: 148px;
     line-height: 22px;

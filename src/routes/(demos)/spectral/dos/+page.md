@@ -138,27 +138,23 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
     })),
   ]
 
-  // the shown file in ?file=
-  const active = url_selection(
-    `file`,
-    files.map(({ name }) => name),
-  )
-  const active_file = $derived(active.value)
+  const file_names = files.map(({ name }) => name)
+  const active = url_selection(`file`, file_names)
   let pdos_type = $state<'atom' | 'orbital' | null>(null)
 
-  const current_dos = $derived(files.find((file) => file.name === active_file)?.data)
+  const current_dos = $derived(files.find((file) => file.name === active.value)?.data)
   const doses = $derived.by(() => {
     if (pdos_type) {
       const projected = extract_pdos(current_dos, pdos_type)
-      if (!projected) throw new Error(`No ${pdos_type} projected DOS in ${active_file}`)
+      if (!projected) throw new Error(`No ${pdos_type} projected DOS in ${active.value}`)
       return projected
     }
     const total = normalize_dos(current_dos)
-    if (!total) throw new Error(`Invalid DOS in ${active_file}`)
+    if (!total) throw new Error(`Invalid DOS in ${active.value}`)
     return { '': total }
   })
   const is_electronic = $derived(
-    files.find((file) => file.name === active_file)?.category === 'Electronic',
+    files.find((file) => file.name === active.value)?.category === 'Electronic',
   )
 </script>
 
@@ -171,12 +167,9 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
       category: file.category,
       category_icon: file.category_icon,
     }))}
-    active_files={[active_file]}
+    active_files={[active.value]}
     show_category_filters
-    on_click={(file) => {
-      active.value = file.name
-      pdos_type = null
-    }}
+    on_click={(file) => ([active.value, pdos_type] = [file.name, null])}
   />
   {#if is_electronic}
     <select bind:value={pdos_type} style="padding: 4px">

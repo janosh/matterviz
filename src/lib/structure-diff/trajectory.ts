@@ -9,20 +9,6 @@ import { compute_structure_diff, type StructureDiffResult } from './compute'
 // What each frame is compared against: the first collected frame or the one before it
 export type DiffReference = `off` | `first` | `previous`
 
-// A structure with the trajectory's sites whose positions and cell load_row rewrites (its
-// fractional coordinates go stale: compute_structure_diff reads xyz only)
-const scratch_structure = (template: AnyStructure, stream: TrajectoryPositionStream) => {
-  if (template.sites.length !== stream.n_atoms) {
-    throw new Error(
-      `Frame has ${template.sites.length} sites but the position stream ${stream.n_atoms} atoms`,
-    )
-  }
-  return {
-    ...template,
-    sites: template.sites.map((site) => ({ ...site, xyz: [0, 0, 0] as Vec3 })),
-  }
-}
-
 // Collected frame `row` of `stream` written into `scratch`
 function load_row(stream: TrajectoryPositionStream, row: number, scratch: AnyStructure) {
   const offset = row * stream.n_atoms * 3
@@ -36,48 +22,47 @@ function load_row(stream: TrajectoryPositionStream, row: number, scratch: AnyStr
   return scratch
 }
 
-// Diffs the displayed frame against the first or previous collected frame of `stream`
-// (`template` gives the sites). Null for the first frame in `previous` mode.
-export function create_trajectory_differ(
-  stream: TrajectoryPositionStream,
-  template: AnyStructure,
-) {
-  const first = load_row(stream, 0, scratch_structure(template, stream))
-  const previous = scratch_structure(template, stream)
-  return (
-    target: AnyStructure,
-    frame_idx: number,
-    reference: Exclude<DiffReference, `off`>,
-    remove_drift: boolean,
-  ): { diff: StructureDiffResult; reference_frame: number } | null => {
-    // with a frame stride, the latest collected frame before this one
-    const row = reference === `first` ? 0 : Math.floor((frame_idx - 1) / stream.frame_stride)
-    if (row < 0) return null
-    const reference_structure = row === 0 ? first : load_row(stream, row, previous)
-    const diff = compute_structure_diff(reference_structure, target, {
-      matching: `index`,
-      remove_drift,
-    })
-    return { diff, reference_frame: row * stream.frame_stride }
-  }
-}
-
-// RMSD of every collected frame against the first, as plot rows under the `rmsd` key
-export function rmsd_rows(
+// Diffs along a trajectory's collected position stream (`template` gives the sites): `rows`,
+// the RMSD of every collected frame against the first as plot rows under `rmsd`, and `frame`,
+// the displayed frame against the first or the latest collected frame before it (a message
+// for the first frame in `previous` mode)
+export function trajectory_diffs(
   stream: TrajectoryPositionStream,
   template: AnyStructure,
   remove_drift: boolean,
-): TrajectoryMetadata[] {
-  const reference = load_row(stream, 0, scratch_structure(template, stream))
-  const target = scratch_structure(template, stream)
-  return stream.steps.map((step, row) => ({
+) {
+  if (template.sites.length !== stream.n_atoms) {
+    throw new Error(
+      `Frame has ${template.sites.length} sites but the position stream ${stream.n_atoms} atoms`,
+    )
+  }
+  // structures with the trajectory's sites whose positions and cell load_row rewrites (their
+  // fractional coordinates go stale: compute_structure_diff reads xyz only)
+  const scratch_structure = (): AnyStructure => ({
+    ...template,
+    sites: template.sites.map((site) => ({ ...site, xyz: [0, 0, 0] as Vec3 })),
+  })
+  const first = load_row(stream, 0, scratch_structure())
+  const scratch = scratch_structure()
+  const diff = (reference: AnyStructure, target: AnyStructure) =>
+    compute_structure_diff(reference, target, { matching: `index`, remove_drift })
+  const rows: TrajectoryMetadata[] = stream.steps.map((step, row) => ({
     frame_number: row * stream.frame_stride,
     step,
-    properties: {
-      rmsd: compute_structure_diff(reference, load_row(stream, row, target), {
-        matching: `index`,
-        remove_drift,
-      }).rmsd,
-    },
+    properties: { rmsd: diff(first, load_row(stream, row, scratch)).rmsd },
   }))
+  const frame = (
+    target: AnyStructure,
+    frame_idx: number,
+    reference: Exclude<DiffReference, `off`>,
+  ): { diff: StructureDiffResult; reference_frame: number } | string => {
+    const row = reference === `first` ? 0 : Math.floor((frame_idx - 1) / stream.frame_stride)
+    if (row < 0) return `The first frame has no previous frame`
+    const reference_structure = row === 0 ? first : load_row(stream, row, scratch)
+    return {
+      diff: diff(reference_structure, target),
+      reference_frame: row * stream.frame_stride,
+    }
+  }
+  return { rows, frame }
 }

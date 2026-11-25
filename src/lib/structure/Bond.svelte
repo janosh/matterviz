@@ -64,8 +64,7 @@
   const gradient = mix(color_start, color_end, cylinder_t)
   const luma = dot(gradient, vec3(0.299, 0.587, 0.114))
   // Atom-colored bonds are muted (half saturation, 70% brightness) so atoms stand out. With
-  // bond_colors the shader draws colors as given and the site colors are muted on the CPU
-  // instead (the same linear-space operation), so only explicit colors come out vivid.
+  // bond_colors the shader draws as given and mute() mutes site colors on the CPU (to 8-bit sRGB).
   const [muted_saturation, muted_brightness] = [0.5, 0.7]
   const saturation = uniform(muted_saturation)
   const brightness = uniform(muted_brightness)
@@ -100,11 +99,6 @@
   })
 
   $effect(() => {
-    saturation.value = overriding ? 1 : muted_saturation
-    brightness.value = overriding ? 1 : muted_brightness
-    invalidate()
-  })
-  $effect(() => {
     if (mesh.update_colors(bonds, placements, drawn_site_colors, uniform_color, bond_colors))
       invalidate()
   })
@@ -112,6 +106,8 @@
   $effect(() => {
     ambient_intensity.value = ambient_light
     directional_intensity.value = directional_light
+    saturation.value = overriding ? 1 : muted_saturation
+    brightness.value = overriding ? 1 : muted_brightness
     invalidate()
   })
 

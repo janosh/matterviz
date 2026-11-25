@@ -51,6 +51,7 @@ import { compute_xrd_pattern } from '#lib/xrd/compute-xrd.js'
 import {
   compute_pourbaix_diagram,
   energy_above_envelope,
+  POURBAIX_DEFAULTS,
   pourbaix_domains,
 } from '#lib/pourbaix/compute.js'
 import { pourbaix_systems, water_energy } from '#site/pourbaix.js'
@@ -645,11 +646,12 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   // stability heatmap values
   test(`Pourbaix Fe 21 slider ticks + heatmap`, async () => {
     const { entries } = pourbaix_systems[`Fe–H2O`]
+    const { ph_range, potential_range } = POURBAIX_DEFAULTS
+    const window: [Vec2, Vec2] = [ph_range, potential_range]
     await measure(`Pourbaix Fe 21 slider ticks + heatmap`, () => {
       for (let step = 0; step <= 20; step++) {
         const config = { water_energy, log_conc: -10 + step / 2 }
         const data = compute_pourbaix_diagram(entries, config)
-        const window: [Vec2, Vec2] = [data.ph_range, data.potential_range]
         expect(pourbaix_domains(data.planes, ...window).length).toBeGreaterThan(3)
         energy_above_envelope(data.planes, data.planes[4], window, [180, 120])
       }

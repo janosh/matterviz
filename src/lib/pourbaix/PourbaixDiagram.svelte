@@ -26,6 +26,7 @@
   import {
     compute_pourbaix_diagram,
     energy_above_envelope,
+    mix_planes,
     POURBAIX_DEFAULTS,
     pourbaix_domains,
     pourbaix_energy,
@@ -113,12 +114,11 @@
       const data = compute_pourbaix_diagram(entries, {
         log_conc,
         temperature,
-        ph_range,
-        potential_range,
         water_energy,
         composition,
         element_log_conc,
       })
+      pourbaix_domains([], ph_range, potential_range) // no planes: validates the window alone
       if (heatmap_formula && !entries.some((entry) => entry.formula === heatmap_formula))
         throw new Error(`heatmap_formula ${heatmap_formula} names no entry`)
       return { data }
@@ -155,8 +155,7 @@
       : [],
   )
 
-  // From temperature and water_energy alone, so a log_conc tick leaves the reference lines untouched (an error
-  // state renders no plot to draw them on)
+  // From temperature and water_energy alone, so a log_conc tick leaves them untouched
   const ref_lines = $derived.by((): RefLine[] => {
     if (!show_water_lines) return []
     const { h2, o2 } = water_lines(temperature, water_energy)
@@ -164,27 +163,24 @@
     return [
       { ...h2, label: `H₂ evolution`, text: `H⁺/H₂` },
       { ...o2, label: `O₂ evolution`, text: `O₂/H₂O` },
-    ].map(({ slope, intercept, label, text }) => ({
-      type: `diagonal` as const,
-      slope,
-      intercept,
-      label,
+    ].map(({ text, ...line }): RefLine => ({
+      ...line,
+      type: `diagonal`,
       style: { dash: `6 4`, width: 1.5, color, opacity: 0.8 },
-      z_index: `above-all` as const,
-      annotation: {
-        text,
-        color,
-        position: `end` as const,
-        side: `above` as const,
-        font_size: `12px`,
-      },
+      z_index: `above-all`,
+      annotation: { text, color, position: `end`, side: `above`, font_size: `12px` },
     }))
   })
 
   // === Heatmap of one species' energy above the stable envelope ===
-  const HEATMAP_CELLS: Vec2 = [180, 120]
+  const HEATMAP_GRID: Vec2 = [180, 120]
   const heatmap_plane = $derived(
     data?.species.find((plane) => plane.label === heatmap_formula) ?? null,
+  )
+  // The phases at the species' own composition, which hold it: energies above them are >= 0
+  // (the diagram's own phases would mix in the other metal at another ratio)
+  const envelope = $derived(
+    data && heatmap_plane ? mix_planes(data.species, heatmap_plane.metal_fractions) : [],
   )
   const HEATMAP_SCALE = `interpolateViridis`
   // 256-color lookup table built once, not per repaint
@@ -195,28 +191,25 @@
   // maximum over the window sits at a corner.
   const heatmap = $derived.by(() => {
     if (!data || !heatmap_plane || typeof document === `undefined`) return null
-    const { planes } = data
     const max_value = Math.max(
       1e-9,
       ...ph_range.flatMap((ph) =>
         potential_range.map(
           (potential) =>
             pourbaix_energy(heatmap_plane, ph, potential) -
-            stable_plane_at(planes, ph, potential).energy,
+            stable_plane_at(envelope, ph, potential).energy,
         ),
       ),
     )
     const scale = resolve_color_scale(HEATMAP_SCALE, [0, max_value])
     const context = document.createElement(`canvas`).getContext(`2d`)
     if (!context) return { ...scale, image: null } // e.g. a test DOM without 2D canvas
-    const values = energy_above_envelope(planes, heatmap_plane, visible_window, HEATMAP_CELLS)
-    const [n_ph, n_e] = HEATMAP_CELLS
+    const values = energy_above_envelope(envelope, heatmap_plane, visible_window, HEATMAP_GRID)
+    const [n_ph, n_e] = HEATMAP_GRID
     const pixels = new Uint8ClampedArray(n_ph * n_e * 4).fill(255) // opaque alpha
     values.forEach((value, idx) => {
       const { r, g, b } = heatmap_lut[Math.round(scale.position(value) * 255)]
-      pixels[idx * 4] = r
-      pixels[idx * 4 + 1] = g
-      pixels[idx * 4 + 2] = b
+      pixels.set([r, g, b], idx * 4)
     })
     ;[context.canvas.width, context.canvas.height] = [n_ph, n_e]
     context.putImageData(new ImageData(pixels, n_ph, n_e), 0, 0)
@@ -259,16 +252,12 @@
       composition,
       log_conc,
       temperature,
-      water_lines: data?.water_lines,
+      water_lines: water_lines(temperature, water_energy),
       // what the view shows, as in the SVG and PNG exports
-      domains: visible_domains.map(({ plane, vertices, area }) => ({
-        species: plane.species.map(({ entry, aqueous, weight }) => ({
-          formula: entry.formula,
-          aqueous,
-          weight,
-        })),
-        vertices,
-        area,
+      domains: visible_domains.map(({ plane: { label, species }, ...polygon }) => ({
+        label,
+        species,
+        ...polygon,
       })),
     })),
   }
@@ -342,7 +331,9 @@
 {#snippet frame_overlays({ pad, width, height, x_scale_fn, y_scale_fn }: UserContentProps)}
   {#if heatmap && heatmap_plane}
     <ColorBar
-      title="Ψ({format_formula_html(heatmap_plane.label)}) − Ψ<sub>stable</sub> ({per_atom})"
+      title="Ψ({format_formula_html(
+        heatmap_plane.label,
+      )}) − Ψ<sub>stable</sub> (eV/{Object.keys(heatmap_plane.metal_fractions).join(`+`)})"
       color_scale={heatmap.color_scale}
       class="pourbaix-color-bar"
       style="position: absolute; top: {pad.t + 8}px; right: {pad.r +

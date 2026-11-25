@@ -97,39 +97,23 @@ describe(`Cohp`, () => {
     expect(document.body.textContent).toContain(`Fe1–Fe2 #1 (2.451 Å)`)
   })
 
-  it(`draws the Fermi line where E_F sits in the data, relative or absolute`, async () => {
-    const render = async (shift_to_fermi: boolean) => {
-      document.body.innerHTML = ``
-      await mount_plot({ cohp: parse_cohpcar(cohpcar(1, -1.5), `COHP`), shift_to_fermi })
-      const ticks = [...document.querySelectorAll(`.scatter .tick text`)].map(
-        (node) => node.textContent?.trim() ?? ``,
-      )
-      const fermi_y = Number(document.querySelector(`.fermi-level-line`)?.getAttribute(`y1`))
-      return { ticks, fermi_y }
-    }
-    // energies -2..2 relative to E_F = -1.5 eV, -3.5..0.5 absolute; shifting the energies and
-    // the line by the same E_F leaves the line where it was
-    const [relative, absolute] = [await render(true), await render(false)]
-    expect(Number.isFinite(relative.fermi_y)).toBe(true)
-    expect(absolute.fermi_y).toBeCloseTo(relative.fermi_y, 6)
-    expect(relative.ticks).toContain(`2`)
-    expect(absolute.ticks).not.toContain(`2`)
-    expect(absolute.ticks).toContain(`-3`)
-  })
-
-  // a DOS beside the curves (real KF DOSCAR.lobster, energies relative to its E_F like the
-  // COHPCAR's) shares their energy axis: same ticks at the same heights, E_F on one line
+  // E_F sits where it is in the data, relative or absolute; a DOS beside the curves (real KF
+  // DOSCAR.lobster, energies relative to its E_F like the COHPCAR's) shares their energy axis:
+  // same ticks at the same heights, E_F on one line
   it.each([
-    [true, 800],
-    [false, 800],
-    [true, 400],
+    [true, 800, true],
+    [false, 800, true],
+    [true, 400, true],
+    [true, 800, false],
+    [false, 800, false],
   ])(
-    `shift_to_fermi=%s, %ipx: the DOS pane aligns with the curves`,
-    async (shift_to_fermi, width) => {
+    `shift_to_fermi=%s, %ipx, DOS %s: E_F on the energy axis, panes aligned`,
+    async (shift_to_fermi, width, with_dos) => {
+      // energies -2..2 relative to E_F = -1.5 eV, -3.5..0.5 absolute
       const cohp = parse_cohpcar(cohpcar(1, -1.5), `COHP`)
       const root = await mount_sized(
         Cohp,
-        { cohp, shift_to_fermi, doses: { Total: kf_dos } },
+        { cohp, shift_to_fermi, ...(with_dos && { doses: { Total: kf_dos } }) },
         { selector: `.cohp-and-dos`, width, height: 400 },
       )
       const [cohp_plot, dos_plot] = root.querySelectorAll(`.scatter`)
@@ -140,15 +124,17 @@ describe(`Cohp`, () => {
           tick.querySelector(`text`)?.textContent,
           translate_of(tick).y,
         ])
-      expect(root.classList.contains(width >= 520 ? `side` : `stacked`)).toBe(true)
-      if (width < 520) return // stacked: the DOS plots energy along x, nothing to align
-      expect(y_ticks(dos_plot)).toEqual(y_ticks(cohp_plot))
-      expect(y_ticks(cohp_plot).length).toBeGreaterThan(2)
-      expect(fermi_y(dos_plot)).toBeCloseTo(fermi_y(cohp_plot), 6)
-      // E_F sits at energy 0 (relative) or -1.5 eV (absolute) on the shared axis
       const tick_y = Object.fromEntries(y_ticks(cohp_plot))
+      expect(y_ticks(cohp_plot).map(([text]) => text)).toEqual(
+        shift_to_fermi ? [`-2`, `-1`, `0`, `1`, `2`] : [`-3`, `-2`, `-1`, `0`],
+      )
       if (shift_to_fermi) expect(fermi_y(cohp_plot)).toBeCloseTo(tick_y[`0`], 6)
       else expect(fermi_y(cohp_plot)).toBeCloseTo((tick_y[`-1`] + tick_y[`-2`]) / 2, 6)
+      expect(root.classList.contains(`side`)).toBe(with_dos && width >= 520)
+      expect(Boolean(dos_plot)).toBe(with_dos)
+      if (!dos_plot || width < 520) return // stacked: the DOS plots energy along x
+      expect(y_ticks(dos_plot)).toEqual(y_ticks(cohp_plot))
+      expect(fermi_y(dos_plot)).toBeCloseTo(fermi_y(cohp_plot), 6)
     },
   )
 
@@ -181,9 +167,12 @@ describe(`Cohp`, () => {
   })
 
   // the Average curve reports its hover but belongs to no pair, so clicks on it pass nothing
+  // oxfmt-ignore
   it.each([
     [`a pair`, { bonds: [`2`] }, plot_color(0), `2`, [`2`]],
     [`the average`, { bonds: [], show_average: true }, `#8c8c8c`, `average`, []],
+    // series_idx 1: hover and clicks resolve by the curve's own index
+    [`a pair after the average`, { bonds: [`2`], show_average: true }, plot_color(0), `2`, [`2`]],
   ] as const)(
     `reports hovering %s and passes its clicks on`,
     async (_name, props, stroke, hovered, clicks) => {

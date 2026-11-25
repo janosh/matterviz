@@ -28,10 +28,8 @@ export interface PourbaixConditions {
   element_log_conc?: Record<string, number>
 }
 
-// Conditions and plot window of a Pourbaix diagram
+// Conditions and composition of a Pourbaix diagram
 export interface PourbaixConfig extends Partial<PourbaixConditions> {
-  ph_range?: Vec2 // [min, max] pH of the window (default [-2, 16])
-  potential_range?: Vec2 // [min, max] potential (V vs SHE) of the window (default [-2, 2.5])
   // Amounts of the (at most two) elements besides H and O, like pymatgen's comp_dict
   // (default equal parts); only their ratio matters
   composition?: Record<string, number> | null
@@ -69,9 +67,4 @@ export interface PourbaixDiagramData {
   elements: string[] // besides H and O, in entry order
   species: PourbaixPlane[] // one plane per entry
   planes: PourbaixPlane[] // phases at the diagram's composition: the species for one element
-  domains: PourbaixDomain[]
-  ph_range: Vec2
-  potential_range: Vec2
-  // H2 and O2 evolution lines E = intercept + slope·pH (V vs SHE, 1 bar gas)
-  water_lines: Record<`h2` | `o2`, { slope: number; intercept: number }>
 }

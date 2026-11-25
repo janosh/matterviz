@@ -1,10 +1,7 @@
 <script lang="ts">
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
-  import { browser } from '$app/env'
-  import { goto } from '$app/navigation'
-  import { page } from '$app/state'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { url_selection } from '#site/state.svelte.js'
+  import { set_url_param, url_param, url_selection } from '#site/state.svelte.js'
   import { InterfaceBuilder } from '#lib/interface/index.js'
   import type { Heterostructure } from '#lib/interface/index.js'
   import { SlabBuilder } from '#lib/slab/index.js'
@@ -17,8 +14,6 @@
   import pd_fcc from '#site/structures/mp-2.json'
   import ac_hexagonal from '#site/structures/mp-862690-Ac4-hexagonal.json'
   import po_cubic from '#site/structures/Po-simple-cubic.json'
-  import { untrack } from 'svelte'
-  import { sync_url_params } from 'svelte-widgets/browser'
 
   const bulk_structures = {
     'Cu (fcc)': cu_fcc,
@@ -29,13 +24,9 @@
     'Ac (hexagonal)': ac_hexagonal,
   } as unknown as Record<string, Crystal>
 
-  // the substrate/film pickers and the slabs SlabBuilder cuts from them
+  // each side's material (in ?substrate= / ?film=) and the slab SlabBuilder cuts from it
   const SIDES = [`substrate`, `film`] as const
-  const sides = $state({
-    substrate: { slab: null as Slab | null },
-    film: { slab: null as Slab | null },
-  })
-  // each side's material in ?substrate= / ?film=
+  const slabs = $state<Record<string, Slab | null>>({ substrate: null, film: null })
   const bulk_names = Object.keys(bulk_structures)
   const bulks = {
     substrate: url_selection(`substrate`, bulk_names, `Cu (fcc)`),
@@ -43,18 +34,10 @@
   }
   let heterostructure = $state<Heterostructure | null>(null)
   // ?match=7 picks match #7, the number the plot, select and stats show; the pick writes back,
-  // #1 leaving it off. Read in the browser only: prerender forbids url.searchParams, and the
-  // builder (slabs come from effects) never renders server-side anyway.
-  const url_match = browser ? Number(page.url.searchParams.get(`match`)) : 0
+  // #1 leaving it off
+  const url_match = Number(url_param(`match`))
   let match_idx = $state(Number.isInteger(url_match) && url_match >= 1 ? url_match - 1 : 0)
-  $effect(() => {
-    sync_url_params(
-      [[`match`, String(match_idx + 1), `1`]],
-      globalThis.location,
-      (url) =>
-        void goto(url, { shallow: true, replace: true, state: untrack(() => page.state) }),
-    )
-  })
+  $effect(() => set_url_param(`match`, match_idx > 0 ? String(match_idx + 1) : null))
   let atom_color_config = $state<AtomColorConfig>({
     ...DEFAULT_ATOM_COLOR_CONFIG,
     mode: `custom`,
@@ -79,17 +62,14 @@
       <SettingsGroup title={side === `substrate` ? `Substrate` : `Film`} collapsible={false}>
         <!-- a new material means a new match list, so #N would name another interface -->
         <FilePicker
-          files={Object.keys(bulk_structures).map((name) => ({ name, url: ``, type: `json` }))}
+          files={bulk_names.map((name) => ({ name, url: ``, type: `json` }))}
           active_files={[bulks[side].value]}
-          on_click={({ name }) => {
-            bulks[side].value = name
-            match_idx = 0
-          }}
+          on_click={({ name }) => ([bulks[side].value, match_idx] = [name, 0])}
           style="margin-bottom: 0.5em"
         />
         <SlabBuilder
           structure={bulk_structures[bulks[side].value]}
-          bind:slab={sides[side].slab}
+          bind:slab={slabs[side]}
           min_slab_thickness={6}
           show_info={false}
           show_cell_options={false}
@@ -98,10 +78,10 @@
     {/each}
   </section>
 
-  {#if sides.substrate.slab && sides.film.slab}
+  {#if slabs.substrate && slabs.film}
     <InterfaceBuilder
-      substrate={sides.substrate.slab}
-      film={sides.film.slab}
+      substrate={slabs.substrate}
+      film={slabs.film}
       bind:match_idx
       bind:interface={heterostructure}
     />

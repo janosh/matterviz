@@ -34,13 +34,8 @@ function read_species(dict: unknown, idx: number) {
   }
   if (!is_amounts(inner.composition)) throw fail(`an ion or a composition (no MultiEntry)`)
   // ComputedEntry stores its uncorrected energy and the sum of its corrections apart
-  const correction = typeof inner.correction === `number` ? inner.correction : 0
-  return {
-    composition: inner.composition,
-    charge: 0,
-    energy: inner.energy + correction,
-    ion: false,
-  }
+  const energy = inner.energy + (typeof inner.correction === `number` ? inner.correction : 0)
+  return { composition: inner.composition, charge: 0, energy, ion: false }
 }
 
 export function import_pymatgen_pourbaix(
@@ -57,18 +52,16 @@ export function import_pymatgen_pourbaix(
   // pymatgen's filter_solids: keep the solids on the hull of their energies relative to
   // water, ΔfG° - n_O·MU_H2O, with references H at 0 and O at 2.46 eV/atom
   const solids = species.filter(({ ion }) => !ion)
-  const water_referenced = solids.map(({ composition, energy }) => ({
+  const shifted = solids.map(({ composition, energy }) => ({
     composition,
     energy: energy - (composition.O ?? 0) * PYMATGEN_WATER_ENERGY,
   }))
-  const references = [
+  const refs = [
     { composition: { H: 1 }, energy: 0 },
     { composition: { O: 1 }, energy: 2.46 },
   ]
   const filter = diagram?.filter_solids !== false
-  const e_above_hull = filter
-    ? compute_e_above_hull(water_referenced, [...water_referenced, ...references])
-    : []
+  const e_above_hull = filter ? compute_e_above_hull(shifted, [...shifted, ...refs]) : []
   if (e_above_hull.some(Number.isNaN)) {
     throw new Error(`pymatgen filter_solids needs a solid of each element besides H and O`)
   }

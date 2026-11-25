@@ -9,6 +9,7 @@ import {
   type WulffFacetInput,
   wulff_model,
 } from '#lib/wulff/index.js'
+import { family_label } from '#lib/wulff/format.js'
 import { decode_facets, encode_facets, oxide_example, wulff_examples } from '#site/wulff.js'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -129,6 +130,8 @@ const stl_triangles = (buffer: ArrayBuffer): Vec3[][] => {
   )
 }
 
+// One mesh per family on the shape, named by it in the GLB; a closed, outward-wound STL with a
+// triangle fan per facet
 describe(`STL and GLB export`, () => {
   test.each([
     [`Ir`, compute_wulff_shape(ir.lattice, ir.facets)],
@@ -137,38 +140,43 @@ describe(`STL and GLB export`, () => {
       `oxide, O-poor`,
       compute_wulff_shape(oxide_example.lattice, oxide_example.facets, { delta_mu: -3 }),
     ],
-  ])(`%s exports a closed, outward-wound STL with a fan per facet`, async (_label, shape) => {
+  ])(`%s`, async (_label, shape) => {
     const model = wulff_model(
       shape,
-      shape.families.map(() => `#888888`),
+      shape.families.map(() => `red`),
     )
-    expect(model.children).toHaveLength(
-      shape.families.filter(({ n_facets }) => n_facets).length,
-    )
-    const saved: { data: unknown; filename: string }[] = []
-    await export_scene_as(model, `stl`, `shape`, (data, filename) => {
-      saved.push({ data, filename })
-    })
-    expect(saved[0].filename).toBe(`shape.stl`)
-    const triangles = stl_triangles(saved[0].data as ArrayBuffer)
+    const saved = new Map<string, ArrayBuffer>()
+    for (const format of [`stl`, `glb`] as const) {
+      await export_scene_as(model, format, `shape`, (data, filename) => {
+        saved.set(filename, data as ArrayBuffer)
+      })
+    }
+    const glb = new Uint8Array(saved.get(`shape.glb`) ?? new ArrayBuffer(0))
+    expect(String.fromCharCode(...glb.subarray(0, 4))).toBe(`glTF`)
+    const json_len = new DataView(glb.buffer).getUint32(12, true)
+    const gltf = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + json_len)))
+    const present = shape.families.filter(({ n_facets }) => n_facets)
+    expect(gltf.nodes.map(({ name }: { name: string }) => name)).toEqual([
+      `Wulff shape`,
+      ...present.map(({ miller }) => family_label(miller)),
+    ])
+    expect(gltf.meshes).toHaveLength(present.length)
+
+    const triangles = stl_triangles(saved.get(`shape.stl`) ?? new ArrayBuffer(84))
     const n_expected = shape.facets.reduce(
       (sum, { vertex_indices }) => sum + vertex_indices.length - 2,
       0,
     )
     expect(triangles).toHaveLength(n_expected)
-    // closed and consistently wound: every directed edge occurs once and its reverse once
+    // closed and consistently wound: every directed edge occurs once, and its reverse too
     const key = (vert: Vec3) => vert.map((coord) => coord.toFixed(4)).join(`,`)
-    const directed = new Map<string, number>()
-    for (const tri of triangles) {
-      for (const [idx, from] of tri.entries()) {
-        const edge = `${key(from)}>${key(tri[(idx + 1) % 3])}`
-        directed.set(edge, (directed.get(edge) ?? 0) + 1)
-      }
-    }
-    for (const [edge, count] of directed) {
-      const [from, to] = edge.split(`>`)
-      expect([count, directed.get(`${to}>${from}`)]).toEqual([1, 1])
-    }
+    const directed = triangles.flatMap((tri) =>
+      tri.map((from, idx) => [key(from), key(tri[(idx + 1) % 3])].join(`>`)),
+    )
+    const edge_set = new Set(directed)
+    expect(edge_set.size).toBe(directed.length)
+    for (const edge of directed)
+      expect(edge_set.has(edge.split(`>`).toReversed().join(`>`))).toBe(true)
     // outward: each triangle's normal points away from the center, which lies inside
     for (const [vert_a, vert_b, vert_c] of triangles) {
       const normal = math.cross_3d(
@@ -177,32 +185,5 @@ describe(`STL and GLB export`, () => {
       )
       expect(math.dot(normal, vert_a)).toBeGreaterThan(0)
     }
-  })
-
-  test(`GLB holds one mesh per family on the shape, named by it`, async () => {
-    const shape = compute_wulff_shape(ir.lattice, ir.facets)
-    const saved: unknown[] = []
-    await export_scene_as(
-      wulff_model(
-        shape,
-        shape.families.map(() => `red`),
-      ),
-      `glb`,
-      `shape`,
-      (data) => {
-        saved.push(data)
-      },
-    )
-    const bytes = new Uint8Array(saved[0] as ArrayBuffer)
-    expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe(`glTF`)
-    const json_len = new DataView(bytes.buffer).getUint32(12, true)
-    const gltf = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + json_len)))
-    expect(gltf.nodes.map(({ name }: { name: string }) => name)).toEqual([
-      `Wulff shape`,
-      ...shape.families
-        .filter(({ n_facets }) => n_facets)
-        .map(({ miller }) => `{${miller.join(``)}}`),
-    ])
-    expect(gltf.meshes).toHaveLength(6)
   })
 })

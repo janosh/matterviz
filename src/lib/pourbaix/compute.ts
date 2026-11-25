@@ -28,7 +28,7 @@ export const POURBAIX_DEFAULTS = {
   // ΔfG°(H2O, l) = -237.14 kJ/mol (CODATA Key Values for Thermodynamics, Cox, Wagman &
   // Medvedev 1989), in eV per H2O
   water_energy: -237.14 / EV_TO_KJ_PER_MOL,
-} as const satisfies PourbaixConfig
+} as const
 
 // Planes or offsets closer than this (eV per metal atom) count as equal
 const PLANE_TOL = 1e-12
@@ -114,27 +114,26 @@ export function pourbaix_plane(
 // MultiEntry). At any (pH, E) the lowest phase is one of these, as the lower convex hull of
 // Ψ over the fraction is made of segments between two species. One element gives back the
 // species.
-function mix_planes(
+export function mix_planes(
   species: readonly PourbaixPlane[],
   metal_fractions: Record<string, number>,
 ): PourbaixPlane[] {
   const [[element, fraction]] = Object.entries(metal_fractions)
-  const side = ({ metal_fractions: own }: PourbaixPlane) => {
-    const diff = (own[element] ?? 0) - fraction
-    return Math.abs(diff) <= FRACTION_TOL ? 0 : Math.sign(diff)
-  }
+  const x_of = (plane: PourbaixPlane) => plane.metal_fractions[element] ?? 0
+  const side = (plane: PourbaixPlane) =>
+    Math.abs(x_of(plane) - fraction) <= FRACTION_TOL ? 0 : Math.sign(x_of(plane) - fraction)
   const pairs = species.flatMap((first, idx) =>
     species.slice(idx + 1).flatMap((second) => {
       if (side(first) * side(second) >= 0) return []
-      const [x_1, x_2] = [first, second].map((plane) => plane.metal_fractions[element] ?? 0)
-      const weight = (fraction - x_2) / (x_1 - x_2) // first's share of the metal atoms
+      // first's share of the metal atoms; species planes hold one species each
+      const weight = (fraction - x_of(second)) / (x_of(first) - x_of(second))
       const mixed = (key: `offset` | `ph_coeff` | `potential_coeff`) =>
         weight * first[key] + (1 - weight) * second[key]
       return [
         {
           species: [
-            ...first.species.map((part) => ({ ...part, weight: weight * part.weight })),
-            ...second.species.map((part) => ({ ...part, weight: (1 - weight) * part.weight })),
+            { ...first.species[0], weight },
+            { ...second.species[0], weight: 1 - weight },
           ],
           label: `${first.label} + ${second.label}`,
           metal_fractions,
@@ -153,18 +152,18 @@ export const pourbaix_energy = (plane: PourbaixPlane, ph: number, potential: num
   plane.offset + plane.ph_coeff * ph + plane.potential_coeff * potential
 
 // Lowest plane at (pH, E) and its energy; ties go to the earlier plane, as in the domains
-export function stable_plane_at(
+export const stable_plane_at = (
   planes: readonly PourbaixPlane[],
   ph: number,
   potential: number,
-): { plane: PourbaixPlane; energy: number } {
-  let best = { plane: planes[0], energy: pourbaix_energy(planes[0], ph, potential) }
-  for (let idx = 1; idx < planes.length; idx++) {
-    const energy = pourbaix_energy(planes[idx], ph, potential)
-    if (energy < best.energy) best = { plane: planes[idx], energy }
-  }
-  return best
-}
+) =>
+  planes.reduce(
+    (best, plane) => {
+      const energy = pourbaix_energy(plane, ph, potential)
+      return energy < best.energy ? { plane, energy } : best
+    },
+    { plane: planes[0], energy: Infinity },
+  )
 
 // Clip a convex polygon to the half-plane a·x + b·y + c <= 0 (one Sutherland–Hodgman pass).
 // Vertices on the line stay once: only strict sign changes add a crossing point.
@@ -195,12 +194,8 @@ export function pourbaix_domains(
   if (!(ph_lo < ph_hi && e_lo < e_hi && [ph_lo, ph_hi, e_lo, e_hi].every(Number.isFinite))) {
     throw new Error(`Pourbaix ph_range and potential_range must be finite with min < max`)
   }
-  const window: Vec2[] = [
-    [ph_lo, e_lo],
-    [ph_hi, e_lo],
-    [ph_hi, e_hi],
-    [ph_lo, e_hi],
-  ]
+  // oxfmt-ignore
+  const window: Vec2[] = [[ph_lo, e_lo], [ph_hi, e_lo], [ph_hi, e_hi], [ph_lo, e_hi]]
   const min_area = MIN_AREA_FRACTION * (ph_hi - ph_lo) * (e_hi - e_lo)
   return planes.flatMap((own, idx) => {
     let vertices = window
@@ -244,18 +239,15 @@ export function energy_above_envelope(
   return values
 }
 
-// H2 and O2 evolution lines (V vs SHE): E = -kT ln(10)/e · pH at 1 bar H2 and
-// E = -ΔfG°(H2O)/2e - kT ln(10)/e · pH at 1 bar O2
-export const water_lines = (
-  temperature: number,
-  water_energy: number,
-): PourbaixDiagramData[`water_lines`] => ({
+// H2 and O2 evolution lines E = intercept + slope·pH (V vs SHE): E = -kT ln(10)/e · pH at
+// 1 bar H2 and E = -ΔfG°(H2O)/2e - kT ln(10)/e · pH at 1 bar O2
+export const water_lines = (temperature: number, water_energy: number) => ({
   h2: { slope: -nernst_slope(temperature), intercept: 0 },
   o2: { slope: -nernst_slope(temperature), intercept: -water_energy / 2 },
 })
 
-// Planes, stable domains and water lines of a Pourbaix diagram of one or two elements besides
-// H and O
+// Species planes and phase planes of a Pourbaix diagram of one or two elements besides H and
+// O; pourbaix_domains turns the phases into the domains of a (pH, E) window
 export function compute_pourbaix_diagram(
   entries: readonly PourbaixEntry[],
   config: PourbaixConfig = {},
@@ -263,8 +255,6 @@ export function compute_pourbaix_diagram(
   // destructuring defaults, so a config key set to undefined still takes its default
   const {
     temperature = POURBAIX_DEFAULTS.temperature,
-    ph_range = POURBAIX_DEFAULTS.ph_range,
-    potential_range = POURBAIX_DEFAULTS.potential_range,
     water_energy = POURBAIX_DEFAULTS.water_energy,
     log_conc = POURBAIX_DEFAULTS.log_conc,
     element_log_conc = {},
@@ -308,13 +298,7 @@ export function compute_pourbaix_diagram(
     elements.map((el, idx) => [el, amounts[idx] / total]),
   )
   const planes = mix_planes(species, metal_fractions)
-  return {
-    elements,
-    species,
-    planes,
-    domains: pourbaix_domains(planes, ph_range, potential_range),
-    ph_range,
-    potential_range,
-    water_lines: water_lines(temperature, water_energy),
-  }
+  if (planes.length === 0)
+    throw new Error(`Pourbaix species can't mix to ${JSON.stringify(metal_fractions)}`)
+  return { elements, species, planes }
 }

@@ -93,11 +93,8 @@ describe(`StructureDiff`, () => {
   })
 
   test(`an index-ordered pair shows no reorder badge, the removed drift, a changed cell its lattice rows`, async () => {
-    const pair = (lattice: number, na_a: number) =>
-      make_crystal(lattice, [
-        [`Cl`, [0.5, 0.5, 0.5]],
-        [`Na`, [na_a, 0, 0]],
-      ])
+    // oxfmt-ignore
+    const pair = (lattice: number, na_a: number) => make_crystal(lattice, [[`Cl`, [0.5, 0.5, 0.5]], [`Na`, [na_a, 0, 0]]])
     await mount_diff({ reference: pair(5, 0), target: pair(5.5, 0.01) })
     const headline = document.querySelector(`.headline`)
     expect(headline?.textContent).not.toContain(`sites reordered`)

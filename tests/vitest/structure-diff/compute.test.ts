@@ -1,4 +1,4 @@
-import { type Matrix3x3, mulberry32, type Vec3 } from '#lib/math.js'
+import { cross_3d, dot, type Matrix3x3, mulberry32, type Vec3 } from '#lib/math.js'
 import type { AnyStructure, Crystal, Species } from '#lib/structure/index.js'
 import {
   compute_structure_diff,
@@ -57,6 +57,8 @@ const shifts: Vec3[] = [
   [0.1, 0, 0], [0, -0.2, 0.05], [0.03, 0.03, -0.03], [0, 0, 0],
   [-0.15, 0.1, 0], [0.2, 0.2, 0.2], [0, 0, -0.12], [0.07, -0.04, 0.01],
 ]
+// matchers for each component within 5e-13 (half a unit in the 12th decimal)
+const close_to = (values: readonly number[]) => values.map((val) => expect.closeTo(val, 12))
 const shifted = (crystal: Crystal, vectors: Vec3[]): Crystal =>
   make_crystal(
     crystal.lattice.matrix,
@@ -82,11 +84,10 @@ describe(`compute_structure_diff`, () => {
 
   test(`a known perturbation is recovered with RMSD and max site`, () => {
     const diff = compute_structure_diff(nacl, shifted(nacl, shifts))
-    for (const [idx, { vector, magnitude }] of diff.displacements.entries()) {
-      // shifted() keeps the cell, so xyz differences are exact up to one addition: ~1e-15 Å
-      for (const axis of [0, 1, 2]) expect(vector[axis]).toBeCloseTo(shifts[idx][axis], 12)
-      expect(magnitude).toBeCloseTo(Math.hypot(...shifts[idx]), 12)
-    }
+    // shifted() keeps the cell, so xyz differences are exact up to one addition: ~1e-15 Å
+    expect(diff.displacements.map(({ vector }) => vector)).toEqual(shifts.map(close_to))
+    const magnitudes = shifts.map((vec) => Math.hypot(...vec))
+    expect(diff.displacements.map(({ magnitude }) => magnitude)).toEqual(close_to(magnitudes))
     const expected_rmsd = Math.sqrt(
       shifts.reduce((sum, vec) => sum + Math.hypot(...vec) ** 2, 0) / shifts.length,
     )
@@ -137,11 +138,8 @@ describe(`compute_structure_diff`, () => {
       const diff = compute_structure_diff(nacl, shuffled, { matching })
       expect(diff.reordered).toBe(true)
       expect(diff.displacements.map(({ reference_idx }) => reference_idx)).toEqual(order)
-      for (const [idx, { vector }] of diff.displacements.entries()) {
-        for (const axis of [0, 1, 2]) {
-          expect(vector[axis]).toBeCloseTo(shifts[order[idx]][axis], 12)
-        }
-      }
+      const vectors = diff.displacements.map(({ vector }) => vector)
+      expect(vectors).toEqual(order.map((idx) => close_to(shifts[idx])))
     },
   )
 
@@ -161,8 +159,7 @@ describe(`compute_structure_diff`, () => {
     // oxfmt-ignore
     const target = make_crystal([[5.1, 0, 0], [0.3, 5, 0], [0, 0, 4.9]], [[`Fe`, [0.01, 0.52, 0.5]]])
     const [{ vector }] = compute_structure_diff(ref, target).displacements
-    const expected = [0.02 * (5.1 + 0.3), 0.02 * 5, 0]
-    for (const axis of [0, 1, 2]) expect(vector[axis]).toBeCloseTo(expected[axis], 12)
+    expect(vector).toEqual(close_to([0.02 * (5.1 + 0.3), 0.02 * 5, 0]))
   })
 
   // A cell change alone moves no atom and shows only in the lattice percentages (keys not
@@ -235,22 +232,12 @@ describe(`compute_structure_diff`, () => {
   })
 
   test(`molecules compare by plain Cartesian difference`, () => {
-    const water = (dx: number) =>
-      molecule(
-        [`O`, `H`, `H`],
-        [
-          [0, 0, 0],
-          [1 + dx, 0, 0],
-          [2, 0, 0],
-        ],
-      )
+    // oxfmt-ignore
+    const water = (dx: number) => molecule([`O`, `H`, `H`], [[0, 0, 0], [1 + dx, 0, 0], [2, 0, 0]])
     const diff = compute_structure_diff(water(0), water(0.25))
     expect(diff.lattice).toBeNull()
-    expect(diff.displacements.map(({ vector }) => vector)).toEqual([
-      [0, 0, 0],
-      [0.25, 0, 0],
-      [0, 0, 0],
-    ])
+    // oxfmt-ignore
+    expect(diff.displacements.map(({ vector }) => vector)).toEqual([[0, 0, 0], [0.25, 0, 0], [0, 0, 0]])
   })
 
   // zero-mean local moves on top of a translation that pushes the atoms at 0 across the
@@ -285,25 +272,15 @@ describe(`compute_structure_diff`, () => {
     const fitted = compute_structure_diff(nacl, target, { remove_drift: true })
     // a periodic cell allows a translation only
     expect(fitted.drift?.rotation_deg).toBeNull()
-    for (const axis of [0, 1, 2]) {
-      expect(fitted.drift?.shift[axis]).toBeCloseTo(translation[axis], 12)
-    }
-    for (const [idx, { vector }] of fitted.displacements.entries()) {
-      for (const axis of [0, 1, 2]) expect(vector[axis]).toBeCloseTo(moves[idx][axis], 12)
-    }
+    expect(fitted.drift?.shift).toEqual(close_to(translation))
+    expect(fitted.displacements.map(({ vector }) => vector)).toEqual(moves.map(close_to))
     expect(fitted.rmsd).toBeCloseTo(rms(moves), 12)
   })
 
   // Rodrigues rotation about a unit axis
   const rotate_about = (vec: Vec3, axis: Vec3, degrees: number): Vec3 => {
     const [cos, sin] = [Math.cos, Math.sin].map((fn) => fn((degrees * Math.PI) / 180))
-    const along = vec[0] * axis[0] + vec[1] * axis[1] + vec[2] * axis[2]
-    const [ax, ay, az] = axis
-    const cross: Vec3 = [
-      ay * vec[2] - az * vec[1],
-      az * vec[0] - ax * vec[2],
-      ax * vec[1] - ay * vec[0],
-    ]
+    const [cross, along] = [cross_3d(axis, vec), dot(axis, vec)]
     return vec.map(
       (val, idx) => val * cos + cross[idx] * sin + axis[idx] * along * (1 - cos),
     ) as Vec3
@@ -313,9 +290,11 @@ describe(`compute_structure_diff`, () => {
     [`tetrahedral`, [[0, 0, 0], [1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]], 30],
     // planar sets have a zero singular value: the rotation must stay proper, not a mirror
     [`planar ring`, [0, 1, 2, 3, 4, 5].map((idx): Vec3 => [Math.cos(idx), Math.sin(idx), 0]), 50],
-    // a linear set has no unique rotation: translation only
-    [`linear`, [[0, 0, 0], [1, 0, 0], [2.5, 0, 0]], null],
-  ] as [string, Vec3[], number | null][])(`%s molecule: drift removal fits a rigid rotation (%s deg)`, (_label, positions, degrees) => {
+    // a linear set has no unique rotation: translation only, also when bent by 1e-4 Å (whose
+    // fitted rotation would lose orthogonality as its middle singular value shrinks)
+    [`linear`, [[0, 0, 0], [1, 0, 0], [2.5, 0, 0]], null, 1e-12],
+    [`nearly linear`, [[0, 0, 0], [1, 1e-4, 0], [2.5, 0, 0]], null, 1e-4],
+  ] as [string, Vec3[], number | null, number?][])(`%s molecule: drift removal fits a rigid rotation`, (_label, positions, degrees, max_rmsd = 1e-12) => {
     const axis: Vec3 = degrees === null ? [1, 0, 0] : [Math.SQRT1_2, 0, Math.SQRT1_2]
     const moved = positions.map((xyz) =>
       rotate_about(xyz, axis, degrees ?? 40).map((val, idx) => val + [2, -1, 0.5][idx]) as Vec3)
@@ -323,7 +302,7 @@ describe(`compute_structure_diff`, () => {
     const [reference, target] = [positions, moved].map((xyz) => molecule(elements, xyz))
     expect(compute_structure_diff(reference, target).rmsd).toBeGreaterThan(1)
     const { rmsd, drift } = compute_structure_diff(reference, target, { remove_drift: true })
-    expect(rmsd).toBeLessThan(1e-12)
+    expect(rmsd).toBeLessThan(max_rmsd)
     if (degrees === null) expect(drift?.rotation_deg).toBeNull()
     else expect(drift?.rotation_deg).toBeCloseTo(degrees, 10)
   })
@@ -388,14 +367,11 @@ describe(`ghost_positions`, () => {
     const ghosts = ghost_positions(diff, reordered, scale)
     for (const [idx, ghost] of ghosts.entries()) {
       const { reference_idx, vector } = diff.displacements[idx]
-      const atom = reordered.sites[idx].xyz
-      for (const axis of [0, 1, 2]) {
-        // the arrow from ghost to atom is the scaled reference -> target displacement
-        expect(atom[axis] - ghost[axis]).toBeCloseTo(scale * vector[axis], 12)
-        // at true size the ghost sits on the matched reference atom (cells agree here)
-        if (scale === 1)
-          expect(ghost[axis]).toBeCloseTo(nacl.sites[reference_idx].xyz[axis], 12)
-      }
+      // the arrow from ghost to atom is the scaled reference -> target displacement
+      const arrow = reordered.sites[idx].xyz.map((coord, axis) => coord - ghost[axis])
+      expect(arrow).toEqual(close_to(vector.map((val) => scale * val)))
+      // at true size the ghost sits on the matched reference atom (cells agree here)
+      if (scale === 1) expect(ghost).toEqual(close_to(nacl.sites[reference_idx].xyz))
     }
   })
 })

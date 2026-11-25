@@ -8,14 +8,9 @@
   import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
   import { latest_load, url_selection } from '#site/state.svelte.js'
 
-  const selected_id = url_selection(
-    `system`,
-    synthesis_demo_systems.map(({ id }) => id),
-  )
-  const selected = $derived(
-    synthesis_demo_systems.find((system) => system.id === selected_id.value) ??
-      synthesis_demo_systems[0],
-  )
+  const system_ids = synthesis_demo_systems.map(({ id }) => id)
+  const selected_id = url_selection(`system`, system_ids)
+  const selected = $derived(synthesis_demo_systems.find(({ id }) => id === selected_id.value))
   let entries = $state<PhaseData[]>([])
   let target = $state(``)
   let conditions = $state<SynthesisConditions>({ temperature: 0, open_species: [] })

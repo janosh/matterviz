@@ -6,7 +6,7 @@
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import { IDENTITY_3X3, type Matrix3x3, type Vec2 } from '#lib/math.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { parse_poscar, parse_structure_file } from '#lib/structure/parse.js'
+  import { parse_structure_file } from '#lib/structure/parse.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import type { WulffFacetInput, WulffShapeData } from '#lib/wulff/index.js'
   import { parse_surface_energies, WulffFacetEditor, WulffShape } from '#lib/wulff/index.js'
@@ -14,8 +14,8 @@
   import { decode_facets, encode_facets, oxide_example, wulff_examples } from '#site/wulff.js'
   import { onMount } from 'svelte'
 
-  // the real crystals bring their lattice and, via moyo, their point group; the illustrative
-  // examples' (and a dropped pymatgen file's) lattice holohedry expands their families
+  // a crystal (MP's, or a dropped one) brings its lattice and, via moyo, its point group; without
+  // one, the lattice holohedry (illustrative examples, a dropped pymatgen file) expands the families
   type Dataset = {
     label: string
     description: string
@@ -29,12 +29,7 @@
     lattice?: Matrix3x3
   }
   const examples: Dataset[] = [
-    ...wulff_examples.map(
-      ({ label, description, url, facets, energy_range, mp_tolerance, poscar }) => {
-        const structure = parse_poscar(poscar)
-        return { label, description, url, facets, energy_range, mp_tolerance, structure }
-      },
-    ),
+    ...wulff_examples,
     { ...oxide_example, illustrative: true },
     {
       label: `Cube ↔ octahedron (illustrative)`,
@@ -63,6 +58,7 @@
   const pick = (label: string) => {
     selected.value = label
     dataset = examples.find((example) => example.label === label) ?? examples[0]
+    facets = $state.snapshot(dataset.facets) // re-picking the shown example resets it too
     delta_mu = 0
     load_error = null
   }
@@ -72,17 +68,19 @@
     try {
       const encoded = url_param(`facets`)
       if (encoded) facets = decode_facets(encoded, dataset.facets)
-      delta_mu = Number(url_param(`delta_mu`) ?? 0)
-      if (!Number.isFinite(delta_mu)) throw new TypeError(`?delta_mu= must be a number`)
+      const mu = Number(url_param(`delta_mu`) ?? 0)
+      if (!Number.isFinite(mu)) throw new TypeError(`?delta_mu= must be a number`)
+      delta_mu = mu
     } catch (error) {
       load_error = to_error(error).message
     }
   })
   $effect(() => {
+    // a dropped file's data can't be linked to
+    const shared = examples.includes(dataset)
     const params = {
-      // a dropped file's data can't be linked to
-      facets: examples.includes(dataset) ? encode_facets(facets, dataset.facets) : null,
-      delta_mu: delta_mu === 0 ? null : String(delta_mu),
+      facets: shared ? encode_facets(facets, dataset.facets) : null,
+      delta_mu: shared && delta_mu !== 0 ? String(delta_mu) : null,
     }
     const timer = setTimeout(() => {
       const url = new URL(page.url.href)
@@ -99,7 +97,7 @@
   // lattice); a dropped structure file (CIF, POSCAR, ...) the crystal whose point group expands them
   const load_file = (content: string | ArrayBuffer, filename: string) => {
     if (typeof content !== `string`) throw new TypeError(`${filename} is binary`)
-    const json: unknown = filename.endsWith(`.json`) ? JSON.parse(content) : null
+    const json: unknown = /\.json$/i.test(filename) ? JSON.parse(content) : null
     if (json && !(typeof json === `object` && `sites` in json)) {
       const { facets: loaded, lattice, label } = parse_surface_energies(json)
       const energies = loaded.map(({ energy }) => energy)
@@ -115,6 +113,7 @@
     } else {
       const structure = parse_structure_file(content, filename)
       if (!is_crystal(structure)) throw new Error(`${filename} has no lattice`)
+      // the dataset's own facets: edits reset, as on every load
       const { label, facets: kept, energy_range, delta_mu_range } = dataset
       const description = `Facets of ${label} on the crystal in the dropped ${filename}`
       dataset = { label, description, facets: kept, energy_range, delta_mu_range, structure }
@@ -171,7 +170,7 @@
   <WulffShape
     {facets}
     {delta_mu}
-    lattice={dataset.lattice}
+    lattice={dataset.structure ? undefined : dataset.lattice}
     structure={dataset.structure}
     bind:wulff_data
     style="--wulff-height: 520px"

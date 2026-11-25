@@ -6,7 +6,18 @@
   let {
     current_step_idx = $bindable(0),
     structure = $bindable(),
-  }: { current_step_idx?: number; structure?: object } = $props()
+    echo = $bindable(),
+    unset,
+  }: {
+    current_step_idx?: number
+    structure?: object
+    echo?: object
+    unset?: unknown
+  } = $props()
+  // as WulffShape writes wulff_data: a fresh object per run, from an effect reading an unset prop
+  $effect(() => {
+    echo = { unset }
+  })
   export const step = () => {
     current_step_idx += 1
   }

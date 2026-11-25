@@ -39,20 +39,33 @@ for (const [query, slider_selector] of [
   })
 }
 
-// A demo's picked example lives in the URL (url_selection), so a reload or shared link restores
-// it, and the active item is marked by a shade (kept on hover), not a glow
-test(`the picked example syncs to ?example= and the active item stays shaded`, async ({
+// The picked example (url_selection) and its edits (energies, removed families, Δμ, written once a
+// drag pauses) live in the URL, so a reload or shared link restores them; picking another example
+// drops the edits. The active picker item is marked by a shade (kept on hover), not a glow.
+test(`the picked example and its edits sync to the URL and survive a reload`, async ({
   page,
 }) => {
   await page.goto(`/structure/wulff`, { waitUntil: `networkidle` })
-  const item = page.locator(`.file-item`, { hasText: `ω-Ti (hexagonal)` })
-  await item.click()
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get(`example`))
-    .toBe(`ω-Ti (hexagonal)`)
+  const oxide = `Rutile-type oxide vs Δμ_O (illustrative)`
+  await page.locator(`.file-item`, { hasText: oxide }).click()
+  const number = page.getByLabel(`Surface energy of {001} (number)`)
+  await number.fill(`0.7`)
+  await number.press(`Enter`)
+  await page.getByTitle(`Remove {100}`).click()
+  await page.locator(`.delta-mu input`).fill(`-1.5`)
+  const params = () => {
+    const { searchParams } = new URL(page.url())
+    return [`example`, `facets`, `delta_mu`].map((key) => searchParams.get(key))
+  }
+  const expected = [oxide, `1.1.0_1.0.1_0.0.1*0.7_1.1.1`, `-1.5`]
+  await expect.poll(params).toEqual(expected)
   await page.reload({ waitUntil: `networkidle` })
+  await expect(number).toHaveValue(`0.7`)
+  await expect(page.getByTitle(`Remove {100}`)).toHaveCount(0)
+  await expect(page.locator(`.delta-mu input`)).toHaveValue(`-1.5`)
+  expect(params()).toEqual(expected)
   const active = page.locator(`.file-item.active`)
-  await expect(active).toHaveText(`ω-Ti (hexagonal)`)
+  await expect(active).toHaveText(oxide)
   const look = () =>
     active.evaluate((el) => {
       const { boxShadow, backgroundImage } = getComputedStyle(el)
@@ -61,32 +74,8 @@ test(`the picked example syncs to ?example= and the active item stays shaded`, a
   expect(await look()).toEqual({ boxShadow: `none`, shaded: true })
   await active.hover()
   expect(await look()).toEqual({ boxShadow: `none`, shaded: true })
-})
-
-// Edited energies, removed families and Δμ go to ?facets= and ?delta_mu= once a drag pauses, so
-// a reload (or shared link) restores the custom shape; picking an example drops them again
-test(`edits sync to ?facets= and ?delta_mu= and survive a reload`, async ({ page }) => {
-  await page.goto(`/structure/wulff?example=Rutile-type oxide vs Δμ_O (illustrative)`, {
-    waitUntil: `networkidle`,
-  })
-  const number = page.getByLabel(`Surface energy of {001} (number)`)
-  await number.fill(`0.7`)
-  await number.press(`Enter`)
-  await page.getByTitle(`Remove {100}`).click()
-  await page.locator(`.delta-mu input`).fill(`-1.5`)
-  const params = () => {
-    const { searchParams } = new URL(page.url())
-    return [searchParams.get(`facets`), searchParams.get(`delta_mu`)]
-  }
-  const expected = [`1.1.0_1.0.1_0.0.1*0.7_1.1.1`, `-1.5`]
-  await expect.poll(params).toEqual(expected)
-  await page.reload({ waitUntil: `networkidle` })
-  await expect(number).toHaveValue(`0.7`)
-  await expect(page.getByTitle(`Remove {100}`)).toHaveCount(0)
-  await expect(page.locator(`.delta-mu input`)).toHaveValue(`-1.5`)
-  expect(params()).toEqual(expected)
   await page.locator(`.file-item`, { hasText: `Ir (fcc)` }).click()
-  await expect.poll(params).toEqual([null, null])
+  await expect.poll(params).toEqual([null, null, null])
 })
 
 // Tables in panes span the pane: the info pane's Families table once left a blank strip
@@ -104,4 +93,12 @@ test(`the info pane's families table fills its card`, async ({ page }) => {
     return content - el.getBoundingClientRect().width
   })
   expect(gap).toBeLessThan(1)
+})
+
+// A malformed ?delta_mu= is reported and dropped, not applied (NaN once broke every shape)
+test(`an invalid ?delta_mu= shows its error and the shape still renders`, async ({ page }) => {
+  await page.goto(`/structure/wulff?delta_mu=abc`, { waitUntil: `networkidle` })
+  await expect(page.getByText(`?delta_mu= must be a number`)).toBeVisible()
+  await expect(page.locator(`.wulff-shape .legend`)).toBeVisible()
+  await expect.poll(() => new URL(page.url()).searchParams.get(`delta_mu`)).toBeNull()
 })

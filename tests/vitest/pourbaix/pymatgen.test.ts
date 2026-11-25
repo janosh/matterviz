@@ -1,6 +1,9 @@
-import { stable_plane_at, compute_pourbaix_diagram } from '#lib/pourbaix/compute.js'
+import {
+  compute_pourbaix_diagram,
+  pourbaix_domains,
+  stable_plane_at,
+} from '#lib/pourbaix/compute.js'
 import { import_pymatgen_pourbaix, PYMATGEN_WATER_ENERGY } from '#lib/pourbaix/pymatgen.js'
-import type { Vec2 } from '#lib/math.js'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { expect, test } from 'vite-plus/test'
@@ -12,8 +15,6 @@ const diagram_dict = JSON.parse(gunzipSync(readFileSync(path)).toString())
 const imported = import_pymatgen_pourbaix(diagram_dict)
 const energy_of = (formula: string) =>
   imported.entries.find((entry) => entry.formula === formula)?.energy
-// pymatgen's window for stable_entries
-const window = { ph_range: [-2, 16] as Vec2, potential_range: [-4, 4] as Vec2 }
 
 // The solids pymatgen's filter_solids keeps, each its lowest polymorph scaled to the reduced
 // formula (AgO: mp-499 Ag2O2 at -1.1845 eV, TeO2: mp-2125 Te8O16 at -31.1561 eV), and the
@@ -50,16 +51,19 @@ test.each([
 ] as const)(
   `at Ag:Te %o, %s domains as in pymatgen and %o is %s`,
   (composition, count, point, label) => {
-    const data = compute_pourbaix_diagram(imported.entries, {
-      ...imported,
-      ...window,
-      composition,
-    })
-    expect(data.domains).toHaveLength(count)
+    const data = compute_pourbaix_diagram(imported.entries, { ...imported, composition })
+    // pymatgen's window for stable_entries
+    expect(pourbaix_domains(data.planes, [-2, 16], [-4, 4])).toHaveLength(count)
     const { plane } = stable_plane_at(data.planes, point[0], point[1])
+    const plane_of = (formula: string) => data.species.find((sp) => sp.label === formula)
     expect(plane.label).toBe(label)
-    expect(plane.species.reduce((sum, { weight }) => sum + weight, 0)).toBeCloseTo(1, 14)
-    if (label === `Ag2Te + TeH2(aq)`) expect(plane.species[0].weight).toBeCloseTo(0.75, 14) // lever rule
+    // lever rule: the species' metal shares add up to the composition (Ag2Te at 0.75 at pH 0, 0 V)
+    const x_ag = (formula: string) => plane_of(formula)?.metal_fractions.Ag ?? 0
+    const mixed = plane.species.reduce(
+      (sum, { entry, weight }) => sum + weight * x_ag(entry.formula),
+      0,
+    )
+    expect(mixed).toBeCloseTo(composition.Ag / (composition.Ag + composition.Te), 14)
   },
 )
 

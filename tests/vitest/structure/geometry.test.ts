@@ -361,54 +361,44 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
 })
 
 // bond_colors overrides the endpoint-site gradient per bond, copy by copy for multiple orders
-describe(`BondMesh.update_colors with bond_colors`, () => {
-  const linear = (css: string) => css_to_linear_rgb(css).map(Math.fround)
-  const bond = (site_idx_1: number, site_idx_2: number, bond_order?: BondOrder): BondPair => ({
-    pos_1: [0, 0, 0],
-    pos_2: [1, 0, 0],
-    site_idx_1,
-    site_idx_2,
-    bond_length: 1,
-    bond_order,
-  })
-  const site_colors = [`#ff0000`, `#0000ff`]
-  const instance = (attribute: { array: ArrayLike<number> }, idx: number) =>
-    Array.from(attribute.array).slice(idx * 3, idx * 3 + 3)
+const linear = (css: string) => css_to_linear_rgb(css).map(Math.fround)
+const site_colors = [`#ff0000`, `#0000ff`]
+const instance = (attribute: { array: ArrayLike<number> }, idx: number) =>
+  Array.from(attribute.array).slice(idx * 3, idx * 3 + 3)
 
-  test(`writes overrides to both ends, keeps site colors elsewhere, and drops its cache`, () => {
-    // packed frame with one color for every site: the uniform fast path unless overridden
-    const bonds = new BondFrame(
-      {
-        sites: [0, 1].map((x_coord) => make_site(`H`, [x_coord, 0, 0], [x_coord, 0, 0], `H`)),
-      },
-      pack_bonds([bond(0, 1, 2), bond(1, 0)]),
-    )
-    const placements = prepare_bond_placements(bonds)
-    const mesh = new BondMesh(undefined, undefined, placements.instance_count)
-    mesh.update(placements)
-    const site_colored = () => mesh.update_colors(bonds, placements, site_colors, undefined)
-    expect(site_colored()).toBe(true)
-    expect(site_colored()).toBe(false) // cached: same sites, colors and topology
-    const overrides = [`#ffffff`, undefined]
-    expect(mesh.update_colors(bonds, placements, site_colors, undefined, overrides)).toBe(true)
-    // the double bond's two copies both take the override, the single bond its site colors
-    expect([0, 1].map((idx) => instance(mesh.colors_start, idx))).toEqual([
-      linear(`#ffffff`),
-      linear(`#ffffff`),
-    ])
-    expect(instance(mesh.colors_end, 1)).toEqual(linear(`#ffffff`))
-    expect(instance(mesh.colors_start, 2)).toEqual(linear(`#0000ff`))
-    // the override dropped the cache: the first call again recolors instead of hitting it
-    expect(site_colored()).toBe(true)
-    expect(instance(mesh.colors_start, 0)).toEqual(linear(`#ff0000`))
-    expect(instance(mesh.colors_end, 0)).toEqual(linear(`#0000ff`))
-    // uniform site colors take the fast path unless overridden
-    const uniform = [`#00ff00`, `#00ff00`]
-    expect(mesh.update_colors(bonds, placements, uniform, `#00ff00`, overrides)).toBe(true)
-    expect([0, 2].map((idx) => instance(mesh.colors_start, idx))).toEqual([
-      linear(`#ffffff`),
-      linear(`#00ff00`),
-    ])
-    mesh.dispose()
-  })
+test(`bond_colors override both bond ends, keep site colors elsewhere, drop the cache`, () => {
+  // packed frame with one color for every site: the uniform fast path unless overridden
+  const bonds = new BondFrame(
+    {
+      sites: [0, 1].map((x_coord) => make_site(`H`, [x_coord, 0, 0], [x_coord, 0, 0], `H`)),
+    },
+    pack_bonds([unit_bond(0, 1, { bond_order: 2 }), unit_bond(1, 0)]),
+  )
+  const placements = prepare_bond_placements(bonds)
+  const mesh = new BondMesh(undefined, undefined, placements.instance_count)
+  mesh.update(placements)
+  const site_colored = () => mesh.update_colors(bonds, placements, site_colors, undefined)
+  expect(site_colored()).toBe(true)
+  expect(site_colored()).toBe(false) // cached: same sites, colors and topology
+  const overrides = [`#ffffff`, undefined]
+  expect(mesh.update_colors(bonds, placements, site_colors, undefined, overrides)).toBe(true)
+  // the double bond's two copies both take the override, the single bond its site colors
+  expect([0, 1].map((idx) => instance(mesh.colors_start, idx))).toEqual([
+    linear(`#ffffff`),
+    linear(`#ffffff`),
+  ])
+  expect(instance(mesh.colors_end, 1)).toEqual(linear(`#ffffff`))
+  expect(instance(mesh.colors_start, 2)).toEqual(linear(`#0000ff`))
+  // the override dropped the cache: the first call again recolors instead of hitting it
+  expect(site_colored()).toBe(true)
+  expect(instance(mesh.colors_start, 0)).toEqual(linear(`#ff0000`))
+  expect(instance(mesh.colors_end, 0)).toEqual(linear(`#0000ff`))
+  // uniform site colors take the fast path unless overridden
+  const uniform = [`#00ff00`, `#00ff00`]
+  expect(mesh.update_colors(bonds, placements, uniform, `#00ff00`, overrides)).toBe(true)
+  expect([0, 2].map((idx) => instance(mesh.colors_start, idx))).toEqual([
+    linear(`#ffffff`),
+    linear(`#00ff00`),
+  ])
+  mesh.dispose()
 })

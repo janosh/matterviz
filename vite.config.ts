@@ -40,8 +40,9 @@ export const docs = markdown_vite(
 // STRUCTURE_EXTENSIONS in src/lib/constants.ts lacks (xyz, extxyz, lammpstrj, yaml.gz) and
 // omits ones no fixture imports (.vasp, .cube). Add an extension here before importing a
 // fixture that uses it, else rolldown parses the fixture as JavaScript and the build dies.
+// plus LOBSTER output (`*.lobster`), VASP's extensionless POSCAR and the samples' SOURCE.txt
 const TEXT_EXT_RE =
-  /\.(?:xyz|extxyz|cif|mmcif|mcif|poscar|pdb|mol2|mol|sdf|lmp|data|dump|lammpstrj|yaml(?:\.gz)?|BORN)$/
+  /(?:\.(?:xyz|extxyz|cif|mmcif|mcif|poscar|pdb|mol2|mol|sdf|lmp|data|dump|lammpstrj|yaml(?:\.gz)?|BORN|lobster|txt)|\/POSCAR)$/
 // starry-night's `both.css` switches to its dark palette via
 // `@media (prefers-color-scheme: dark)`, i.e. it follows the OS instead of the
 // app's theme toggle. Re-target that one block to the app's `data-theme`

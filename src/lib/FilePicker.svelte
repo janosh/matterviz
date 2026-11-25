@@ -194,8 +194,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5em;
-    /* as wide as its chips on one line, not stretched across a flex row of controls; only a
-       picker wider than its row wraps its chips */
+    /* sized by its chips, not stretched across a row of controls; wraps only past the row */
     flex: none;
     max-width: 100%;
     align-content: start;
@@ -275,16 +274,12 @@
     }
     /* a slight shade over the item's own (inline, per file type) background */
     &.active {
-      background-image: linear-gradient(
-        color-mix(in srgb, currentColor 14%, transparent),
-        color-mix(in srgb, currentColor 14%, transparent)
-      );
+      background-image: linear-gradient(color-mix(in srgb, currentColor 14%, transparent) 0 0);
     }
     &:active {
       cursor: grabbing;
     }
-    /* border and brightness only: a `background` shorthand here would reset the active
-       item's shade (its background-image) */
+    /* no `background` shorthand: it would reset the active item's shade (background-image) */
     &:hover {
       border-color: var(--accent-color, #007acc);
       filter: brightness(1.1);

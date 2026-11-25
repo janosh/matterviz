@@ -103,15 +103,16 @@
   })
 
   // rotations undefined: compute_wulff_shape finds the lattice holohedry (inside its try)
-  type PointGroupSource = { rotations?: Matrix3x3[]; label: string }
-  const point_group_source = $derived.by((): PointGroupSource | { error: string } | null => {
+  type PointGroup = { rotations?: Matrix3x3[]; label: string } | { error: string } | null
+  const point_group_source = $derived.by((): PointGroup => {
     if (lattice && structure) return { error: `Pass either lattice or structure, not both` }
     if (!cell) return { error: `Wulff shape needs a lattice, or a structure with one` }
     if (!structure) return { label: `lattice holohedry` }
-    if (`error` in symmetry) {
+    // a result (or error) for a replaced structure is stale until the effect resets it
+    if (symmetry.of !== structure) return null // still analyzing
+    if (!symmetry.data) {
       return { error: `Symmetry analysis failed: ${to_error(symmetry.error).message}` }
     }
-    if (!symmetry.data || symmetry.of !== structure) return null // still analyzing
     const { operations, hm_symbol, number } = symmetry.data
     return {
       // integer rotations of the structure's fractional coordinates, as compute_wulff_shape takes

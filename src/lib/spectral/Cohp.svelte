@@ -22,7 +22,7 @@
     lobster_quantity_label,
     type SpinChannels,
   } from './lobster'
-  import { COHP_SPIN_MODES } from './helpers'
+  import { SPIN_MODES } from './helpers'
   import Dos from './Dos.svelte'
   import type { DosOptions } from './index'
   import {
@@ -117,26 +117,22 @@
   )
 
   const series_data = $derived.by(() => {
-    const by_key = new Map<string, { label: string; curves: CohpCurves }>()
+    const by_key = new Map<string, [string, CohpCurves]>() // legend label, curves
     for (const bond of cohp.bonds) {
       const [{ label: atom_1 }, { label: atom_2 }] = bond.atoms
       const length = format_num(bond.length, `.3~f`)
-      by_key.set(bond.label, {
-        label: `${atom_1}–${atom_2} #${bond.label} (${length} Å)`,
-        curves: bond,
-      })
-      for (const { key, orbitals, ...curves } of bond.orbitals)
-        by_key.set(key, {
-          label: `${atom_1}[${orbitals[0]}]–${atom_2}[${orbitals[1]}] #${bond.label}`,
-          curves,
-        })
+      by_key.set(bond.label, [`${atom_1}–${atom_2} #${bond.label} (${length} Å)`, bond])
+      for (const { key, orbitals, ...curves } of bond.orbitals) {
+        const label = `${atom_1}[${orbitals[0]}]–${atom_2}[${orbitals[1]}] #${bond.label}`
+        by_key.set(key, [label, curves])
+      }
     }
     // colored in drawn order, so up to PLOT_COLORS' length of shown curves never share a color
     const pairs = (bonds ?? cohp.bonds.map(({ label }) => label)).map((key, idx) => {
       const pair = by_key.get(key)
       if (!pair)
         throw new Error(`Cohp: no pair or orbital pair "${key}" in the ${cohp.kind}CAR`)
-      return { key, color: plot_color(idx), ...pair }
+      return { key, color: plot_color(idx), label: pair[0], curves: pair[1] }
     })
     const average = {
       key: `average`,
@@ -150,7 +146,7 @@
         const faded = highlighted.size > 0 && !highlighted.has(key)
         return (show_integrated ? [false, true] : [false]).flatMap((integrated) =>
           channels(integrated ? curves.integrated : curves.values).map(
-            ([spin, values]): DataSeries<SeriesMeta> => ({
+            ([spin, values]): DataSeries<SeriesMeta> & { metadata: SeriesMeta } => ({
               id: JSON.stringify([key, spin, integrated]),
               legend_id: key,
               x: values,
@@ -164,14 +160,9 @@
                 color: faded ? add_alpha(color, 0.25) : color,
                 width: integrated ? width * 0.8 : width,
                 // values: spin-down dashed; integrated: dotted, dash-dotted for spin-down
-                dash:
-                  spin === `down`
-                    ? integrated
-                      ? `6,2,1,2`
-                      : `5,3`
-                    : integrated
-                      ? `1,3`
-                      : undefined,
+                dash: (integrated ? [`1,3`, `6,2,1,2`] : [undefined, `5,3`])[
+                  Number(spin === `down`)
+                ],
               },
             }),
           ),
@@ -220,22 +211,16 @@
   })
 
   const fermi_color = `var(--cohp-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`
-  const meta_of = (metadata: unknown): SeriesMeta | null => {
-    if (!metadata || typeof metadata !== `object`) return null
-    if (!(`bond` in metadata && `spin` in metadata && `integrated` in metadata)) return null
-    const { bond, spin, integrated } = metadata
-    const valid_spin = spin === `up` || spin === `down` || spin === `total`
-    return typeof bond === `string` && valid_spin && typeof integrated === `boolean`
-      ? { bond, spin, integrated }
-      : null
-  }
+  // what a hovered or clicked curve point belongs to
+  const meta_of = (event?: { series_idx: number } | null) =>
+    event ? series_data[event.series_idx]?.metadata : undefined
   // pass on_plot_click only when someone listens: it replaces ScatterPlot's click-to-pin tooltip
   const handle_plot_click = $derived(
     on_bond_click || rest.on_plot_click
       ? (event: Parameters<NonNullable<typeof rest.on_plot_click>>[0]) => {
           // curves draw no markers, so clicks resolve to the nearest curve point; the Average
           // curve belongs to no pair
-          const bond = meta_of(event.metadata)?.bond
+          const bond = meta_of(event)?.bond
           if (bond && bond !== `average`) on_bond_click?.(bond)
           rest.on_plot_click?.(event)
         }
@@ -243,23 +228,19 @@
   )
 </script>
 
-{#snippet cohp_plot()}
+<div
+  class={[`cohp-and-dos`, shifted_doses && side_by_side && `side`]}
+  style:--side-dos-width="{SIDE_DOS_WIDTH}px"
+  style:--linked-tick-font-size={sync.tick_font_size}
+  bind:clientWidth
+  bind:clientHeight
+>
   {#if series_data.length > 0}
     {@render scatter()}
   {:else}
     <EmptyState message="No {cohp.kind} pairs to display" />
   {/if}
-{/snippet}
-
-{#if shifted_doses}
-  <div
-    class={[`cohp-and-dos`, side_by_side ? `side` : `stacked`]}
-    style:--side-dos-width="{SIDE_DOS_WIDTH}px"
-    style:--linked-tick-font-size={sync.tick_font_size}
-    bind:clientWidth
-    bind:clientHeight
-  >
-    {@render cohp_plot()}
+  {#if shifted_doses}
     <Dos
       {...dos_props}
       style="height: {side_by_side ? `100%` : `250px`}; {dos_props.style ?? ``}"
@@ -276,14 +257,12 @@
         ...sync.shared_padding,
       }}
     />
-  </div>
-{:else}
-  {@render cohp_plot()}
-{/if}
+  {/if}
+</div>
 
 {#snippet scatter()}
-  {#snippet cohp_tooltip({ x, y, label, metadata }: ScatterHandlerProps)}
-    {@const meta = meta_of(metadata)}
+  {#snippet cohp_tooltip({ x, y, label, series_idx }: ScatterHandlerProps)}
+    {@const meta = meta_of({ series_idx })}
     {#if label}<strong>{@html sanitize_html(label)}</strong><br />{/if}
     <TooltipValue label={energy_label} value={format_num(y, `.3~f`)} /><br />
     <TooltipValue
@@ -307,7 +286,7 @@
     bind:display
     hover_config={{ threshold_px: 30, ...rest.hover_config }}
     on_point_hover={(event) => {
-      hovered_bond = meta_of(event?.metadata)?.bond ?? null
+      hovered_bond = meta_of(event)?.bond ?? null
       rest.on_point_hover?.(event)
     }}
     on_plot_click={handle_plot_click}
@@ -319,7 +298,7 @@
           <label>
             Spin
             <select bind:value={spin_mode}>
-              {#each COHP_SPIN_MODES as mode (mode.value)}
+              {#each [...SPIN_MODES.filter(({ value }) => value !== `mirror`), { value: `sum`, title: `Sum of both spins` }] as mode (mode.value)}
                 <option value={mode.value}>{mode.title}</option>
               {/each}
             </select>

@@ -2,10 +2,12 @@
 // of Tran et al., "Surface energies of elemental crystals", Sci. Data 3, 160080 (2016),
 // doi:10.1038/sdata.2016.80, as distributed with pymatgen
 // (test-files/analysis/wulff/surface_samples.json, the data pymatgen's WulffShape tests use).
-// wulff/mp-*.json are MP's documents from there without the slab structures: they keep MP's own
+// wulff/mp-*.json are MP's documents from there, trimmed to the fields used: they keep MP's own
 // Wulff area fractions and shape statistics, so tests/vitest/wulff/compute.test.ts checks
 // compute_wulff_shape against them.
 import { cell_to_lattice_matrix, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
+import { parse_poscar } from '#lib/structure/parse.js'
 import { parse_surface_energies, type WulffFacetInput } from '#lib/wulff/index.js'
 import ir_doc from './wulff/mp-101.json'
 import ti_doc from './wulff/mp-72.json'
@@ -15,8 +17,8 @@ export type WulffExample = {
   description: string
   url: string // the MP surface document, a FilePicker can drag it onto the viewer
   lattice: Matrix3x3 // rows a, b, c in Å
-  // POSCAR of the conventional cell, so moyo finds the crystal's own point group
-  poscar: string
+  // the conventional cell's crystal, so moyo finds its own point group
+  structure: Crystal
   facets: WulffFacetInput[] // read from `mp` by parse_surface_energies
   mp: typeof ir_doc // MP's document, with its area fractions and shape statistics
   // largest |area fraction - MP's| compute_wulff_shape reaches (asserted in the tests)
@@ -25,8 +27,8 @@ export type WulffExample = {
 }
 
 // oxfmt-ignore
-const poscar = (title: string, lattice: Matrix3x3, element: string, frac: string[]) =>
-  [title, `1.0`, ...lattice.map((row) => row.join(` `)), element, frac.length, `Direct`, ...frac].join(`\n`)
+const crystal = (title: string, lattice: Matrix3x3, element: string, frac: string[]) =>
+  parse_poscar([title, `1.0`, ...lattice.map((row) => row.join(` `)), element, frac.length, `Direct`, ...frac].join(`\n`))
 
 // Ir mp-101, Fm-3m, a = 3.8312 Å (the cell pymatgen's tests pair with these energies)
 const ir_lattice = cell_to_lattice_matrix(3.8312, 3.8312, 3.8312, 90, 90, 90)
@@ -41,7 +43,7 @@ export const wulff_examples: WulffExample[] = [
     lattice: ir_lattice,
     mp_tolerance: 1e-12, // MP's own cell
     energy_range: [1.5, 4],
-    poscar: poscar(`Ir mp-101`, ir_lattice, `Ir`, [
+    structure: crystal(`Ir mp-101`, ir_lattice, `Ir`, [
       `0 0 0`,
       `0 0.5 0.5`,
       `0.5 0 0.5`,
@@ -58,7 +60,7 @@ export const wulff_examples: WulffExample[] = [
     mp_tolerance: 1e-4, // the cell is rebuilt from MP slab cells to 4 decimals
     energy_range: [1.5, 3],
     // the 3-fold positions to 10 digits, within moyo's tolerance
-    poscar: poscar(`Ti mp-72`, ti_lattice, `Ti`, [
+    structure: crystal(`Ti mp-72`, ti_lattice, `Ti`, [
       `0 0 0`,
       `0.3333333333 0.6666666667 0.5`,
       `0.6666666667 0.3333333333 0.5`,

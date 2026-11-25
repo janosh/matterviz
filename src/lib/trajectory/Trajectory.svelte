@@ -112,11 +112,7 @@
   import { collect_trajectory_positions, no_full_pass_message } from './analysis'
   import DisplacementOverlay from '#lib/structure-diff/DisplacementOverlay.svelte'
   import { format_drift } from '#lib/structure-diff/compute.js'
-  import {
-    create_trajectory_differ,
-    type DiffReference,
-    rmsd_rows,
-  } from '#lib/structure-diff/trajectory.js'
+  import { type DiffReference, trajectory_diffs } from '#lib/structure-diff/trajectory.js'
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { suggest_frame_stride } from './runs/accumulate'
   import {
@@ -1019,8 +1015,7 @@
   // === displacements ===
   let diff_remove_drift = $state(true)
   const has_frame = $derived(session.current_structure !== undefined)
-  // Built once per position stream (and drift setting): the per-frame differ and the RMSD
-  // rows, or why there are none
+  // Built once per position stream and drift setting (see trajectory_diffs), or why there is none
   const stream_diff = $derived.by(() => {
     if (diff_reference === `off` || !trajectory || total_frames < 2 || !has_frame) return null
     if (!trajectory.collect_positions) return no_full_pass_message(trajectory, `Displacements`)
@@ -1028,23 +1023,19 @@
     const template = untrack(() => session.current_structure)
     if (!template) return null
     try {
-      return {
-        differ: create_trajectory_differ(trail_stream, template),
-        rows: rmsd_rows(trail_stream, template, diff_remove_drift),
-      }
+      return trajectory_diffs(trail_stream, template, diff_remove_drift)
     } catch (exc) {
       return to_error(exc).message
     }
   })
-  // The displayed frame against its reference, or why there is none; null when off and in
-  // `previous` mode on the first frame
+  // The displayed frame against its reference, or why there is none; null when off
   const frame_diff = $derived.by(() => {
     if (!stream_diff || typeof stream_diff === `string`) return stream_diff
     if (diff_reference === `off`) return null
     const [target, frame_idx] = [session.current_structure, session.scene_frame?.idx]
     if (!target || frame_idx === undefined) return null
     try {
-      return stream_diff.differ(target, frame_idx, diff_reference, diff_remove_drift)
+      return stream_diff.frame(target, frame_idx, diff_reference)
     } catch (exc) {
       return to_error(exc).message
     }
@@ -1991,8 +1982,6 @@
                       reference_frame,
                     )}{diff.drift ? ` · ${format_drift(diff.drift)}` : ``}
                   </small>
-                {:else if diff_reference === `previous`}
-                  <small>The first frame has no previous frame</small>
                 {/if}
               </SettingsGroup>
             {/snippet}

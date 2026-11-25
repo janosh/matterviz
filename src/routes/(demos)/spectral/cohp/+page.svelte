@@ -67,13 +67,11 @@
     icohp?.entries.some(({ translation }) => translation !== null) ?? false,
   )
   // pairs of the atom hovered in the structure
-  const site_bonds = $derived.by(() => {
-    const site_idx = atom_link.linked
-    if (site_idx === null) return []
-    return cohp.bonds
-      .filter(({ atoms }) => atoms.some((atom) => atom.site_idx === site_idx))
-      .map(({ label }) => label)
-  })
+  const site_bonds = $derived(
+    cohp.bonds
+      .filter(({ atoms }) => atoms.some((atom) => atom.site_idx === atom_link.linked))
+      .map(({ label }) => label),
+  )
   // the Average curve has no bonds, so hovering it highlights none
   const highlighted_set = $derived(
     new Set([
@@ -83,30 +81,29 @@
     ]),
   )
 
-  // pairs of the highlighted pairs and orbital pairs (keys `<pair>:<orbitals>`)
+  // atoms of the highlighted pairs and orbital pairs (keys `<pair>:<orbitals>`)
   const highlighted_pairs = $derived(
     new Set([...highlighted_set].map((key) => key.split(`:`)[0])),
   )
-  // DOSCAR.lobster beside the curves: the total DOS and the highlighted pairs' atoms' DOS
-  const doses = $derived.by(() => {
-    const { dos } = sample
-    if (!dos) return undefined
-    const atoms = cohp.bonds
-      .filter(({ label }) => highlighted_pairs.has(label))
-      .flatMap(({ atoms: pair_atoms }) => pair_atoms)
-    return {
-      Total: dos.total,
-      ...Object.fromEntries(
-        atoms.map(({ label, site_idx }) => [label, dos.atoms[site_idx].total]),
-      ),
-    }
-  })
-  const highlighted_sites = $derived(
+  const highlighted_atoms = $derived(
     cohp.bonds
       .filter(({ label }) => highlighted_pairs.has(label))
-      .flatMap(({ atoms }) => atoms.map((atom) => atom.site_idx)),
+      .flatMap(({ atoms }) => atoms),
   )
-
+  // DOSCAR.lobster beside the curves: the total DOS and the highlighted pairs' atoms' DOS
+  const dos = $derived(sample.dos)
+  const doses = $derived(
+    dos
+      ? {
+          Total: dos.total,
+          ...Object.fromEntries(
+            highlighted_atoms.map(
+              ({ label, site_idx }) => [label, dos.atoms[site_idx].total] as const,
+            ),
+          ),
+        }
+      : undefined,
+  )
   // bonding strength (-ICOHP for COHP) color scale over the pairs' range
   const strength_range = $derived.by((): [number, number] => {
     const values = icohp?.entries.map((entry) => bonding_strength(entry, kind)) ?? []
@@ -249,7 +246,7 @@
       <Structure
         {structure}
         link_hover="cohp-atoms"
-        {highlighted_sites}
+        highlighted_sites={highlighted_atoms.map(({ site_idx }) => site_idx)}
         {scene_props}
         style="height: 460px"
       />

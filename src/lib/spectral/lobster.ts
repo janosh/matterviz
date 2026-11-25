@@ -125,44 +125,57 @@ const tokens_of = (line: string): string[] => line.trim().split(/\s+/)
 // Exact divisors for decimals of up to 15 digits (Clinger's fast path: the digits as an integer
 // and the power of ten are both exact doubles, so their quotient is correctly rounded)
 const POWERS_OF_TEN = Array.from({ length: 16 }, (_, exp) => 10 ** exp)
-// Read the whitespace-separated numbers of a data row into columns[col_idx][row_idx] from char
-// codes, without splitting it into strings (2.7x faster on a 22 MB COHPCAR). Tokens off the
-// fast path (exponents, over 15 digits, junk) go through Number. Returns the row's count.
-function read_row(line: string, row_idx: number, columns: Float64Array[], context: string) {
-  let pos = 0 // charCodeAt past the end is NaN, which ends every scan
-  let col_idx = 0
-  while (pos < line.length) {
-    if (line.charCodeAt(pos) <= 32) {
-      pos++
-      continue
-    }
-    const start = pos
-    const negative = line.charCodeAt(pos) === 45 // -
-    if (negative || line.charCodeAt(pos) === 43) pos++ // +
-    let mantissa = 0
-    let n_digits = 0
-    let n_decimals = -1 // digits after the point, -1 before it
-    for (
-      let code = line.charCodeAt(pos);
-      code === 46 ? n_decimals < 0 : code >= 48 && code <= 57;
-    ) {
-      if (code === 46) n_decimals = 0
-      else {
-        mantissa = mantissa * 10 + code - 48
-        n_digits++
-        if (n_decimals >= 0) n_decimals++
+// Read `n_rows` rows of `n_cols` whitespace-separated numbers from lines[start] on into
+// columns[col_idx][row_idx], from char codes without splitting rows into strings (2.7x faster on
+// a 22 MB COHPCAR). Tokens off the fast path (exponents, over 15 digits, junk) go through Number.
+function read_rows(
+  lines: string[],
+  start: number,
+  n_rows: number,
+  n_cols: number,
+  name: string,
+) {
+  const columns = Array.from({ length: n_cols }, () => new Float64Array(n_rows))
+  for (let row_idx = 0; row_idx < n_rows; row_idx++) {
+    const line = lines[start + row_idx] ?? ``
+    const context = `${name} line ${start + row_idx + 1}`
+    let pos = 0 // charCodeAt past the end is NaN, which ends every scan
+    let col_idx = 0
+    while (pos < line.length) {
+      if (line.charCodeAt(pos) <= 32) {
+        pos++
+        continue
       }
-      code = line.charCodeAt(++pos)
+      const token_start = pos
+      const negative = line.charCodeAt(pos) === 45 // -
+      if (negative || line.charCodeAt(pos) === 43) pos++ // +
+      let mantissa = 0
+      let n_digits = 0
+      let n_decimals = -1 // digits after the point, -1 before it
+      for (
+        let code = line.charCodeAt(pos);
+        code === 46 ? n_decimals < 0 : code >= 48 && code <= 57;
+      ) {
+        if (code === 46) n_decimals = 0
+        else {
+          mantissa = mantissa * 10 + code - 48
+          n_digits++
+          if (n_decimals >= 0) n_decimals++
+        }
+        code = line.charCodeAt(++pos)
+      }
+      let value = (negative ? -mantissa : mantissa) / POWERS_OF_TEN[Math.max(n_decimals, 0)]
+      if (line.charCodeAt(pos) > 32 || n_digits === 0 || n_digits > 15) {
+        while (line.charCodeAt(pos) > 32) pos++
+        value = parse_numbers([line.slice(token_start, pos)], context)[0]
+      }
+      if (col_idx < n_cols) columns[col_idx][row_idx] = value
+      col_idx++
     }
-    let value = (negative ? -mantissa : mantissa) / POWERS_OF_TEN[Math.max(n_decimals, 0)]
-    if (line.charCodeAt(pos) > 32 || n_digits === 0 || n_digits > 15) {
-      while (line.charCodeAt(pos) > 32) pos++
-      value = parse_numbers([line.slice(start, pos)], context)[0]
-    }
-    if (col_idx < columns.length) columns[col_idx][row_idx] = value
-    col_idx++
+    if (col_idx !== n_cols)
+      throw new Error(`${context}: expected ${n_cols} values, got ${col_idx}`)
   }
-  return col_idx
+  return columns
 }
 
 // `No.3:Fe8->Fe7(2.49)`, orbital-resolved `No.3:Fe8[3s]->Fe7[4s](2.49)`
@@ -198,15 +211,8 @@ export function parse_cohpcar(text: string, kind: LobsterKind): CohpData {
       `${name} header declares ${n_energies} energies, file has ${lines.length - data_start} rows`,
     )
 
-  const n_values = 1 + 2 * n_columns * n_spins
   // column-major: columns[col_idx][energy_idx]
-  const columns = Array.from({ length: n_values }, () => new Float64Array(n_energies))
-  for (let row_idx = 0; row_idx < n_energies; row_idx++) {
-    const context = `${name} line ${data_start + row_idx + 1}`
-    const n_read = read_row(lines[data_start + row_idx], row_idx, columns, context)
-    if (n_read !== n_values)
-      throw new Error(`${context}: expected ${n_values} values, got ${n_read}`)
-  }
+  const columns = read_rows(lines, data_start, n_energies, 1 + 2 * n_columns * n_spins, name)
   // curves of column pair `pair_idx` (0 = average) per spin: value, then its integral
   const curves = (pair_idx: number): CohpCurves => {
     const column = (spin_idx: number, offset: 0 | 1) =>
@@ -395,17 +401,9 @@ export function parse_doscar(text: string): LobsterDoscar {
     throw new Error(`${name} line 7: ${n_total} columns, expected 3 or 5`)
   const n_spins = n_total === 5 ? 2 : 1
   // n_energies rows from line index `start` on, as columns
-  const read_block = (start: number, n_values: number) => {
-    const columns = Array.from({ length: n_values }, () => new Float64Array(n_energies))
-    for (let row_idx = 0; row_idx < n_energies; row_idx++) {
-      const context = `${name} line ${start + row_idx + 1}`
-      const n_read = read_row(lines[start + row_idx] ?? ``, row_idx, columns, context)
-      if (n_read !== n_values)
-        throw new Error(`${context}: expected ${n_values} values, got ${n_read}`)
-    }
-    return columns
-  }
-  const [energy_col, ...total_cols] = read_block(6, n_total)
+  const block = (start: number, n_cols: number) =>
+    read_rows(lines, start, n_energies, n_cols, name)
+  const [energy_col, ...total_cols] = block(6, n_total)
   const energies = Array.from(energy_col)
   // DOS of spin channel columns [up, down?]
   const dos = (up: Float64Array, down?: Float64Array): ElectronicDos => ({
@@ -427,7 +425,7 @@ export function parse_doscar(text: string): LobsterDoscar {
         `${name} line ${header_idx + 1}: no "; <orbitals>" header for atom ${atom_idx + 1}`,
       )
     const orbitals = tokens_of(atom_header.slice(atom_header.lastIndexOf(`;`) + 1))
-    const [, ...columns] = read_block(header_idx + 1, 1 + orbitals.length * n_spins)
+    const [, ...columns] = block(header_idx + 1, 1 + orbitals.length * n_spins)
     const sums = Array.from({ length: n_spins }, (_spin_col, spin) =>
       Float64Array.from(energies, (_energy, row_idx) =>
         orbitals.reduce(
@@ -501,6 +499,10 @@ export function parse_lobster_files(files: Record<string, string>): LobsterFiles
     const icohp = list_name ? parse_icohplist(files[list_name], kind) : null
     by_kind.set(kind, { cohp, icohp })
     for (const name of [car_name, list_name]) used.add(name)
+    for (const { atoms } of cohp.bonds)
+      for (const { label, site_idx } of atoms)
+        if (dos && site_idx >= dos.atoms.length)
+          throw new Error(`${car_name} atom ${label} is not in ${doscar[0]}`)
     if (!icohp) continue
     if (icohp.spin_polarized !== cohp.spin_polarized)
       throw new Error(`${list_name} and ${car_name} differ in spin polarization`)

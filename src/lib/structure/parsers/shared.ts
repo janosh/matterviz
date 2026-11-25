@@ -29,13 +29,13 @@ export const parse_float_token = (token: string | undefined): number => {
   return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
 }
 
+// Every integer below 2^53 and every power of ten up to 1e22 is an exact double
+const MAX_EXACT_MANTISSA = 2 ** 53
+const POW10 = Float64Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
 // Whitespace tokenizer for the hot atom-line loops of the trajectory parsers. Unlike
 // `trim().split(/\s+/)`, it records token bounds and values in reusable typed arrays and
 // decodes numbers off the char codes, so a 20 MB XYZ/LAMMPS file allocates nothing per
 // coordinate. One instance per parse call.
-// Every integer below 2^53 and every power of ten up to 1e22 is an exact double
-const MAX_EXACT_MANTISSA = 2 ** 53
-const POW10 = Float64Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
 export class LineScanner {
   private starts = new Int32Array(64)
   private ends = new Int32Array(64)

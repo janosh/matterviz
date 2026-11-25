@@ -138,10 +138,6 @@
   })
 
   const shown = $derived(pin.shown(hovered))
-  const facet_centroid = (facet_idx: number): Vec3 => {
-    const corners = wulff.facets[facet_idx].vertex_indices.map((idx) => wulff.vertices[idx])
-    return math.scale(math.add(...corners), 1 / corners.length)
-  }
   // the hovered facet's first triangle in its family mesh, for PolyhedronMesh's highlight
   const lit_triangle = (mesh: (typeof family_meshes)[number]): number | null => {
     const miller = shown?.miller.join(`,`)
@@ -176,8 +172,11 @@
 
   // Keyboard: the viewer root walks the facets, hovering each at its centroid
   const pointer_at = scene_pointer()
-  const walk_hover = (facet_idx: number) =>
-    hover_of(facet_idx, pointer_at(facet_centroid(facet_idx)))
+  const walk_hover = (facet_idx: number) => {
+    const corners = wulff.facets[facet_idx].vertex_indices.map((idx) => wulff.vertices[idx])
+    const centroid = math.scale(math.add(...corners), 1 / corners.length)
+    return hover_of(facet_idx, pointer_at(centroid))
+  }
   scene_key_walk({
     // `wulff` reads undefined while the scene unmounts (the shape went pending or invalid) and
     // the viewer's live region still asks the walk for its current facet

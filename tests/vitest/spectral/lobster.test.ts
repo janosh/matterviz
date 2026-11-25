@@ -18,7 +18,7 @@ import { parse_poscar } from '#lib/structure/parse.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import { get_site } from '#lib/structure/site.js'
 import { lobster_samples } from '#site/electronic/lobster/index.js'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vite-plus/test'
 
 // Real LOBSTER output: the demo samples (pymatgen test files, see each folder's SOURCE.txt) and
@@ -26,13 +26,9 @@ import { describe, expect, test } from 'vite-plus/test'
 const samples_dir = `${import.meta.dirname}/../../../src/site/electronic/lobster`
 const read_folder = (folder: string): Record<string, string> =>
   Object.fromEntries(
-    [
-      `COHPCAR.lobster`,
-      `COOPCAR.lobster`,
-      `ICOHPLIST.lobster`,
-      `ICOOPLIST.lobster`,
-      `POSCAR`,
-    ].map((name) => [name, readFileSync(`${samples_dir}/${folder}/${name}`, `utf8`)]),
+    readdirSync(`${samples_dir}/${folder}`)
+      .filter((name) => !name.endsWith(`.txt`))
+      .map((name) => [name, readFileSync(`${samples_dir}/${folder}/${name}`, `utf8`)]),
   )
 const bise = read_folder(`BiSe`) // spin-restricted, 11 pairs, LOBSTER 2 lists
 const fe = read_folder(`Fe-spin-polarized`) // 2x2x2 bcc Fe supercell, 2 pairs, two spin blocks
@@ -164,21 +160,6 @@ describe(`parse_cohpcar`, () => {
       .split(` `)
       .forEach((token, idx) => expect(Object.is(read[idx], Number(token))).toBe(true))
   })
-
-  // oxfmt-ignore
-  test.each([
-    [`row count`, kf_cohpcar.replace(/\n7\.50000.*\n$/, `\n`), /declares 6 energies, file has 5 rows/],
-    [`row width`, kf_cohpcar.replace(` -0.22264`, ``), /line 12: expected 9 values, got 8/],
-    [`pair line`, kf_cohpcar.replace(`No.1:F1->K2`, `No.1:F1-K2`), /invalid pair line/],
-    [`atom`, kf_cohpcar.replace(`No.1:F1->`, `No.1:f1->`), /Invalid LOBSTER atom "f1"/],
-    [`Average line`, kf_cohpcar.replace(`Average`, `Mean`), /should read "Average"/],
-    [`multi-center`, kf_cohpcar.replace(`Average`, `No.1:F1->K2->F1(2.7)`), /multi-center/],
-    [`non-numeric`, kf_cohpcar.replace(`-0.02791`, `*******`), /Non-numeric "\*{7}"/],
-    [`orbital-only (LOBSTER < 2.2)`, kf_cohpcar.replace(`No.1:F1->K2`, `No.1:F1[2s]->K2[3s]`), /line 4: orbital pair .* doesn't follow its pair's total/],
-    [`orbital line of another pair`, kf_cohpcar.replace(`K2[4s]`, `K3[4s]`), /line 6: orbital pair .* doesn't follow/],
-  ])(`rejects bad %s`, (_name, text, message) => {
-    expect(() => parse_cohpcar(text, `COHP`)).toThrow(message)
-  })
 })
 
 // KF ICOHPLIST.lobster.KF_nospin (LOBSTER 3-5.0, 8 columns with translation), first 3 rows
@@ -258,22 +239,6 @@ describe(`parse_icohplist`, () => {
       ],
     ])
   })
-
-  const fe_list = fe[`ICOHPLIST.lobster`]
-  // oxfmt-ignore
-  test.each([
-    [`no entries`, `  COHP#  atomMU  atomNU\n`, /has no entries/],
-    [`column count`, aln_icohplist.replaceAll(/^ +\d+ .*\S/gm, (row) => `${row} 1`), /rows with 10 columns/],
-    [`ragged rows`, kf_icohplist.replace(`-0.40074`, ``), /line 3: 7 columns, the first row has 8/],
-    [`spin 2 count`, fe_list.replace(/\n.*-0\.58279.*\n$/, `\n`), /spin 1 has 2 entries, spin 2 has 1/],
-    [`spin 2 pair`, fe_list.replace(/Fe9(?![\s\S]*Fe9)/, `Fe10`), /spin 2: 2 Fe8 Fe10\) doesn't match/],
-    [`three blocks`, `${fe_list}${fe_list}`, /has 4 blocks/],
-    [`9 columns in two blocks`, `${aln_icohplist}${aln_icohplist}`, /9-column rows in two blocks/],
-    [`atom`, kf_icohplist.replace(`F1 `, `F  `), /Invalid LOBSTER atom "F"/],
-    [`orbital row of another pair`, aln_icohplist.replace(/\n +7 +Al1 +Al2 .*/, ``), /line 4: orbital row doesn't follow/],
-  ])(`rejects %s`, (_name, text, message) => {
-    expect(() => parse_icohplist(text, `COHP`)).toThrow(message)
-  })
 })
 
 test.each([
@@ -341,18 +306,38 @@ describe(`parse_doscar`, () => {
     const orbital_sum = (spin: `densities` | `spin_down_densities`) => Object.values(fluorine.orbitals).reduce((sum, orbital) => sum + (orbital[spin]?.[3] ?? NaN), 0)
     expect(at(fluorine.total, 3)).toEqual([orbital_sum(`densities`), total_down && orbital_sum(`spin_down_densities`)])
   })
+})
 
-  const nonspin = doscar(`nonspin`)
-  // oxfmt-ignore
-  test.each([
-    [`total columns`, nonspin.replace(`-11.25000   0.00000   4.00000`, `-11.25000   0.00000`), /line 7: 2 columns, expected 3 or 5/],
-    [`row width`, nonspin.replace(`0.00320   0.00322`, `0.00320`), /line 15: expected 5 values, got 4/],
-    [`atom header`, nonspin.replace(/; Z=  9; .*/, ``), /line 13: no "; <orbitals>" header for atom 1/],
-    [`atom count`, nonspin.replace(/^ +2/, `   3`), /line 27: no "; <orbitals>" header for atom 3/],
-    [`trailing lines`, `${nonspin}  1.0 2.0\n`, /lines past its 2 atoms' blocks \(line 27\)/],
-  ])(`rejects bad %s`, (_name, text, message) => {
-    expect(() => parse_doscar(text)).toThrow(message)
-  })
+const [fe_list, nonspin] = [fe[`ICOHPLIST.lobster`], doscar(`nonspin`)]
+const cohpcar = (text: string) => parse_cohpcar(text, `COHP`)
+const icohplist = (text: string) => parse_icohplist(text, `COHP`)
+// oxfmt-ignore
+test.each([
+  [`COHPCAR row count`, cohpcar, kf_cohpcar.replace(/\n7\.50000.*\n$/, `\n`), /declares 6 energies, file has 5 rows/],
+  [`COHPCAR row width`, cohpcar, kf_cohpcar.replace(` -0.22264`, ``), /line 12: expected 9 values, got 8/],
+  [`COHPCAR pair line`, cohpcar, kf_cohpcar.replace(`No.1:F1->K2`, `No.1:F1-K2`), /invalid pair line/],
+  [`COHPCAR atom`, cohpcar, kf_cohpcar.replace(`No.1:F1->`, `No.1:f1->`), /Invalid LOBSTER atom "f1"/],
+  [`COHPCAR Average line`, cohpcar, kf_cohpcar.replace(`Average`, `Mean`), /should read "Average"/],
+  [`COHPCAR multi-center`, cohpcar, kf_cohpcar.replace(`Average`, `No.1:F1->K2->F1(2.7)`), /multi-center/],
+  [`COHPCAR non-numeric`, cohpcar, kf_cohpcar.replace(`-0.02791`, `*******`), /Non-numeric "\*{7}"/],
+  [`COHPCAR orbital-only (LOBSTER < 2.2)`, cohpcar, kf_cohpcar.replace(`No.1:F1->K2`, `No.1:F1[2s]->K2[3s]`), /line 4: orbital pair .* doesn't follow its pair's total/],
+  [`COHPCAR orbital line of another pair`, cohpcar, kf_cohpcar.replace(`K2[4s]`, `K3[4s]`), /line 6: orbital pair .* doesn't follow/],
+  [`ICOHPLIST no entries`, icohplist, `  COHP#  atomMU  atomNU\n`, /has no entries/],
+  [`ICOHPLIST column count`, icohplist, aln_icohplist.replaceAll(/^ +\d+ .*\S/gm, (row) => `${row} 1`), /rows with 10 columns/],
+  [`ICOHPLIST ragged rows`, icohplist, kf_icohplist.replace(`-0.40074`, ``), /line 3: 7 columns, the first row has 8/],
+  [`ICOHPLIST spin 2 count`, icohplist, fe_list.replace(/\n.*-0\.58279.*\n$/, `\n`), /spin 1 has 2 entries, spin 2 has 1/],
+  [`ICOHPLIST spin 2 pair`, icohplist, fe_list.replace(/Fe9(?![\s\S]*Fe9)/, `Fe10`), /spin 2: 2 Fe8 Fe10\) doesn't match/],
+  [`ICOHPLIST three blocks`, icohplist, `${fe_list}${fe_list}`, /has 4 blocks/],
+  [`ICOHPLIST 9 columns in two blocks`, icohplist, `${aln_icohplist}${aln_icohplist}`, /9-column rows in two blocks/],
+  [`ICOHPLIST atom`, icohplist, kf_icohplist.replace(`F1 `, `F  `), /Invalid LOBSTER atom "F"/],
+  [`ICOHPLIST orbital row of another pair`, icohplist, aln_icohplist.replace(/\n +7 +Al1 +Al2 .*/, ``), /line 4: orbital row doesn't follow/],
+  [`DOSCAR total columns`, parse_doscar, nonspin.replace(`-11.25000   0.00000   4.00000`, `-11.25000   0.00000`), /line 7: 2 columns, expected 3 or 5/],
+  [`DOSCAR row width`, parse_doscar, nonspin.replace(`0.00320   0.00322`, `0.00320`), /line 15: expected 5 values, got 4/],
+  [`DOSCAR atom header`, parse_doscar, nonspin.replace(/; Z=  9; .*/, ``), /line 13: no "; <orbitals>" header for atom 1/],
+  [`DOSCAR atom count`, parse_doscar, nonspin.replace(/^ +2/, `   3`), /line 27: no "; <orbitals>" header for atom 3/],
+  [`DOSCAR trailing lines`, parse_doscar, `${nonspin}  1.0 2.0\n`, /lines past its 2 atoms' blocks \(line 27\)/],
+] as const)(`rejects bad %s`, (_name, parse, text, message) => {
+  expect(() => parse(text)).toThrow(message)
 })
 
 describe(`parse_lobster_files`, () => {
@@ -399,6 +384,7 @@ describe(`parse_lobster_files`, () => {
     [`spin polarization`, { ...car, 'ICOHPLIST.lobster': bise[`ICOHPLIST.lobster`] }, /differ in spin polarization/],
     [`other element`, { ...car, 'ICOHPLIST.lobster': fe[`ICOHPLIST.lobster`], POSCAR: fe.POSCAR.replace(`\n   Fe\n`, `\n   Co\n`) }, /LOBSTER atom Fe8 is Co in the structure/],
     [`DOSCAR atoms off the structure's`, { ...car, 'DOSCAR.lobster': doscar(`spin`), POSCAR: fe.POSCAR }, /DOSCAR.lobster has 2 atoms, POSCAR 16/],
+    [`DOSCAR without the pair's atoms`, { 'COHPCAR.lobster': bise[`COHPCAR.lobster`], 'DOSCAR.lobster': doscar(`spin`) }, /COHPCAR.lobster atom Se7 is not in DOSCAR.lobster/],
     [`two DOSCARs`, { ...car, 'DOSCAR.lobster': doscar(`spin`), 'out/DOSCAR.lobster.gz': doscar(`spin`) }, /Several DOSCAR.lobster files/],
   ])(`rejects %s`, (_name, files, message) => {
     expect(() => parse_lobster_files(files)).toThrow(message)
@@ -572,33 +558,30 @@ describe.each(Object.values(lobster_samples))(`sample $name`, (sample) => {
         ])
       expect(entry.orbitals.length).toBeGreaterThanOrEqual(bond.orbitals.length)
     }
-    // every pair's atoms sit at the listed distance through its lattice translation (or some
-    // translation: LOBSTER 2 lists have none), within 5e-4 Å: BiSe's POSCAR differs from LOBSTER's distances by up to
-    // 8.4e-5 Å (pymatgen agrees). The matcher finds each pair on that bond.
+    // every pair's atoms sit at the listed distance (within 5e-4 Å: BiSe's POSCAR is off LOBSTER's
+    // by up to 8.4e-5 Å, pymatgen agrees) through its translation, or some translation in LOBSTER
+    // 2 lists; the matcher finds each pair on that bond
     const { matrix } = structure.lattice
     const steps = [-1, 0, 1]
     const shifts = steps.flatMap((step_a) =>
       steps.flatMap((step_b) => steps.map((step_c) => [step_a, step_b, step_c])),
     )
-    const bonds = icohp.entries.map(({ atoms, length, translation }) => {
+    const bonds = icohp.entries.map(({ label, atoms, length, translation }) => {
       const [xyz_1, xyz_2] = atoms.map(({ site_idx }) => structure.sites[site_idx].xyz)
-      const candidates = (translation ? [translation] : shifts).map((shift) => {
-        const pos_2 = xyz_2.map(
-          (val, axis) =>
-            val + shift.reduce((sum, step, row) => sum + step * matrix[row][axis], 0),
-        ) as Vec3
-        return {
-          pos_2,
-          bond_length: Math.hypot(...pos_2.map((val, axis) => val - xyz_1[axis])),
-        }
-      })
-      const off_by = (cand: (typeof candidates)[number]) => Math.abs(cand.bond_length - length)
-      const closest = candidates.reduce((best, cand) =>
-        off_by(cand) < off_by(best) ? cand : best,
-      )
-      expect(closest.bond_length).toBeCloseTo(length, 3)
+      const dist = (pos: Vec3) => Math.hypot(...pos.map((val, axis) => val - xyz_1[axis]))
+      const pos_2 = (translation ? [translation] : shifts)
+        .map(
+          (shift) =>
+            xyz_2.map(
+              (val, axis) =>
+                val + shift.reduce((sum, step, row) => sum + step * matrix[row][axis], 0),
+            ) as Vec3,
+        )
+        .find((pos) => Math.abs(dist(pos) - length) < 5e-4)
+      if (!pos_2)
+        throw new Error(`pair ${label}: no image of ${atoms[1].label} at ${length} Å`)
       const [site_idx_1, site_idx_2] = atoms.map((atom) => atom.site_idx)
-      return { pos_1: xyz_1, site_idx_1, site_idx_2, ...closest }
+      return { pos_1: xyz_1, pos_2, site_idx_1, site_idx_2, bond_length: dist(pos_2) }
     })
     expect(matched_labels(icohp, structure, bonds, structure)).toEqual(
       icohp.entries.map(({ label }) => label),

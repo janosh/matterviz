@@ -346,14 +346,9 @@ Load structures from text with `Structure source={{ data: text, filename }}` (CI
     { name: `VASP4 Format`, type: `poscar`, content: vasp4_format },
   ]
 
-  // the shown example in ?example=
-  const selected = url_selection(
-    `example`,
-    structure_files.map(({ name }) => name),
-  )
-  const selected_file = $derived(
-    structure_files.find(({ name }) => name === selected.value) ?? structure_files[0],
-  )
+  const names = structure_files.map(({ name }) => name)
+  const selected = url_selection(`example`, names)
+  const selected_file = $derived(structure_files.find(({ name }) => name === selected.value))
   let parsed_structure = $state(undefined)
 </script>
 

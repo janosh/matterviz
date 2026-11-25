@@ -20,13 +20,21 @@ export const url_param = (key: string): string | null =>
   browser ? page.url.searchParams.get(key) : null
 
 // Write `?key=` (null drops it, e.g. a user-dropped file has no fixture entry to name) on a
-// copy of page.url, which is read-only reactive state from $app/state
+// copy of page.url, which is read-only reactive state from $app/state. Writes in one tick share
+// that copy and one navigation, so two pickers changed together both land.
+let pending_url: URL | undefined
 export const set_url_param = (key: string, value: string | null): void => {
   if (!browser) return
-  const url = new URL(page.url.href)
-  if (value) url.searchParams.set(key, value)
-  else url.searchParams.delete(key)
-  void replace_url(url)
+  if (!pending_url) {
+    const url = new URL(page.url.href)
+    pending_url = url
+    queueMicrotask(() => {
+      pending_url = undefined
+      if (url.href !== page.url.href) void replace_url(url)
+    })
+  }
+  if (value) pending_url.searchParams.set(key, value)
+  else pending_url.searchParams.delete(key)
 }
 
 // A picker's selection mirrored to `?key=`: the URL's value once mounted (when it names one of
@@ -118,12 +126,14 @@ export const NAV_GROUPS: NavGroup[] = [
     Dynamics: [`/trajectory`, `/neb`],
   } },
   { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
-  // /spectral claims the hub (the label links to it) and new demos, listed last without a heading
+  // /spectral claims the hub (the label links to it) and new demos, listed last without a heading.
+  // Electronic + Phonon (7 items) fill the first of the two dropdown columns, so the column
+  // break lands on the shared section's heading
   { label: `Electronic & Phonons`, href: `/spectral`, prefixes: [`/spectral`], sections: {
-    'Electronic & phonon': under(`/spectral`, [`brillouin-zone`, `bands`, `dos`, `bands-and-dos`,
-      `brillouin-bands-dos`]),
     Electronic: under(`/spectral`, [`electronic-structure`, `fermi-surface`, `cohp`]),
     Phonon: under(`/spectral`, [`ir-raman`, `phonon-mode-explorer`]),
+    'Electronic & phonon': under(`/spectral`, [`brillouin-zone`, `bands`, `dos`, `bands-and-dos`,
+      `brillouin-bands-dos`]),
   } },
   { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
   { label: `Plots`, href: `/plot`, prefixes: [`/plot`], sections: {

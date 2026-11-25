@@ -142,31 +142,6 @@ describe(`compute_wulff_shape`, () => {
     )
   })
 
-  // Ir's cell is the one MP used; ω-Ti's is rebuilt from MP slab cells to 4 decimals (a, c off
-  // by ~1e-4 Å), which shifts its area fractions by up to 6.4e-5
-  test.each(wulff_examples.map((example) => [example.label, example] as const))(
-    `%s reproduces the Materials Project's Wulff shape`,
-    (_label, example) => {
-      const tol = example.mp_tolerance
-      const shape = compute_wulff_shape(example.lattice, example.facets)
-      expect_closed_convex(shape)
-      const errors = shape.families.map(({ area_fraction }, fam_idx) =>
-        Math.abs(area_fraction - example.mp.surfaces[fam_idx].area_fraction),
-      )
-      expect(Math.max(...errors)).toBeLessThan(tol)
-      // families MP lists as present are present here, down to ω-Ti's 1.9e-6 {102} sliver
-      expect(shape.families.map(({ n_facets }) => n_facets > 0)).toEqual(
-        example.mp.surfaces.map(({ area_fraction }) => area_fraction > 0),
-      )
-      const { mp } = example
-      expect(Math.abs(shape.shape_factor / mp.shape_factor - 1)).toBeLessThan(tol)
-      expect(
-        Math.abs(shape.weighted_surface_energy / mp.weighted_surface_energy - 1),
-      ).toBeLessThan(tol)
-      expect(Math.abs(shape.anisotropy / mp.surface_anisotropy - 1)).toBeLessThan(10 * tol)
-    },
-  )
-
   const ti_cell = hexagonal(4.5783, 2.8303)
   const caps = [fam([1, 0, 0], 1), fam([0, 0, 1], 1.1)]
   // [lattice, holohedry order, families bounding a shape in it]
@@ -207,21 +182,42 @@ describe(`compute_wulff_shape`, () => {
       ].join(`\n`),
     )
 
-    test(`a holohedral crystal's point group gives the holohedry's shape`, async () => {
-      const example = wulff_examples[1]
-      const sym = await analyze_structure_symmetry(parse_poscar(example.poscar), {})
-      const point_group = point_group_rotations(sym.operations)
-      expect(point_group).toHaveLength(24)
-      const facets = example.facets
-      const with_moyo = compute_wulff_shape(example.lattice, facets, { point_group })
-      const with_holohedry = compute_wulff_shape(example.lattice, facets)
-      for (const [idx, family] of with_moyo.families.entries()) {
-        expect(family.area_fraction).toBeCloseTo(
-          with_holohedry.families[idx].area_fraction,
-          14,
+    // Ir's cell is the one MP used; ω-Ti's is rebuilt from MP slab cells to 4 decimals (a, c
+    // off by ~1e-4 Å), which shifts its area fractions by up to 6.4e-5. Both crystals are
+    // holohedral, so moyo's point group gives the lattice holohedry's shape.
+    test.each(wulff_examples.map((example) => [example.label, example] as const))(
+      `%s reproduces the Materials Project's Wulff shape`,
+      async (_label, example) => {
+        const { mp, mp_tolerance: tol, lattice, facets } = example
+        const sym = await analyze_structure_symmetry(example.structure, {})
+        const point_group = point_group_rotations(sym.operations)
+        expect(point_group).toHaveLength(lattice_holohedry(lattice).length)
+        const shape = compute_wulff_shape(lattice, facets, { point_group })
+        expect_closed_convex(shape)
+        const by_holohedry = compute_wulff_shape(lattice, facets)
+        const max_error = (fractions: number[]) =>
+          Math.max(
+            ...shape.families.map(({ area_fraction }, idx) =>
+              Math.abs(area_fraction - fractions[idx]),
+            ),
+          )
+        expect(max_error(mp.surfaces.map(({ area_fraction }) => area_fraction))).toBeLessThan(
+          tol,
         )
-      }
-    })
+        expect(
+          max_error(by_holohedry.families.map(({ area_fraction }) => area_fraction)),
+        ).toBeLessThan(5e-15)
+        // families MP lists as present are present here, down to ω-Ti's 1.9e-6 {102} sliver
+        expect(shape.families.map(({ n_facets }) => n_facets > 0)).toEqual(
+          mp.surfaces.map(({ area_fraction }) => area_fraction > 0),
+        )
+        expect(Math.abs(shape.shape_factor / mp.shape_factor - 1)).toBeLessThan(tol)
+        expect(
+          Math.abs(shape.weighted_surface_energy / mp.weighted_surface_energy - 1),
+        ).toBeLessThan(tol)
+        expect(Math.abs(shape.anisotropy / mp.surface_anisotropy - 1)).toBeLessThan(10 * tol)
+      },
+    )
 
     test(`polar wurtzite keeps (001) and (00-1) as separate families`, async () => {
       const sym = await analyze_structure_symmetry(wurtzite, {})

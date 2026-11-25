@@ -66,7 +66,9 @@ test(`edges are one InstancedMesh, reused and rewritten when the energies change
 })
 
 const cube_facets: WulffFacetInput[] = [{ miller: [1, 0, 0], energy: 1 }]
-// [props, viewer error (null: the shape and its legend render)]
+// {111} listed second but cheaper, so it covers most of the surface and leads the legend
+const two_families: WulffFacetInput[] = [...cube_facets, { miller: [1, 1, 1], energy: 0.87 }]
+// [props, viewer error (null: the shape renders, its legend sorted by area fraction)]
 test.each([
   [{ facets: cube_facets }, /needs a lattice, or a structure with one/],
   [
@@ -77,7 +79,7 @@ test.each([
     { facets: [{ miller: [0, 0, 1], energy: 1 }], lattice: wulff_examples[1].lattice },
     /Wulff shape is unbounded/,
   ],
-  [{ facets: cube_facets, lattice: wulff_examples[0].lattice }, null],
+  [{ facets: two_families, lattice: wulff_examples[0].lattice }, null],
 ])(`WulffShape %#`, (props, error) => {
   const component = mount(WulffShape, { target: document.body, props: props as never })
   flushSync()
@@ -85,31 +87,16 @@ test.each([
   if (error) expect(message).toMatch(error)
   else {
     expect(message).toBeNull()
-    expect(document.querySelector(`.legend`)?.textContent).toContain(`{100}`)
+    const items = [...document.querySelectorAll(`.legend li`)]
+    expect(items.map((item) => /\{\d+\}/.exec(item.textContent ?? ``)?.[0])).toEqual([
+      `{111}`,
+      `{100}`,
+    ])
+    const fractions = items.map((item) =>
+      Number(item.querySelector(`small`)?.textContent?.replace(`%`, ``)),
+    )
+    expect(fractions[0]).toBeGreaterThan(fractions[1]) // percentages like `66.9%`
   }
-  void unmount(component)
-})
-
-test(`legend lists families by area fraction, largest first`, () => {
-  // {111} listed second but cheaper, so it covers most of the surface
-  const facets: WulffFacetInput[] = [
-    { miller: [1, 0, 0], energy: 1.15 },
-    { miller: [1, 1, 1], energy: 1 },
-  ]
-  const props = { facets, lattice: wulff_examples[0].lattice }
-  const component = mount(WulffShape, { target: document.body, props: props as never })
-  flushSync()
-  const items = [...document.querySelectorAll(`.legend li`)]
-  expect(items.map((item) => /\{\d+\}/.exec(item.textContent ?? ``)?.[0])).toEqual([
-    `{111}`,
-    `{100}`,
-  ])
-  // percentages like `66.9%`
-  const fractions = items.map((item) =>
-    Number(item.querySelector(`small`)?.textContent?.replace(`%`, ``)),
-  )
-  expect(fractions.every(Number.isFinite)).toBe(true)
-  expect(fractions).toEqual(fractions.toSorted((one, two) => two - one))
   void unmount(component)
 })
 
