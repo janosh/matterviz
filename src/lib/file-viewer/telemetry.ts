@@ -7,7 +7,7 @@
 
 import type { PrepareTiming } from '#lib/trajectory/prepare-pool.js'
 
-export interface FrameSample {
+interface FrameSample {
   idx: number
   // request posted -> response received, as the webview sees it
   rtt_ms: number

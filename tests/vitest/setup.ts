@@ -903,7 +903,7 @@ export function expect_worker_safe_import_graph(
 // do; without `compute` the stub never replies and the test drives `emit` itself. Module
 // isolation per test file makes the global stub self-cleaning.
 export type StubWorkerMessage = { id: number; input: unknown; options?: unknown }
-export type StubWorkerInstance<Message = StubWorkerMessage> = {
+type StubWorkerInstance<Message = StubWorkerMessage> = {
   url: string
   options: WorkerOptions | undefined
   posted: { message: Message; transfer: Transferable[] }[]
