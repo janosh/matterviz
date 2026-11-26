@@ -1,19 +1,23 @@
-import * as math from '#lib/math.js'
-import type { Matrix3x3 } from '#lib/math.js'
+import * as math from '#lib/math'
+import type { Matrix3x3 } from '#lib/math'
 import {
   compute_all_pair_rdfs,
   compute_rdf,
   rdf_bin_site_index,
   rdf_bin_sites,
   shell_volume,
-} from '#lib/rdf/compute-rdf.js'
-import { coordination_number } from '#lib/rdf/compute-pdf.js'
-import type { RdfPattern } from '#lib/rdf/index.js'
-import type { Crystal, Pbc } from '#lib/structure/index.js'
-import { neighbor_query } from '#lib/structure/neighbor-list.js'
-import { make_supercell } from '#lib/structure/supercell.js'
-import { is_crystal } from '#lib/structure/validation.js'
-import { structure_map } from '#site/structures.js'
+} from '#lib/rdf/compute-rdf'
+import { coordination_number } from '#lib/rdf/compute-pdf'
+import type { RdfPattern } from '#lib/rdf/index'
+import type { Crystal, Pbc } from '#lib/structure/index'
+import {
+  distance_bin,
+  neighbor_query,
+  visit_neighbor_distances,
+} from '#lib/structure/neighbor-list'
+import { make_supercell } from '#lib/structure/supercell'
+import { is_crystal } from '#lib/structure/validation'
+import { structure_map } from '#site/structures'
 import { describe, expect, test } from 'vite-plus/test'
 import { max_abs_error } from '../numeric-helpers'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
@@ -329,6 +333,39 @@ describe(`compute_all_pair_rdfs`, () => {
           sorted: false,
         })
         expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
+        // The sweep's own histogram (the RDF's path for single-element sites) holds exactly
+        // what a visitor sums in the same order, for both orientations of each element pair
+        const occupied = structure.sites.map(({ species }) =>
+          species.filter(({ occu }) => occu !== 0),
+        )
+        if (occupied.every((on_site) => on_site.length <= 1)) {
+          const elements = [...new Set(pairs.flat())]
+          const { cutoff, n_bins } = opts
+          const [n_kinds, bin_size] = [elements.length, cutoff / n_bins]
+          const kinds = Int32Array.from(occupied, ([spec]) =>
+            spec ? elements.indexOf(spec.element) : -1,
+          )
+          // vacant sites weigh 1: their kind of -1 alone must keep them out
+          const weights = Float64Array.from(occupied, ([spec]) => spec?.occu ?? 1)
+          const counts = new Float64Array(n_kinds ** 2 * n_bins)
+          const summed = new Float64Array(counts.length)
+          visit_neighbor_distances(structure, opts, {
+            kinds,
+            weights,
+            n_kinds,
+            bin_size,
+            n_bins,
+            counts,
+          })
+          visit_neighbor_distances(structure, opts, (center, neighbor, distance) => {
+            const bin = distance_bin(distance, bin_size, n_bins)
+            if (bin < 0 || kinds[center] < 0 || kinds[neighbor] < 0) return
+            summed[(kinds[center] * n_kinds + kinds[neighbor]) * n_bins + bin] +=
+              weights[center] * weights[neighbor]
+          })
+          expect(counts).toEqual(summed)
+          expect(counts.some(Boolean)).toBe(true)
+        }
         for (const { element_pair, r: radius, g_r } of patterns) {
           const [center_species, neighbor_species] = element_pair ?? []
           const direct = compute_rdf(structure, {

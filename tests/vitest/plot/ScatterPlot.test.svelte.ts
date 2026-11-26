@@ -1,6 +1,6 @@
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import { svg_to_string } from '#lib/io/export.js'
-import type { Vec2 } from '#lib/math.js'
+import { svg_to_string } from '#lib/io/export'
+import type { Vec2 } from '#lib/math'
 import type {
   AxisConfig,
   AxisRanges,
@@ -9,13 +9,13 @@ import type {
   FillRegion,
   StyleOverrides,
   UserContentProps,
-} from '#lib/plot/core/types.js'
-import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
-import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
-import { level_densities } from '#lib/plot/core/density-contours.js'
-import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
-import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-import * as scales from '#lib/plot/core/scales.js'
+} from '#lib/plot/core/types'
+import type { FacetLayoutContext } from '#lib/plot/core/facets'
+import { place_tooltip } from '#lib/plot/core/decorations/tooltip'
+import { level_densities } from '#lib/plot/core/density-contours'
+import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout'
+import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte'
+import * as scales from '#lib/plot/core/scales'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { rgb } from 'd3-color'
@@ -52,13 +52,13 @@ import {
 } from '../setup'
 
 // Pass-through spy so tests can inspect what the tooltip was told to dodge
-vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/decorations/tooltip`, async (import_original) => {
   const original = await import_original<{ place_tooltip: typeof place_tooltip }>()
   return { ...original, place_tooltip: vi.fn(original.place_tooltip) }
 })
 
 // Pass-through spy counting the series-wide density level computations
-vi.mock(`#lib/plot/core/density-contours.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/density-contours`, async (import_original) => {
   const original = await import_original<{ level_densities: typeof level_densities }>()
   return { ...original, level_densities: vi.fn(original.level_densities) }
 })
@@ -1544,6 +1544,37 @@ describe(`ScatterPlot`, () => {
         expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
       }
       expect(color_scan).not.toHaveBeenCalled()
+    },
+  )
+
+  // A dense line past the morph budget snaps, so it decimates to at most 6 vertices per column:
+  // a device pixel, or half its stroke if thinner. A dashed one keeps them all (its dashes run
+  // along every vertex)
+  test.each([
+    [1, undefined, 0.5], // stroke widths default to 1 for decimation
+    [2, undefined, 0.5],
+    [1, 4, 1],
+    [3, 4, 1 / 3],
+  ])(
+    `decimates dense lines at devicePixelRatio %s, width %s to %s px columns`,
+    async (pixel_ratio, width, column_px) => {
+      vi.stubGlobal(`devicePixelRatio`, pixel_ratio)
+      const x = Array.from({ length: 20_000 }, (_, idx) => idx)
+      const y = x.map((idx) => Math.sin(idx * 0.7)) // zig-zags within every column
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { x, y, markers: `line`, line_style: { width } },
+          { x, y, markers: `line`, line_style: { width, dash: `4 2` } },
+        ],
+      })
+      const paths = plot.querySelectorAll(`g[data-series-id] > path[fill="none"]`)
+      const [solid, dashed] = [...paths].map(
+        (path) => path.getAttribute(`d`)?.match(/C/g)?.length,
+      )
+      const columns = clip_rect(plot).width / column_px
+      expect(solid).toBeGreaterThan(5 * columns)
+      expect(solid).toBeLessThan(6 * (columns + 20 / column_px)) // + the crop margin
+      expect(dashed).toBe(x.length - 1)
     },
   )
 

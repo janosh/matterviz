@@ -1,10 +1,11 @@
-import { FS_IN_ASE_TIME } from '#lib/constants.js'
-import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { compute_vacf } from '#lib/vacf/compute-vacf.js'
-import { collect_vacf_input, vacf_buffers, VELOCITY_SITE_PROPERTY } from '#lib/vacf/collect.js'
-import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis.js'
+import { FS_IN_ASE_TIME } from '#lib/constants'
+import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index'
+import { open_trajectory } from '#lib/trajectory/open'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { compute_vacf } from '#lib/vacf/compute-vacf'
+import { collect_msd_positions } from '#lib/msd/collect'
+import { collect_vacf_input, vacf_buffers, VELOCITY_SITE_PROPERTY } from '#lib/vacf/collect'
+import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { make_frame } from '../test-fixtures'
 import { make_ase_md_buffer } from '../trajectory/fixtures'
@@ -115,6 +116,36 @@ describe(`collect_vacf_input`, () => {
     const collected = await collect_vacf_input({ ...backing, collect_positions })
     expect(collect_positions).toHaveBeenCalledWith({ vector_keys: [VELOCITY_SITE_PROPERTY] })
     expect(collected.velocities).toBeInstanceOf(Float64Array)
+  })
+
+  it(`shares a finished MSD sweep of the same frames, re-reading only for other requests`, async () => {
+    const run = make_run(20, false)
+    const collect = vi.spyOn(run, `collect_positions`)
+    collect.mockRejectedValueOnce(new Error(`read failed`))
+    await expect(collect_msd_positions(run)).rejects.toThrow(`read failed`)
+    const msd = await collect_msd_positions(run)
+    const vacf = await collect_vacf_input(run)
+    // a hit is a fresh object (so a recollect recomputes) around the shared buffer
+    const again = await collect_msd_positions(run)
+    expect(collect).toHaveBeenCalledTimes(2)
+    expect(vacf.positions).toBe(msd.positions)
+    expect(again.positions).toBe(msd.positions)
+    expect(again).not.toBe(msd)
+    await expect(
+      collect_vacf_input(run, { signal: AbortSignal.abort(`swapped`) }),
+    ).rejects.toBe(`swapped`)
+    // a budget a fresh sweep refuses still refuses
+    await expect(collect_msd_positions(run, { max_bytes: 100 })).rejects.toThrow(`budget`)
+    for (const options of [{ frame_stride: 2 }, { start_frame: 1 }, { end_frame: 19 }]) {
+      expect((await collect_msd_positions(run, options)).positions).not.toBe(msd.positions)
+    }
+    expect(collect).toHaveBeenCalledTimes(6)
+    // stored velocities are a channel the MSD sweep never read
+    const stored = make_run(20, true)
+    const stored_collect = vi.spyOn(stored, `collect_positions`)
+    await collect_msd_positions(stored)
+    expect((await collect_vacf_input(stored)).velocities).toBeInstanceOf(Float64Array)
+    expect(stored_collect).toHaveBeenCalledTimes(2)
   })
 
   it.each([

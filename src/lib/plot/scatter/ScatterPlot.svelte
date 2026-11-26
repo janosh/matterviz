@@ -3,16 +3,16 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { value_key } from 'svelte-widgets/utils'
-  import { is_finite_number } from '#lib/utils.js'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import type { ExportSources } from '#lib/io/export.js'
-  import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars.js'
-  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
-  import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
-  import { format_value, format_value_or_num } from '#lib/labels.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { partition_point, type Point2D, type Vec2 } from '#lib/math.js'
+  import { is_finite_number } from '#lib/utils'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
+  import type { ExportSources } from '#lib/io/export'
+  import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export'
+  import { plot_color, resolve_computed_color } from '#lib/colors/index'
+  import { format_value, format_value_or_num } from '#lib/labels'
+  import { sanitize_html } from '#lib/sanitize'
+  import { partition_point, type Point2D, type Vec2 } from '#lib/math'
   import type {
     BasePlotProps,
     CartesianPlotProps,
@@ -36,11 +36,11 @@
     SizeScaleConfig,
     StyleOverrides,
     UserContentProps,
-  } from '#lib/plot/core/types.js'
-  import { FillArea, Line, PlotTooltip, ZeroLines } from '#lib/plot/core/components/index.js'
+  } from '#lib/plot/core/types'
+  import { FillArea, Line, PlotTooltip, ZeroLines } from '#lib/plot/core/components/index'
   import ScatterPlotControls from './ScatterPlotControls.svelte'
   import ScatterPoint from './ScatterPoint.svelte'
-  import type { RunningExtent } from '#lib/plot/core/scales.js'
+  import type { RunningExtent } from '#lib/plot/core/scales'
   import {
     accumulate_extent,
     collect_scale_ranges,
@@ -52,7 +52,7 @@
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
-  } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/core/scales'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
@@ -63,82 +63,79 @@
     create_annotation_decoration,
     create_colorbar_decoration,
     create_placed_decoration,
-  } from '#lib/plot/core/placed-decoration.svelte.js'
-  import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte.js'
-  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import {
-    assign_axes,
-    axis_labels,
-    axis_scale_types,
-  } from '#lib/plot/core/axis-assignment.js'
-  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
+  } from '#lib/plot/core/placed-decoration.svelte'
+  import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { assign_axes, axis_labels, axis_scale_types } from '#lib/plot/core/axis-assignment'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils'
   import {
     extract_series_color,
     get_series_symbol,
     series_text,
-  } from '#lib/plot/core/data-transform.js'
+  } from '#lib/plot/core/data-transform'
   import {
     density_contours as compute_density_contours,
     density_level_fractions,
     level_densities,
-  } from '#lib/plot/core/density-contours.js'
-  import type { FacetAxis } from '#lib/plot/core/facets.js'
-  import type { ObstacleSeries } from '#lib/plot/core/decorations/index.js'
-  import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  } from '#lib/plot/core/density-contours'
+  import type { FacetAxis } from '#lib/plot/core/facets'
+  import type { ObstacleSeries } from '#lib/plot/core/decorations/index'
+  import { with_obstacle_frame } from '#lib/plot/core/decorations/index'
   import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
-  import { size_legend_entries } from '#lib/plot/core/size-legend.js'
+  import { size_legend_entries } from '#lib/plot/core/size-legend'
   import {
     COLOR_BAR_DEFAULTS,
     has_marker,
     get_scale_type_name,
     is_time_scale,
     SCALE_DEFAULTS,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
   import {
     compute_label_positions,
     LABEL_PLACEMENT_DEFAULTS,
-  } from '#lib/plot/core/utils/label-placement.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  } from '#lib/plot/core/utils/label-placement'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
     same_legend_item,
-  } from '#lib/plot/core/utils/series-visibility.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/core/utils/series-visibility'
+  import { DEFAULTS } from '#lib/settings'
   import type { Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
-  import type { Pt } from '#lib/plot/core/fill-utils.js'
+  import { devicePixelRatio } from 'svelte/reactivity/window'
+  import type { Pt } from '#lib/plot/core/fill-utils'
   import {
     compute_fill_segments,
     convert_error_band_to_fill_region,
     generate_fill_path,
     resolve_fill_binding,
     resolve_series_ref,
-  } from '#lib/plot/core/fill-utils.js'
+  } from '#lib/plot/core/fill-utils'
   import {
     axis_transform,
     get_relative_coords,
     is_activation_key,
     type PixelRect,
     step_point_cursor,
-  } from '#lib/plot/core/interactions.js'
+  } from '#lib/plot/core/interactions'
   import {
     create_cartesian_frame,
     create_pan_anchor,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
+  import { resolve_plot_display } from '#lib/plot/core/display.svelte'
   import {
     DEFAULT_PLOT_PADDING,
     filter_padding,
     sides_equal,
     type Sides,
-  } from '#lib/plot/core/layout.js'
+  } from '#lib/plot/core/layout'
   import {
     CANVAS_MARKER_THRESHOLD,
     canvas_safe_color,
@@ -147,10 +144,10 @@
     type MarkerBatch,
     type MarkerStyle,
     push_marker,
-  } from '#lib/plot/core/canvas-markers.svelte.js'
-  import { build_spatial_index_at, query_nearest_id } from '#lib/plot/core/spatial-index.js'
-  import { resolve_line_tween } from '#lib/plot/core/utils.js'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
+  } from '#lib/plot/core/canvas-markers.svelte'
+  import { build_spatial_index_at, query_nearest_id } from '#lib/plot/core/spatial-index'
+  import { resolve_line_tween } from '#lib/plot/core/utils'
+  import type { ShortcutScope } from '#lib/shortcuts'
   import {
     build_fill_legend_items,
     build_series_legend_items,
@@ -1006,11 +1003,12 @@
         direction: -1 | 0 | 1,
       ): ReturnType<typeof project_line_points> => {
         const margin = 2 * Math.max(line.line_style?.width ?? 2, styles.line?.width ?? 2)
-        // Dashes and morph tweens need stable vertices, so they never crop
+        // Dashes and morph tweens need stable vertices, so they never crop or decimate
         const dashed = [line.line_style?.dash, styles.line?.dash].some(
           (dash) => dash && dash !== `none` && dash !== `solid`,
         )
         const crop = !dashed && lines_snap
+        const stroke = Math.min(line.line_style?.width ?? 1, styles.line?.width ?? Infinity)
         return project_line_points(
           line,
           x_scale,
@@ -1021,6 +1019,8 @@
           ],
           crop ? direction : 0,
           line.line_style?.curve,
+          // a device pixel, or half the stroke (underlays default to 1) to cover what's dropped
+          crop ? Math.min(1 / (devicePixelRatio.current ?? 1), stroke / 2) : 0,
         )
       },
     }
@@ -1062,6 +1062,7 @@
   })
   const line_points_cache = $derived.by(() => {
     void [line_values_read, line_anchor.scales, pad, width, styles.line, lines_snap]
+    void devicePixelRatio.current // the decimation columns
     return new WeakMap<object, WeakMap<object, LineEntry>>()
   })
   const line_points = (

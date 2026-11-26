@@ -1,10 +1,10 @@
 // Radial distribution function g(r) of a periodic structure: pair distances (periodic images
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
-import { compute_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { visit_neighbor_distances } from '#lib/structure/neighbor-list.js'
-import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
+import { compute_lattice_params, is_valid_index, sorted_numbers } from '#lib/math'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import { distance_bin, visit_neighbor_distances } from '#lib/structure/neighbor-list'
+import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation'
 import type { RdfOptions, RdfPattern } from './index'
 
 // Occupancy of `element` on every site (all species when unnamed). RDFs weight each pair
@@ -17,7 +17,7 @@ const species_weights = (sites: Site[], element: string | undefined): Float64Arr
     ),
   )
 
-// Bound allocations: one radius grid and one n_bins-long histogram per element pair.
+// Bound allocations: one radius grid and one n_bins-long histogram per ordered element pair.
 const MAX_RDF_BINS = 1_000_000
 
 // Only the histogram grid is retained. Neighbours stream into it so wide cutoffs on large
@@ -40,23 +40,13 @@ function prepare_rdf(structure: AnyStructure, options: RdfOptions) {
   }
   const { volume } = compute_lattice_params(structure.lattice.matrix)
   const bin_size = cutoff / n_bins
-  // Exclude zero distances and the exact cutoff. Periodic self images remain included
-  // (they are the whole signal of a 1-atom cell).
-  // Crystal shells often sit exactly on a bin edge (rocksalt a/2 = 2.8 Å on 0.2 Å bins), and
-  // the image positions carry ±1 ulp of noise, so without the nudge one shell splits across
-  // two bins. 1e-9 is ~4 orders above that noise (≤ n_bins · eps) and 1e-9 bin widths below
-  // any physical separation, so it only decides edge cases, and decides them as [lo, hi).
-  const bin_of = (distance: number): number => {
-    const bin = Math.floor(distance / bin_size + 1e-9)
-    return distance > 0 && bin < n_bins ? bin : -1
-  }
   return {
     cutoff,
     pbc: options.pbc,
     n_bins,
     bin_size,
     volume,
-    bin_of,
+    bin_of: (distance: number) => distance_bin(distance, bin_size, n_bins),
     r: Array.from({ length: n_bins }, (_unused, idx) => (idx + 0.5) * bin_size),
   }
 }
@@ -234,6 +224,10 @@ export function compute_all_pair_rdfs(
   const site_offsets = new Int32Array(structure.sites.length + 1)
   const species_ids: number[] = []
   const site_weights: number[] = []
+  // The element and weight of each single-element site, for the sweep's own histogram (-1:
+  // vacant); any mixed-occupancy site needs the per-contact visitor below instead
+  const kinds = new Int32Array(structure.sites.length).fill(-1)
+  const weights = new Float64Array(structure.sites.length)
   const occupied_weights = new Float64Array(elements.length)
   let ordered = true
   for (let site_idx = 0; site_idx < structure.sites.length; site_idx++) {
@@ -249,36 +243,21 @@ export function compute_all_pair_rdfs(
       if (weight === 0) continue
       species_ids.push(element_idx)
       site_weights.push(weight)
+      kinds[site_idx] = element_idx
+      weights[site_idx] = weight
     }
     site_offsets[site_idx + 1] = species_ids.length
     if (site_offsets[site_idx + 1] - site_offsets[site_idx] > 1) ordered = false
   }
-  const histograms = elements.map((_element, idx_a) =>
-    elements.map((_neighbor_element, idx_b) =>
-      idx_a <= idx_b ? Array<number>(prepared.n_bins).fill(0) : [],
-    ),
-  )
+  // (center element, neighbor element, bin); rows with center > neighbor are never read
+  const { n_bins, bin_size } = prepared
+  const n_elements = elements.length
+  const histogram = new Float64Array(n_elements * n_elements * n_bins)
   visit_neighbor_distances(
     structure,
     prepared,
     ordered
-      ? (center, neighbor, distance) => {
-          const center_slot = site_offsets[center]
-          const neighbor_slot = site_offsets[neighbor]
-          if (
-            center_slot === site_offsets[center + 1] ||
-            neighbor_slot === site_offsets[neighbor + 1]
-          )
-            return
-          const center_species = species_ids[center_slot]
-          const neighbor_species = species_ids[neighbor_slot]
-          if (center_species > neighbor_species) return
-          const bin = prepared.bin_of(distance)
-          if (bin >= 0) {
-            histograms[center_species][neighbor_species][bin] +=
-              site_weights[center_slot] * site_weights[neighbor_slot]
-          }
-        }
+      ? { kinds, weights, n_kinds: n_elements, bin_size, n_bins, counts: histogram }
       : (center, neighbor, distance) => {
           const bin = prepared.bin_of(distance)
           if (bin < 0) return
@@ -288,7 +267,6 @@ export function compute_all_pair_rdfs(
             center_slot++
           ) {
             const center_species = species_ids[center_slot]
-            const row = histograms[center_species]
             const center_weight = site_weights[center_slot]
             for (
               let neighbor_slot = site_offsets[neighbor];
@@ -297,7 +275,8 @@ export function compute_all_pair_rdfs(
             ) {
               const neighbor_species = species_ids[neighbor_slot]
               if (center_species <= neighbor_species) {
-                row[neighbor_species][bin] += center_weight * site_weights[neighbor_slot]
+                histogram[(center_species * n_elements + neighbor_species) * n_bins + bin] +=
+                  center_weight * site_weights[neighbor_slot]
               }
             }
           }
@@ -306,9 +285,10 @@ export function compute_all_pair_rdfs(
   return elements.flatMap((el_a, idx_a) =>
     elements.slice(idx_a).map((el_b, offset) => {
       const idx_b = idx_a + offset
+      const row = (idx_a * n_elements + idx_b) * n_bins
       return normalize_histogram(
         prepared,
-        histograms[idx_a][idx_b],
+        Array.from(histogram.subarray(row, row + n_bins)),
         counts[idx_a] * counts[idx_b],
         [el_a, el_b],
       )
