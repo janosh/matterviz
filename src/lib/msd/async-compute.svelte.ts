@@ -3,7 +3,7 @@
 // create_worker_client for `.cancel` / `.mount` semantics
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { plain_position_stream } from '#lib/trajectory/async-result.svelte.js'
-import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { create_worker_client } from 'svelte-widgets/worker-client'
 import { compute_msd } from './compute-msd'
 import type { MsdOptions, MsdResult } from './index'
 

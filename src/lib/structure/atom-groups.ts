@@ -27,6 +27,7 @@ export type AtomGroups = {
   image: RenderAtom[]
   partial: RenderAtom[]
   ellipsoid: EllipsoidRenderAtom[]
+  min_radius: number // smallest drawn full-occupancy radius (coordinate-only frames keep it)
 }
 export type SiteAnchor = Pick<RenderAtom, `site_idx` | `position` | `radius`>
 
@@ -36,6 +37,7 @@ const empty_atom_groups = (): AtomGroups => ({
   image: [],
   partial: [],
   ellipsoid: [],
+  min_radius: Infinity,
 })
 
 export const site_anchor = ({ site_idx, position, radius }: RenderAtom): SiteAnchor => ({
@@ -170,6 +172,8 @@ export class AtomGroupBuilder {
               : atom
           // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
           if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, drawn)
+          if (atom.occupancy >= 1)
+            groups.min_radius = Math.min(groups.min_radius, drawn.radius)
           if (`ellipsoid` in drawn) groups.ellipsoid.push(drawn)
           else if (atom.occupancy < 1) groups.partial.push(atom)
           else (atom.is_image_atom ? groups.image : groups.base).push(atom)

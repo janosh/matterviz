@@ -1,12 +1,12 @@
 // Exercises the real spectroscopy Web Worker request path, including structured cloning
-// of every typed-array signal. Generic client rules live in worker-client.test.ts.
+// of every typed-array signal. Generic client rules are tested in svelte-widgets.
 import type { compute_trajectory_spectroscopy_async } from '#lib/spectral/trajectory-spectroscopy-async.svelte.js'
 import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,
 } from '#lib/spectral/trajectory-spectroscopy.js'
 import { compute_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
-import { create_input_store, type WorkerRequest } from '#lib/worker-serve.js'
+import { create_input_store, type WorkerRequest } from 'svelte-widgets/worker-serve'
 import { afterEach, beforeAll, describe, expect, it } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_position_stream, make_signal } from '../test-fixtures'

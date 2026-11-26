@@ -11,7 +11,12 @@ import {
 import { SETTINGS_CONFIG, type SettingType } from '#lib/settings.js'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
-const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
+const HOST_SETTING_KEYS = [
+  `matterviz.theme`,
+  `matterviz.auto_render`,
+  `matterviz.open_beside`,
+  `matterviz.telemetry`,
+]
 
 // Formats with no decoder still get a useful "Reopen Editor With…" conversion hint.
 // JupyterLab does not claim these because its file types displace the default handler.

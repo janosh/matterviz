@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { motion_duration } from '#lib/effects.svelte.js'
+  import { motion_duration } from 'svelte-widgets/effects'
   import { fade } from 'svelte/transition'
   import type { WheelZoomGate } from './wheel-zoom.svelte'
 

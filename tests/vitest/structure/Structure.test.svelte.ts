@@ -2610,6 +2610,26 @@ test(`discovers new vector keys within one structure series`, async () => {
   expect(vector_color(`magmom`)).not.toBeNull()
 })
 
+// A host that holds a deep-$state structure and fills it in place (same object, so no new
+// input) still gets its vector layers once the sites arrive
+test.each<[string, (host: AnyStructure, sites: Site[]) => unknown]>([
+  [`pushed onto`, (host, sites) => host.sites.push(...sites)],
+  [`assigned to`, (host, sites) => Object.assign(host, { sites })],
+])(
+  `auto-populates vector configs for sites %s an empty structure in place`,
+  async (_label, fill) => {
+    const state = $state<StructureProps>({
+      structure: { ...structure, sites: [] },
+      scene_props: {},
+    })
+    await mount_settled(bind_props({}, state))
+    expect(state.scene_props?.vector_configs ?? {}).toEqual({})
+    if (state.structure) fill(state.structure, with_forces.sites)
+    await tick()
+    expect(Object.keys(state.scene_props?.vector_configs ?? {})).toEqual([`force`])
+  },
+)
+
 // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
 // setting it from the parent requests/exits fullscreen like the button does
 test(`preserves control chrome overrides and fits the requested grid in portrait fullscreen`, async () => {

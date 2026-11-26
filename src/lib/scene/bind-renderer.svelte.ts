@@ -3,10 +3,11 @@ import { useThrelte } from '@threlte/core'
 import type { Camera, Scene } from 'three/webgpu'
 import { WebGPUBackend, WebGPURenderer } from 'three/webgpu'
 
-// Gates <Canvas> mounting: false under SSR and in happy-dom unit tests (no navigator.gpu),
-// true in real browsers and in Playwright, which gets a secure context over localhost.
+// Gates <Canvas> mounting: WebGPURenderer draws through WebGPU or its WebGL2 fallback (Firefox
+// on Linux has no navigator.gpu). False under SSR and in happy-dom unit tests, which have neither.
 export const webgpu_available = (): boolean =>
-  typeof navigator !== `undefined` && `gpu` in navigator
+  typeof navigator !== `undefined` &&
+  (`gpu` in navigator || typeof WebGL2RenderingContext !== `undefined`)
 
 // What three passes to renderer.onDeviceLost. Losses from our own dispose() are filtered out
 // upstream (three skips reason === 'destroyed'), so any call is a real eviction or reset.

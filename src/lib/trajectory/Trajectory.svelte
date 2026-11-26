@@ -1,6 +1,6 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { create_clipboard_feedback, create_shortcut_flash } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { webgpu_available } from '#lib/scene/index.js'
@@ -15,7 +15,7 @@
     HistogramSeries,
     Orientation,
   } from '#lib/plot/index.js'
-  import { create_delayed_flag, create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_delayed_flag } from 'svelte-widgets/effects'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
@@ -33,8 +33,7 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
-  import { value_key } from '#lib/utils.js'
+  import { clamp, html_to_text, to_error, value_key } from 'svelte-widgets/utils'
   import {
     display_idx,
     from_display_idx,
@@ -53,8 +52,8 @@
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
-  import SequenceControls from '#lib/layout/SequenceControls.svelte'
-  import { is_sequence_key_target } from '#lib/layout/sequence-player.svelte.js'
+  import SequenceControls from 'svelte-widgets/SequenceControls.svelte'
+  import { is_sequence_key_target } from 'svelte-widgets/sequence-player'
   import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
@@ -562,6 +561,10 @@
     frame: session.numeric_frame ?? undefined,
   })
   let structure_display_mode = $derived(structure_props.display_mode ?? `structure`)
+  // Writable: the structure pane toggles it, a host-side change resets it (value-level like
+  // configured_trajectory_lines). Off unless asked for.
+  let configured_image_atoms = $derived(Boolean(structure_props.show_image_atoms))
+  let image_atoms = $derived(configured_image_atoms)
   let atom_color_config = $derived(
     structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
   )
@@ -1586,9 +1589,7 @@
         {/if}
 
         <SequenceControls
-          {controls_config}
-          index={current_step_idx}
-          count={total_frames}
+          visible={controls_config.visible}
           playback={player}
           {step_label_positions}
           item_name="step"
@@ -1892,12 +1893,18 @@
             allow_file_drop={false}
             style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
             {...{
-              show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
               // Coordinate playback is not a stream of new crystals to classify: symmetry
               // analysis on every slider event dominated small-molecule scrubbing
               analyze_symmetry: false,
               ...structure_props,
             }}
+            // Off while worker-prepared frames play: a frame with image atoms is not the one
+            // prepared, so its sites, bonds and atom records were rebuilt on the main thread
+            // every frame (64 ms at 30k atoms). Back on pause.
+            bind:show_image_atoms={
+              () => image_atoms && !(player.is_playing && frame_preparation),
+              (value) => (image_atoms = value)
+            }
             show_controls={structure_controls}
             tooltip={structure_props.tooltip === false ? false : site_tooltip}
             bind:scene_props={

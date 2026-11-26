@@ -2,7 +2,8 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { value_key, is_finite_number } from '#lib/utils.js'
+  import { value_key } from 'svelte-widgets/utils'
+  import { is_finite_number } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'

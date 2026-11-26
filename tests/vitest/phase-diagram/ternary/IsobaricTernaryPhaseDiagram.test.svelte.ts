@@ -620,14 +620,18 @@ describe(`PhaseStabilityMap`, () => {
       temperature: 300,
       selected_phase: null,
     })
+    const onscroll = vi.fn()
     mount_it(
       PhaseStabilityMap,
-      bind_props({ diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }, state),
+      bind_props(
+        { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10, onscroll },
+        state,
+      ),
     )
     const canvas = doc_query(`.phase-stability-map canvas`)
-    const down = (clientX: number) => {
+    const down = (clientX: number, clientY = 9) => {
       canvas.dispatchEvent(
-        new PointerEvent(`pointerdown`, { clientX, clientY: 9, bubbles: true }),
+        new PointerEvent(`pointerdown`, { clientX, clientY, bubbles: true }),
       )
       flushSync()
     }
@@ -635,6 +639,32 @@ describe(`PhaseStabilityMap`, () => {
     expect(state.selected_phase).toBe(0)
     down(444) // plot_width = 800 - 96 - 8 = 696 px over 1200 K → 900 K
     expect(state.temperature).toBeCloseTo(900, 6)
+    // The canvas spans only the visible rows and stays pinned while they scroll under it:
+    // one row further down, the same pointer position is the next row
+    down(40, 19)
+    const second_row = state.selected_phase
+    expect(second_row).not.toBe(0)
+    down(40, 19) // deselects
+    const map = doc_query(`.phase-stability-map`)
+    map.scrollTop = 10
+    map.dispatchEvent(new Event(`scroll`))
+    expect(onscroll).toHaveBeenCalledOnce() // the map's own scroll tracking keeps a host's handler
+    down(40)
+    expect(state.selected_phase).toBe(second_row)
+  })
+
+  test(`a fractional scroll offset moves the rows by whole pixels`, async () => {
+    const ctx = mock_canvas_context({ setLineDash: vi.fn() })
+    const props = { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }
+    try {
+      mount_it(PhaseStabilityMap, props)
+      const map = doc_query(`.phase-stability-map`)
+      map.scrollTop = 4.6
+      map.dispatchEvent(new Event(`scroll`))
+      await vi.waitFor(() => expect(ctx.translate).toHaveBeenLastCalledWith(0, -5))
+    } finally {
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore()
+    }
   })
 
   // The cached row layer is keyed on the colors by identity: a JSON key reads every function

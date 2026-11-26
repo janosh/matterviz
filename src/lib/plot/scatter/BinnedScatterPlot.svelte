@@ -4,14 +4,14 @@
 >
   // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
   // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
-  import { value_key } from '#lib/utils.js'
+  import { value_key } from 'svelte-widgets/utils'
   import { sanitize_html } from '#lib/sanitize.js'
   import { series_text } from '#lib/plot/core/data-transform.js'
   import { host } from '#lib/host.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import type { Point2D, Vec2 } from '#lib/math.js'
-  import { create_pulse_animation } from '#lib/effects.svelte.js'
+  import { create_pulse_animation } from 'svelte-widgets/effects'
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
   import PlotAnnotationBadge from '#lib/plot/core/components/PlotAnnotationBadge.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'

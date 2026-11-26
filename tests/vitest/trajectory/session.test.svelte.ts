@@ -8,7 +8,7 @@ import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { FramePreparer, display_frame_bytes } from '#lib/trajectory/prepare.js'
 // Headless session: cache LRU + reset on run swap, latest-request-wins with aborted stale
 // reads, scrub vs commit, prefetch, controller, property mirroring and playback wrap through
-// the shared sequence player (whose own behaviour is covered by sequence-player.test).
+// the shared sequence player (whose own behaviour svelte-widgets tests).
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import type { TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
@@ -38,14 +38,24 @@ const PREPARATION = { bonding_strategy: `electroneg_ratio`, bonding_options: {} 
 // unless read_concurrency says the source pipelines them (as a host does)
 const make_async_run = (frame_list: TrajectoryFrame[], read_concurrency?: number) => {
   const backing = trajectory_from_frames(frame_list)
-  const pending: { idx: number; resolve: () => void; reject: (error: Error) => void }[] = []
+  // `rounded`: read at display precision (playback), answered with an approximate frame
+  const pending: {
+    idx: number
+    rounded: boolean
+    resolve: () => void
+    reject: (error: Error) => void
+  }[] = []
   const reads: number[] = []
-  const host = host_run(summarize_run(backing), (idx, signal) => {
+  const host = host_run(summarize_run(backing), (idx, signal, channels) => {
     reads.push(idx)
+    const rounded = channels?.precision === `display`
     return new Promise<NumericFrame>((resolve, reject) => {
+      const frame = backing.read_frame(idx)
+      if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
       const entry = {
         idx,
-        resolve: () => resolve(backing.read_frame(idx)),
+        rounded,
+        resolve: () => resolve(rounded ? { ...frame, approximate: true } : frame),
         reject,
       }
       pending.push(entry)
@@ -61,7 +71,9 @@ const make_async_run = (frame_list: TrajectoryFrame[], read_concurrency?: number
     pending.shift()?.resolve()
     await flush_microtasks()
   }
-  return { run, pending, reads, resolve_next }
+  // [frame, rounded] of each read still awaiting its answer
+  const unanswered = () => pending.map(({ idx, rounded }) => [idx, rounded])
+  return { run, pending, reads, resolve_next, unanswered }
 }
 
 type Host = {
@@ -805,7 +817,7 @@ describe(`controller and playback`, () => {
   it(`adopts large-frame read-ahead without duplicate reads or evicting the display`, async () => {
     const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
-    const { run, pending, reads, resolve_next } = make_async_run(frames(4))
+    const { run, reads, resolve_next, unanswered } = make_async_run(frames(4))
     const cache_max_bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
     const { session } = make_session({ run, fps: 30 }, { cache_max_bytes })
     session.player.play()
@@ -822,8 +834,9 @@ describe(`controller and playback`, () => {
     expect(session.current_frame?.step).toBe(10)
     expect(reads).toEqual([1, 2])
     session.player.pause()
-    flushSync()
-    expect(pending).toHaveLength(0)
+    await flush_microtasks()
+    // the read-ahead is dropped; the rounded frame on screen is re-read exactly
+    expect(unanswered()).toEqual([[1, false]])
     expect(session.current_frame?.step).toBe(10)
   })
 
@@ -885,6 +898,7 @@ describe(`controller and playback`, () => {
     pending[0].reject(new Error(`Read failed`))
     await resolve_next()
     expect(state()).toEqual([`2:Read failed`, skipped, false])
+    expect(pending).toHaveLength(0) // pausing on the error doesn't retry the failed read
   })
 
   const steps = (count: number) => Array.from({ length: count }, (_unused, idx) => idx + 1)
@@ -1074,6 +1088,187 @@ describe(`resolve_frame`, () => {
       expect(session.cached_bytes).toBe(cached_bytes)
     },
   )
+  // A remote host rounds frames read during playback (TrajectoryRun.rounds_display_frames):
+  // pausing re-reads the shown frame exactly, and an export never reuses a rounded copy.
+  // Prepared reads (a host run with worker preparation) pass the precision on too.
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    `playback reads are rounded only from a rounding source (%s, prepared %s), paused reads exact`,
+    async (rounds, prepares) => {
+      const run = Object.assign(trajectory_from_frames(frames(3)), {
+        ...(rounds && { rounds_display_frames: true as const }),
+      })
+      const source_read = run.read_frame.bind(run)
+      const read = vi.spyOn(run, `read_frame`).mockImplementation((idx, signal, channels) => {
+        const frame = source_read(idx, signal, channels)
+        if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
+        return channels?.precision === `display` ? { ...frame, approximate: true } : frame
+      })
+      if (prepares)
+        run.prepare_frame = async (idx, preparation, signal) => ({
+          frame: await run.read_frame(idx, signal, preparation.channels),
+          preparation,
+        })
+      const { host, session } = make_session({
+        run,
+        ...(prepares && { preparation: PREPARATION }),
+      })
+      await flush_microtasks()
+      expect(session.numeric_frame?.approximate).toBeUndefined()
+      session.player.play()
+      host.index = 1
+      flushSync()
+      await flush_microtasks()
+      expect(session.numeric_frame?.approximate).toBe(rounds || undefined)
+      read.mockClear()
+      session.player.pause()
+      flushSync()
+      await flush_microtasks()
+      // exact frame 1 replaces the rounded one; a local source had nothing to re-read
+      expect(session.numeric_frame?.approximate).toBeUndefined()
+      expect(read.mock.calls.map(([idx, , channels]) => [idx, channels])).toEqual(
+        rounds ? [[1, undefined]] : [],
+      )
+      read.mockClear()
+      expect((await session.resolve_frame(1))?.structure.sites).toHaveLength(3)
+      expect(read).not.toHaveBeenCalled()
+    },
+  )
+  // Pausing while a rounded read is in flight re-reads the bound frame exactly: the rounded
+  // read may still land, but never stands in for the exact one or stays on screen
+  it(`pausing re-reads the bound frame exactly, not reusing a rounded read in flight`, async () => {
+    stub_raf()
+    const { run, pending, resolve_next } = make_async_run(frames(6), 8)
+    const { host, session } = make_session({ run })
+    await flush_microtasks()
+    session.player.play()
+    host.index = 2
+    flushSync()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(pending.find(({ idx }) => idx === 2)?.rounded).toBe(true)
+    session.player.pause()
+    flushSync()
+    await flush_microtasks()
+    expect(pending.filter(({ idx, rounded }) => idx === 2 && !rounded)).toHaveLength(1)
+    while (pending.length) await resolve_next()
+    expect([host.index, session.current_frame?.step]).toEqual([2, 20])
+    expect(session.numeric_frame?.approximate).toBeUndefined()
+  })
+  it.each([0, 1, 2, 3, 4])(
+    `re-reads a rounded frame that landed %i microtasks before the pause exactly once`,
+    async (hops) => {
+      stub_raf()
+      const { run, pending, reads, resolve_next } = make_async_run(frames(6))
+      const { host, session } = make_session({ run })
+      await resolve_next()
+      session.player.play()
+      host.index = 1
+      flushSync()
+      pending.shift()?.resolve()
+      for (let hop = 0; hop < hops; hop++) await Promise.resolve()
+      session.player.pause()
+      await flush_microtasks()
+      while (pending.length) await resolve_next()
+      expect(reads.filter((idx) => idx === 1)).toHaveLength(2) // rounded, then exact
+      expect([session.current_frame?.step, session.numeric_frame?.approximate]).toEqual([
+        10,
+        undefined,
+      ])
+    },
+  )
+  it(`shows a cached rounded frame at once on a paused seek, then reads it and its neighbor exactly`, async () => {
+    stub_raf()
+    // a pipelining source, whose superseded reads trail rather than abort
+    const { run, reads, pending, resolve_next, unanswered } = make_async_run(frames(8), 4)
+    const { host, session } = make_session({ run }, { cache_max_frames: 8 })
+    await resolve_next()
+    session.player.play()
+    for (const idx of [1, 2, 3]) {
+      host.index = idx
+      flushSync()
+      await resolve_next()
+    }
+    session.player.pause()
+    await flush_microtasks()
+    while (pending.length) await resolve_next() // frame 3 exact, rounded 1 and 2 cached
+    const n_reads = reads.length
+    const shown = () => [session.current_frame?.step, session.numeric_frame?.approximate]
+    // seeking back over 1 adopts its exact read still under way instead of re-reading it
+    for (const idx of [1, 5, 1]) {
+      host.index = idx
+      flushSync()
+    }
+    expect([shown(), unanswered(), reads.slice(n_reads)]).toEqual([
+      [10, true],
+      [[1, false]],
+      [1, 5],
+    ])
+    // an export waits for the exact frame, not the rounded stand-in rendered meanwhile,
+    // whether it asked before or after that render
+    const exported = vi.fn()
+    const capture = () =>
+      session.wait_for_frame(1, new AbortController().signal).then(exported)
+    const captures = [capture()]
+    expect(session.mark_rendered(session.scene_frame)).toBe(true)
+    captures.push(capture())
+    await flush_microtasks()
+    expect(exported).not.toHaveBeenCalled()
+    await resolve_next()
+    expect(shown()).toEqual([10, undefined])
+    session.mark_rendered(session.scene_frame)
+    await Promise.all(captures)
+    expect(exported).toHaveBeenCalledTimes(2)
+    // paused read-ahead upgrades the rounded frame 2 instead of counting it as present
+    await vi.advanceTimersByTimeAsync(10)
+    expect(unanswered()).toEqual([[2, false]])
+    await resolve_next()
+    host.index = 2
+    flushSync()
+    expect([shown(), unanswered()]).toEqual([[20, undefined], []])
+  })
+  it(`pausing on a frame playback skipped re-reads it exactly`, async () => {
+    stub_raf()
+    const { run, pending, resolve_next, unanswered } = make_async_run(frames(6))
+    const { host, session } = make_session({ run })
+    await resolve_next()
+    session.player.play()
+    host.index = 1
+    flushSync()
+    await resolve_next()
+    host.index = 2
+    flushSync()
+    pending.shift()?.reject(new Error(`Read failed`))
+    await flush_microtasks()
+    // rounded frame 1 is still shown: the bound frame gets its exact read all the same
+    expect([session.skip_warnings.length, session.scene_frame?.idx]).toEqual([1, 1])
+    session.player.pause()
+    await flush_microtasks()
+    expect(unanswered()).toEqual([[2, false]])
+  })
+  // The pause re-read waits a microtask: a seek that follows the pause supersedes it, where
+  // a pipelining host would otherwise answer the frame being left first
+  it(`a controller seek during playback reads only its target exactly`, async () => {
+    stub_raf()
+    const { run, reads, resolve_next, unanswered } = make_async_run(frames(8), 4)
+    const { host, session } = make_session({ run })
+    await resolve_next()
+    session.player.play()
+    host.index = 1
+    flushSync()
+    await resolve_next()
+    expect(session.numeric_frame?.approximate).toBe(true)
+    session.player.pause()
+    session.player.play() // resumed before the re-read: playback keeps its new read-ahead
+    const n_reads = reads.length
+    await flush_microtasks()
+    expect(reads).toHaveLength(n_reads)
+    session.controller.set_step(5)
+    await flush_microtasks()
+    expect(unanswered()).toEqual([[5, false]])
+  })
   it(`forwards cancellation to frame reads and allows retry`, async () => {
     const { run, reads, pending, resolve_next } = make_async_run(frames(6))
     const { session } = make_session({ run })

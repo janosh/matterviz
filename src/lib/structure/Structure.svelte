@@ -27,7 +27,7 @@
   } from 'svelte-widgets/icons'
   import type SiteTable from './SiteTable.svelte'
   import { DOCKED_SCROLL_STYLE, has_site_data, load_site_table } from './site-table'
-  import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
+  import DockedSidebar from 'svelte-widgets/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
@@ -93,7 +93,7 @@
   import { join_hover_link } from '#lib/tooltip/index.js'
   import { onDestroy, untrack } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
-  import { create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_shortcut_flash } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -862,16 +862,15 @@
   })
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
-  let vector_keys = $derived(
-    structure && site_count(structure) > 0
-      ? get_structure_vector_keys(tool_structure ?? structure)
-      : [],
-  )
-  let vector_keys_signature = $derived(vector_keys.join(`\0`))
+  // The effect reads the site count itself, so a structure its host fills in place gets its
+  // vectors. Not a $derived: one reading through a host's deep-$state structure (even just
+  // its site count) kept each replaced one alive (~14 MB per replacement at 2k sites)
   let vectors_auto_populated_for = ``
   let last_auto_configs: Record<string, unknown> | undefined
   $effect(() => {
-    const signature = vector_keys_signature
+    const target = site_count(structure) > 0 ? (tool_structure ?? structure) : undefined
+    const vector_keys = target ? untrack(() => get_structure_vector_keys(target)) : []
+    const signature = vector_keys.join(`\0`)
     if (!structure || signature === vectors_auto_populated_for) return
     // Drop the previous structure's auto configs; keep externally supplied ones
     const existing = scene_props.vector_configs
@@ -1419,8 +1418,11 @@
       (site_sidebar !== false || controls_config.visible(`site-table`)) &&
       has_site_data(sidebar_sites))
   })
-  // Measured with the sidebar included (0 once it unmounts), so docking it cannot shrink the
-  // viewer below the bar
+  // Row width (px) an `auto` site sidebar docks from, measured with the sidebar included (0
+  // once it unmounts) so docking it cannot shrink the viewer below the bar. Narrower, the
+  // viewer would keep under ~600 px, where its floating panes (export, info, ~28em) cover
+  // most of the scene.
+  const SIDEBAR_DOCK_MIN_WIDTH = 900
   let site_sidebar_shown = $derived(
     site_data_available &&
       (site_sidebar === true ||
@@ -1658,6 +1660,7 @@
                 bind:export_pane_open={() => is_pane_open(`export`), pane_setter(`export`)}
                 bind:flight_pane_open={() => is_pane_open(`flight`), pane_setter(`flight`)}
                 structure={session.mapped_normalized_structure}
+                {series_key}
                 {sym_data}
                 {wrapper}
                 {scene}

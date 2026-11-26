@@ -8,9 +8,14 @@ import { display_idx } from '#lib/labels.js'
 import { yield_turn } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import { encode_frame, type NumericFrame } from '../frame'
-import { create_plot_row_frame, TextLines } from '../helpers'
+import {
+  create_plot_row_frame,
+  iter_xyz_frames,
+  TextLines,
+  type XyzFrameSpec,
+} from '../helpers'
 import type { AtomTypeMapping, TrajectoryMetadata } from '../index'
-import { type AseFrames, open_ase_frames } from '../parse/ase'
+import { type AseFrames, type ByteSource, open_ase_frames } from '../parse/ase'
 import { open_lammps_frames } from '../parse/lammps'
 import type { WarnFn, WarningCollector } from '../parse/shared'
 import { open_xdatcar_frames } from '../parse/vasp'
@@ -31,27 +36,73 @@ const PROPERTY_BUDGET_MS = 8
 
 // === XYZ / EXTXYZ ===
 
-const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames => {
-  // Line indices, never an array of line strings (see iter_xyz_frames); a torn tail is
-  // dropped now so frame_count excludes it, rather than failing on the seek
-  const frames = index_xyz_frames(lines, collector.warn)
-  const opts = (frame_idx: number) => ({
-    frame_label: `indexed frame ${display_idx(frame_idx)}`,
-    default_step: frame_idx,
-  })
-  const read_plain = (frame_idx: number) =>
-    read_xyz_frame(lines, frames[frame_idx], opts(frame_idx), collector)
-  const decode = (frame_idx: number) =>
-    build_xyz_frame(lines, frames[frame_idx], opts(frame_idx), collector)
+// An XYZ file's frames by byte offset (index_xyz_file), each read off disk when asked for
+export interface XyzFile {
+  source: ByteSource
+  offsets: readonly number[]
+}
+const is_xyz_file = (data: object | string): data is XyzFile =>
+  typeof data === `object` && `offsets` in data
+
+// Frames are read a block at a time, a block being the frames starting in one 1 MiB stretch of
+// the file: a read, a decode and a line index per frame cost a file of small frames more than
+// decoding them. The two blocks last used stay decoded (playback and the property pass each
+// walk their own), and their fixed boundaries make stepping backward read each block once.
+const XYZ_BLOCK_BYTES = 2 ** 20
+const xyz_file_frames = ({ source, offsets }: XyzFile) => {
+  const decoder = new TextDecoder()
+  const block_of = (frame_idx: number) => Math.floor(offsets[frame_idx] / XYZ_BLOCK_BYTES)
+  let blocks: { first: number; lines: TextLines; frames: XyzFrameSpec[] }[] = []
+  return (frame_idx: number): [TextLines, XyzFrameSpec] => {
+    const cached = blocks.findIndex(
+      ({ first, frames }) => frame_idx >= first && frame_idx < first + frames.length,
+    )
+    if (cached === 1) blocks.reverse()
+    else if (cached === -1) {
+      const block = block_of(frame_idx)
+      let [first, end] = [frame_idx, frame_idx + 1]
+      while (first > 0 && block_of(first - 1) === block) first--
+      while (end < offsets.length - 1 && block_of(end) === block) end++
+      const bytes = source.read(offsets[first], offsets[end] - offsets[first])
+      const lines = new TextLines(decoder.decode(bytes))
+      const frames = [...iter_xyz_frames(lines)]
+      if (frames.length !== end - first)
+        throw new Error(
+          `XYZ file changed on disk since it was indexed (reading frame ${display_idx(frame_idx)})`,
+        )
+      blocks = [{ first, lines, frames }, ...blocks.slice(0, 1)]
+    }
+    const { first, lines, frames } = blocks[0]
+    return [lines, frames[frame_idx - first]]
+  }
+}
+
+// `frame_at` locates a frame by line index, never in an array of line strings (see
+// iter_xyz_frames): in the text held in memory, or in the frame's own lines read from a file
+const xyz_source = (
+  frame_count: number,
+  frame_at: (frame_idx: number) => [TextLines, XyzFrameSpec],
+  collector: WarningCollector,
+): AseFrames => {
+  const args = (frame_idx: number) =>
+    [
+      ...frame_at(frame_idx),
+      { frame_label: `indexed frame ${display_idx(frame_idx)}`, default_step: frame_idx },
+      collector,
+    ] as const
   return {
-    frame_count: frames.length,
-    read: (frame_idx) => read_plain(frame_idx) ?? encode_frame(decode(frame_idx)),
-    decode,
+    frame_count,
+    read: (frame_idx) => {
+      const frame = args(frame_idx)
+      return read_xyz_frame(...frame) ?? encode_frame(build_xyz_frame(...frame))
+    },
+    decode: (frame_idx) => build_xyz_frame(...args(frame_idx)),
     // A row needs the forces' statistics, so it reads the numeric frame and drops its atoms;
     // a frame the numeric reader leaves to build_xyz_frame serves as its own row
     plot_row_frame: (frame_idx) => {
-      const numeric = read_plain(frame_idx)
-      if (!numeric) return decode(frame_idx)
+      const frame = args(frame_idx)
+      const numeric = read_xyz_frame(...frame)
+      if (!numeric) return build_xyz_frame(...frame)
       const { header, structure, sites } = numeric
       const { lattice } = structure
       return create_plot_row_frame(
@@ -63,12 +114,13 @@ const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames =>
         collector.warn,
       )
     },
-    metadata: extxyz_run_metadata(frames[0]?.comment),
+    metadata: extxyz_run_metadata(frame_count > 0 ? frame_at(0)[1].comment : undefined),
   }
 }
 
 export const indexed_text_run = (
-  data: string | TextLines | ArrayBuffer,
+  // A host's open file, read on demand: a ByteSource (ASE) or an XyzFile, else the payload
+  data: string | TextLines | ArrayBuffer | ByteSource | XyzFile,
   format: `xyz` | `ase` | `xdatcar` | `lammps`,
   provenance: TrajectoryProvenance,
   collector: WarningCollector,
@@ -81,18 +133,28 @@ export const indexed_text_run = (
   }
   // dispose drops `source`, the only holder of the payload and its frame index
   let source: AseFrames | null
-  if (format === `ase`) {
-    if (!(data instanceof ArrayBuffer)) {
+  const xyz_collector = { ...collector, warn: warn_once }
+  if (is_xyz_file(data)) {
+    const frames = xyz_source(data.offsets.length - 1, xyz_file_frames(data), xyz_collector)
+    source = { ...frames, release: data.source.release }
+  } else if (format === `ase`) {
+    if (typeof data === `string` || data instanceof TextLines) {
       throw new TypeError(`Indexed ASE trajectories need binary data, got text`)
     }
     source = open_ase_frames(data, warn_once)
   } else {
-    if (data instanceof ArrayBuffer) {
-      throw new TypeError(`Indexed ${format} trajectories need text data, got ArrayBuffer`)
+    if (typeof data !== `string` && !(data instanceof TextLines)) {
+      throw new TypeError(`Indexed ${format} trajectories need text data, got bytes`)
     }
     const lines = TextLines.of(data)
-    if (format === `xyz`) source = xyz_source(lines, { ...collector, warn: warn_once })
-    else if (format === `xdatcar`) source = open_xdatcar_frames(lines, warn_once)
+    if (format === `xyz`) {
+      const frames = index_xyz_frames(lines, warn_once)
+      source = xyz_source(
+        frames.length,
+        (frame_idx) => [lines, frames[frame_idx]],
+        xyz_collector,
+      )
+    } else if (format === `xdatcar`) source = open_xdatcar_frames(lines, warn_once)
     else source = open_lammps_frames(lines, warn_once, atom_type_mapping)
   }
   const { frame_count } = source

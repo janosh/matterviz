@@ -35,6 +35,7 @@ import {
 import { same_values } from '#lib/math.js'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
 import { InstanceColors } from './instance-colors'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import type { BondPair } from './index'
 
 // Center and displacement preserve short bonds far from the origin. Sending two rounded
@@ -48,9 +49,9 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   readonly instanceColor = null
   override count = 0
   thickness = 1
-  // Copies of the topology and palette the colors were last written for (columns arrive fresh
-  // per frame, palettes are edited in place): playback frames keeping both skip the loop
-  private colored?: { indices: Uint32Array; orders: Uint8Array; site_colors: string[] }
+  // The palette and copies of the topology the colors were last written for (columns arrive
+  // fresh per frame): playback frames keeping both skip the loop
+  private colored?: { indices: Uint32Array; orders: Uint8Array; site_rgb: Float32Array }
 
   constructor(source = new BufferGeometry(), material?: Material, capacity = 0) {
     const geometry = new InstancedBufferGeometry()
@@ -149,7 +150,8 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   update_colors(
     bonds: BondData,
     placements: BondPlacements,
-    site_colors: readonly string[],
+    // linear RGB per site: six floats copied per cylinder, a new array when a color changes
+    site_rgb: Float32Array,
     uniform_color: string | undefined,
     // per-bond color for both ends, overriding the endpoint-site gradient where defined
     bond_colors?: readonly (string | undefined)[],
@@ -160,7 +162,7 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
       !bond_colors &&
       uniform_color !== undefined &&
       bonds instanceof BondFrame &&
-      placements.max_site_idx < site_colors.length
+      placements.max_site_idx * 3 < site_rgb.length
     ) {
       this.colored = undefined
       const changed = this.colors_start.fill_color(uniform_color)
@@ -171,39 +173,39 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     if (
       !bond_colors &&
       columns &&
-      last &&
-      same_values(site_colors, last.site_colors) &&
+      site_rgb === last?.site_rgb &&
       same_values(columns.indices, last.indices) &&
       same_values(columns.orders, last.orders)
     )
       return false
-    let instance_idx = 0
+    const [start, end] = [this.colors_start.array, this.colors_end.array]
+    let offset = 0
     for (let idx = 0; idx < bonds.length; idx++) {
       const site_idx_1 = bond_site_1(bonds, idx)
       const site_idx_2 = bond_site_2(bonds, idx)
       const override = bond_colors?.[idx]
-      const color_start = override ?? site_colors[site_idx_1]
-      const color_end = override ?? site_colors[site_idx_2]
-      if (color_start === undefined || color_end === undefined)
+      if (!override && Math.max(site_idx_1, site_idx_2) * 3 >= site_rgb.length)
         throw new RangeError(
           `Missing bond endpoint color for site indices ${site_idx_1}, ${site_idx_2}`,
         )
+      // an override colors both ends, the palette each end by its site
+      const source = override ? css_to_linear_rgb(override) : site_rgb
+      const from_1 = override ? 0 : site_idx_1 * 3
+      const from_2 = override ? 0 : site_idx_2 * 3
       const copies = instance_count_for_order(bond_order_at(bonds, idx))
-      for (let order_idx = 0; order_idx < copies; order_idx++, instance_idx++) {
-        this.colors_start.write_color(instance_idx, color_start)
-        this.colors_end.write_color(instance_idx, color_end)
-      }
+      for (let copy_idx = 0; copy_idx < copies; copy_idx++, offset += 3)
+        for (let channel = 0; channel < 3; channel++) {
+          start[offset + channel] = source[from_1 + channel]
+          end[offset + channel] = source[from_2 + channel]
+        }
     }
     this.colored =
       bond_colors || !columns
         ? undefined
-        : {
-            indices: columns.indices.slice(),
-            orders: columns.orders.slice(),
-            site_colors: site_colors.slice(),
-          }
-    const changed = this.colors_start.flush(placements.instance_count)
-    return this.colors_end.flush(placements.instance_count) || changed
+        : { indices: columns.indices.slice(), orders: columns.orders.slice(), site_rgb }
+    this.colors_start.upload(placements.instance_count)
+    this.colors_end.upload(placements.instance_count)
+    return true
   }
 
   dispose(): void {

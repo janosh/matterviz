@@ -298,10 +298,6 @@
       "types": "./dist/vacf/index.d.ts",
       "default": "./dist/vacf/index.js"
     },
-    "./workers": {
-      "types": "./dist/workers.d.ts",
-      "default": "./dist/workers.js"
-    },
     "./wulff": {
       "types": "./dist/wulff/index.d.ts",
       "default": "./dist/wulff/index.js"
@@ -369,7 +365,7 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
-    "@typescript/native": "npm:typescript@^7.0.2",
+    "@typescript/native": "npm:typescript@7.1.0-beta",
     "@vitest/coverage-v8": "5.1.1",
     "@wooorm/starry-night": "^3.11.0",
     "happy-dom": "^21.0.4",

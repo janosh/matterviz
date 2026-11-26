@@ -2,7 +2,7 @@
 // Fermi surface extraction off the main thread: 5-30 ms per mu on a typical grid is too slow
 // for a band-plot hover or mu drag extracting every frame
 import { is_plain_object } from 'svelte-widgets/utils'
-import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
+import { can_create_worker, create_worker_client } from 'svelte-widgets/worker-client'
 import { extract_fermi_surface, PREPARED_FACTORS_PER_BAND, resolved_factor } from './compute'
 import type { BandGridData, FermiSurfaceData, FermiSurfaceOptions } from './types'
 

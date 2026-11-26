@@ -22,9 +22,9 @@
   import {
     create_sequence_player,
     is_sequence_key_target,
-  } from '#lib/layout/sequence-player.svelte.js'
+  } from 'svelte-widgets/sequence-player'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
-  import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import SequenceControls from 'svelte-widgets/SequenceControls.svelte'
   import { Structure } from '#lib/structure/index.js'
   import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
   import { clamp, to_error } from 'svelte-widgets/utils'
@@ -183,13 +183,28 @@
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)
 
   const playback = create_sequence_player({
-    count: () => n_images,
-    index: () => active_image_idx,
-    set_index: (index) => (active_image_idx = index),
-    fps: () => fps,
-    set_fps: (value) => (fps = value),
-    fps_range: () => fps_range,
-    should_auto_play: () => auto_play && Boolean(active),
+    get count() {
+      return n_images
+    },
+    // clamped, as the controls show it; the effect below writes the clamp back
+    get index() {
+      return image_idx
+    },
+    set index(index) {
+      active_image_idx = index
+    },
+    get fps() {
+      return fps
+    },
+    set fps(value) {
+      fps = value
+    },
+    get fps_range() {
+      return fps_range
+    },
+    get auto_play() {
+      return auto_play && Boolean(active)
+    },
   })
 
   // Playback keys work while the viewer is focused or hovered, as in Trajectory, not only
@@ -325,9 +340,7 @@
       {/if}
 
       <SequenceControls
-        {controls_config}
-        index={image_idx}
-        count={n_images}
+        visible={controls_config.visible}
         {playback}
         item_name="image"
         play_title={playback.is_playing ? `Pause` : `Play along the path`}

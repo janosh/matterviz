@@ -1,7 +1,6 @@
 <script lang="ts">
   import { InformationOutline, Graph } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
-  import { value_key } from '#lib/utils.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
@@ -11,7 +10,7 @@
     DEFAULT_POSITION_STREAM_MAX_BYTES,
     suggest_frame_stride,
   } from '#lib/trajectory/runs/accumulate.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { to_error, value_key } from 'svelte-widgets/utils'
   import {
     collect_trajectory_spectroscopy_input,
     INFRARED_SIGNAL_KEYS,

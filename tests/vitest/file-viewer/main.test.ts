@@ -1,4 +1,4 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
 import {
   frame_from_wire,
   frame_to_wire,
@@ -657,18 +657,26 @@ describe(`LARGE_FILE markers`, () => {
   const backing = trajectory_from_frames(
     [0, 1, 2].map((step) => {
       const structure = make_crystal(5, [[`H`, [0, 0, step / 10]]])
-      // a force channel the host sends whatever the viewer asks for
-      for (const site of structure.sites) site.properties = { force: [0, 0, step] }
+      // a force channel the host sends whatever the viewer asks for; standard labels keep the
+      // sites numeric, so frames reuse the preview's atomic numbers like a host run's
+      for (const site of structure.sites) {
+        site.properties = { force: [0, 0, step] }
+        site.label = `H1`
+      }
       return { step, structure }
     }),
     { provenance: { filename: `movie.extxyz`, format: `xyz` } },
   )
   // The host's answer to request_large_file: the run summary with plot rows still streaming
-  const summary_reply = (request: Record<string, unknown>): Record<string, unknown> => ({
-    command: `large_file_response`,
-    request_id: request.request_id,
-    run_summary: { ...summarize_run(backing), properties: { rows: [], complete: false } },
-  })
+  const summary_reply = (request: Record<string, unknown>): Record<string, unknown> => {
+    const { preview, ...run_summary } = summarize_run(backing)
+    return {
+      command: `large_file_response`,
+      request_id: request.request_id,
+      run_summary: { ...run_summary, properties: { rows: [], complete: false } },
+      preview: frame_to_wire(encode_frame(preview)),
+    }
+  }
 
   // A message as VS Code's webview postMessage delivers it: JSON, except that ArrayBuffers
   // survive (engines >= 1.57); a typed array arrives as an index-keyed object
@@ -686,10 +694,15 @@ describe(`LARGE_FILE markers`, () => {
         : val,
     )
   }
+  // as the extension posts it: atomic numbers equal to the preview's stay off the wire
+  const { sites: preview_sites } = encode_frame(backing.preview)
   const wire_frame = (frame_idx: number): unknown => {
     const frame = backing.read_frame(frame_idx)
     if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
-    return vscode_clone(frame_to_wire(frame))
+    if (!(preview_sites instanceof Uint8Array)) throw new TypeError(`Expected numeric sites`)
+    const wire = frame_to_wire(frame, undefined, preview_sites)
+    expect(wire.sites).toBe(`preview`)
+    return vscode_clone(wire)
   }
 
   test(`a wire frame posts only its views' own bytes and survives VS Code's transport`, () => {
@@ -706,7 +719,9 @@ describe(`LARGE_FILE markers`, () => {
       available_vector_keys: [`forces`],
     }
     const wire = frame_to_wire(input)
-    expect(wire.coordinates.byteLength).toBe(frame.coordinates.byteLength)
+    // abc derives from xyz and the lattice, so it stays off the wire (host-protocol.test.ts)
+    expect(wire.fractional).toBe(`derived`)
+    expect(wire.coordinates.byteLength).toBe(frame.coordinates.byteLength - 3 * 8)
     expect(wire.sites instanceof ArrayBuffer && wire.sites.byteLength).toBe(1)
     expect(frame_from_wire(vscode_clone(wire) as WireFrame)).toEqual({
       ...input,
@@ -769,10 +784,15 @@ describe(`LARGE_FILE markers`, () => {
       request_id: expect.any(String),
       file_path: `/data/movie.extxyz`,
       filename: `movie.extxyz`,
+      // the summary request's id: the host refuses frames of any other run
+      run_id: post_message.mock.calls[0][0].request_id,
       frame_index: 2,
       channels: { vectors: [] },
     })
     expect(frame.step).toBe(2)
+    expect(frame.structure.sites.map(({ species }) => species)).toEqual(
+      run.preview.structure.sites.map(({ species }) => species),
+    )
     expect(frame.structure.sites[0].xyz[2]).toBeCloseTo(1, 12)
     // the run trims channels a host sent beyond those asked for
     expect(frame.structure.sites[0].properties).toEqual({})

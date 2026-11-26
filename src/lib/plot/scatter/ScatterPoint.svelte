@@ -1,6 +1,6 @@
 <script lang="ts">
   import { HIGHLIGHT } from '#lib/colors/index.js'
-  import { create_on_screen } from '#lib/effects.svelte.js'
+  import { create_on_screen } from 'svelte-widgets/effects'
   import { type D3SymbolName, symbol_map } from '#lib/labels.js'
   import { lerp, type Point2D } from '#lib/math.js'
   import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types.js'

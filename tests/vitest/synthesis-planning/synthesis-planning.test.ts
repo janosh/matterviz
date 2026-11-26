@@ -863,6 +863,22 @@ test(`precursor library formulas parse, keys are unique and lookups ignore order
   expect(lookup_precursor_info(`BaTiO3`)).toBeNull()
 })
 
+// Lookups are cached per formula string, bounded so arbitrary inputs can't accumulate forever
+test(`precursor lookup cache clears past 4096 distinct formulas`, () => {
+  const cleared_sizes: number[] = []
+  const original_clear = Map.prototype.clear
+  const clear = vi.spyOn(Map.prototype, `clear`).mockImplementation(function (
+    this: Map<unknown, unknown>,
+  ) {
+    cleared_sizes.push(this.size)
+    original_clear.call(this)
+  })
+  for (let idx = 0; idx < 4100; idx++) lookup_precursor_info(`Li${idx + 2}O`)
+  clear.mockRestore()
+  expect(cleared_sizes).toContain(4096)
+  expect(lookup_precursor_info(`HLiO`)?.formula).toBe(`LiOH`) // still correct after a clear
+})
+
 // A slice point on the full hull is its reacting mixture (precursors plus consumed gas, the basis
 // of driving_force) at the reactants' mean E_form plus the driving force, so it lands where that
 // mixture reacts to: the products (incl. released gas), else each phase itself

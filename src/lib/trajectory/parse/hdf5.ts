@@ -56,7 +56,6 @@ import {
 import { is_reference_md_h5_file, parse_reference_md_h5_file } from './reference-md-h5'
 import { is_md_h5_file, parse_md_h5_file } from './md-h5'
 import type { LazyTrajectorySource, ParsedTrajectory, WarningCollector } from './shared'
-import type { TrajectoryRunSummary } from '../run'
 import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
 type Hdf5TrajectoryResult =
@@ -73,15 +72,12 @@ export const open_hdf5_trajectory = async (
   collector: WarningCollector,
   filename?: string,
   hdf5_group_path?: string,
-  replica?: TrajectoryRunSummary,
 ): Promise<Hdf5TrajectoryResult> => {
   const opened = await open_h5_source(source, filename)
   let lazy: LazyTrajectorySource | undefined
   try {
-    const is_md_h5 = is_md_h5_file(opened.h5_file)
-    if (replica && !is_md_h5) throw new Error(`MD replica source schema changed`)
-    const result = is_md_h5
-      ? parse_md_h5_file(opened.h5_file, hdf5_group_path, replica)
+    const result = is_md_h5_file(opened.h5_file)
+      ? parse_md_h5_file(opened.h5_file, hdf5_group_path)
       : is_vaspout_h5_file(opened.h5_file)
         ? parse_vaspout_h5_file(opened.h5_file, collector.warn)
         : is_reference_md_h5_file(opened.h5_file)

@@ -20,6 +20,7 @@
     export_pane_open = $bindable(false),
     flight_pane_open = $bindable(false),
     structure = undefined,
+    series_key = structure,
     sym_data = null,
     prediction,
     on_clear_prediction,
@@ -36,6 +37,9 @@
     export_pane_open?: boolean
     flight_pane_open?: boolean
     structure?: AnyStructure
+    // What a planned camera flight belongs to: one key across a trajectory's frames, since a
+    // per-frame key rebuilt the flight session (and leaked its aborted predecessor) every frame
+    series_key?: unknown
     // moyo analysis of `structure`, enabling the symmetrized CIF (asymmetric unit + operations)
     sym_data?: SymmetryDataset | null
     prediction?: StructureToolPrediction
@@ -204,7 +208,7 @@
   <CameraFlightPane
     bind:open={flight_pane_open}
     canvas={wrapper_canvas}
-    source_key={structure}
+    source_key={series_key}
     filename={image_filename ?? `structure`}
     bind:busy={flight_running}
     disabled={export_state.busy}

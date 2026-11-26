@@ -177,6 +177,31 @@ function frame_marker_paths(scale: number) {
   }
 }
 
+// Paint a marker at (x, y): a circle (nearly every point) as an arc in place, any other shape
+// from its origin-centred outline. Moving the origin for every marker (save, translate,
+// restore) was 60% of a 50k-point frame.
+function paint_marker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  outline: Path2D | undefined,
+  stroke = false,
+): void {
+  if (outline) {
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.fill(outline)
+    if (stroke) ctx.stroke(outline)
+    ctx.restore()
+    return
+  }
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, 2 * Math.PI)
+  ctx.fill()
+  if (stroke) ctx.stroke()
+}
+
 // One depth-sorted point: shadow, animated rings (only when `pulse` is given) and marker
 function draw_hull_point(
   ctx: CanvasRenderingContext2D,
@@ -190,14 +215,13 @@ function draw_hull_point(
   const entry_highlighted = is_highlighted(entry)
   const size = stability_radius(is_stable) * scale
   // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-  const { shadow, body } = paths(entry.marker || `circle`, is_stable)
+  const marker = entry.marker || `circle`
+  const outlines = marker === `circle` ? undefined : paths(marker, is_stable)
 
   const shadow_offset = Math.abs(entry.z) * shadow_factor * scale
   ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
-  ctx.save()
-  ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
-  ctx.fill(shadow)
-  ctx.restore()
+  const [shadow_x, shadow_y] = [projected.x + shadow_offset, projected.y + shadow_offset]
+  paint_marker(ctx, shadow_x, shadow_y, size * 0.8, outlines?.shadow)
 
   if (pulse) {
     if (same_entry(opts.selected_entry, entry)) {
@@ -218,11 +242,7 @@ function draw_hull_point(
       : get_point_color(entry)
   ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
   ctx.lineWidth = 0.5 * scale
-  ctx.save()
-  ctx.translate(projected.x, projected.y)
-  ctx.fill(body)
-  ctx.stroke(body)
-  ctx.restore()
+  paint_marker(ctx, projected.x, projected.y, size, outlines?.body, true)
 }
 
 // The depth-sorted points that hold still between animation frames

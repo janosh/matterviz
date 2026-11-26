@@ -2,7 +2,10 @@
   // Phase × temperature stability map: one row per phase coloured by energy above hull, with
   // the exact stability windows as solid bars and transition temperatures as dashed lines.
   // Click/drag sets the temperature; clicking a formula selects the phase. Everything but the
-  // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
+  // cursor and row highlights is cached in an offscreen layer that is blitted per frame and
+  // re-rendered only when its inputs or the scroll position change. Both canvases span only
+  // the visible rows and follow the scroll position: at one canvas of all rows each, 380
+  // phases took 2 x 58 MB of backing store on a 2x display.
   import { clamp } from 'svelte-widgets/utils'
   import { add_alpha } from '#lib/colors/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
@@ -23,6 +26,7 @@
     row_height = 16,
     label_width = 96,
     on_hover,
+    onscroll,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     diagram: TernaryPhaseDiagram
@@ -41,6 +45,7 @@
   // When the rows overflow the scroll container the bottom axis scrolls out of view, so a
   // second temperature axis is drawn above the rows
   let visible_height = $state(Infinity)
+  let scroll_top = $state(0)
   const [FONT, SUB_FONT] = [`11px sans-serif`, `9px sans-serif`]
 
   // === Rows ===
@@ -85,6 +90,7 @@
   )
   const top_pad = $derived(overflowing ? AXIS_HEIGHT : TOP_PAD)
   const canvas_height = $derived(top_pad + rows.length * row_height + AXIS_HEIGHT)
+  const view_height = $derived(Math.min(canvas_height, visible_height))
 
   // === Scales ===
 
@@ -121,8 +127,10 @@
     const { temperatures, sections, stability_windows, events } = diagram
     const inset = Math.min(3, row_height * 0.2)
     const bar_height = row_height - 2 * inset
+    ctx.translate(0, -scroll_top)
     for (const [row, phase] of rows.entries()) {
       const top = row_top(row) + inset
+      if (top + bar_height < scroll_top || top > scroll_top + view_height) continue
       for (let idx = 0; idx + 1 < temperatures.length; idx++) {
         const [e_lo, e_hi] = [
           sections[idx].e_above_hull[phase],
@@ -207,6 +215,7 @@
     const key = [
       width,
       height,
+      scroll_top,
       dpr,
       text_color,
       settings.show_event_lines,
@@ -235,9 +244,11 @@
 
   const surface = create_canvas_surface({
     canvas: () => canvas,
-    height: () => canvas_height,
+    height: () => view_height,
     draw: ({ ctx, width, height, text_color, dark_mode }: CanvasFrame) => {
       ctx.drawImage(static_image(width, height, text_color), 0, 0, width, height)
+      ctx.save()
+      ctx.translate(0, -scroll_top)
       for (const [row, phase] of rows.entries()) {
         if (phase !== selected_phase && phase !== hovered_phase) continue
         ctx.fillStyle = add_alpha(text_color, phase === selected_phase ? 0.14 : 0.07)
@@ -249,11 +260,13 @@
       ctx.moveTo(x_of(temperature), top_pad - 2)
       ctx.lineTo(x_of(temperature), row_top(rows.length) + 4)
       ctx.stroke()
+      ctx.restore()
     },
     repaint_deps: () => [
       diagram,
       rows,
       overflowing,
+      scroll_top,
       settings,
       temperature,
       selected_phase,
@@ -268,7 +281,7 @@
     const rect = canvas?.getBoundingClientRect() ?? { left: 0, top: 0 }
     const x_pos = event.clientX - rect.left
     return {
-      row: Math.floor((event.clientY - rect.top - top_pad) / row_height),
+      row: Math.floor((event.clientY - rect.top + scroll_top - top_pad) / row_height),
       temp: clamp(t_of(x_pos), t_min, t_max),
       in_plot: x_pos >= label_width,
     }
@@ -302,7 +315,16 @@
   }
 </script>
 
-<div {...rest} bind:clientHeight={visible_height} class={[`phase-stability-map`, rest.class]}>
+<div
+  {...rest}
+  bind:clientHeight={visible_height}
+  onscroll={(event) => {
+    // whole px: a fractional offset (HiDPI, zoom) would blur the translated bars and text
+    scroll_top = Math.round(event.currentTarget.scrollTop)
+    onscroll?.(event) // a host's own handler still runs
+  }}
+  class={[`phase-stability-map`, rest.class]}
+>
   <canvas
     bind:this={canvas}
     role="slider"
@@ -328,6 +350,7 @@
       on_hover?.(null)
     }}
   ></canvas>
+  <div style:height="{canvas_height - view_height}px"></div>
 </div>
 
 <style>
@@ -338,6 +361,8 @@
   }
   canvas {
     display: block;
+    position: sticky;
+    top: 0;
     width: 100%;
     cursor: crosshair;
     touch-action: none;

@@ -44,6 +44,10 @@ interface HostFileTransferInput extends LargeFileMarker {
   filename: string
   large_file_threshold: number
   max_file_size: number
+  // Indexable trajectories above this many bytes stream from the host even below
+  // large_file_threshold: in a remote window an inline copy crosses the network whole
+  // before anything renders, while streaming sends only the frames viewed
+  stream_above?: number
 }
 
 export const plan_host_file_transfer = ({
@@ -52,15 +56,17 @@ export const plan_host_file_transfer = ({
   file_size,
   large_file_threshold,
   max_file_size,
+  stream_above = Infinity,
 }: HostFileTransferInput): HostFileTransferPlan => {
   if (file_size > max_file_size)
     return { kind: `reject`, reason: `file-too-large`, max_file_size }
-  if (file_size <= large_file_threshold)
-    return { kind: `inline`, is_base64: should_encode_filename_as_base64(filename) }
   const normalized_filename = normalize_browser_supported_filename(filename)
+  const indexable =
+    normalized_filename !== null && is_indexable_trajectory_filename(normalized_filename)
+  if (file_size <= large_file_threshold && !(indexable && file_size > stream_above))
+    return { kind: `inline`, is_base64: should_encode_filename_as_base64(filename) }
   if (normalized_filename === null)
     return { kind: `reject`, reason: `unsupported-compression` }
-  if (!is_indexable_trajectory_filename(normalized_filename))
-    return { kind: `reject`, reason: `unsupported-large-format` }
+  if (!indexable) return { kind: `reject`, reason: `unsupported-large-format` }
   return { kind: `marker`, content: format_large_file_marker({ file_path, file_size }) }
 }

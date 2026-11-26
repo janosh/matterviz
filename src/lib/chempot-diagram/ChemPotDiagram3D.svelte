@@ -1,7 +1,7 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { clamp } from 'svelte-widgets/utils'
-  import { create_delayed_flag } from '#lib/effects.svelte.js'
+  import { create_delayed_flag } from 'svelte-widgets/effects'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/formula-markup.js'

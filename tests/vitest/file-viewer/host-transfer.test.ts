@@ -5,13 +5,14 @@ import {
 } from '#lib/file-viewer/host-transfer.js'
 import { expect, test } from 'vite-plus/test'
 
-const plan = (filename: string, file_size: number) =>
+const plan = (filename: string, file_size: number, stream_above?: number) =>
   plan_host_file_transfer({
     filename,
     file_path: `C:\\data\\${filename}`,
     file_size,
     large_file_threshold: 100,
     max_file_size: 1000,
+    stream_above,
   })
 
 // `marker` stands for the planned file's own large-file marker
@@ -35,6 +36,19 @@ test.each([
 ] as const)(`plans %s at %d bytes`, (filename, file_size, expected) => {
   const marker = { kind: `marker`, content: `LARGE_FILE:C:\\data\\${filename}:${file_size}` }
   expect(plan(filename, file_size)).toEqual(expected === `marker` ? marker : expected)
+})
+
+// Remote windows stream indexable trajectories past stream_above; every other file keeps the
+// inline path up to large_file_threshold, since the host can't index it
+test.each([
+  [`movie.traj`, 50, `marker`],
+  [`movie.extxyz.gz`, 50, `marker`],
+  [`movie.traj`, 20, { kind: `inline`, is_base64: true }],
+  [`CHGCAR`, 50, { kind: `inline`, is_base64: false }],
+  [`movie.h5`, 50, { kind: `inline`, is_base64: true }],
+] as const)(`streams %s at %d bytes past stream_above 20`, (filename, file_size, expected) => {
+  const marker = { kind: `marker`, content: `LARGE_FILE:C:\\data\\${filename}:${file_size}` }
+  expect(plan(filename, file_size, 20)).toEqual(expected === `marker` ? marker : expected)
 })
 
 test.each([

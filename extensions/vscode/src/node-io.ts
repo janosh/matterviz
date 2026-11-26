@@ -10,7 +10,9 @@ import {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
 } from '#lib/trajectory/format-detect.js'
+import type { ByteSource } from '#lib/trajectory/parse/ase.js'
 import { format_bytes } from 'svelte-widgets/format'
+import * as file_system from 'node:fs'
 import { Readable } from 'node:stream'
 import { createGunzip, createInflate } from 'node:zlib'
 import * as vscode from 'vscode'
@@ -130,4 +132,35 @@ export const read_indexed_trajectory_file = async (
     )
   }
   return { data: buffer, filename: normalized_filename }
+}
+
+// A file read on demand through an open file descriptor. The extension host (on the remote
+// machine under Remote-SSH) keeps only a frame index and the frame it is decoding in memory,
+// so files past MAX_STREAMING_FILE_SIZE open in constant memory, without reading the whole
+// file first.
+export const file_byte_source = (file_path: string): ByteSource => {
+  let fd: number | null = file_system.openSync(file_path, `r`)
+  const byte_length = file_system.fstatSync(fd).size
+  return {
+    byte_length,
+    read: (offset, length) => {
+      if (fd === null) throw new Error(`${file_path} was closed`)
+      if (!Number.isInteger(offset) || offset < 0 || offset + length > byte_length)
+        throw new Error(
+          `Out-of-bounds read: ${length} bytes at ${offset} lie outside ${file_path} (${byte_length} bytes)`,
+        )
+      const bytes = new Uint8Array(length)
+      for (let done = 0; done < length;) {
+        const count = file_system.readSync(fd, bytes, done, length - done, offset + done)
+        if (count === 0)
+          throw new Error(`${file_path} ended at ${offset + done} while reading`)
+        done += count
+      }
+      return new DataView(bytes.buffer)
+    },
+    release: () => {
+      if (fd !== null) file_system.closeSync(fd)
+      fd = null
+    },
+  }
 }

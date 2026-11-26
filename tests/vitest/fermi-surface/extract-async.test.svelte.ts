@@ -5,8 +5,8 @@ import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
 import { fermi_surface_transferables } from '#lib/fermi-surface/extract-job.js'
 import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
 import type { BandGridData, FermiSurfaceOptions } from '#lib/fermi-surface/types.js'
-import type { WorkerRequest } from '#lib/worker-serve.js'
-import { create_input_store } from '#lib/worker-serve.js'
+import type { WorkerRequest } from 'svelte-widgets/worker-serve'
+import { create_input_store } from 'svelte-widgets/worker-serve'
 import { afterEach, expect, test } from 'vite-plus/test'
 import {
   expect_module_worker,

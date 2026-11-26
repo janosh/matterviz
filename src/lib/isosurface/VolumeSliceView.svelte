@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { value_key } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import { value_key } from '#lib/utils.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

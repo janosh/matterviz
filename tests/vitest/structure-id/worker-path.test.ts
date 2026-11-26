@@ -3,7 +3,7 @@
 // installed before the module is imported so the real postMessage plumbing runs — including the
 // structured clone, which is where a Svelte $state proxy or a non-cloneable site property would
 // blow up in a browser. The generic client (request ids, dedupe, abort, error replies) is
-// covered by worker-client.test.ts; only the payload contract is asserted here.
+// covered by svelte-widgets' worker-client tests; only the payload contract is asserted here.
 import type { compute_structure_id_async as ComputeStructureIdAsync } from '#lib/structure-id/async-compute.svelte.js'
 import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
 import type { StructureIdOptions } from '#lib/structure-id/index.js'

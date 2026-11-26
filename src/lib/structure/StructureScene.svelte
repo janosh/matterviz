@@ -36,7 +36,7 @@
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '#lib/settings.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
-  import { create_pulse_animation, pulsing_highlight_opacity } from '#lib/effects.svelte.js'
+  import { create_pulse_animation } from 'svelte-widgets/effects'
   import { resolve_theme_text_color } from '#lib/state.svelte.js'
   import { get_element_palette } from './element-palette.svelte'
   import type {
@@ -514,7 +514,7 @@
     () => selected_sites.length > 0 || active_sites.length > 0,
     { step: 0.012, element: () => threlte.renderer?.domElement },
   )
-  let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
+  let pulse_opacity = $derived(0.1 + 0.1 * pulse.unit) // subtle: 0.1 to 0.2
 
   // Camera fly-to, shared with the orientation gizmo. Driven by `fly_to_request` because the
   // zone-axis control lives in the controls pane, outside the Threlte canvas, and so has no
@@ -1394,10 +1394,7 @@
     if (cutaway && cutaway.mode !== `off` && !cutaway.whole_atoms) return true
     // Centers hidden inside their polyhedra drop the sphere, not the bonds to it
     if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.size > 0) return true
-    const reach = 2.35 * bond_thickness
-    return [atom_groups.base, atom_groups.image, atom_groups.ellipsoid].some((atoms) =>
-      atoms.some((atom) => atom.radius < reach),
-    )
+    return atom_groups.min_radius < 2.35 * bond_thickness
   })
 
   let editable_bond_pairs = $derived(

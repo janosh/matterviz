@@ -84,6 +84,9 @@ const orthogonality_deviation = (rot: Matrix3x3): number => {
   )
 }
 
+// Bounded like the other module caches: a session scanning many cells (or symprec values)
+// would otherwise keep every lattice's operations
+const MAX_CACHED_POINT_GROUPS = 64
 const point_group_cache = new Map<string, Matrix4Tuple[]>()
 
 // Cartesian point-group operations (the holohedry) of the reciprocal lattice whose rows are
@@ -117,6 +120,7 @@ export function lattice_point_group_matrices(
     if (is_identity(int_mat)) matrices.unshift(to_matrix4(rot))
     else matrices.push(to_matrix4(rot))
   }
+  if (point_group_cache.size >= MAX_CACHED_POINT_GROUPS) point_group_cache.clear()
   point_group_cache.set(cache_key, matrices)
   return matrices
 }

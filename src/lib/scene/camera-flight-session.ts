@@ -16,6 +16,11 @@ type FlightTask = {
   show: (pose: CameraPose, frame?: number) => Promise<void>
 }
 
+// One shared abort reason: abort()'s default DOMException captures the stack of each call, whose
+// frames keep their receivers and closures (a Svelte batch and the values it holds) reachable
+// from every signal that outlives the call
+const cancelled = new DOMException(`Camera flight cancelled`, `AbortError`)
+
 export function create_camera_flight_session(hooks: {
   controller: () => CameraFlightController | undefined
   timeline: () => FlightTimeline | undefined
@@ -29,7 +34,7 @@ export function create_camera_flight_session(hooks: {
   let origin: { pose: CameraPose; frame?: number; resume?: () => void } | undefined
   const notify = () => hooks.on_change(activity, Boolean(origin))
   const cancel = () => {
-    operation?.abort()
+    operation?.abort(cancelled)
     operation = undefined
     activity = null
     notify()
@@ -40,7 +45,7 @@ export function create_camera_flight_session(hooks: {
     task: (context: FlightTask) => Promise<void>,
   ): Promise<boolean> => {
     const temporary = kind === `thumbnails`
-    operation?.abort()
+    operation?.abort(cancelled)
     const requested = new AbortController()
     operation = requested
     const signal = AbortSignal.any([requested.signal, lifetime.signal])
@@ -121,7 +126,7 @@ export function create_camera_flight_session(hooks: {
     },
     dispose() {
       cancel()
-      lifetime.abort()
+      lifetime.abort(cancelled)
       origin = undefined
       notify()
     },

@@ -3,6 +3,7 @@
 // MatterViz AnyWidget Entry Point
 
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
+import { check_blob_workers } from 'svelte-widgets/worker-client'
 import type { AnyModel, Render } from 'anywidget/types'
 import type { LobsterKind, PourbaixHoverInfo, WulffShapeData } from 'matterviz'
 import {
@@ -25,7 +26,6 @@ import {
   series_from_binary,
   svg_to_string,
 } from 'matterviz/io'
-import { check_blob_workers } from 'matterviz/workers'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
 import { type Component, mount, unmount } from 'svelte'

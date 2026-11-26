@@ -65,6 +65,10 @@ describe(`AtomGroupBuilder`, () => {
     expect(groups.partial.map(({ element }) => element)).toEqual([`Fe`, `Ni`])
     expect(groups.first_by_site.get(3)).toBe(groups.partial[0])
     expect([...groups.first_by_site.keys()]).toEqual([0, 1, 2, 3])
+    // smallest full sphere, which decides whether bond ends need caps: wedges don't count
+    expect(groups.min_radius).toBe(groups.base[0].radius)
+    const wedges = new AtomGroupBuilder().build(make_input({ sites: [disordered] }))
+    expect(wedges.min_radius).toBe(Infinity)
   })
 
   test(`coordinate-only frames reuse the atom records in a fresh base array`, () => {
@@ -85,6 +89,7 @@ describe(`AtomGroupBuilder`, () => {
     expect(next.base).not.toBe(first.base)
     expect(next.base[0]).toBe(first.base[0])
     expect(next.base.map(({ position }) => position[0])).toEqual([5, 6.13])
+    expect(next.min_radius).toBe(first.min_radius)
     // an appearance change rebuilds the records
     const rebuilt = builder.build(make_input(moved, { appearance: `other` }))
     expect(rebuilt.base[0]).not.toBe(first.base[0])

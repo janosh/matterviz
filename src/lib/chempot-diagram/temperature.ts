@@ -1,4 +1,4 @@
-import { value_key } from '#lib/utils.js'
+import { value_key } from 'svelte-widgets/utils'
 import {
   analyze_temperature_data,
   filter_entries_at_temperature,

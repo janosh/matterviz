@@ -1,4 +1,4 @@
-import { value_key } from '#lib/utils.js'
+import { value_key } from 'svelte-widgets/utils'
 import type { BondData } from './bond-rendering'
 import { BondFrame, bond_site_1, bond_site_2 } from './bond-rendering'
 import { get_orig_site_idx, get_site, numeric_sites, site_count } from './site'

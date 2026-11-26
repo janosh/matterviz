@@ -1,12 +1,16 @@
 import { globSync, readFileSync } from 'node:fs'
 import { renderer_registry, scene_registry } from '#lib/io/export.js'
-import { bind_renderer, create_renderer } from '#lib/scene/bind-renderer.svelte.js'
+import {
+  bind_renderer,
+  create_renderer,
+  webgpu_available,
+} from '#lib/scene/bind-renderer.svelte.js'
 import { currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync } from 'svelte'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { WebGPUBackend } from 'three/webgpu'
-import { beforeAll, describe, expect, test, vi } from 'vite-plus/test'
+import { beforeAll, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 // Stub only useThrelte: the real currentWritable's `.current` is a non-reactive read while
 // `.subscribe` is the reactive channel the fix depends on.
@@ -22,6 +26,25 @@ vi.mock(`@threlte/core`, async (original) => ({
 
 const fake_camera = (identifier: number) => ({ id: identifier }) as unknown as Camera
 const fake_scene = { name: `scene` } as unknown as Scene
+
+// WebGPURenderer falls back to WebGL2 without WebGPU, so a browser with only WebGL2 (Firefox
+// on Linux has no navigator.gpu, #525) must still mount the canvas
+test.each([
+  [`WebGPU and WebGL2`, true, true, true],
+  [`only WebGL2`, false, true, true],
+  [`only WebGPU`, true, false, true],
+  [`neither (happy-dom, SSR)`, false, false, false],
+])(`webgpu_available with %s: %s`, (_, gpu, webgl2, expected) => {
+  if (gpu) {
+    Object.defineProperty(navigator, `gpu`, { value: {}, configurable: true })
+    onTestFinished(() => void Reflect.deleteProperty(navigator, `gpu`))
+  }
+  if (webgl2) {
+    vi.stubGlobal(`WebGL2RenderingContext`, {})
+    onTestFinished(() => void vi.unstubAllGlobals())
+  }
+  expect(webgpu_available()).toBe(expected)
+})
 
 test(`bind_renderer registers the canvas and re-binds on every camera swap until teardown`, () => {
   const [cam1, cam2, cam3] = [fake_camera(1), fake_camera(2), fake_camera(3)]

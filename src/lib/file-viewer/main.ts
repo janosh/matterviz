@@ -19,13 +19,15 @@ import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electr
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import { get_vscode_api } from './host-bridge'
-import type {
-  FileChangeMessage,
-  FileData,
-  SettingsChangedMessage,
-  WebviewBootstrapData,
-} from './host-protocol'
+import { create_prepare_pool } from '#lib/trajectory/prepare-pool.js'
+import { can_create_worker } from 'svelte-widgets/worker-client'
+import {
+  get_vscode_api,
+  host_prepare_transfers,
+  telemetry,
+  use_host_preparation,
+} from './host-bridge'
+import type { FileChangeMessage, FileData, SettingsChangedMessage } from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
@@ -48,9 +50,8 @@ interface DisplayOptions {
 }
 
 // The host's bootstrap script inlines `window.matterviz_data = ...` and calls the two
-// lifecycle functions this module installs below
+// lifecycle functions this module installs below (matterviz_data is declared in host-protocol.ts)
 declare global {
-  var matterviz_data: WebviewBootstrapData | undefined
   var initializeMatterViz: (() => Promise<MatterVizApp | null>) | undefined
   var cleanupMatterViz: (() => Promise<void>) | undefined
 }
@@ -58,6 +59,20 @@ declare global {
 // host-bridge.ts owns the single acquireVsCodeApi() call; VS Code throws on a
 // second one.
 const vscode_api = get_vscode_api()
+// Host-served frames are decoded and get their bonds, polyhedra and vector geometry in a few
+// workers, sparing the main thread for rendering (worker-parsed runs prepare next to their
+// decoder instead)
+use_host_preparation(() =>
+  can_create_worker()
+    ? create_prepare_pool({
+        create_worker: () =>
+          // oxlint-disable-next-line eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
+          new Worker(new URL(`./host-prepare-worker.js`, import.meta.url), { type: `module` }),
+        transfers: host_prepare_transfers,
+        on_timing: telemetry.prepared,
+      })
+    : undefined,
+)
 
 // This entry's viewer fills a VS Code tab or JupyterLab document: no page to scroll, so every
 // wheel zooms instead of waiting for a click (see WheelZoomGate)
@@ -461,7 +476,12 @@ export const create_display = (
         on_step_change: (data: TrajHandlerData) =>
           on_step_change(data.step_idx ?? 0, data.frame_count ?? 0),
       }),
-      on_controller: on_trajectory_controller,
+      on_controller: telemetry.enabled
+        ? (controller: TrajectoryController | null) => {
+            watch_shown_steps(controller)
+            on_trajectory_controller?.(controller)
+          }
+        : on_trajectory_controller,
     }
     // vaspout.h5 files carrying results/electron_dos get a DOS panel below the trajectory
     const traj_electronic = final_trajectory.metadata?.electronic as
@@ -516,6 +536,37 @@ export const create_display = (
         : undefined
   if (dispose) display_disposers.set(app, dispose)
   return app
+}
+
+// Telemetry's displayed-frame clock: the committed step, sampled once per animation frame
+// (an on_step_change callback would make the viewer request every vector channel, skewing
+// the very transport it measures)
+let stop_step_watch: (() => void) | undefined
+const watch_shown_steps = (controller: TrajectoryController | null): void => {
+  stop_step_watch?.()
+  stop_step_watch = undefined
+  if (!controller) return
+  let last_idx = -1
+  let last_tick: number | undefined
+  let handle = requestAnimationFrame(function tick(time) {
+    const { current_step_idx } = controller.state()
+    if (current_step_idx !== last_idx) telemetry.shown((last_idx = current_step_idx))
+    if (last_tick !== undefined) telemetry.animation_frame(time - last_tick)
+    last_tick = time
+    handle = requestAnimationFrame(tick)
+  })
+  // Main-thread work blocking the page for 50 ms or more at a time (rendering, bond prep or
+  // decoding on the main thread), where Chromium reports it
+  const long_tasks = PerformanceObserver.supportedEntryTypes.includes(`longtask`)
+    ? new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) telemetry.long_task(entry.duration)
+      })
+    : undefined
+  long_tasks?.observe({ type: `longtask` })
+  stop_step_watch = () => {
+    cancelAnimationFrame(handle)
+    long_tasks?.disconnect()
+  }
 }
 
 // Map defaults to trajectory component props

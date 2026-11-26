@@ -1,5 +1,5 @@
 // moyo's analyze_cell off the main thread. Speaks the create_worker_client protocol (see
-// worker-serve.ts) by hand, since the WASM must finish its async init before the first request.
+// svelte-widgets/worker-serve) by hand, since the WASM must finish its async init before the first request.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin -- worker postMessage takes no targetOrigin
 import type { MoyoCell } from '@spglib/moyo-wasm'
 import init, {
@@ -7,7 +7,7 @@ import init, {
   hall_symbol_entries_from_number,
   wyckoff_positions,
 } from '@spglib/moyo-wasm'
-import { to_error } from 'svelte-widgets/utils'
+import { to_worker_error } from 'svelte-widgets/worker-serve'
 import type { MoyoWorkerOptions, MoyoWorkerResult } from './analyze'
 
 // One init per worker; forgotten on failure so the next request retries the fetch
@@ -33,15 +33,12 @@ async function analyze({ id: identifier, input, options }: MoyoRequest): Promise
     const result: MoyoWorkerResult = { dataset, database }
     self.postMessage({ id: identifier, result, error: null })
   } catch (err) {
-    // never empty: `throw new Error()` must not read as success
-    const { name, message } = to_error(err)
-    const error = message || `${name} thrown without a message`
-    self.postMessage({ id: identifier, result: null, error })
+    self.postMessage({ id: identifier, result: null, error: to_worker_error(err) })
   }
 }
 
 self.addEventListener(`message`, ({ data }: MessageEvent<MoyoRequest>) => void analyze(data))
 self.addEventListener(`messageerror`, () => {
-  const error = `moyo worker received a request that could not be deserialized`
-  self.postMessage({ id: null, result: null, error })
+  const message = `moyo worker received a request that could not be deserialized`
+  self.postMessage({ id: null, result: null, error: { name: `Error`, message } })
 })

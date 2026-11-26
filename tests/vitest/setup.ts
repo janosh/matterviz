@@ -4,7 +4,8 @@ import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout.js'
 import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
 import type { ShortcutScope } from '#lib/shortcuts.js'
 import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
-import { is_plain_object, to_error } from 'svelte-widgets/utils'
+import { is_plain_object } from 'svelte-widgets/utils'
+import { to_worker_error, type WorkerError } from 'svelte-widgets/worker-serve'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
@@ -902,7 +903,7 @@ export function expect_worker_safe_import_graph(
 // do; without `compute` the stub never replies and the test drives `emit` itself. Module
 // isolation per test file makes the global stub self-cleaning.
 export type StubWorkerMessage = { id: number; input: unknown; options?: unknown }
-export type StubWorkerInstance<Message = StubWorkerMessage> = {
+type StubWorkerInstance<Message = StubWorkerMessage> = {
   url: string
   options: WorkerOptions | undefined
   posted: { message: Message; transfer: Transferable[] }[]
@@ -971,13 +972,13 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
       next_error = null
       queueMicrotask(() => {
         if (this.terminated) return // a terminated worker delivers nothing
-        let data: { id: number; result: unknown; error: string | null }
+        // the reply serve_worker posts: a result, or the thrown error as a WorkerError
+        let data: { id: number; result: unknown; error: WorkerError | null }
         try {
-          data = error
-            ? { id: cloned.id, result: null, error }
-            : { id: cloned.id, result: structuredClone(compute(cloned)), error: null }
+          if (error) throw new Error(error)
+          data = { id: cloned.id, result: structuredClone(compute(cloned)), error: null }
         } catch (err) {
-          data = { id: cloned.id, result: null, error: to_error(err).message }
+          data = { id: cloned.id, result: null, error: to_worker_error(err) }
         }
         this.emit(`message`, { data, preventDefault: () => {} })
       })
@@ -1023,7 +1024,7 @@ export const import_without_workers = async <Module>(
   load: () => Promise<Module>,
 ): Promise<Module> => {
   vi.resetModules()
-  const { disable_workers } = await import(`#lib/worker-client.svelte.js`)
+  const { disable_workers } = await import(`svelte-widgets/worker-client`)
   disable_workers()
   return load()
 }

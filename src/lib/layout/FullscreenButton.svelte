@@ -5,15 +5,11 @@
   // collapses the props type below to `any`.
   import WidgetFullscreenButton from 'svelte-widgets/FullscreenButton.svelte'
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
-  import { create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_shortcut_flash } from 'svelte-widgets/browser'
   import { host } from '#lib/host.js'
   import { SHORTCUTS, shortcut_title, viewer_keys } from '#lib/shortcuts.js'
   import { FULLSCREEN_BUTTON_LABELS } from 'svelte-widgets/labels'
 
-  // svelte-widgets' button flips the bound flag on click and reports only browser-initiated
-  // transitions (Esc, F11) through `on_change`. Viewers forward every real transition to
-  // `on_fullscreen_change`, so report from the fullscreenchange event here instead: a click
-  // whose request the browser rejects never reaches the host, and a granted one does.
   let {
     fullscreen = $bindable(false),
     hidden = false,
@@ -26,21 +22,13 @@
   const VIEWER_ATTR = `data-mv-fullscreen-root`
   const shortcut_flash = create_shortcut_flash<`fullscreen`>()
 
+  // The widget reports each real browser transition of its wrapper. Without one nothing goes
+  // fullscreen and the flag itself is the state, so its flips are reported here instead.
   let reported = fullscreen
-  const report = (next: boolean) => {
-    if (next === reported) return
-    reported = next
-    on_change?.(next)
-  }
   $effect(() => {
-    // without an element to send fullscreen, the flag itself is the state
-    if (!wrapper) {
-      report(fullscreen)
-      return
-    }
-    const handle_change = () => report(document.fullscreenElement === wrapper)
-    document.addEventListener(`fullscreenchange`, handle_change)
-    return () => document.removeEventListener(`fullscreenchange`, handle_change)
+    if (fullscreen === reported) return
+    reported = fullscreen
+    if (!wrapper) on_change?.(fullscreen)
   })
 
   // A host that cannot fullscreen holds no fullscreen state: a bound `true` (a "start in
@@ -81,6 +69,7 @@
 {#if host.fullscreen}<WidgetFullscreenButton
     bind:fullscreen
     {wrapper}
+    {on_change}
     aria-keyshortcuts={SHORTCUTS.fullscreen.keys}
     title={shortcut_title(
       `fullscreen`,

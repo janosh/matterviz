@@ -8,7 +8,7 @@ import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site, species_key } from '#lib/structure/site.js'
-import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
+import { can_create_worker, create_worker_client } from 'svelte-widgets/worker-client'
 import { is_identity } from './symmetry-elements'
 import type {
   InitInput,
