@@ -601,13 +601,20 @@ describe(`controls`, () => {
     },
   )
 
-  // Toggling an `auto` inspector pins the opposite of what shows, so it stays closed at any width
-  test(`toggling an auto inspector stores the opposite of its shown state`, async () => {
-    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(1200)
+  // `auto` decides once from the first measured width: a later narrowing (leaving fullscreen)
+  // keeps it docked rather than shifting the viewer under its floating panes. Toggling it pins
+  // the opposite of what shows, so it stays closed at any width
+  test(`an auto inspector docks once by width and toggles to the opposite`, async () => {
+    const client_width = vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`)
+    client_width.mockReturnValue(1200)
     const props = $state(default_props({ data_inspector_open: `auto` as const }))
     const target = mount_trajectory(props)
     const row = query(target, `.viewer-row`)
     await vi.waitFor(() => expect(row.classList.contains(`docked-sidebar-row`)).toBe(true))
+    client_width.mockReturnValue(375)
+    trigger_resize_observer(row)
+    await tick()
+    expect(row.classList.contains(`docked-sidebar-row`)).toBe(true)
     await open_analysis(target, `Data inspector`)
     expect(props.data_inspector_open).toBe(false)
     expect(row.classList.contains(`docked-sidebar-row`)).toBe(false)

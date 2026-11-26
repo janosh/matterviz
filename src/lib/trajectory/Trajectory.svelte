@@ -900,15 +900,20 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
-  // `auto` docks the inspector from this viewer-row width (sidebar included, so opening it
-  // can't drop the row below the threshold); narrower, it squeezes the structure and plot
+  // `auto` docks the inspector from this viewer-row width (narrower, it squeezes the structure
+  // and plot), decided once from the row's first measured width: re-deciding on every resize
+  // (fullscreen, a window drag) would shift the viewer under its floating panes
   const INSPECTOR_DOCK_MIN_WIDTH = 1000
-  let row_width = $state(0)
+  let auto_docked = $state(false)
   let inspector_open = $derived(
-    data_inspector_open === `auto`
-      ? row_width >= INSPECTOR_DOCK_MIN_WIDTH
-      : data_inspector_open,
+    data_inspector_open === `auto` ? auto_docked : data_inspector_open,
   )
+  let row_measured = false
+  const measure_row = (width: number) => {
+    if (row_measured || !width) return
+    row_measured = true
+    auto_docked = width >= INSPECTOR_DOCK_MIN_WIDTH
+  }
   // A host that hides the inspector's menu entry could not close it, so it stays closed there
   let inspector_shown = $derived(
     inspector_open && controls_config.visible(`data-inspector-pane`),
@@ -1840,7 +1845,7 @@
     <div
       class="viewer-row"
       class:docked-sidebar-row={inspector_shown}
-      bind:clientWidth={row_width}
+      bind:clientWidth={null, measure_row}
     >
       <div
         class="content-area"

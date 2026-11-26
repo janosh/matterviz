@@ -1199,14 +1199,19 @@ test.describe(`Trajectory Component`, () => {
     }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const trajectory_controls = trajectory.locator(`.trajectory-controls`)
-      // The open data inspector's Info tab replaces the info button; closing it brings it back
+      // The open data inspector's Info tab replaces the info button; closing it brings it back.
+      // A row this narrow leaves the `auto` inspector closed, so open it first.
       const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
+      const toggle_inspector = async () => {
+        await trajectory_controls.locator(`button[aria-label="Analysis"]`).click()
+        await trajectory
+          .locator(`.analysis-dropdown button`, { hasText: `Data inspector` })
+          .click()
+      }
+      await toggle_inspector()
       await expect(trajectory.locator(`.trajectory-data-inspector-sidebar`)).toBeVisible()
       await expect(info_toggle).toHaveCount(0)
-      await trajectory_controls.locator(`button[aria-label="Analysis"]`).click()
-      await trajectory
-        .locator(`.analysis-dropdown button`, { hasText: `Data inspector` })
-        .click()
+      await toggle_inspector()
       await info_toggle.click()
       const info_pane = trajectory.locator(`.trajectory-info-pane`)
       const info_row = info_pane.locator(`.info-row`).first()
