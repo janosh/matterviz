@@ -262,9 +262,10 @@ describe(`periodic boundary handling`, () => {
     expect(drawn.max_segment_length).toBeCloseTo(1, 5)
     // The unwrapped path keeps going past the cell rather than folding back
     expect(drawn.segments.at(-1)?.to[0]).toBeCloseTo(14, 4)
-    // Unwrapping is computed once per stream, into a buffer distinct from the wrapped source
+    // Unwrapping is computed once per sweep, into a buffer distinct from the wrapped source,
+    // and shared by every consumer's object around that sweep (MSD, VACF, trails)
     const { coords } = unwrapped_positions_of(stream)
-    expect(unwrapped_positions_of(stream).coords).toBe(coords)
+    expect(unwrapped_positions_of({ ...stream }).coords).toBe(coords)
     expect(coords).not.toBe(stream.positions)
   })
 

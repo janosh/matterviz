@@ -146,10 +146,10 @@ const is_diagonal = ([[, ab, ac], [ba, , bc], [ca, cb]]: Matrix3x3): boolean =>
   ab === 0 && ac === 0 && ba === 0 && bc === 0 && ca === 0 && cb === 0
 
 // Unwrapping allocates a second copy of the whole trajectory, so it must not rerun every
-// time the playhead moves or a second analysis reads the same stream. Keyed on the stream
-// object: a new stream (new file, new stride) gets a fresh unwrap and the old buffer
-// becomes collectable with its stream.
-const unwrap_cache = new WeakMap<TrajectoryPositionStream, Float64Array>()
+// time the playhead moves or another reader (MSD, VACF, trails) gets the same sweep. Keyed on
+// the position buffer, which consumers share inside their own stream objects (each holds its
+// sweep's cells too): a new sweep gets a fresh unwrap, collectable with its buffer.
+const unwrap_cache = new WeakMap<Float64Array, Float64Array>()
 
 // Unwrapped coordinates of a stream, or the stream's own BY IDENTITY when nothing was ever
 // folded (no lattice) or the parser already unwrapped them (LAMMPS xu/yu/zu) - re-applying
@@ -162,7 +162,7 @@ export const unwrapped_positions_of = (
   const { positions, n_frames, n_atoms, lattice_matrices, coords_unwrapped, pbc } = stream
   const has_lattice = Boolean(lattice_matrices?.some((matrix) => matrix != null))
   if (coords_unwrapped || !has_lattice) return { coords: positions, unwrapped: false }
-  let coords = unwrap_cache.get(stream)
+  let coords = unwrap_cache.get(positions)
   if (!coords) {
     coords = unwrap_flat_positions(
       positions,
@@ -171,7 +171,7 @@ export const unwrapped_positions_of = (
       lattice_matrices,
       pbc ?? [true, true, true],
     )
-    unwrap_cache.set(stream, coords)
+    unwrap_cache.set(positions, coords)
   }
   return { coords, unwrapped: true }
 }
