@@ -151,7 +151,9 @@ const library_by_key = new Map(
 )
 
 // Lookups by formula string: routes look up the same few hundred formulas tens of thousands of
-// times, and each miss of this cache parses the formula
+// times, and each miss of this cache parses the formula. Bounded, since arbitrary formula
+// strings (user input, many targets over a session) would otherwise accumulate forever.
+const MAX_CACHED_LOOKUPS = 4096
 const lookup_cache = new Map<string, PrecursorInfo | null>()
 
 // Library entry for a formula in any element ordering, or null when it is not a common precursor
@@ -163,6 +165,7 @@ export const lookup_precursor_info = (formula: string): PrecursorInfo | null => 
   } catch {
     info = null
   }
+  if (lookup_cache.size >= MAX_CACHED_LOOKUPS) lookup_cache.clear()
   lookup_cache.set(formula, info)
   return info
 }

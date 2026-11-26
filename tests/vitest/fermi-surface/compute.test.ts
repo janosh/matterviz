@@ -1153,6 +1153,20 @@ describe(`lattice_point_group_matrices`, () => {
     expect(lattice_point_group_matrices(k_lattice)).toBe(ops)
   })
 
+  // The cache is bounded: 64 other lattices later, the first one is recomputed (equal values,
+  // a new array) instead of every lattice seen in a session staying cached
+  test(`point-group cache evicts after 64 distinct lattices`, () => {
+    const k_lattice = k_lattice_of(`cubic`)
+    const ops = lattice_point_group_matrices(k_lattice)
+    for (let idx = 1; idx <= 64; idx++)
+      lattice_point_group_matrices(
+        k_lattice.map((row) => math.scale(row, 1 + idx / 1000)) as Matrix3x3,
+      )
+    const recomputed = lattice_point_group_matrices(k_lattice)
+    expect(recomputed).not.toBe(ops)
+    expect(recomputed).toEqual(ops)
+  })
+
   // a hexagonal a = 3.21, c = 5.21 cell written to 4 decimals is off exact hexagonal by
   // 7.2e-6 on the worst Gram entry, which the old fixed 1e-6 rejected: 24 ops fell to 8 and
   // the wedge tiled a third of the zone with no visible symptom
