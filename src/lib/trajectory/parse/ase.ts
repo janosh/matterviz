@@ -331,10 +331,8 @@ function read_ase_frame_header(
   }
 }
 // Desktop hosts read one frame's byte span off disk and decode that slice alone: `buffer`
-// holds the container's bytes from absolute `base_offset` on (`view` is unused, kept for
-// their call signature)
+// holds the container's bytes from absolute `base_offset` on
 export const decode_ase_frame = (
-  _view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
   step: number,

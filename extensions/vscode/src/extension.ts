@@ -93,6 +93,10 @@ export const active_runs = new Map<string, Promise<TrajectoryRun>>()
 // Atomic numbers of each run's summary preview (frame 0): frames with the same ones omit them
 // (WireFrame sites 'preview'), as the webview holds that preview
 const run_preview_sites = new WeakMap<TrajectoryRun, Uint8Array>()
+// Request ids of the summaries each run answered. A request_frame names its webview's: a panel
+// still on the summary of a run since replaced (the file changed) would decode the new run's
+// frames with its old preview sites
+const run_summary_ids = new WeakMap<TrajectoryRun, Set<string>>()
 // Per webview, what stops forwarding its host-served run's rows and warnings (or cancels its
 // load in flight): replaced when the webview requests a run again, called on panel close
 export const webview_run_streams = new Map<WebviewLike, () => void>()
@@ -144,7 +148,7 @@ const count_posted_frame = (file_path: string, frame: WireFrame): void => {
 // it statically imports. Preloaded, those load together instead of each being requested once
 // its importer arrived, a round trip to the remote host per level in a Remote-SSH window.
 type ManifestChunk = { file: string; imports?: string[]; css?: string[]; assets?: string[] }
-let webview_files: { scripts: string[]; css?: string; wasm?: string } | undefined
+let webview_files: { scripts: string[]; css?: string; wasm: string } | undefined
 const get_webview_files = (ext_path: string): NonNullable<typeof webview_files> => {
   if (webview_files) return webview_files
   const manifest_path = path.join(ext_path, `dist`, `manifest.json`)
@@ -161,7 +165,11 @@ const get_webview_files = (ext_path: string): NonNullable<typeof webview_files> 
     for (const key of imports) add_script(manifest[key])
   }
   add_script(entry)
-  const wasm = entry.assets?.find((name) => /moyo_wasm_bg-.*\.wasm$/.test(name))
+  // on whichever chunk bundles the moyo glue, not necessarily the entry
+  const wasm = Object.values(manifest)
+    .flatMap((chunk) => chunk.assets ?? [])
+    .find((name) => /moyo_wasm_bg-.*\.wasm$/.test(name))
+  if (!wasm) throw new Error(`${manifest_path} lists no moyo_wasm_bg-*.wasm asset`)
   return (webview_files = { scripts: [...scripts], css: entry.css?.[0], wasm })
 }
 
@@ -372,9 +380,7 @@ export const create_html = (
     )
   const { scripts, css, wasm } = get_webview_files(ext_path)
   // The WASM URL rides in the bootstrap data (enables symmetry analysis)
-  const moyo_wasm_url = wasm && dist_uri(wasm)
-
-  const webview_data = { ...data, moyo_wasm_url }
+  const webview_data = { ...data, moyo_wasm_url: dist_uri(wasm) }
   // Escape every `<`, not just `</`: file content like `<!--<script>` would otherwise put the
   // HTML parser in double-escaped script state and swallow the rest of the page
   const bootstrap_json = JSON.stringify(webview_data).replaceAll(`<`, `\\u003c`)
@@ -446,6 +452,7 @@ export const handle_msg = async (
       const preview_frame = encode_frame(preview)
       if (preview_frame.sites instanceof Uint8Array)
         run_preview_sites.set(run, preview_frame.sites)
+      run_summary_ids.set(run, (run_summary_ids.get(run) ?? new Set()).add(request_id))
       webview.postMessage({
         command,
         request_id,
@@ -464,12 +471,14 @@ export const handle_msg = async (
     }
   } else if (msg.command === `request_frame` && msg.file_path) {
     try {
-      const { request_id, file_path, frame_index, channels } = msg
+      const { request_id, file_path, frame_index, channels, run_id } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
       assert_authorized(file_path, webview)
       const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
+      if (!run_summary_ids.get(run)?.has(run_id))
+        throw new Error(`${file_path} was indexed again since run summary ${run_id}`)
       const read_start = performance.now()
       const numeric = await run.read_frame(frame_index, undefined, channels)
       const encode_start = performance.now()
@@ -644,19 +653,20 @@ const dispose_run = (file_path: string): void => {
 
 // A run the host decodes straight off the open file, frame by frame, at any size: an
 // uncompressed ASE .traj (ULM magic) or an XYZ file index_xyz_file can walk, else null
-const open_file_run = (file_path: string): TrajectoryRun | null => {
+const open_file_run = async (file_path: string): Promise<TrajectoryRun | null> => {
   const filename = path.basename(file_path)
   if (!DISK_RUN_REGEX.test(filename)) return null
   const source = file_byte_source(file_path)
   const provenance = { filename, source_bytes: source.byte_length }
+  const collector = create_warning_collector()
   try {
     const is_xyz = !/traj$/i.test(filename)
-    const offsets = is_xyz && index_xyz_file(source)
+    const offsets = is_xyz && (await index_xyz_file(source, collector.warn))
     const magic =
       !is_xyz && source.byte_length >= 8 && new TextDecoder().decode(source.read(0, 8))
     const data = offsets ? { source, offsets } : magic === `- of Ulm` && source
     const format = is_xyz ? `xyz` : `ase`
-    if (data) return indexed_text_run(data, format, provenance, create_warning_collector())
+    if (data) return indexed_text_run(data, format, provenance, collector)
   } catch (error) {
     source.release?.()
     throw new HostFileError(to_error(error).message, `parse`)
@@ -675,10 +685,10 @@ const prewarm_run = (file_path: string, { content }: FileData): void => {
 
 const load_run = (file_path: string): Promise<TrajectoryRun> => {
   const open = async (): Promise<TrajectoryRun> => {
-    // A timer turn first: indexing blocks this thread, and what the host just posted (a
-    // prewarmed panel's HTML) should reach the webview before that, not after
+    // A timer turn first: indexing blocks this thread (an XYZ file's a window at a time), and
+    // what the host just posted (a prewarmed panel's HTML) should reach the webview before that
     await new Promise((resolve) => setTimeout(resolve))
-    const file_run = open_file_run(file_path)
+    const file_run = await open_file_run(file_path)
     if (file_run) return file_run
     // a read failure goes out without a stage, which the webview takes as `acquire`
     const indexed = await read_indexed_trajectory_file(file_path, path.basename(file_path))

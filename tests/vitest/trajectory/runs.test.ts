@@ -3,6 +3,7 @@ import { BondFrame, prepare_bond_placements } from '#lib/structure/bond-renderin
 import {
   create_numeric_md_frame,
   encode_frame,
+  frame_transfers,
   FrameView,
   materialize_frame,
   materialize_frame_result,
@@ -115,6 +116,12 @@ describe(`numeric frames`, () => {
     expect(new Set(transfer).size).toBe(transfer.length)
     expect(structuredClone(display, { transfer })).toEqual(expected)
     expect(transfer.every((buffer) => buffer.byteLength === 0)).toBe(true)
+  })
+  it(`transfers a frame's own buffers, not a shared one (which no transfer list takes)`, () => {
+    const frame = encode_frame(make_trajectory_frame(0, 2))
+    const shared = new Float64Array(new SharedArrayBuffer(frame.coordinates.byteLength))
+    expect(frame_transfers(frame)).toContain(frame.coordinates.buffer)
+    expect(frame_transfers({ ...frame, coordinates: shared })).not.toContain(shared.buffer)
   })
   it.each([0, 1, 2])(`aligns loaded atom channels at source step %i`, (frame_idx) => {
     const numeric = encode_frame(make_trajectory_frame(frame_idx * 10, 2))
@@ -496,9 +503,9 @@ const RUN_CASES: RunCase[] = [
   {
     // frames read off a file by byte offset; the small window makes the index span many
     name: `indexed xyz file`,
-    make: () => {
+    make: async () => {
       const source = buffer_source(new TextEncoder().encode(XYZ_TEXT).buffer)
-      const offsets = index_xyz_file(source, 4096)
+      const offsets = await index_xyz_file(source, () => {}, 4096)
       if (!offsets) throw new Error(`XYZ_TEXT indexes as a file`)
       return indexed_text_run({ source, offsets }, `xyz`, {}, create_warning_collector())
     },
@@ -625,59 +632,126 @@ describe(`index_xyz_file`, () => {
     )
   // 1-5 atoms per frame: the walk samples three atom lines, treating a text's last as unfinished
   const clean = [3, 1, 5, 2, 4, 1].map((n_atoms, idx) => frame(n_atoms, `Å step=${idx}`))
+  const long_lines = [`2${` `.repeat(99)}\n${frame(2).slice(2)}`, frame(2, `c`.repeat(150))]
   const byte_length = (text: string) => new TextEncoder().encode(text).length
-  // every window size from one line up: each frame boundary falls on a window's edge for some
-  const index_all_windows = (text: string) => {
-    const source = buffer_source(new TextEncoder().encode(text).buffer)
+  const source_of = (text: string) => buffer_source(new TextEncoder().encode(text).buffer)
+  // [offsets, warnings] at every window size from one line up: each frame boundary falls on a
+  // window's edge for some
+  const index_all_windows = async (text: string) => {
+    const source = source_of(text)
     const sizes = Array.from({ length: byte_length(text) + 1 }, (_, idx) => idx + 16)
-    return new Set(sizes.map((size) => JSON.stringify(index_xyz_file(source, size))))
+    const indexed = sizes.map(async (size) => {
+      const warnings: string[] = []
+      const offsets = await index_xyz_file(source, (message) => warnings.push(message), size)
+      return JSON.stringify([offsets, warnings])
+    })
+    return [...new Set(await Promise.all(indexed))]
   }
+  // byte offset of each of the first `count` parts joined by `eol`, then the next one's
+  const starts_of = (parts: string[], count: number, eol = `\n`) =>
+    Array.from({ length: count + 1 }, (_, idx) =>
+      byte_length(
+        parts
+          .slice(0, idx)
+          .map((part) => `${part}${eol}`)
+          .join(``),
+      ),
+    )
 
   it.each([
-    [`LF`, `\n`, `\n`],
-    [`CRLF`, `\r\n`, `\r\n`],
-    [`no final newline`, `\n`, ``],
-    [`trailing blank lines`, `\n`, `\n\n \n`],
-  ])(`locates every frame at any window size: %s`, (_label, eol, tail) => {
-    const frames = clean.map((text) => `${text.replaceAll(`\n`, eol)}${eol}`)
-    const text = `${frames.join(``).slice(0, -eol.length)}${tail}`
-    let offset = 0
-    const starts = frames.map((part) => (offset += byte_length(part)) - byte_length(part))
-    expect([...index_all_windows(text)]).toEqual([
-      JSON.stringify([...starts, byte_length(text)]),
-    ])
+    [`LF`, `\n`, `\n`, clean],
+    [`CRLF`, `\r\n`, `\r\n`, clean],
+    [`no final newline`, `\n`, ``, clean],
+    [`trailing blank lines`, `\n`, `\n\n \n`, clean],
+    [`lines longer than a window`, `\n`, `\n`, [...clean, ...long_lines, ...clean]],
+  ])(`locates every frame at any window size: %s`, async (_label, eol, tail, parts) => {
+    const frames = parts.map((text) => text.replaceAll(`\n`, eol))
+    const text = `${frames.join(eol)}${tail}`
+    const offsets = [...starts_of(frames, frames.length - 1, eol), byte_length(text)]
+    expect(await index_all_windows(text)).toEqual([JSON.stringify([offsets, []])])
     // the frames index_xyz_frames finds in the whole text, without a warning
     const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
-    expect([run.frame_count, run.warnings]).toEqual([clean.length, []])
+    expect([run.frame_count, run.warnings]).toEqual([parts.length, []])
     run.dispose()
   })
 
-  // each takes the whole text: index_xyz_frames warns about it or finds under two frames
+  // What a writer still appending or an MD blow-up leaves: the frames before it, up to where
+  // it starts, with the warnings index_xyz_frames gives for the whole text
+  it.each([
+    [`missing atom lines at the end`, 6, [`4\ncomment\nH 0 0 0`]],
+    [`a count line at the end`, 6, [`4`]],
+    [`a half-written last line`, 6, [frame(4, `c`, `H 0 0`)]],
+    [`a non-finite last frame`, 6, [frame(4, `c`, `H nan 0 0`)]],
+    [`non-finite last frames`, 4, [frame(4, `c`, `H 1 inf 0`), frame(5, `c`, `H nan 0 0`)]],
+    [`a torn frame after a non-finite one`, 5, [frame(4, `c`, `H 0 0 nan`), `2\ncomment`]],
+  ])(`leaves out %s at any window size`, async (_label, n_frames, tail) => {
+    const parts = [...clean.slice(0, n_frames), ...tail]
+    const text = parts.join(`\n`)
+    const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
+    expect(run.warnings.length).toBeGreaterThan(0)
+    expect(await index_all_windows(text)).toEqual([
+      JSON.stringify([starts_of(parts, run.frame_count), run.warnings]),
+    ])
+    run.dispose()
+  })
+
+  // each takes the whole text: index_xyz_frames finds under two frames or lines between them
   it.each([
     [`a single frame`, [clean[0]]],
+    [`a single frame before a torn one`, [clean[0], `4\ncomment\nH 0 0 0`]],
     [`no frame`, [`not xyz`]],
     [`an empty file`, []],
     [`a byte-order mark`, [`\uFEFF${clean[0]}`, ...clean]],
     [`lines before the first frame`, [`stray`, ...clean]],
+    [`a line longer than the window before the first frame`, [`x`.repeat(500), ...clean]],
     [`lines between frames`, [...clean.slice(0, 3), `stray`, ...clean.slice(3)]],
     [`a blank line between frames`, [...clean.slice(0, 3), ``, ...clean.slice(3)]],
     [`lines after the last frame`, [...clean, `stray`]],
+    [`a line longer than the window after the last frame`, [...clean, `x`.repeat(500)]],
     [`a short atom line mid-file`, [...clean.slice(0, 2), frame(2, `c`, `H 0 0`), ...clean]],
-    [`missing atom lines at the end`, [...clean, `4\ncomment\nH 0 0 0`]],
-    [`a half-written last line`, [...clean, frame(4, `c`, `H 0 0`)]],
-    [`a non-finite last frame`, [...clean, frame(4, `c`, `H nan 0 0`)]],
-  ])(`returns null at any window size for %s`, (_label, parts) => {
-    expect([...index_all_windows(parts.join(`\n`))]).toEqual([`null`])
+  ])(`returns null without a warning at any window size for %s`, async (_label, parts) => {
+    expect(await index_all_windows(parts.join(`\n`))).toEqual([`[null,[]]`])
   })
 
-  it(`fails a read once the file was rewritten since indexing`, () => {
+  it(`yields the thread between windows`, async () => {
+    const source = source_of(clean.join(`\n`))
+    const read = vi.spyOn(source, `read`)
+    const indexing = index_xyz_file(source, () => {}, 16)
+    for (let turn = 0; turn < 10; turn++) await Promise.resolve() // microtasks only
+    expect(read).toHaveBeenCalledOnce()
+    expect(await indexing).toHaveLength(clean.length + 1)
+    expect(read.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it(`fails a read once the file was rewritten since indexing`, async () => {
     const bytes = new TextEncoder().encode(clean.join(`\n`))
     const source = buffer_source(bytes.buffer)
-    const offsets = index_xyz_file(source) ?? []
+    const offsets = (await index_xyz_file(source, () => {})) ?? []
     bytes.fill(32, offsets[2], offsets[3] - 1) // frame 3 blanked out, at the same size
     expect(() =>
       indexed_text_run({ source, offsets }, `xyz`, {}, create_warning_collector()),
     ).toThrow(`XYZ file changed on disk since it was indexed (reading frame 1)`)
+  })
+
+  // Frames are read a 1 MiB block at a time, at boundaries fixed by their offsets, and the two
+  // blocks last used stay decoded: the last two after the property pass, then the first two
+  it(`reads each block of the file once, stepping backward or forward`, async () => {
+    const n_frames = 2000
+    const text = Array.from({ length: n_frames }, () => frame(200)).join(`\n`)
+    const source = source_of(text)
+    const offsets = await index_xyz_file(source, () => {})
+    if (!offsets) throw new Error(`the text indexes as a file`)
+    const read = vi.spyOn(source, `read`)
+    const run = indexed_text_run({ source, offsets }, `xyz`, {}, create_warning_collector())
+    await run.properties.done
+    const blocks = Math.ceil(byte_length(text) / 2 ** 20)
+    expect(blocks).toBeGreaterThan(2)
+    for (const first of [n_frames - 1, 0]) {
+      read.mockClear()
+      for (let idx = 0; idx < n_frames; idx++) void run.read_frame(Math.abs(first - idx))
+      expect(read).toHaveBeenCalledTimes(blocks - 2)
+    }
+    run.dispose()
   })
 })
 

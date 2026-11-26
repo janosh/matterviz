@@ -44,26 +44,35 @@ export interface XyzFile {
 const is_xyz_file = (data: object | string): data is XyzFile =>
   typeof data === `object` && `offsets` in data
 
-// Frames are read a block of ~1 MB at a time: a read, a decode and a line index per frame
-// cost a file of small frames more than decoding them
+// Frames are read a block at a time, a block being the frames starting in one 1 MiB stretch of
+// the file: a read, a decode and a line index per frame cost a file of small frames more than
+// decoding them. The two blocks last used stay decoded (playback and the property pass each
+// walk their own), and their fixed boundaries make stepping backward read each block once.
 const XYZ_BLOCK_BYTES = 2 ** 20
 const xyz_file_frames = ({ source, offsets }: XyzFile) => {
   const decoder = new TextDecoder()
-  let [first, lines] = [0, new TextLines(``)]
-  let frames: XyzFrameSpec[] = []
+  const block_of = (frame_idx: number) => Math.floor(offsets[frame_idx] / XYZ_BLOCK_BYTES)
+  let blocks: { first: number; lines: TextLines; frames: XyzFrameSpec[] }[] = []
   return (frame_idx: number): [TextLines, XyzFrameSpec] => {
-    if (frame_idx < first || frame_idx >= first + frames.length) {
-      const start = offsets[frame_idx]
-      let end = frame_idx + 1
-      while (end < offsets.length - 1 && offsets[end] - start < XYZ_BLOCK_BYTES) end++
-      const block = new TextLines(decoder.decode(source.read(start, offsets[end] - start)))
-      const found = [...iter_xyz_frames(block)]
-      if (found.length !== end - frame_idx)
+    const cached = blocks.findIndex(
+      ({ first, frames }) => frame_idx >= first && frame_idx < first + frames.length,
+    )
+    if (cached === 1) blocks.reverse()
+    else if (cached === -1) {
+      const block = block_of(frame_idx)
+      let [first, end] = [frame_idx, frame_idx + 1]
+      while (first > 0 && block_of(first - 1) === block) first--
+      while (end < offsets.length - 1 && block_of(end) === block) end++
+      const bytes = source.read(offsets[first], offsets[end] - offsets[first])
+      const lines = new TextLines(decoder.decode(bytes))
+      const frames = [...iter_xyz_frames(lines)]
+      if (frames.length !== end - first)
         throw new Error(
           `XYZ file changed on disk since it was indexed (reading frame ${display_idx(frame_idx)})`,
         )
-      ;[first, lines, frames] = [frame_idx, block, found]
+      blocks = [{ first, lines, frames }, ...blocks.slice(0, 1)]
     }
+    const { first, lines, frames } = blocks[0]
     return [lines, frames[frame_idx - first]]
   }
 }

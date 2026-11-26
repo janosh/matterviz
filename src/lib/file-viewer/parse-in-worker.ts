@@ -365,7 +365,7 @@ const parse_with_worker = async (
   const size = prepare_worker_count((navigator.hardwareConcurrency || 2) + 1)
   const prepare = (pool = create_prepare_pool({
     create_worker,
-    transfers: ({ frame }) => frame_transfers(frame) as ArrayBuffer[],
+    transfers: ({ frame }) => frame_transfers(frame),
     size,
   })).prepare
   Object.assign(run, {

@@ -58,7 +58,7 @@ describe(`ASE frame slicing`, () => {
     options: AseFrameOptions & { base_offset?: number },
   ) => {
     const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
-    return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, {
+    return decode_ase_frame(slice, span.header_offset, frame_idx, {
       ...options,
       warn: no_warnings,
     })

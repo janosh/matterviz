@@ -53,6 +53,9 @@ export type HostRequest =
   // channels: the vectors to read and send (all when absent), as for TrajectoryRun.read_frame
   | ({
       command: `request_frame`
+      // request_id of the large_file_response whose summary the webview holds. Its preview
+      // decodes `sites: 'preview'` frames, so the host refuses a request naming another run's
+      run_id: string
       frame_index: number
       channels?: FrameChannels
     } & HostFileRequest)
@@ -134,12 +137,21 @@ export type WireFrame = Omit<NumericFrame, `coordinates` | `sites` | `scalar_col
   scalar_columns?: Record<string, ArrayBuffer>
 }
 
-// Binary payload of a posted frame (what telemetry counts as wire bytes)
-export const wire_frame_bytes = ({ coordinates, vectors, sites, scalar_columns }: WireFrame) =>
-  coordinates.byteLength +
-  (vectors?.byteLength ?? 0) +
-  (sites instanceof ArrayBuffer ? sites.byteLength : 0) +
-  Object.values(scalar_columns ?? {}).reduce((sum, column) => sum + column.byteLength, 0)
+// A posted frame's binary payload: what telemetry counts as wire bytes, and what moves on to a
+// preparation worker
+export const wire_frame_buffers = ({
+  coordinates,
+  vectors,
+  sites,
+  scalar_columns,
+}: WireFrame): ArrayBuffer[] => [
+  coordinates,
+  ...(vectors ? [vectors] : []),
+  ...(sites instanceof ArrayBuffer ? [sites] : []),
+  ...Object.values(scalar_columns ?? {}),
+]
+export const wire_frame_bytes = (wire: WireFrame): number =>
+  wire_frame_buffers(wire).reduce((sum, buffer) => sum + buffer.byteLength, 0)
 
 // A view's own bytes: a view into a larger (or shared) buffer would post all of it
 const own_buffer = (view: Float64Array | Uint8Array): ArrayBuffer =>
@@ -188,20 +200,24 @@ const without_derived_fractional = (
 // A display frame (FrameChannels.precision 'display') for playback. xyz: 16-bit steps across
 // each axis's range in the frame (value = origin + q * step), at most step / 2 = range / 131070
 // off (0.8 mÅ across a 100 Å box). Vectors (forces, velocities): 3 bytes each, the direction
-// as an octahedral 8+8-bit code and the length on a 254-step log scale between the frame's
-// smallest nonzero and largest length of that vector (code 0: a zero vector). On MD forces and
-// velocities that stays within 0.8° (p99) and 0.8% of the largest length, where 8 bits per
-// component would turn small vectors by tens of degrees (wrong arrows when normalized).
-// Fractional coordinates derive from the rounded xyz. Undefined for a non-finite value.
+// as an octahedral 8+8-bit code and the length on a 254-step log scale from the frame's
+// largest length of that vector down to its smallest nonzero one, or to 1e-4 of the largest
+// if that is longer (code 0: a zero vector). A length is at most half a log step off, under
+// 1.9% of itself over the full 1e4 range, and one below the scale reads as its low end (at
+// most 0.01% of the largest length off); on MD forces and velocities directions stay within
+// 0.8° (p99), where 8 bits per component would turn small vectors by tens of degrees (wrong
+// arrows when normalized). Fractional coordinates derive from the rounded xyz. Undefined for
+// a non-finite value or coordinate range.
 export type WireQuantization = {
   origin: number[]
   step: number[]
-  // natural log of each vector's smallest nonzero and largest length
+  // natural log of the shortest and longest length each vector's scale spans
   vector_log_range: [number, number][]
 }
 const QUANT_LEVELS = 65_535
 const OCT_LEVELS = 255
 const LOG_LEVELS = 254
+const MAX_LOG_SPAN = Math.log(1e4)
 const sign_of = (value: number): number => (value < 0 ? -1 : 1)
 
 const quantize = (
@@ -246,9 +262,14 @@ const quantize = (
       }
     }
   }
-  // all-zero vector columns: any range decodes their code 0 to zero
-  for (const range of vector_log_range) if (range[0] > range[1]) range.fill(0)
+  for (const range of vector_log_range) {
+    // all-zero vector columns: any range decodes their code 0 to zero
+    if (range[0] > range[1]) range.fill(0)
+    // one tiny vector must not stretch the steps of every other
+    range[0] = Math.max(range[0], range[1] - MAX_LOG_SPAN)
+  }
   const step = origin.map((low, axis) => (top[axis] - low) / QUANT_LEVELS || 1)
+  if (!step.every(Number.isFinite)) return undefined // the range overflows
   const values = new Uint16Array(n_sites * 3)
   const vectors = new Uint8Array(n_sites * vector_keys.length * 3)
   for (let idx = 0; idx < n_sites; idx++) {
@@ -279,8 +300,9 @@ const quantize = (
       vectors[target + 1] = Math.round(((oct_v + 1) / 2) * OCT_LEVELS)
       const [log_low, log_high] = vector_log_range[vec]
       const span = log_high - log_low
+      const log_length = Math.max(Math.log(length), log_low)
       vectors[target + 2] =
-        1 + (span > 0 ? Math.round(((Math.log(length) - log_low) / span) * LOG_LEVELS) : 0)
+        1 + (span > 0 ? Math.round(((log_length - log_low) / span) * LOG_LEVELS) : 0)
     }
   }
   return { values, vectors, quantized: { origin, step, vector_log_range } }

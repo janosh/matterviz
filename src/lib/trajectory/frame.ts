@@ -312,13 +312,15 @@ export function materialize_frame_result(
   return result instanceof Promise ? result.then(materialize_frame) : materialize_frame(result)
 }
 
-export const frame_transfers = (frame: NumericFrame): ArrayBufferLike[] => [
-  ...new Set([
-    frame.coordinates.buffer,
-    ...(frame.sites instanceof Uint8Array ? [frame.sites.buffer] : []),
-    ...Object.values(frame.scalar_columns ?? {}).map((column) => column.buffer),
-  ]),
-]
+// A frame's buffers to move with it (a shared one is not transferable: it is shared as is)
+export const frame_transfers = (frame: NumericFrame): ArrayBuffer[] =>
+  [
+    ...new Set([
+      frame.coordinates.buffer,
+      ...(frame.sites instanceof Uint8Array ? [frame.sites.buffer] : []),
+      ...Object.values(frame.scalar_columns ?? {}).map((column) => column.buffer),
+    ]),
+  ].filter((buffer) => buffer instanceof ArrayBuffer)
 
 // Direct MD decoder output: no Site, species record, label or per-atom vector allocations.
 // By default the source guarantees fixed row identity and supplies topology revision changes;

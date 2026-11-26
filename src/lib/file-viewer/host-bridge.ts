@@ -17,7 +17,12 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host.js'
 import type { PreparePool } from '#lib/trajectory/prepare-pool.js'
 import { to_error } from 'svelte-widgets/utils'
-import { frame_from_wire, HostFileError, wire_frame_bytes } from './host-protocol'
+import {
+  frame_from_wire,
+  HostFileError,
+  wire_frame_buffers,
+  wire_frame_bytes,
+} from './host-protocol'
 import type {
   HostRequest,
   HostToWebviewMessage,
@@ -40,16 +45,8 @@ type HostReply = Extract<HostToWebviewMessage, { request_id: string }>
 export type HostPrepareInput = HostFrameInput<WireFrame> & { preview_sites?: Uint8Array }
 // A host reply's buffers are the message's own (VS Code recreates them per message), and frame
 // 0 is encoded per request, so both move to the worker rather than being copied
-export const host_prepare_transfers = (input: HostPrepareInput): Transferable[] => {
-  if (`frame` in input) return frame_transfers(input.frame) as ArrayBuffer[]
-  const { coordinates, vectors, sites, scalar_columns } = input.reply
-  return [
-    coordinates,
-    ...(vectors ? [vectors] : []),
-    ...(sites instanceof ArrayBuffer ? [sites] : []),
-    ...Object.values(scalar_columns ?? {}),
-  ]
-}
+export const host_prepare_transfers = (input: HostPrepareInput): Transferable[] =>
+  `frame` in input ? frame_transfers(input.frame) : wire_frame_buffers(input.reply)
 type HostPreparePool = PreparePool<HostPrepareInput>
 let open_prepare_pool: (() => HostPreparePool | undefined) | undefined
 export const use_host_preparation = (open: () => HostPreparePool | undefined): void => {
@@ -76,8 +73,6 @@ export const telemetry = create_playback_telemetry(
     ? (record) => host_api?.postMessage({ command: `telemetry`, record })
     : null,
 )
-
-// Bytes a frame carries across the host boundary: its binary columns (JSON fields aside)
 
 // Shared postMessage request/response plumbing for talking to the extension
 // host: tags the request with a UUID, forwards replies carrying that id to
@@ -171,7 +166,7 @@ export async function request_large_file_content(
         const preview = materialize_frame(preview_frame)
         const pool = open_prepare_pool?.()
         const request = (frame_idx: number, signal?: AbortSignal, channels?: FrameChannels) =>
-          request_host_frame(file_path, filename, frame_idx, signal, channels)
+          request_host_frame(file_path, filename, data.request_id, frame_idx, signal, channels)
         const run = host_run(
           { ...data.run_summary, preview },
           // reads outside prepared playback (exports, small systems) decode here
@@ -211,6 +206,7 @@ export async function request_large_file_content(
 const request_host_frame = (
   file_path: string,
   filename: string,
+  run_id: string,
   frame_idx: number,
   signal?: AbortSignal,
   channels?: FrameChannels,
@@ -221,7 +217,14 @@ const request_host_frame = (
   const sent_at = performance.now()
   const request = post_request<WireFrame>(
     host_api,
-    { command: `request_frame`, file_path, filename, frame_index: frame_idx, channels },
+    {
+      command: `request_frame`,
+      file_path,
+      filename,
+      run_id,
+      frame_index: frame_idx,
+      channels,
+    },
     10_000,
     `Frame ${display_idx(frame_idx)} timeout after 10s`,
     (data, resolve, reject) => {

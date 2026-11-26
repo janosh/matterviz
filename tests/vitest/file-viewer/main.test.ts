@@ -784,6 +784,8 @@ describe(`LARGE_FILE markers`, () => {
       request_id: expect.any(String),
       file_path: `/data/movie.extxyz`,
       filename: `movie.extxyz`,
+      // the summary request's id: the host refuses frames of any other run
+      run_id: post_message.mock.calls[0][0].request_id,
       frame_index: 2,
       channels: { vectors: [] },
     })

@@ -15,7 +15,7 @@ import {
   type Matrix3x3,
   transpose_3x3,
 } from '#lib/math.js'
-import { parse_leading_num } from '#lib/utils.js'
+import { parse_leading_num, yield_turn } from '#lib/utils.js'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers.js'
@@ -720,49 +720,77 @@ const walk_xyz_frames = (lines: TextLines): [XyzFrameSpec[], XyzFrameSpec | null
 // frame is read in full and skipped while it holds any (eager parsing also skips one mid-run).
 export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[] {
   const [specs, torn] = walk_xyz_frames(lines)
-  let end = torn?.start ?? lines.count // past the last line a dropped tail does not hold
-  const drop = (spec: XyzFrameSpec, reason: string) =>
-    `Dropping truncated final XYZ frame ${display_idx(specs.length)} (line ${spec.start + 1}): ${reason}`
   const scanner = new LineScanner()
-  let truncated: string | null = null
   const last = specs.at(-1)
-  if (torn) {
-    const atom_lines = Math.max(torn.end - torn.start - 2, 0)
-    truncated = drop(torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
-  } else if (last && last.end === lines.count && ends_in_partial_line(lines, last, scanner)) {
-    specs.pop()
-    end = last.start
-    truncated = drop(last, `partial atom line ${last.end} "${lines.line(last.end - 1)}"`)
-  }
-  let [blowup_start, first_non_finite] = [end, -1]
+  const partial = last?.end === lines.count && ends_in_partial_line(lines, last, scanner)
+  const unfinished = partial ? specs.pop() : torn
+  const end = unfinished?.start ?? lines.count // past the last line a dropped tail does not hold
+  const truncated = unfinished && unfinished_frame_warning(lines, unfinished, specs.length)
+  let blowup_start = end
+  let non_finite: [number, string?] | undefined // the first such line's index and text
   while (specs.length > 1) {
     const frame = specs[specs.length - 1]
     const line_idx = find_non_finite_line(lines, frame, scanner)
     if (line_idx < 0) break
     specs.pop()
-    ;[blowup_start, first_non_finite] = [frame.start, line_idx]
+    blowup_start = frame.start
+    non_finite = [line_idx, lines.line(line_idx)]
   }
   if (specs.length > 0) warn_skipped_xyz_lines(lines, specs, blowup_start, warn)
-  if (first_non_finite >= 0)
-    warn(
-      `Skipping XYZ lines ${blowup_start + 1}-${end} after frame ${specs.length}: non-finite coordinates from line ${first_non_finite + 1} "${lines.line(first_non_finite)}" on, as after an MD blow-up`,
-    )
+  if (non_finite) warn(blowup_warning(blowup_start, end, specs.length, ...non_finite))
   if (truncated) warn(truncated)
   return specs
 }
 
-// Byte offset of every frame of the XYZ file behind `source`, then its size: what reads its
-// frames one at a time off disk (indexed_text_run) instead of holding the text in memory. The
-// file is walked in line-aligned windows decoded as latin1, whose one char per byte makes a
-// line's offset a byte offset (the walk reads only counts and numbers). null for a file that
-// takes its whole text to index: a single frame, a frame past the JS string limit, or anything
-// index_xyz_frames warns about (lines between frames, a torn, half-written or non-finite tail).
-export function index_xyz_file(source: ByteSource, window_bytes = 2 ** 24): number[] | null {
+// Reports the frame a writer still appending left unfinished: cut short by the end of the
+// text, or ending it in a half-written atom line. `frame_idx` counts the frames before it,
+// `line_base` the lines before `lines` (a window of a file).
+const unfinished_frame_warning = (
+  lines: TextLines,
+  { start, end, num_atoms }: XyzFrameSpec,
+  frame_idx: number,
+  line_base = 0,
+): string => {
+  const atom_lines = Math.max(end - start - 2, 0)
+  const reason =
+    atom_lines < num_atoms
+      ? `${atom_lines} of ${num_atoms} atom lines`
+      : `partial atom line ${line_base + end} "${lines.line(end - 1)}"`
+  return `Dropping truncated final XYZ frame ${display_idx(frame_idx)} (line ${line_base + start + 1}): ${reason}`
+}
+
+// Reports the frames dropped after the first `n_frames` for their non-finite coordinates: lines
+// `start` to `end` (indices, end exclusive), the first non-finite one being `line_idx`
+const blowup_warning = (
+  start: number,
+  end: number,
+  n_frames: number,
+  line_idx: number,
+  text?: string,
+): string =>
+  `Skipping XYZ lines ${start + 1}-${end} after frame ${n_frames}: non-finite coordinates from line ${line_idx + 1} "${text}" on, as after an MD blow-up`
+
+// Byte offset of every frame of the XYZ file behind `source`, then the offset its last frame
+// ends at: what reads its frames one at a time off disk (indexed_text_run) instead of holding
+// the text in memory. The file is walked in line-aligned windows decoded as latin1, whose one
+// char per byte makes a line's offset a byte offset (the walk reads only counts and numbers),
+// yielding the thread between windows. A torn, half-written or non-finite tail (a writer still
+// appending, an MD blow-up) is left out with the warnings index_xyz_frames gives. null for a
+// file that takes its whole text to index: under two frames, a frame past the JS string limit,
+// or lines between frames.
+export async function index_xyz_file(
+  source: ByteSource,
+  warn: WarnFn,
+  window_bytes = 2 ** 24,
+): Promise<number[] | null> {
   const { byte_length } = source
   const decoder = new TextDecoder(`latin1`)
   const scanner = new LineScanner()
   const offsets: number[] = []
-  for (let pos = 0, span = window_bytes; pos < byte_length;) {
+  // where the complete frames end, and what reports the unfinished one after them
+  let [end_offset, end_line, truncated] = [byte_length, 0, ``]
+  let [pos, span, line_base] = [0, window_bytes, 0]
+  for (; pos < byte_length; await yield_turn()) {
     const size = Math.min(span, byte_length - pos)
     if (size > MAX_STRING_CHARS) return null
     const view = source.read(pos, size)
@@ -771,26 +799,54 @@ export function index_xyz_file(source: ByteSource, window_bytes = 2 ** 24): numb
     const text = decoder.decode(final ? bytes : bytes.subarray(0, bytes.lastIndexOf(10) + 1))
     const lines = new TextLines(text)
     const [frames, torn] = walk_xyz_frames(lines)
+    const last = frames.at(-1)
     // What a window leaves to the next: the frame its end cuts, or one ending on its last
-    // line, which the walk sampled as if a writer could have left that line half-written
-    const rest = final ? null : frames.at(-1)?.end === lines.count ? frames.pop() : torn
+    // line, which the walk sampled as if a writer could have left that line half-written.
+    // The final window leaves the frame a writer did leave unfinished.
+    const cut =
+      last?.end === lines.count && (!final || ends_in_partial_line(lines, last, scanner))
+    const rest = cut ? frames.pop() : torn
     const end = frames.at(-1)?.end ?? 0
     const contiguous = frames.every(
       (frame, idx) => frame.start === (frames[idx - 1]?.end ?? 0),
     )
-    if (!contiguous || end !== (rest ? rest.start : lines.count)) return null
-    const last = final && frames.at(-1)
-    const dropped_tail =
-      last &&
-      (ends_in_partial_line(lines, last, scanner) ||
-        find_non_finite_line(lines, last, scanner) >= 0)
-    if (dropped_tail) return null
+    if (!contiguous || end !== (rest?.start ?? lines.count)) return null
     for (const frame of frames) offsets.push(pos + lines.offset(frame.start))
-    if (!rest) break
+    if (final) {
+      end_line = line_base + end
+      if (rest) {
+        end_offset = pos + lines.offset(rest.start)
+        truncated = unfinished_frame_warning(lines, rest, offsets.length, line_base)
+      }
+      break
+    }
+    if (!rest) return null
     if (rest.start === 0) span *= 2 // its frame outgrows the window
-    else pos += lines.offset(rest.start)
+    else {
+      pos += lines.offset(rest.start)
+      line_base += rest.start
+    }
   }
-  return offsets.length > 1 ? [...offsets, byte_length] : null
+  // An MD blow-up's frames, read back from the last one as index_xyz_frames does
+  let blowup_start = end_line
+  let non_finite: [number, string?] | undefined
+  for (; offsets.length > 1; await yield_turn()) {
+    const start = offsets[offsets.length - 1]
+    const lines = new TextLines(decoder.decode(source.read(start, end_offset - start)))
+    const [comment, end] = [lines.line(1) ?? ``, lines.count]
+    const frame = { start: 0, num_atoms: end - 2, comment, end }
+    const line_idx = find_non_finite_line(lines, frame, scanner)
+    if (line_idx < 0) break
+    offsets.pop()
+    end_offset = start
+    blowup_start -= end
+    non_finite = [blowup_start + line_idx, lines.line(line_idx)]
+  }
+  if (offsets.length < 2) return null
+  if (non_finite) warn(blowup_warning(blowup_start, end_line, offsets.length, ...non_finite))
+  if (truncated) warn(truncated)
+  offsets.push(end_offset)
+  return offsets
 }
 
 // Why the frame walk refused the first frame's `token x y z` atom lines: a species token that

@@ -23,7 +23,7 @@ const PREPARATION: FramePreparation = {
   bonding_strategy: `electroneg_ratio`,
   bonding_options: {},
 }
-const transfers = (frame: NumericFrame) => frame_transfers(frame) as ArrayBuffer[]
+const transfers = frame_transfers
 const fresh_frame = async (idx: number): Promise<NumericFrame> =>
   structuredClone(await backing.read_frame(idx))
 

@@ -52,10 +52,11 @@ const mock_fs = vi.hoisted(() => ({
         isEntry: true,
         imports: [`_three.js`, `_math.js`],
         css: [`assets/main-1.css`],
-        assets: [`assets/draco-2.wasm`, `assets/moyo_wasm_bg-3.wasm`],
+        assets: [`assets/draco-2.wasm`],
       },
       '_three.js': { file: `assets/three.js`, imports: [`_math.js`] },
-      '_math.js': { file: `assets/math.js` },
+      // the chunk bundling the moyo glue lists its WASM, which need not be the entry
+      '_math.js': { file: `assets/math.js`, assets: [`assets/moyo_wasm_bg-3.wasm`] },
       'lazy.ts': { file: `assets/lazy.js`, isDynamicEntry: true },
     }),
   ),
@@ -82,15 +83,18 @@ const large_file_msg = (file_path: string, request_id: string): WebviewToHostMes
   file_path,
   filename: basename_of(file_path),
 })
+// run_id: the request_id of the summary the requesting webview holds
 const frame_msg = (
   file_path: string,
   frame_index: number,
+  run_id: string,
   channels?: FrameChannels,
 ): WebviewToHostMessage => ({
   command: `request_frame`,
   request_id: `frame-request`,
   file_path,
   filename: basename_of(file_path),
+  run_id,
   frame_index,
   channels,
 })
@@ -514,7 +518,7 @@ describe(`MatterViz Extension`, () => {
       [undefined, [`force`]],
       [{ vectors: [] }, []],
     ] as const) {
-      await handle_msg(frame_msg(file_path, 1, channels), mock_webview)
+      await handle_msg(frame_msg(file_path, 1, `large-request`, channels), mock_webview)
       expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
         command: `frame_response`,
         request_id: `frame-request`,
@@ -528,7 +532,7 @@ describe(`MatterViz Extension`, () => {
         timing: { read_ms: expect.any(Number), encode_ms: expect.any(Number) },
       })
     }
-    await handle_msg(frame_msg(file_path, n_frames), mock_webview)
+    await handle_msg(frame_msg(file_path, n_frames, `large-request`), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
         command: `frame_response`,
@@ -633,9 +637,18 @@ describe(`MatterViz Extension`, () => {
     expect(replies_of(panels[2])).toEqual([[`old`, superseded]])
     expect(webview_run_streams.has(panels[2].webview)).toBe(false)
     expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(2)
-    await handle_msg(frame_msg(file_path, 3), panels[1].webview)
-    expect(panels[1].webview.postMessage).toHaveBeenLastCalledWith(
+    await handle_msg(frame_msg(file_path, 3, `new`), panels[0].webview)
+    expect(panels[0].webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ frame: expect.any(Object), frame_index: 3 }),
+    )
+    // a panel still on the evicted run's summary would decode with that run's preview sites
+    vi.spyOn(console, `error`).mockImplementation(() => {})
+    await handle_msg(frame_msg(file_path, 1, `old`), panels[1].webview)
+    expect(panels[1].webview.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        error: `${file_path} was indexed again since run summary old`,
+        frame_index: 1,
+      }),
     )
   })
 
@@ -664,17 +677,20 @@ describe(`MatterViz Extension`, () => {
   })
 
   // An uncompressed .traj or XYZ file is decoded off disk through a file descriptor: the whole
-  // file never enters the host's memory (workspace.fs.readFile is never called), at any size.
-  // An XYZ file whose index takes the whole text (here a torn tail) is read whole instead.
+  // file never enters the host's memory (workspace.fs.readFile is never called), at any size,
+  // a file still being written included (its torn tail is dropped with a warning). An XYZ file
+  // whose index takes the whole text (here a stray line) is read whole instead.
   // Either load starts as the panel opens, so the webview's request finds the run under way
   const xyz_frames = [0, 1, 2]
     .map((idx) => `2\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\nH ${idx} 1 1\n`)
     .join(``)
+  const torn = `Dropping truncated final XYZ frame 4 (line 13): 1 of 2 atom lines`
   test.each([
-    [`relax.traj`, null, 0],
-    [`md.extxyz`, xyz_frames, 0],
-    [`torn.xyz`, `${xyz_frames}2\ncomment\nH 0 0 0`, 1],
-  ])(`%s on disk opens with %s whole-file reads`, async (filename, text, whole_reads) => {
+    [`relax.traj`, null, 0, []],
+    [`md.extxyz`, xyz_frames, 0, []],
+    [`torn.xyz`, `${xyz_frames}2\ncomment\nH 0 0 0`, 0, [torn]],
+    [`stray.xyz`, `${xyz_frames}stray`, 1, [expect.stringContaining(`lines 13-13`)]],
+  ])(`%s on disk opens with %s whole-file reads`, async (filename, text, reads, warned) => {
     const real_fs = await vi.importActual<typeof node_fs>(`node:fs`)
     const dir = real_fs.mkdtempSync(`${tmpdir()}/matterviz-disk-run-`)
     const file_path = `${dir}/${filename}`
@@ -694,13 +710,14 @@ describe(`MatterViz Extension`, () => {
     await render(mock_context, { fsPath: file_path } as Uri)
     const prewarmed = active_runs.get(file_path)
     expect((await prewarmed)?.frame_count).toBeGreaterThan(1)
+    expect((await prewarmed)?.warnings).toEqual(warned)
     await handle_msg(large_file_msg(file_path, `disk`), panel.webview)
     expect(active_runs.get(file_path)).toBe(prewarmed)
     expect(panel.webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ request_id: `disk`, run_summary: expect.any(Object) }),
     )
     const { preview } = panel.webview.postMessage.mock.lastCall?.[0] as { preview: WireFrame }
-    await handle_msg(frame_msg(file_path, 1), panel.webview)
+    await handle_msg(frame_msg(file_path, 1, `disk`), panel.webview)
     const { frame } = panel.webview.postMessage.mock.lastCall?.[0] as { frame: WireFrame }
     expect(frame.fractional).toBe(`derived`)
     // a fixed-species run sends atomic numbers once, with the preview
@@ -708,7 +725,7 @@ describe(`MatterViz Extension`, () => {
     const { sites } = frame_from_wire(preview)
     if (!(sites instanceof Uint8Array)) throw new TypeError(`Expected numeric preview sites`)
     expect(frame_from_wire(frame, sites).header.step).toBe(1)
-    expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(whole_reads)
+    expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(reads)
     real_fs.rmSync(dir, { recursive: true })
   })
 
@@ -747,7 +764,7 @@ describe(`MatterViz Extension`, () => {
   ])(`request_frame reports %s`, async (label, file_path, frame_index, error) => {
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     if (label !== `unsubscribed path`) subscribe(file_path, mock_webview)
-    await handle_msg(frame_msg(file_path, frame_index), mock_webview)
+    await handle_msg(frame_msg(file_path, frame_index, `none`), mock_webview)
     // the log numbers frames from 1 like the step input
     expect(console_error).toHaveBeenCalledWith(
       `Failed to load frame ${frame_index + 1}:`,
@@ -856,6 +873,21 @@ describe(`MatterViz Extension`, () => {
     // no raw `<` inside the JSON data can end or re-enter the script tag
     expect(/window\.matterviz_data=(?<json>.*);\n/.exec(html)?.[1]).not.toContain(`<`)
     expect(bootstrap_data_of(html)).toEqual(webview_data)
+  })
+
+  // symmetry analysis needs it: a miss would show only once a panel analyzes a structure
+  test(`a webview build without the moyo WASM is refused`, async () => {
+    mock_fs.readFileSync.mockReturnValueOnce(
+      JSON.stringify({ 'main.ts': { file: `webview.js`, isEntry: true } }),
+    )
+    vi.resetModules()
+    const fresh = await import('../src/extension')
+    expect(() =>
+      fresh.create_html(mock_webview, mock_context, {
+        data: { filename: `test.cif`, content: ``, is_base64: false },
+        theme: `light`,
+      }),
+    ).toThrow(`/dist/manifest.json lists no moyo_wasm_bg-*.wasm asset`)
   })
 
   // white-flash regression: color-scheme goes in a style attribute before the CSS link

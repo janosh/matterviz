@@ -147,6 +147,26 @@ describe(`host frame wire encoding`, () => {
     run.dispose()
   })
 
+  // The log scale spans at most 1e4 below the largest length, so one tiny vector can't
+  // stretch every other's steps: any length stays within half a step of that span
+  test(`display vector lengths stay within 1.9% of the largest beside a tiny one`, async () => {
+    const run = await open_fixture(`mp-1184225.extxyz`)
+    const frame = await run.read_frame(0)
+    const coordinates = frame.coordinates.slice()
+    // lengths 1e-14, 1 and the one furthest from a step of the scale between those two
+    const lengths = [1e-14, 1, Math.exp(-Math.log(1e14) / 254 / 2), 0]
+    lengths.forEach((length, idx) => coordinates.set([0, length, 0], idx * 9 + 6))
+    const decoded = frame_from_wire(frame_to_wire({ ...frame, coordinates }, `display`))
+    const received = lengths.map((_, idx) =>
+      Math.hypot(...decoded.coordinates.subarray(idx * 9 + 6, idx * 9 + 9)),
+    )
+    const errors = received.map((length, idx) => Math.abs(length - lengths[idx]))
+    expect(Math.max(...errors)).toBeLessThan(Math.expm1(Math.log(1e4) / 254 / 2))
+    // the tiny one reads as the low end of the scale (f64 round-off of exp(log(1e-4)))
+    expect(Math.abs(received[0] / 1e-4 - 1)).toBeLessThan(1e-12)
+    run.dispose()
+  })
+
   // Fixed-species runs send atomic numbers once, with the summary preview
   test.each([undefined, `display`] as const)(
     `frames with the preview's atomic numbers omit them (precision %s)`,
@@ -172,14 +192,19 @@ describe(`host frame wire encoding`, () => {
     },
   )
 
-  test(`a display frame with a non-finite value travels exact`, async () => {
+  test.each([
+    [`a non-finite value`, { 0: Number.NaN }],
+    [`a coordinate range past the largest float`, { 0: 1.7e308, 9: -1.7e308 }],
+  ])(`a display frame with %s travels exact`, async (_label, values) => {
     const run = await open_fixture(`mp-1184225.extxyz`)
     const frame = await run.read_frame(0)
     const coordinates = frame.coordinates.slice()
-    coordinates[0] = Number.NaN
+    for (const [idx, value] of Object.entries(values)) coordinates[Number(idx)] = value
     const wire = frame_to_wire({ ...frame, coordinates }, `display`)
     expect(wire.quantized).toBeUndefined()
-    expect(frame_from_wire(wire).approximate).toBeUndefined()
+    const decoded = frame_from_wire(wire)
+    expect(decoded.approximate).toBeUndefined()
+    expect(bytes_of(decoded)).toEqual(new Uint8Array(coordinates.buffer))
   })
 
   test(`a quantization that doesn't match the frame's axes and vectors is rejected`, async () => {
