@@ -593,8 +593,10 @@ describe(`MatterViz Extension`, () => {
   )
 
   // Simultaneous opens share one read. A file change while it loads evicts the load, so the
-  // re-request after fileUpdated indexes the new bytes instead of receiving the stale run. A
-  // stale load landing after the re-request's, or after its panel closed, installs no forwarder
+  // re-request after fileUpdated indexes the new bytes instead of receiving the stale run. The
+  // next load waits for the running one (one pass per file at a time), and a change while it
+  // waits supersedes it unread: a panel awaiting the evicted load gets the newest run, no
+  // error. A stale load landing after its panel re-requested or closed installs no forwarder
   test(`concurrent large-file requests share one load that a file change evicts`, async () => {
     const file_path = `/test/live.extxyz.gz` // compressed, so read whole through the mock
     const frames = (count: number) =>
@@ -611,14 +613,21 @@ describe(`MatterViz Extension`, () => {
       handle_msg(large_file_msg(file_path, `old`), webview),
     )
     await vi.waitFor(() => expect(loads).toHaveLength(1))
-    // evicts the load, and the fileUpdated marker starts the next before any panel asks for it
-    fire_event(mock_file_system_watcher.onDidChange)
-    await vi.waitFor(() => expect(loads).toHaveLength(2))
+    // each change evicts the load, and its fileUpdated marker queues the next behind the pass
+    for (let change = 0; change < 2; change++) {
+      const evicted = active_runs.get(file_path)
+      fire_event(mock_file_system_watcher.onDidChange)
+      await vi.waitFor(() => expect(active_runs.get(file_path)).not.toBe(evicted))
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(loads).toHaveLength(1) // no pass beside the running one
     const new_request = handle_msg(large_file_msg(file_path, `new`), panels[0].webview)
     fire_event(panels[2].onDidDispose)
+    loads[0](frames(1))
+    // the first change's load gave way to the second's: one more pass, not two
+    await vi.waitFor(() => expect(loads).toHaveLength(2))
     loads[1](frames(2))
     await new_request
-    loads[0](frames(1))
     await Promise.all(old_requests)
     const replies_of = ({ webview }: (typeof panels)[number]) =>
       webview.postMessage.mock.calls
@@ -630,10 +639,10 @@ describe(`MatterViz Extension`, () => {
         ])
     const superseded = `Large-file request old was superseded or its panel closed`
     expect(replies_of(panels[0])).toEqual([
-      [`new`, 4],
       [`old`, superseded],
+      [`new`, 4],
     ])
-    expect(replies_of(panels[1])).toEqual([[`old`, 2]])
+    expect(replies_of(panels[1])).toEqual([[`old`, 4]])
     expect(replies_of(panels[2])).toEqual([[`old`, superseded]])
     expect(webview_run_streams.has(panels[2].webview)).toBe(false)
     expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(2)
@@ -641,12 +650,12 @@ describe(`MatterViz Extension`, () => {
     expect(panels[0].webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ frame: expect.any(Object), frame_index: 3 }),
     )
-    // a panel still on the evicted run's summary would decode with that run's preview sites
+    // a panel still on an evicted run's summary would decode with that run's preview sites
     vi.spyOn(console, `error`).mockImplementation(() => {})
-    await handle_msg(frame_msg(file_path, 1, `old`), panels[1].webview)
+    await handle_msg(frame_msg(file_path, 1, `evicted`), panels[1].webview)
     expect(panels[1].webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        error: `${file_path} was indexed again since run summary old`,
+        error: `${file_path} was indexed again since run summary evicted`,
         frame_index: 1,
       }),
     )

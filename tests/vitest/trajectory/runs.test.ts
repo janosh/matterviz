@@ -721,13 +721,6 @@ describe(`index_xyz_file`, () => {
     expect(read).toHaveBeenCalledOnce()
     expect(await indexing).toHaveLength(clean.length + 1)
     expect(read.mock.calls.length).toBeGreaterThan(1)
-    // a pass a file change superseded stops at its next yield, reading nothing more
-    read.mockClear()
-    const controller = new AbortController()
-    const superseded = index_xyz_file(source, () => {}, 16, controller.signal)
-    controller.abort(new Error(`changed while indexed`))
-    await expect(superseded).rejects.toThrow(`changed while indexed`)
-    expect(read).toHaveBeenCalledOnce()
   })
 
   it(`fails a read once the file was rewritten since indexing`, async () => {

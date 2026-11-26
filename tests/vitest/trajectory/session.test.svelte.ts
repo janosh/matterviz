@@ -1181,7 +1181,8 @@ describe(`resolve_frame`, () => {
   )
   it(`shows a cached rounded frame at once on a paused seek, then reads it and its neighbor exactly`, async () => {
     stub_raf()
-    const { run, resolve_next, unanswered } = make_async_run(frames(6))
+    // a pipelining source, whose superseded reads trail rather than abort
+    const { run, reads, pending, resolve_next, unanswered } = make_async_run(frames(8), 4)
     const { host, session } = make_session({ run }, { cache_max_frames: 8 })
     await resolve_next()
     session.player.play()
@@ -1192,13 +1193,34 @@ describe(`resolve_frame`, () => {
     }
     session.player.pause()
     await flush_microtasks()
-    await resolve_next() // frame 3, exact
+    while (pending.length) await resolve_next() // frame 3 exact, rounded 1 and 2 cached
+    const n_reads = reads.length
     const shown = () => [session.current_frame?.step, session.numeric_frame?.approximate]
-    host.index = 1
-    flushSync()
-    expect([shown(), unanswered()]).toEqual([[10, true], [[1, false]]])
+    // seeking back over 1 adopts its exact read still under way instead of re-reading it
+    for (const idx of [1, 5, 1]) {
+      host.index = idx
+      flushSync()
+    }
+    expect([shown(), unanswered(), reads.slice(n_reads)]).toEqual([
+      [10, true],
+      [[1, false]],
+      [1, 5],
+    ])
+    // an export waits for the exact frame, not the rounded stand-in rendered meanwhile,
+    // whether it asked before or after that render
+    const exported = vi.fn()
+    const capture = () =>
+      session.wait_for_frame(1, new AbortController().signal).then(exported)
+    const captures = [capture()]
+    expect(session.mark_rendered(session.scene_frame)).toBe(true)
+    captures.push(capture())
+    await flush_microtasks()
+    expect(exported).not.toHaveBeenCalled()
     await resolve_next()
     expect(shown()).toEqual([10, undefined])
+    session.mark_rendered(session.scene_frame)
+    await Promise.all(captures)
+    expect(exported).toHaveBeenCalledTimes(2)
     // paused read-ahead upgrades the rounded frame 2 instead of counting it as present
     await vi.advanceTimersByTimeAsync(10)
     expect(unanswered()).toEqual([[2, false]])

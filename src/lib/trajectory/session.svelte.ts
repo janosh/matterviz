@@ -106,7 +106,7 @@ export function create_trajectory_session(
   const request_key = $derived(value_key(preparation ?? { channels }))
   const matches_request = (frame: SessionFrame): boolean => frame.request_key === request_key
   // a rounded playback frame stands in for the exact one during playback only
-  const precise_enough = ({ frame }: SessionFrame): boolean =>
+  const precise_enough = ({ frame }: DisplayFrame): boolean =>
     player.is_playing || !frame.approximate
   // whether a read issued now comes back rounded (see read_display)
   const reads_rounded = (run: TrajectoryRun): boolean =>
@@ -381,8 +381,14 @@ export function create_trajectory_session(
       return
     }
     claim_cache(run)
+    // A retained read of this frame (a drag back over it) is the target again, not a re-read
+    const retained =
+      next || cache_hit
+        ? -1
+        : trailing.findIndex((read) => read.idx === frame_idx && (rounded || !read.rounded))
+    const read = retained === -1 ? undefined : trailing.splice(retained, 1)[0]
     if (usable) {
-      // paused, a rounded frame shows at once and stays until the exact read below lands
+      // paused, a rounded frame shows at once and stays until its exact read lands
       drop_trailing()
       if (cache_hit || loaded?.frame !== usable.frame) show(run, frame_idx, usable)
     }
@@ -390,12 +396,7 @@ export function create_trajectory_session(
       schedule_prefetch(run, frame_idx)
       return
     }
-    // A retained read of this frame (a drag back over it) is the target again, not a re-read
-    const retained = next
-      ? -1
-      : trailing.findIndex((read) => read.idx === frame_idx && (rounded || !read.rounded))
-    if (retained !== -1) {
-      const read = trailing.splice(retained, 1)[0]
+    if (read) {
       in_flight = read.controller
       in_flight_rounded = read.rounded
       in_flight_idx = frame_idx
@@ -611,8 +612,10 @@ export function create_trajectory_session(
     if (!snapshot || snapshot !== scene_frame || snapshot === rendered || !current_frame)
       return false
     rendered = snapshot
+    // paused, a rounded stand-in doesn't settle an export's wait: its exact read will
+    if (!precise_enough(scene_frame)) return true
     for (const waiter of render_waiters) {
-      if (waiter.run === scene_frame?.run && waiter.idx === scene_frame.idx) waiter.settle()
+      if (waiter.run === scene_frame.run && waiter.idx === scene_frame.idx) waiter.settle()
     }
     return true
   }
@@ -630,7 +633,8 @@ export function create_trajectory_session(
       current_frame &&
       scene_frame?.run === run &&
       scene_frame.idx === idx &&
-      rendered === scene_frame
+      rendered === scene_frame &&
+      precise_enough(scene_frame)
     )
       return Promise.resolve()
     return new Promise((resolve, reject) => {
