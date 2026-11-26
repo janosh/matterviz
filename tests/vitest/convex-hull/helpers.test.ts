@@ -259,6 +259,54 @@ describe(`canvas-draw: markers and hit testing`, () => {
     expect(hit(110, 1, [behind, point])).toBe(entry)
   })
 
+  // A 2D context recording every call and property write as [name, ...args]
+  const recording_ctx = () => {
+    const calls: unknown[][] = []
+    const ctx = new Proxy({} as CanvasRenderingContext2D, {
+      get: (_target, key) =>
+        key === `canvas`
+          ? { width: 1, height: 1 }
+          : (...args: unknown[]) => calls.push([key, ...args]),
+      set: (_target, key, value) => calls.push([key, value]) > 0,
+    })
+    return { ctx, calls }
+  }
+
+  // A circle is an arc at the point itself, with no save/translate/restore per marker (60% of
+  // a 50k-point frame); any other shape still moves the origin to its outline
+  test.each([
+    [`circle`, `beginPath arc fill beginPath arc fill stroke`],
+    [`diamond`, `save translate fill restore save translate fill stroke restore`],
+  ] as const)(`draw_hull_points paints a %s marker`, (marker, ops) => {
+    const { ctx, calls } = recording_ctx()
+    const entry = { x: 0, y: 0, z: 2, is_stable: true, marker } as ConvexHullEntry
+    const point = { entry, projected: { x: 30, y: 40, depth: 0 } }
+    draw.draw_hull_points(ctx, [point], {
+      scale: 2,
+      shadow_factor: 0.5,
+      selected_entry: null,
+      highlight_style: helpers.merge_highlight_style({}),
+      is_highlighted: () => false,
+      get_point_color: () => `#123456`,
+    })
+    const drawn = calls.filter(([key]) => !/Style$|^lineWidth$/.test(String(key)))
+    expect(drawn.map(([key]) => key)).toEqual(ops.split(` `))
+    // the shadow sits |z| * shadow_factor * scale = 2 px off, at 0.8x the marker radius
+    const radius = draw.point_radius(entry) * 2
+    const placed = drawn.filter(([key]) => key === `arc` || key === `translate`)
+    expect(placed.map((call) => call.slice(1, marker === `circle` ? 4 : 3))).toEqual(
+      marker === `circle`
+        ? [
+            [32, 42, 0.8 * radius],
+            [30, 40, radius],
+          ]
+        : [
+            [32, 42],
+            [30, 40],
+          ],
+    )
+  })
+
   // `both` is size + colour, as in the 2D ScatterPlot path. ring_growth: how far past
   // size * size_multiplier the ring reaches, in marker radii (null = no ring); at time 0 the
   // pulse sits mid-cycle (pulse_val = 0.5), so its ring grows by 0.5 * pulse_val. raw_stroke:
@@ -271,14 +319,7 @@ describe(`canvas-draw: markers and hit testing`, () => {
   ] as const)(
     `pulse overlay draws highlight effect %s`,
     (effect, recolored, ring_growth, raw_stroke) => {
-      const calls: unknown[][] = [] // [method or property, ...args]
-      const ctx = new Proxy({} as CanvasRenderingContext2D, {
-        get: (_target, key) =>
-          key === `canvas`
-            ? { width: 1, height: 1 }
-            : (...args: unknown[]) => calls.push([key, ...args]),
-        set: (_target, key, value) => calls.push([key, value]) > 0,
-      })
+      const { ctx, calls } = recording_ctx()
       const entry = { x: 0, y: 0, z: 0, is_stable: false } as ConvexHullEntry
       const color = `rgba(18, 52, 86, 0.5)`
       const highlight_style = { ...helpers.merge_highlight_style({ effect }), color }
