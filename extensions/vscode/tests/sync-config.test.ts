@@ -9,7 +9,7 @@ import {
 describe(`sync-config`, () => {
   const generated = build_vscode_settings()
 
-  test(`package.json carries exactly the generated settings plus the three host settings`, () => {
+  test(`package.json carries exactly the generated settings plus the four host settings`, () => {
     // A removed schema setting must disappear from the manifest when it is regenerated.
     const props: Record<string, Record<string, unknown>> = pkg_json.contributes.configuration
       .properties
@@ -18,7 +18,12 @@ describe(`sync-config`, () => {
       Object.keys(props)
         .filter((key) => !(key in generated))
         .toSorted(),
-    ).toEqual([`matterviz.auto_render`, `matterviz.open_beside`, `matterviz.theme`])
+    ).toEqual([
+      `matterviz.auto_render`,
+      `matterviz.open_beside`,
+      `matterviz.telemetry`,
+      `matterviz.theme`,
+    ])
     for (const [key, config] of Object.entries(generated)) {
       expect(props[key], key).toEqual(config)
       expect(config).not.toHaveProperty(`deprecationMessage`)

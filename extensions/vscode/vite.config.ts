@@ -71,6 +71,8 @@ export default defineConfig(({ mode }) => ({
       output: { entryFileNames: `webview.js`, format: `es` },
     },
     emptyOutDir: false,
+    // The entry's stylesheet, WASM and static imports, for the extension's create_html
+    manifest: `manifest.json`,
     chunkSizeWarningLimit: 6000,
     // Taken from the shared config rather than repeated: vite's default target lacks
     // light-dark(), so LightningCSS downlevels app.css's tokens into an OS-prefers-color-scheme

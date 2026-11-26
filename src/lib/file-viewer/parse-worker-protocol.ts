@@ -2,7 +2,6 @@
 // main-thread client (parse-in-worker.ts). Kept in its own module so the worker never pulls
 // in the client (which constructs the worker) and vice versa.
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
-import type { TrajectoryRunSummary } from '#lib/trajectory/run.js'
 import type { TrajectoryLoadOptions, WireParseResult } from './parse'
 
 export interface ParseWorkerRequest {
@@ -11,8 +10,6 @@ export interface ParseWorkerRequest {
   filename: string
   is_base64: boolean
   load_options?: TrajectoryLoadOptions
-  // Internal MD playback replica of the same immutable File, validated by the primary.
-  replica?: TrajectoryRunSummary
 }
 
 export interface ParseWorkerResponse {

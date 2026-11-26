@@ -3,9 +3,10 @@
 // tests pin the two things that makes possible — that a frame's byte span is
 // self-contained, and that decoding the span yields exactly the frame the
 // whole-file parser produces.
-import type { AseFrameOptions } from '#lib/trajectory/parse/ase.js'
+import type { AseFrameOptions, ByteSource } from '#lib/trajectory/parse/ase.js'
 import {
   decode_ase_frame,
+  open_ase_frames,
   parse_ase_trajectory,
   read_ase_header,
 } from '#lib/trajectory/parse/ase.js'
@@ -51,7 +52,11 @@ describe(`ASE frame slicing`, () => {
   // Decode one span the way a streaming host does: cut the frame's bytes out and hand
   // the decoder nothing but that slice. `options` passes through verbatim so tests can
   // withhold `base_offset` to check the bounds guard.
-  const decode_span = (span: FrameSpan, frame_idx: number, options: AseFrameOptions) => {
+  const decode_span = (
+    span: FrameSpan,
+    frame_idx: number,
+    options: AseFrameOptions & { base_offset?: number },
+  ) => {
     const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
     return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, {
       ...options,
@@ -114,5 +119,31 @@ describe(`ASE frame slicing`, () => {
     [1, /outside the \d+ byte slice/],
   ])(`frame %i cannot be decoded from its slice without the origin`, (frame_idx, message) => {
     expect(() => decode_span(spans[frame_idx], frame_idx, {})).toThrow(message)
+  })
+
+  // The VS Code host reads a .traj through a file descriptor (ase_file_source) instead of
+  // holding the file: every read is a fresh copy of just the requested range, as pread gives
+  test(`frames read through a ByteSource of ranged copies equal the in-memory reads`, () => {
+    const reads: number[] = []
+    let released = false
+    const ranged: ByteSource = {
+      byte_length: buffer.byteLength,
+      read: (offset, length) => {
+        reads.push(length)
+        return new DataView(buffer.slice(offset, offset + length))
+      },
+      release: () => (released = true),
+    }
+    const from_file = open_ase_frames(ranged, no_warnings)
+    const in_memory = open_ase_frames(buffer, no_warnings)
+    for (let frame_idx = 0; frame_idx < in_memory.frame_count; frame_idx++) {
+      expect(from_file.read(frame_idx)).toEqual(in_memory.read(frame_idx))
+      expect(from_file.decode(frame_idx)).toEqual(in_memory.decode(frame_idx))
+    }
+    // ranged reads only: no single read spans a whole frame span, let alone the file
+    expect(Math.max(...reads)).toBeLessThan(Math.min(...spans.map((span) => span.size)))
+    from_file.release?.()
+    expect(released).toBe(true)
+    expect(() => from_file.read(0)).toThrow(`ASE trajectory buffer was released`)
   })
 })

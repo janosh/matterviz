@@ -2,10 +2,10 @@
 // loading, scrub (rAF-coalesced) vs commit (settled) stepping, prefetch, playback (through
 // the shared sequence player) and the imperative controller hosts use. No DOM, so it is
 // unit-testable on its own; Trajectory.svelte only renders what it exposes.
-import { value_key } from '#lib/utils.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
 import { BondFrame } from '#lib/structure/bond-rendering.js'
+import { value_key } from '#lib/utils.js'
 import { numeric_sites } from '#lib/structure/site.js'
 import type { DisplayFrame, FramePreparation } from './prepare'
 import { display_cache_budget, display_frame_bytes } from './prepare'
@@ -106,13 +106,21 @@ export function create_trajectory_session(
     signal: AbortSignal,
   ): SessionFrame | Promise<SessionFrame> => {
     const key = request_key
+    // Frames read during playback from a source that rounds them (a remote host, see
+    // TrajectoryRun.rounds_display_frames) arrive approximate; pausing re-reads exactly.
+    // Outside request_key, so a rounded frame and its exact re-read share one cache slot.
+    const requested = preparation ? preparation.channels : channels
+    const read_channels: FrameChannels | undefined =
+      player.is_playing && run.rounds_display_frames
+        ? { ...requested, precision: `display` }
+        : requested
     if (preparation) {
       if (!run.prepare_frame) throw new Error(`Trajectory source cannot prepare frames`)
       return run
-        .prepare_frame(idx, preparation, signal)
+        .prepare_frame(idx, { ...preparation, channels: read_channels }, signal)
         .then((frame) => ({ ...frame, request_key: key }))
     }
-    const frame = run.read_frame(idx, signal, channels)
+    const frame = run.read_frame(idx, signal, read_channels)
     return is_promise(frame)
       ? frame.then((received) => ({ frame: received, request_key: key }))
       : { frame, request_key: key }
@@ -329,7 +337,9 @@ export function create_trajectory_session(
     const next =
       candidate?.run === run && candidate?.key === request_key ? candidate : undefined
     const cached = frame_idx !== null && cache_owner === run ? cache_get(frame_idx) : undefined
-    const cache_hit = cached && matches_request(cached)
+    // a rounded playback frame serves playback only: paused, the exact frame is read
+    const cache_hit =
+      cached && matches_request(cached) && (player.is_playing || !cached.frame.approximate)
     if (next && frame_idx !== null) prefetched.delete(frame_idx)
     // Sequential playback retains the remainder of its pipeline. Seeks and settings/run
     // changes cancel it immediately, including work still opening a preparation worker.
@@ -420,13 +430,15 @@ export function create_trajectory_session(
     const records = current ? site_record_count(current) : run.atom_count
     // Read a second ahead to absorb variable decoding and neighbor-list rebuild costs.
     // Keep at least two waves busy; reservations bound both pending and completed frames.
-    const concurrency = preparation ? run.preparation_concurrency : run.read_concurrency
+    // (a host run's worker preparation has no pool size of its own: its reads bound it)
+    const concurrency =
+      (preparation ? run.preparation_concurrency : undefined) ?? run.read_concurrency
     const playback_window = concurrency ? Math.max(2 * concurrency, Math.ceil(player.fps)) : 1
     // A pipelining source holds at most read_concurrency unanswered reads (the displayed
     // target's and trailing ones included), which a seek then waits behind (the host can't
     // drop a request); answered ones fill the rest of the window
-    const max_unanswered =
-      preparation || !run.read_concurrency ? Infinity : run.read_concurrency
+    const { read_concurrency = 0 } = run
+    const max_unanswered = read_concurrency > 0 ? read_concurrency : Infinity
     const prefetch_limit = Math.min(
       player.is_playing ? playback_window : 2,
       cache_max_frames - 1,
@@ -687,6 +699,8 @@ export function create_trajectory_session(
     },
     on_pause: () => {
       cancel_prefetch()
+      // the rounded frame stays on screen until its exact copy replaces it
+      if (loaded?.frame.approximate) request_frame(loaded.run, loaded.idx)
       inputs.on_pause?.()
     },
     on_end: inputs.on_end,
@@ -707,7 +721,7 @@ export function create_trajectory_session(
     pause: player.pause,
   }
 
-  // Export complete source frames: reuse only unwrapped cache entries, otherwise read
+  // Export complete source frames: reuse only exact unwrapped cache entries, otherwise read
   // without changing the display cache. Run changes and disposal invalidate pending exports.
   async function resolve_frame(
     frame_idx: number,
@@ -721,6 +735,7 @@ export function create_trajectory_session(
     if (
       cached &&
       !cached.frame.wrapped &&
+      !cached.frame.approximate &&
       !cached.frame.available_vector_keys?.some(
         (key) => !cached.frame.vector_keys.includes(key),
       )

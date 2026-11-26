@@ -13,8 +13,13 @@ import type {
   HostToWebviewMessage,
   WebviewBootstrapData,
   WebviewToHostMessage,
+  WireFrame,
 } from '#lib/file-viewer/host-protocol.js'
-import { frame_to_wire, HostFileError } from '#lib/file-viewer/host-protocol.js'
+import {
+  frame_to_wire,
+  HostFileError,
+  wire_frame_bytes,
+} from '#lib/file-viewer/host-protocol.js'
 import { format_bytes } from 'svelte-widgets/format'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import type { DefaultSettings, SettingType } from '#lib/settings.js'
@@ -24,8 +29,11 @@ import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, THEME_TYPE } from '#lib/
 // Deep imports: the #lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle
 import { open_trajectory } from '#lib/trajectory/open.js'
-import { post_new_warnings } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, post_new_warnings } from '#lib/trajectory/parse/shared.js'
+import { index_xyz_file } from '#lib/trajectory/parse/xyz.js'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { summarize_run, type TrajectoryRun } from '#lib/trajectory/run.js'
+import { encode_frame } from '#lib/trajectory/frame.js'
 import { Buffer } from 'node:buffer'
 import { randomBytes } from 'node:crypto'
 import * as file_system from 'node:fs'
@@ -33,11 +41,21 @@ import * as operating_system from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
 import * as vscode from 'vscode'
-import { MAX_STREAMING_FILE_SIZE, read_indexed_trajectory_file } from './node-io'
+import {
+  file_byte_source,
+  MAX_STREAMING_FILE_SIZE,
+  read_indexed_trajectory_file,
+} from './node-io'
 
 // Files above this many bytes are not copied into the webview; the host indexes them and
 // serves frames over postMessage (see request_large_file below)
 export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024
+// In a remote window (Remote-SSH, WSL, containers) the extension host sits with the file and
+// every inline byte crosses the network before anything renders, so indexable trajectories
+// past this size stream frame by frame instead (see plan_host_file_transfer's stream_above)
+export const REMOTE_STREAM_ABOVE_BYTES = 8 * 1024 * 1024
+// Uncompressed files whose frames the host reads straight off disk (see open_file_run)
+const DISK_RUN_REGEX = /\.(traj|xyz|extxyz)$/i
 // Plot rows per plot_metadata_stream message
 const PLOT_ROWS_PER_MESSAGE = 5000
 
@@ -72,6 +90,9 @@ export const webview_file_paths = new Map<WebviewLike, string>()
 // Stored as the loading promise, so concurrent requests share one read of the file and a file
 // change (dispose_run) evicts a load still in flight instead of letting its stale run land.
 export const active_runs = new Map<string, Promise<TrajectoryRun>>()
+// Atomic numbers of each run's summary preview (frame 0): frames with the same ones omit them
+// (WireFrame sites 'preview'), as the webview holds that preview
+const run_preview_sites = new WeakMap<TrajectoryRun, Uint8Array>()
 // Per webview, what stops forwarding its host-served run's rows and warnings (or cancels its
 // load in flight): replaced when the webview requests a run again, called on panel close
 export const webview_run_streams = new Map<WebviewLike, () => void>()
@@ -89,24 +110,59 @@ const log_info = (message: string): void => {
   output_channel ??= vscode.window.createOutputChannel(`MatterViz`, { log: true })
   output_channel.info(message)
 }
-
-// The hashed `<prefix>*<suffix>` file in dist/assets, if the build output is there (it is
-// not in tests)
-const find_asset = (ext_path: string, prefix: string, suffix: string): string | undefined => {
-  const assets_dir = path.join(ext_path, `dist`, `assets`)
-  if (!file_system.existsSync(assets_dir)) return undefined
-  return file_system
-    .readdirSync(assets_dir)
-    .find((name: string) => name.startsWith(prefix) && name.endsWith(suffix))
+// matterviz.telemetry: one `telemetry {json}` line per measurement in the MatterViz output
+// channel (VS Code also writes it to the extension host's log folder, on the remote machine
+// for Remote-SSH). Webview summaries carry their own kind; host-side records are added here.
+const telemetry_enabled = (): boolean =>
+  vscode.workspace.getConfiguration(`matterviz`).get(`telemetry`, false)
+const log_telemetry = (record: Record<string, unknown> & { kind: string }): void =>
+  log_info(`telemetry ${JSON.stringify({ ...record, side: record.side ?? `host` })}`)
+// Frames and bytes this host posted per file in the current window, including frames the
+// webview superseded before they arrived (which its own summaries never see)
+const posted_frames = new Map<string, { frames: number; bytes: number; since: number }>()
+const TELEMETRY_WINDOW_MS = 2000
+const count_posted_frame = (file_path: string, frame: WireFrame): void => {
+  const now = performance.now()
+  const window = posted_frames.get(file_path) ?? { frames: 0, bytes: 0, since: now }
+  window.frames++
+  window.bytes += wire_frame_bytes(frame)
+  posted_frames.set(file_path, window)
+  if (now - window.since < TELEMETRY_WINDOW_MS) return
+  const window_s = (now - window.since) / 1000
+  log_telemetry({
+    kind: `host_frames`,
+    file: path.basename(file_path),
+    window_s: Number(window_s.toFixed(2)),
+    frames_posted: window.frames,
+    posted_mbit_s: Number(((window.bytes * 8) / 1e6 / window_s).toFixed(2)),
+  })
+  posted_frames.delete(file_path)
 }
 
-let wasm_filename_cache: string | undefined
-
-// Symmetry analysis needs the WASM; its absence is worth a warning, a missing stylesheet is not
-const get_wasm_filename = (ext_path: string): string | undefined => {
-  wasm_filename_cache ??= find_asset(ext_path, `moyo_wasm_bg-`, `.wasm`)
-  if (!wasm_filename_cache) console.warn(`moyo-wasm not found in ${ext_path}/dist/assets`)
-  return wasm_filename_cache
+// What the webview build's manifest lists for its entry, read once: the stylesheet, the
+// symmetry WASM and the scripts the page needs before it runs, i.e. the entry and every chunk
+// it statically imports. Preloaded, those load together instead of each being requested once
+// its importer arrived, a round trip to the remote host per level in a Remote-SSH window.
+type ManifestChunk = { file: string; imports?: string[]; css?: string[]; assets?: string[] }
+let webview_files: { scripts: string[]; css?: string; wasm?: string } | undefined
+const get_webview_files = (ext_path: string): NonNullable<typeof webview_files> => {
+  if (webview_files) return webview_files
+  const manifest_path = path.join(ext_path, `dist`, `manifest.json`)
+  const manifest = JSON.parse(file_system.readFileSync(manifest_path, `utf8`)) as Record<
+    string,
+    ManifestChunk & { isEntry?: boolean }
+  >
+  const entry = Object.values(manifest).find((chunk) => chunk.isEntry)
+  if (!entry) throw new Error(`${manifest_path} lists no entry`)
+  const scripts = new Set<string>()
+  const add_script = ({ file, imports = [] }: ManifestChunk): void => {
+    if (scripts.has(file)) return
+    scripts.add(file)
+    for (const key of imports) add_script(manifest[key])
+  }
+  add_script(entry)
+  const wasm = entry.assets?.find((name) => /moyo_wasm_bg-.*\.wasm$/.test(name))
+  return (webview_files = { scripts: [...scripts], css: entry.css?.[0], wasm })
 }
 
 // Gate the open keybinding on the active editor only: background opens (git diffs, other
@@ -159,7 +215,10 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     file_path,
     file_size,
     large_file_threshold: LARGE_FILE_THRESHOLD,
-    max_file_size: MAX_STREAMING_FILE_SIZE,
+    // An uncompressed ASE .traj or XYZ file is read frame by frame off disk (open_file_run),
+    // so its size is unbounded; anything else the host indexes is read into memory whole
+    max_file_size: DISK_RUN_REGEX.test(filename) ? Infinity : MAX_STREAMING_FILE_SIZE,
+    stream_above: vscode.env.remoteName ? REMOTE_STREAM_ABOVE_BYTES : undefined,
   })
   if (transfer.kind === `reject`)
     throw host_transfer_error(transfer.reason, filename, file_size, transfer.max_file_size)
@@ -168,12 +227,22 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   }
 
   try {
+    const read_start = performance.now()
     const bytes = await vscode.workspace.fs.readFile(uri)
     // Text by its byte-order mark: a UTF-16 file (Windows PowerShell redirection) read as
     // UTF-8 reached the parsers as NUL-interleaved garbage
     const content = transfer.is_base64
       ? Buffer.from(bytes).toString(`base64`)
       : new TextDecoder(text_encoding_of(bytes)).decode(bytes)
+    // The whole content then rides in the webview's bootstrap HTML
+    if (telemetry_enabled())
+      log_telemetry({
+        kind: `host_file_inline`,
+        file: filename,
+        file_bytes: file_size,
+        payload_chars: content.length,
+        read_ms: Math.round(performance.now() - read_start),
+      })
     return { filename, content, is_base64: transfer.is_base64 }
   } catch (error) {
     throw new Error(`Failed to read file ${filename}: ${to_error(error).message}`, {
@@ -295,18 +364,15 @@ export const create_html = (
   const nonce = randomBytes(16).toString(`hex`)
   const ext_path = context.extensionUri.fsPath
   // Webview-loadable URL for a file under dist/
-  const dist_uri = (...segments: string[]): string =>
+  const dist_uri = (file: string): string =>
     String(
       webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, ...segments),
+        vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, file),
       ),
     )
-  const js_uri = dist_uri(`webview.js`)
-  const css_file = find_asset(ext_path, `main-`, `.css`)
-  const css_href = css_file && dist_uri(`assets`, css_file)
+  const { scripts, css, wasm } = get_webview_files(ext_path)
   // The WASM URL rides in the bootstrap data (enables symmetry analysis)
-  const wasm_filename = get_wasm_filename(ext_path)
-  const moyo_wasm_url = wasm_filename && dist_uri(`assets`, wasm_filename)
+  const moyo_wasm_url = wasm && dist_uri(wasm)
 
   const webview_data = { ...data, moyo_wasm_url }
   // Escape every `<`, not just `</`: file content like `<!--<script>` would otherwise put the
@@ -323,7 +389,8 @@ export const create_html = (
   <head>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    ${css_href ? `<link rel="stylesheet" href="${css_href}">` : ``}
+    ${scripts.map((file) => `<link rel="modulepreload" href="${dist_uri(file)}">`).join(``)}
+    ${css ? `<link rel="stylesheet" href="${dist_uri(css)}">` : ``}
     <script nonce="${nonce}">
       window.matterviz_data=${bootstrap_json};
     </script>
@@ -331,7 +398,7 @@ export const create_html = (
   <body>
     <div id="matterviz-app"></div>
     <script nonce="${nonce}" type="module">
-      await import(${JSON.stringify(js_uri)});
+      await import(${JSON.stringify(dist_uri(scripts[0]))});
       window.initializeMatterViz?.();
     </script>
   </body>
@@ -351,6 +418,8 @@ export const handle_msg = async (
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     log_info(msg.text)
+  } else if (msg.command === `telemetry`) {
+    if (telemetry_enabled()) log_telemetry({ ...msg.record, side: `webview` })
   } else if (msg.command === `error` && msg.text) {
     vscode.window.showErrorMessage(msg.text)
   } else if (msg.command === `request_large_file` && msg.file_path) {
@@ -365,7 +434,7 @@ export const handle_msg = async (
       webview_run_streams.get(webview)?.()
       let cancelled = false
       webview_run_streams.set(webview, () => (cancelled = true))
-      // Panels on one file share its load (see active_runs)
+      // Panels on one file share its load (see active_runs), begun when the first one opened
       const run = await (active_runs.get(file_path) ?? load_run(file_path))
       if (cancelled) {
         const error = `Large-file request ${request_id} was superseded or its panel closed`
@@ -373,7 +442,16 @@ export const handle_msg = async (
         return
       }
       webview_run_streams.set(webview, stream_run_updates(run, request_id, webview))
-      webview.postMessage({ command, request_id, run_summary: summarize_run(run) })
+      const { preview, ...run_summary } = summarize_run(run)
+      const preview_frame = encode_frame(preview)
+      if (preview_frame.sites instanceof Uint8Array)
+        run_preview_sites.set(run, preview_frame.sites)
+      webview.postMessage({
+        command,
+        request_id,
+        run_summary,
+        preview: frame_to_wire(preview_frame),
+      })
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to setup indexed parsing:`, error_message)
@@ -392,8 +470,22 @@ export const handle_msg = async (
       assert_authorized(file_path, webview)
       const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
-      const frame = frame_to_wire(await run.read_frame(frame_index, undefined, channels))
-      webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
+      const read_start = performance.now()
+      const numeric = await run.read_frame(frame_index, undefined, channels)
+      const encode_start = performance.now()
+      const frame = frame_to_wire(numeric, channels?.precision, run_preview_sites.get(run))
+      const timing = {
+        read_ms: Number((encode_start - read_start).toFixed(2)),
+        encode_ms: Number((performance.now() - encode_start).toFixed(2)),
+      }
+      webview.postMessage({
+        command: `frame_response`,
+        request_id,
+        frame,
+        frame_index,
+        timing,
+      })
+      if (telemetry_enabled()) count_posted_frame(file_path, frame)
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to load frame ${msg.frame_index + 1}:`, error_message)
@@ -518,6 +610,7 @@ async function broadcast_file_updated(
     for (const webview of subscribers) {
       post_to_webview(webview, { command: `fileUpdated`, file_path, data, theme })
     }
+    prewarm_run(file_path, data)
   } catch (error) {
     console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
     // once per failure, not per subscriber; shown, as in start_watching_file
@@ -548,8 +641,44 @@ const dispose_run = (file_path: string): void => {
   active_runs.delete(file_path)
 }
 
+// A run the host decodes straight off the open file, frame by frame, at any size: an
+// uncompressed ASE .traj (ULM magic) or an XYZ file index_xyz_file can walk, else null
+const open_file_run = (file_path: string): TrajectoryRun | null => {
+  const filename = path.basename(file_path)
+  if (!DISK_RUN_REGEX.test(filename)) return null
+  const source = file_byte_source(file_path)
+  const provenance = { filename, source_bytes: source.byte_length }
+  try {
+    const is_xyz = !/traj$/i.test(filename)
+    const offsets = is_xyz && index_xyz_file(source)
+    const magic =
+      !is_xyz && source.byte_length >= 8 && new TextDecoder().decode(source.read(0, 8))
+    const data = offsets ? { source, offsets } : magic === `- of Ulm` && source
+    const format = is_xyz ? `xyz` : `ase`
+    if (data) return indexed_text_run(data, format, provenance, create_warning_collector())
+  } catch (error) {
+    source.release?.()
+    throw new HostFileError(to_error(error).message, `parse`)
+  }
+  source.release?.()
+  return null
+}
+
+// Index a host-served file while its webview boots (or reloads after a file change): its
+// request_large_file then finds the run ready, or at least under way, instead of starting it.
+// Called once the webview's HTML (or fileUpdated) is on its way, see load_run.
+const prewarm_run = (file_path: string, { content }: FileData): void => {
+  if (content.startsWith(`LARGE_FILE:${file_path}:`) && !active_runs.has(file_path))
+    void load_run(file_path)
+}
+
 const load_run = (file_path: string): Promise<TrajectoryRun> => {
-  const loading = (async () => {
+  const open = async (): Promise<TrajectoryRun> => {
+    // A timer turn first: indexing blocks this thread, and what the host just posted (a
+    // prewarmed panel's HTML) should reach the webview before that, not after
+    await new Promise((resolve) => setTimeout(resolve))
+    const file_run = open_file_run(file_path)
+    if (file_run) return file_run
     // a read failure goes out without a stage, which the webview takes as `acquire`
     const indexed = await read_indexed_trajectory_file(file_path, path.basename(file_path))
     // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
@@ -559,7 +688,20 @@ const load_run = (file_path: string): Promise<TrajectoryRun> => {
     }).catch((error: unknown) => {
       throw new HostFileError(to_error(error).message, `parse`)
     })
-  })()
+  }
+  const load_start = performance.now()
+  const loading = open().then((run) => {
+    if (telemetry_enabled())
+      log_telemetry({
+        kind: `host_run_load`,
+        file: path.basename(file_path),
+        load_ms: Math.round(performance.now() - load_start),
+        frame_count: run.frame_count,
+        source_bytes: run.provenance.source_bytes,
+        rss_mb: Math.round(process.memoryUsage().rss / 1e6),
+      })
+    return run
+  })
   active_runs.set(file_path, loading)
   // Forget a failed load so the next request retries, unless a file change replaced it
   void loading.catch(
@@ -596,7 +738,9 @@ function setup_webview_panel(
     data: file_data,
     theme: get_theme(),
     defaults: get_defaults(),
+    ...(telemetry_enabled() && { telemetry: true }),
   })
+  if (file_path) prewarm_run(file_path, file_data)
 
   const message_listener = panel.webview.onDidReceiveMessage((msg: WebviewToHostMessage) =>
     handle_msg(msg, panel.webview),

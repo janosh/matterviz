@@ -8,13 +8,17 @@ import {
 import { DEFAULTS } from '#lib/settings.js'
 import type { ThemeName } from '#lib/theme/index.js'
 import { Buffer } from 'node:buffer'
+import type * as node_fs from 'node:fs'
+import { tmpdir } from 'node:os'
 import type * as node_path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
-import type { WebviewToHostMessage } from '#lib/file-viewer/host-protocol.js'
+import type { WebviewToHostMessage, WireFrame } from '#lib/file-viewer/host-protocol.js'
+import { frame_from_wire } from '#lib/file-viewer/host-protocol.js'
 import type { FrameChannels } from '#lib/trajectory/frame.js'
+import { materialize_frame } from '#lib/trajectory/frame.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import {
@@ -37,14 +41,30 @@ import {
   webview_run_streams,
 } from '../src/extension'
 
-// Mock modules (extension.ts only touches fs.existsSync + fs.readdirSync;
-// file contents come through the mocked vscode.workspace.fs API)
+// Mock modules (extension.ts only reads the webview build's manifest through fs; file contents
+// come through the mocked vscode.workspace.fs API, except the frames of a .traj or XYZ file,
+// which file_byte_source reads through a real file descriptor)
 const mock_fs = vi.hoisted(() => ({
-  existsSync: vi.fn().mockReturnValue(true),
-  readdirSync: vi.fn().mockReturnValue([]),
+  readFileSync: vi.fn(() =>
+    JSON.stringify({
+      'main.ts': {
+        file: `webview.js`,
+        isEntry: true,
+        imports: [`_three.js`, `_math.js`],
+        css: [`assets/main-1.css`],
+        assets: [`assets/draco-2.wasm`, `assets/moyo_wasm_bg-3.wasm`],
+      },
+      '_three.js': { file: `assets/three.js`, imports: [`_math.js`] },
+      '_math.js': { file: `assets/math.js` },
+      'lazy.ts': { file: `assets/lazy.js`, isDynamicEntry: true },
+    }),
+  ),
 }))
 
-vi.mock(`node:fs`, () => mock_fs)
+vi.mock(`node:fs`, async (importOriginal) => {
+  const { openSync, fstatSync, readSync, closeSync } = await importOriginal<typeof node_fs>()
+  return { ...mock_fs, openSync, fstatSync, readSync, closeSync }
+})
 vi.mock(`node:path`, async (importOriginal) => {
   const actual = await importOriginal<typeof node_path>()
   return {
@@ -174,8 +194,6 @@ describe(`MatterViz Extension`, () => {
     ])
       state.clear()
 
-    mock_fs.existsSync.mockReturnValue(true)
-    mock_fs.readdirSync.mockReturnValue([])
     mock_vscode.window.activeTextEditor = null
     mock_vscode.window.activeColorTheme = { kind: 1 } // Light
     mock_file_system_watcher = { onDidChange: vi.fn(), onDidDelete: vi.fn(), dispose: vi.fn() }
@@ -392,10 +410,15 @@ describe(`MatterViz Extension`, () => {
     })
   })
 
-  test.each([`large-trajectory.traj`, `large.extxyz`])(
+  // an uncompressed .traj or XYZ file streams off disk frame by frame, so it has no size cap
+  test.each([
+    [`large-trajectory.traj`, LARGE_FILE_THRESHOLD + 1],
+    [`large.extxyz`, LARGE_FILE_THRESHOLD + 1],
+    [`huge-trajectory.traj`, 5 * 1024 ** 3],
+    [`huge.xyz`, 5 * 1024 ** 3],
+  ])(
     `file reading: large trajectory %s returns an indexed marker`,
-    async (filename) => {
-      const large_file_size = LARGE_FILE_THRESHOLD + 1
+    async (filename, large_file_size) => {
       const file_path = `/test/${filename}`
       mock_vscode.workspace.fs.stat.mockResolvedValue({ size: large_file_size, type: 1 })
       expect(await read_file(file_path)).toEqual({
@@ -409,8 +432,9 @@ describe(`MatterViz Extension`, () => {
 
   test.each([
     [`large-structure.cif`, LARGE_FILE_THRESHOLD + 1, `supports trajectories only`],
-    [`huge.extxyz`, 1024 ** 3 + 1, `Maximum supported size: 1 GiB`],
-    [`large-trajectory.traj`, 1024 ** 3 + 1, `Maximum supported size`],
+    [`huge.lammpstrj`, 1024 ** 3 + 1, `Maximum supported size: 1 GiB`],
+    [`huge.extxyz.gz`, 1024 ** 3 + 1, `Maximum supported size`],
+    [`large-trajectory.traj.gz`, 1024 ** 3 + 1, `Maximum supported size`],
   ])(`file reading: rejects unsupported large file %s`, async (filename, file_size, error) => {
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: file_size, type: 1 })
     await expect(read_file(`/test/${filename}`)).rejects.toThrow(error)
@@ -446,18 +470,18 @@ describe(`MatterViz Extension`, () => {
       ([message]) => (message as { command: string }).command === `large_file_response`,
     )?.[0] as {
       request_id: string
-      run_summary: {
-        frame_count: number
-        preview: object
-        properties: { rows: Row[]; complete: boolean }
-      }
+      run_summary: { frame_count: number; properties: { rows: Row[]; complete: boolean } }
+      preview: WireFrame
     }
     expect(response.request_id).toBe(`large-request`)
     expect(response.run_summary.frame_count).toBe(n_frames)
-    expect(response.run_summary.preview).toHaveProperty(`structure`)
+    // frame 0 travels binary, not as the summary's JSON Site records
+    expect(response.run_summary).not.toHaveProperty(`preview`)
+    const loaded_run = await active_runs.get(file_path)
+    expect(materialize_frame(frame_from_wire(response.preview))).toEqual(loaded_run?.preview)
     expect(response.run_summary.properties).toMatchObject({ complete: false, rows: [] })
     // every summary field must survive structured cloning into the webview
-    expect(() => structuredClone(response.run_summary)).not.toThrow()
+    expect(() => structuredClone(response)).not.toThrow()
     await run?.properties.done
     type Streamed = { command: string; request_id: string; rows: Row[]; complete: boolean }
     // each panel gets every row exactly once: the summary's rows, then its own stream
@@ -500,6 +524,8 @@ describe(`MatterViz Extension`, () => {
           vector_keys,
         }),
         frame_index: 1,
+        // host read and encode time, for the webview's telemetry
+        timing: { read_ms: expect.any(Number), encode_ms: expect.any(Number) },
       })
     }
     await handle_msg(frame_msg(file_path, n_frames), mock_webview)
@@ -542,9 +568,9 @@ describe(`MatterViz Extension`, () => {
   // re-request after fileUpdated indexes the new bytes instead of receiving the stale run. A
   // stale load landing after the re-request's, or after its panel closed, installs no forwarder
   test(`concurrent large-file requests share one load that a file change evicts`, async () => {
-    const file_path = `/test/live.extxyz`
+    const file_path = `/test/live.extxyz.gz` // compressed, so read whole through the mock
     const frames = (count: number) =>
-      new TextEncoder().encode(`1\nframe=0\nH 0 0 0\n1\nframe=1\nH 1 0 0\n`.repeat(count))
+      new Uint8Array(gzipSync(`1\nframe=0\nH 0 0 0\n1\nframe=1\nH 1 0 0\n`.repeat(count)))
     const size = LARGE_FILE_THRESHOLD + 1 // so the fileUpdated re-read only sends a marker
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size, type: 1 })
     const panels = [await render_file(file_path), await render_file(file_path)]
@@ -557,9 +583,10 @@ describe(`MatterViz Extension`, () => {
       handle_msg(large_file_msg(file_path, `old`), webview),
     )
     await vi.waitFor(() => expect(loads).toHaveLength(1))
-    fire_event(mock_file_system_watcher.onDidChange) // evicts the load before fileUpdated goes out
-    const new_request = handle_msg(large_file_msg(file_path, `new`), panels[0].webview)
+    // evicts the load, and the fileUpdated marker starts the next before any panel asks for it
+    fire_event(mock_file_system_watcher.onDidChange)
     await vi.waitFor(() => expect(loads).toHaveLength(2))
+    const new_request = handle_msg(large_file_msg(file_path, `new`), panels[0].webview)
     fire_event(panels[2].onDidDispose)
     loads[1](frames(2))
     await new_request
@@ -590,7 +617,7 @@ describe(`MatterViz Extension`, () => {
 
   // a failed load is reported and forgotten, so the next request retries the read
   test(`a failed large-file load is reported, then retried on the next request`, async () => {
-    const file_path = `/test/flaky.extxyz`
+    const file_path = `/test/flaky.extxyz.gz`
     vi.spyOn(console, `error`).mockImplementation(() => {})
     mock_vscode.workspace.fs.readFile.mockRejectedValueOnce(new Error(`disk hiccup`))
     subscribe(file_path, mock_webview)
@@ -604,12 +631,61 @@ describe(`MatterViz Extension`, () => {
     expect(mock_webview.postMessage.mock.lastCall?.[0]).not.toHaveProperty(`error_stage`)
     expect(active_runs.has(file_path)).toBe(false)
     mock_vscode.workspace.fs.readFile.mockResolvedValueOnce(
-      new TextEncoder().encode(`1\n\nH 0 0 0\n`),
+      new Uint8Array(gzipSync(`1\n\nH 0 0 0\n`)),
     )
     await handle_msg(large_file_msg(file_path, `retry`), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ request_id: `retry`, run_summary: expect.any(Object) }),
     )
+  })
+
+  // An uncompressed .traj or XYZ file is decoded off disk through a file descriptor: the whole
+  // file never enters the host's memory (workspace.fs.readFile is never called), at any size.
+  // An XYZ file whose index takes the whole text (here a torn tail) is read whole instead.
+  // Either load starts as the panel opens, so the webview's request finds the run under way
+  const xyz_frames = [0, 1, 2]
+    .map((idx) => `2\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\nH ${idx} 1 1\n`)
+    .join(``)
+  test.each([
+    [`relax.traj`, null, 0],
+    [`md.extxyz`, xyz_frames, 0],
+    [`torn.xyz`, `${xyz_frames}2\ncomment\nH 0 0 0`, 1],
+  ])(`%s on disk opens with %s whole-file reads`, async (filename, text, whole_reads) => {
+    const real_fs = await vi.importActual<typeof node_fs>(`node:fs`)
+    const dir = real_fs.mkdtempSync(`${tmpdir()}/matterviz-disk-run-`)
+    const file_path = `${dir}/${filename}`
+    if (text) real_fs.writeFileSync(file_path, text)
+    else
+      real_fs.copyFileSync(
+        `../../src/site/trajectories/ase-LiMnO2-chgnet-relax.traj`,
+        file_path,
+      )
+    mock_vscode.workspace.fs.stat.mockResolvedValue({
+      size: LARGE_FILE_THRESHOLD + 1,
+      type: 1,
+    })
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(real_fs.readFileSync(file_path))
+    const panel = make_panel()
+    mock_vscode.window.createWebviewPanel.mockReturnValueOnce(panel)
+    await render(mock_context, { fsPath: file_path } as Uri)
+    const prewarmed = active_runs.get(file_path)
+    expect((await prewarmed)?.frame_count).toBeGreaterThan(1)
+    await handle_msg(large_file_msg(file_path, `disk`), panel.webview)
+    expect(active_runs.get(file_path)).toBe(prewarmed)
+    expect(panel.webview.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request_id: `disk`, run_summary: expect.any(Object) }),
+    )
+    const { preview } = panel.webview.postMessage.mock.lastCall?.[0] as { preview: WireFrame }
+    await handle_msg(frame_msg(file_path, 1), panel.webview)
+    const { frame } = panel.webview.postMessage.mock.lastCall?.[0] as { frame: WireFrame }
+    expect(frame.fractional).toBe(`derived`)
+    // a fixed-species run sends atomic numbers once, with the preview
+    expect(frame.sites).toBe(`preview`)
+    const { sites } = frame_from_wire(preview)
+    if (!(sites instanceof Uint8Array)) throw new TypeError(`Expected numeric preview sites`)
+    expect(frame_from_wire(frame, sites).header.step).toBe(1)
+    expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(whole_reads)
+    real_fs.rmSync(dir, { recursive: true })
   })
 
   test.each([
@@ -629,8 +705,8 @@ describe(`MatterViz Extension`, () => {
   test(`a host parser rejection is reported with the parse stage`, async () => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
     mock_vscode.workspace.fs.readFile.mockResolvedValueOnce(new Uint8Array())
-    subscribe(`/test/empty.extxyz`, mock_webview)
-    await handle_msg(large_file_msg(`/test/empty.extxyz`, `parse-failure`), mock_webview)
+    subscribe(`/test/empty.lammpstrj`, mock_webview)
+    await handle_msg(large_file_msg(`/test/empty.lammpstrj`, `parse-failure`), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
         request_id: `parse-failure`,
@@ -729,8 +805,23 @@ describe(`MatterViz Extension`, () => {
       `<!--<script>`,
     ].map((content) => ({ filename: `test.cif`, content, is_base64: false })),
   ])(`HTML generation embeds $filename content safely`, (data) => {
-    const webview_data = { data, theme: `light` } as const
-    const html = create_html(mock_webview, mock_context, webview_data)
+    const dist_url = (file: string) =>
+      `vscode-webview://unit-test${encodeURIComponent(`dist/${file}`)}`
+    // the build manifest's symmetry WASM rides in the bootstrap data
+    const moyo_wasm_url = dist_url(`assets/moyo_wasm_bg-3.wasm`)
+    const webview_data = { data, theme: `light`, moyo_wasm_url } as const
+    const html = create_html(mock_webview, mock_context, { data, theme: `light` })
+    // The entry and each chunk it statically imports (once, however many import it; no lazy
+    // chunk) preload ahead of the stylesheet, which holds back the script importing the entry
+    const head_links = [...html.matchAll(/<link rel="(?<rel>\w+)" href="(?<href>[^"]+)">/g)]
+    expect(head_links.map((link) => [link.groups?.rel, link.groups?.href])).toEqual([
+      ...[`webview.js`, `assets/three.js`, `assets/math.js`].map((file) => [
+        `modulepreload`,
+        dist_url(file),
+      ]),
+      [`stylesheet`, dist_url(`assets/main-1.css`)],
+    ])
+    expect(html).toContain(`await import("${dist_url(`webview.js`)}")`)
     expect(html).toContain(`<!DOCTYPE html>`)
     expect(html).toContain(`Content-Security-Policy`)
     expect(html).toContain(`default-src 'none'`)

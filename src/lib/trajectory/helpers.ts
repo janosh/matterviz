@@ -409,6 +409,10 @@ export class TextLines {
       idx + 1 < this.chunk_lines[chunk_idx + 1] ? this.starts[idx + 1] - 1 : chunk.length - 1
     return chunk.charCodeAt(eol - 1) === 13 ? eol - 1 : eol
   }
+  // Offset of line `idx` in its chunk, which is the whole text unless it came in chunks
+  offset(idx: number): number {
+    return this.starts[idx]
+  }
   line(idx: number): string | undefined {
     if (idx < 0 || idx >= this.count) return undefined
     const chunk_idx = this.chunk_of(idx)

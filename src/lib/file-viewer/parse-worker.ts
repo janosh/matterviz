@@ -4,9 +4,6 @@
 import type { ParseProgress } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/index.js'
 import { summarize_run } from '#lib/trajectory/run.js'
-import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import { hdf5_run } from '#lib/trajectory/runs/hdf5.js'
 import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
 import { to_error } from 'svelte-widgets/utils'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
@@ -42,31 +39,6 @@ export const handle_parse_worker_request = async (
 ): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
   const { id: identifier, filename } = request
   try {
-    if (request.replica) {
-      if (
-        !(request.content instanceof File) ||
-        request.replica.provenance.format !== `md-hdf5`
-      )
-        throw new Error(`MD preparation replicas require their original File`)
-      const opened = await open_hdf5_trajectory(
-        request.content,
-        create_warning_collector(),
-        filename,
-        request.load_options?.hdf5_group_path,
-        request.replica,
-      )
-      if (opened.kind !== `lazy`) throw new Error(`MD replica requires a lazy source`)
-      try {
-        return prepare_parse_result(identifier, {
-          type: `trajectory`,
-          filename,
-          data: hdf5_run(opened.lazy, request.replica.provenance, request.replica.warnings),
-        })
-      } catch (error) {
-        opened.lazy.dispose?.()
-        throw error
-      }
-    }
     const result = await parse_file_content(
       request.content,
       filename,

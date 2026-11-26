@@ -43,9 +43,10 @@ import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import type { SyncRunSource, TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
-import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
+import { buffer_source } from '#lib/trajectory/parse/ase.js'
+import { index_xyz_file, parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
 import { create_warning_collector, post_new_warnings } from '#lib/trajectory/parse/shared.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
+import { host_read_concurrency, host_run } from '#lib/trajectory/runs/host.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { describe, expect, it, onTestFinished, test, vi } from 'vite-plus/test'
@@ -491,6 +492,16 @@ const RUN_CASES: RunCase[] = [
       ),
   },
   {
+    // frames read off a file by byte offset; the small window makes the index span many
+    name: `indexed xyz file`,
+    make: () => {
+      const source = buffer_source(new TextEncoder().encode(XYZ_TEXT).buffer)
+      const offsets = index_xyz_file(source, 4096)
+      if (!offsets) throw new Error(`XYZ_TEXT indexes as a file`)
+      return indexed_text_run({ source, offsets }, `xyz`, {}, create_warning_collector())
+    },
+  },
+  {
     name: `indexed ase`,
     make: () =>
       indexed_text_run(
@@ -558,7 +569,9 @@ describe.each(RUN_CASES)(
       }
       expect(run.collect_positions !== undefined).toBe(has_collect)
       // a host pipelines reads over its round trip, so sessions keep several in flight
-      expect(run.read_concurrency).toBe(name === `host` ? 8 : undefined)
+      expect(run.read_concurrency).toBe(
+        name === `host` ? host_read_concurrency(run.atom_count) : undefined,
+      )
       await run.properties.done
       const { rows } = run.properties
       expect(rows.length).toBeGreaterThan(0)
@@ -602,6 +615,69 @@ describe.each(RUN_CASES)(
     })
   },
 )
+
+describe(`index_xyz_file`, () => {
+  const frame = (n_atoms: number, comment = `step`, last = `H 0 0 1`) =>
+    [n_atoms, comment, ...Array.from({ length: n_atoms - 1 }, () => `H 0.5 1 2`), last].join(
+      `\n`,
+    )
+  // 1-5 atoms per frame: the walk samples three atom lines, treating a text's last as unfinished
+  const clean = [3, 1, 5, 2, 4, 1].map((n_atoms, idx) => frame(n_atoms, `Å step=${idx}`))
+  const byte_length = (text: string) => new TextEncoder().encode(text).length
+  // every window size from one line up: each frame boundary falls on a window's edge for some
+  const index_all_windows = (text: string) => {
+    const source = buffer_source(new TextEncoder().encode(text).buffer)
+    const sizes = Array.from({ length: byte_length(text) + 1 }, (_, idx) => idx + 16)
+    return new Set(sizes.map((size) => JSON.stringify(index_xyz_file(source, size))))
+  }
+
+  it.each([
+    [`LF`, `\n`, `\n`],
+    [`CRLF`, `\r\n`, `\r\n`],
+    [`no final newline`, `\n`, ``],
+    [`trailing blank lines`, `\n`, `\n\n \n`],
+  ])(`locates every frame at any window size: %s`, (_label, eol, tail) => {
+    const frames = clean.map((text) => `${text.replaceAll(`\n`, eol)}${eol}`)
+    const text = `${frames.join(``).slice(0, -eol.length)}${tail}`
+    let offset = 0
+    const starts = frames.map((part) => (offset += byte_length(part)) - byte_length(part))
+    expect([...index_all_windows(text)]).toEqual([
+      JSON.stringify([...starts, byte_length(text)]),
+    ])
+    // the frames index_xyz_frames finds in the whole text, without a warning
+    const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
+    expect([run.frame_count, run.warnings]).toEqual([clean.length, []])
+    run.dispose()
+  })
+
+  // each takes the whole text: index_xyz_frames warns about it or finds under two frames
+  it.each([
+    [`a single frame`, [clean[0]]],
+    [`no frame`, [`not xyz`]],
+    [`an empty file`, []],
+    [`a byte-order mark`, [`\uFEFF${clean[0]}`, ...clean]],
+    [`lines before the first frame`, [`stray`, ...clean]],
+    [`lines between frames`, [...clean.slice(0, 3), `stray`, ...clean.slice(3)]],
+    [`a blank line between frames`, [...clean.slice(0, 3), ``, ...clean.slice(3)]],
+    [`lines after the last frame`, [...clean, `stray`]],
+    [`a short atom line mid-file`, [...clean.slice(0, 2), frame(2, `c`, `H 0 0`), ...clean]],
+    [`missing atom lines at the end`, [...clean, `4\ncomment\nH 0 0 0`]],
+    [`a half-written last line`, [...clean, frame(4, `c`, `H 0 0`)]],
+    [`a non-finite last frame`, [...clean, frame(4, `c`, `H nan 0 0`)]],
+  ])(`returns null at any window size for %s`, (_label, parts) => {
+    expect([...index_all_windows(parts.join(`\n`))]).toEqual([`null`])
+  })
+
+  it(`fails a read once the file was rewritten since indexing`, () => {
+    const bytes = new TextEncoder().encode(clean.join(`\n`))
+    const source = buffer_source(bytes.buffer)
+    const offsets = index_xyz_file(source) ?? []
+    bytes.fill(32, offsets[2], offsets[3] - 1) // frame 3 blanked out, at the same size
+    expect(() =>
+      indexed_text_run({ source, offsets }, `xyz`, {}, create_warning_collector()),
+    ).toThrow(`XYZ file changed on disk since it was indexed (reading frame 1)`)
+  })
+})
 
 describe(`collect_positions parity with the memory run`, () => {
   test.each(
@@ -1319,4 +1395,16 @@ describe(`trajectory_from_frames validation`, () => {
     expect(run.warnings).toEqual([`w`])
     expect(run.provenance.filename).toBe(`x.xyz`)
   })
+})
+
+// A host run pipelines enough requests to cover a ~180 ms round trip for small frames, but no
+// more than ~4 MB of playback frames, which a seek would have to wait behind
+test.each([
+  [1, 64],
+  [424, 64],
+  [20_000, 13],
+  [50_000, 8],
+  [100_000, 8],
+])(`a host run of %i atoms keeps %i frame requests in flight`, (atom_count, expected) => {
+  expect(host_read_concurrency(atom_count)).toBe(expected)
 })

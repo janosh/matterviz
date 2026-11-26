@@ -11,18 +11,50 @@
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
 import { display_idx } from '#lib/labels.js'
-import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
+import type { FrameChannels } from '#lib/trajectory/frame.js'
+import { frame_transfers, materialize_frame } from '#lib/trajectory/frame.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
+import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host.js'
+import type { PreparePool } from '#lib/trajectory/prepare-pool.js'
 import { to_error } from 'svelte-widgets/utils'
-import { frame_from_wire, HostFileError } from './host-protocol'
-import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
+import { frame_from_wire, HostFileError, wire_frame_bytes } from './host-protocol'
+import type {
+  HostRequest,
+  HostToWebviewMessage,
+  WebviewToHostMessage,
+  WireFrame,
+} from './host-protocol'
+import { create_playback_telemetry } from './telemetry'
 
 export interface VSCodeAPI {
   postMessage(message: WebviewToHostMessage): void
 }
 
 type HostReply = Extract<HostToWebviewMessage, { request_id: string }>
+
+// The webview entry (main.ts) supplies display preparation workers for host runs. Kept out of
+// this module, which the parse worker's bundle carries for LARGE_FILE markers, so that bundle
+// doesn't embed a second worker.
+// What a preparation worker (host-prepare-worker.ts) decodes: a host reply, with the preview's
+// atomic numbers it may omit, or frame 0 decoded here
+export type HostPrepareInput = HostFrameInput<WireFrame> & { preview_sites?: Uint8Array }
+// A host reply's buffers are the message's own (VS Code recreates them per message), and frame
+// 0 is encoded per request, so both move to the worker rather than being copied
+export const host_prepare_transfers = (input: HostPrepareInput): Transferable[] => {
+  if (`frame` in input) return frame_transfers(input.frame) as ArrayBuffer[]
+  const { coordinates, vectors, sites, scalar_columns } = input.reply
+  return [
+    coordinates,
+    ...(vectors ? [vectors] : []),
+    ...(sites instanceof ArrayBuffer ? [sites] : []),
+    ...Object.values(scalar_columns ?? {}),
+  ]
+}
+type HostPreparePool = PreparePool<HostPrepareInput>
+let open_prepare_pool: (() => HostPreparePool | undefined) | undefined
+export const use_host_preparation = (open: () => HostPreparePool | undefined): void => {
+  open_prepare_pool = open
+}
 
 declare global {
   // VSCode webview API
@@ -37,6 +69,15 @@ try {
 }
 
 export const get_vscode_api = (): VSCodeAPI | null => host_api
+
+// Disabled (every call a no-op) unless the host opted in through matterviz.telemetry
+export const telemetry = create_playback_telemetry(
+  host_api && globalThis.matterviz_data?.telemetry
+    ? (record) => host_api?.postMessage({ command: `telemetry`, record })
+    : null,
+)
+
+// Bytes a frame carries across the host boundary: its binary columns (JSON fields aside)
 
 // Shared postMessage request/response plumbing for talking to the extension
 // host: tags the request with a UUID, forwards replies carrying that id to
@@ -104,6 +145,7 @@ export async function request_large_file_content(
       `Cannot stream ${filename}: no host bridge is available (acquireVsCodeApi returned nothing).`,
     )
   }
+  const sent_at = performance.now()
   return post_request(
     host_api,
     { command: `request_large_file`, file_path, filename },
@@ -112,7 +154,7 @@ export async function request_large_file_content(
     (data, resolve, reject) => {
       if (data.command !== `large_file_response`) return false
       if (data.error) reject(new HostFileError(data.error, data.error_stage ?? `acquire`))
-      else if (data.run_summary && typeof data.run_summary === `object`) {
+      else if (data.run_summary && typeof data.run_summary === `object` && data.preview) {
         // Plot rows and grown warnings arrive after the summary, stamped with its request_id;
         // they are routed to THIS run instance until it is disposed
         const handler = (event: MessageEvent<HostReply | undefined>): void => {
@@ -122,13 +164,43 @@ export async function request_large_file_content(
           else if (message.command === `plot_metadata_stream` && !run.properties.complete)
             run.properties.deliver(message.rows, message.complete, `Host`)
         }
+        const preview_frame = frame_from_wire(data.preview)
+        // frames with the preview's atomic numbers arrive without them (WireFrame sites)
+        const preview_sites =
+          preview_frame.sites instanceof Uint8Array ? preview_frame.sites.slice() : undefined
+        const preview = materialize_frame(preview_frame)
+        const pool = open_prepare_pool?.()
+        const request = (frame_idx: number, signal?: AbortSignal, channels?: FrameChannels) =>
+          request_host_frame(file_path, filename, frame_idx, signal, channels)
         const run = host_run(
-          data.run_summary,
+          { ...data.run_summary, preview },
+          // reads outside prepared playback (exports, small systems) decode here
           (frame_idx, signal, channels) =>
-            request_host_frame(file_path, filename, frame_idx, signal, channels),
-          () => globalThis.removeEventListener(`message`, handler),
+            request(frame_idx, signal, channels).then((wire) => {
+              const started_at = performance.now()
+              const frame = frame_from_wire(wire, preview_sites)
+              telemetry.decoded(performance.now() - started_at)
+              return frame
+            }),
+          () => {
+            globalThis.removeEventListener(`message`, handler)
+            pool?.dispose()
+          },
+          pool && {
+            request,
+            prepare: (input, preparation, signal) =>
+              pool.prepare({ ...input, preview_sites }, preparation, signal),
+          },
         )
         globalThis.addEventListener(`message`, handler)
+        telemetry.event({
+          kind: `run_summary`,
+          filename,
+          frame_count: run.frame_count,
+          prepares_in_worker: Boolean(pool),
+          rtt_ms: Math.round(performance.now() - sent_at),
+          since_navigation_ms: Math.round(performance.now()),
+        })
         resolve(run)
       } else reject(new TypeError(`Malformed large-file response`))
       return true
@@ -142,9 +214,12 @@ const request_host_frame = (
   frame_idx: number,
   signal?: AbortSignal,
   channels?: FrameChannels,
-): Promise<NumericFrame> => {
+): Promise<WireFrame> => {
   if (!host_api) return Promise.reject(new Error(`No host bridge is available`))
-  return post_request(
+  const in_flight = telemetry.in_flight()
+  const settle_request = telemetry.track_request()
+  const sent_at = performance.now()
+  const request = post_request<WireFrame>(
     host_api,
     { command: `request_frame`, file_path, filename, frame_index: frame_idx, channels },
     10_000,
@@ -152,10 +227,21 @@ const request_host_frame = (
     (data, resolve, reject) => {
       if (data.command !== `frame_response`) return false
       if (data.error) reject(new Error(data.error))
-      else if (data.frame) resolve(frame_from_wire(data.frame))
-      else reject(new Error(`Host returned no trajectory frame ${display_idx(frame_idx)}`))
+      else if (data.frame) {
+        if (telemetry.enabled)
+          telemetry.frame({
+            idx: frame_idx,
+            rtt_ms: performance.now() - sent_at,
+            host_read_ms: data.timing?.read_ms,
+            host_encode_ms: data.timing?.encode_ms,
+            wire_bytes: wire_frame_bytes(data.frame),
+            in_flight,
+          })
+        resolve(data.frame)
+      } else reject(new Error(`Host returned no trajectory frame ${display_idx(frame_idx)}`))
       return true
     },
     signal,
   )
+  return request.finally(settle_request)
 }

@@ -37,40 +37,61 @@ export const read_ase_header = (view: DataView): { n_items: number; offsets_pos:
   offsets_pos: Number(view.getBigInt64(40, true)),
 })
 
-// Decode one ULM ndarray item `[shape, dtype, absolute byte offset]` out of the frame's view.
-// `base_offset` is the absolute offset `view` starts at when the caller holds only a slice.
-const ndarray_reader = (view: DataView, ref: { ndarray: unknown[] }, base_offset = 0) => {
-  const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
-  const array_offset = absolute_offset - base_offset
-  const total = values_per_sample(shape)
-
-  const readers: Record<string, { bytes: number; read: (pos: number) => number }> = {
-    int64: { bytes: 8, read: (pos) => Number(view.getBigInt64(pos, true)) },
-    int32: { bytes: 4, read: (pos) => view.getInt32(pos, true) },
-    float64: { bytes: 8, read: (pos) => view.getFloat64(pos, true) },
-    float32: { bytes: 4, read: (pos) => view.getFloat32(pos, true) },
-  }
-  const reader = readers[dtype]
-  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
-
-  if (!Number.isInteger(array_offset) || array_offset < 0) {
-    throw new Error(
-      `Invalid array_offset: expected non-negative integer, got ${array_offset}${base_offset ? ` (absolute ${absolute_offset} minus base ${base_offset})` : ``}`,
-    )
-  }
-  if (array_offset + total * reader.bytes > view.byteLength) {
-    throw new Error(`Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`)
-  }
-
-  return { shape, value: (idx: number) => reader.read(array_offset + idx * reader.bytes) }
+// Random access to a ULM container by absolute byte offset: a buffer in memory, or a file a
+// host reads on demand (the VS Code extension's file_byte_source), so a multi-GB .traj never
+// has to fit in memory. Each read returns exactly `length` bytes or throws.
+export interface ByteSource {
+  // absolute offset one past the last readable byte (the file size for a whole file)
+  byte_length: number
+  read: (offset: number, length: number) => DataView
+  release?: () => void
 }
 
-export const read_ndarray_from_view = (
-  view: DataView,
-  ref: { ndarray: unknown[] },
-  base_offset = 0,
-): number[][] => {
-  const { shape, value } = ndarray_reader(view, ref, base_offset)
+// A buffer holding the container's bytes from absolute `base_offset` on (the whole file at 0)
+export const buffer_source = (buffer: ArrayBuffer, base_offset = 0): ByteSource => ({
+  byte_length: base_offset + buffer.byteLength,
+  read: (offset, length) => {
+    const start = offset - base_offset
+    if (!Number.isInteger(start) || start < 0)
+      throw new Error(
+        `Invalid byte offset ${offset}${base_offset ? ` (slice starts at ${base_offset})` : ``}`,
+      )
+    if (start + length > buffer.byteLength)
+      throw new Error(
+        `Out-of-bounds read: ${length} bytes at ${offset} lie outside the ${buffer.byteLength} byte slice at ${base_offset}`,
+      )
+    return new DataView(buffer, start, length)
+  },
+})
+
+const NDARRAY_READERS: Record<
+  string,
+  { bytes: number; read: (view: DataView, pos: number) => number }
+> = {
+  int64: { bytes: 8, read: (view, pos) => Number(view.getBigInt64(pos, true)) },
+  int32: { bytes: 4, read: (view, pos) => view.getInt32(pos, true) },
+  float64: { bytes: 8, read: (view, pos) => view.getFloat64(pos, true) },
+  float32: { bytes: 4, read: (view, pos) => view.getFloat32(pos, true) },
+}
+
+const ndarray_rows = (ref: { ndarray: unknown[] }): number => {
+  const [shape] = ref.ndarray
+  if (!Array.isArray(shape) || !shape.every((size) => Number.isInteger(size) && size >= 0))
+    throw new Error(`Invalid ndarray shape ${JSON.stringify(shape)}`)
+  return shape[0]
+}
+
+// Decode one ULM ndarray item `[shape, dtype, absolute byte offset]`, reading only its bytes
+const ndarray_reader = (source: ByteSource, ref: { ndarray: unknown[] }) => {
+  const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
+  const reader = NDARRAY_READERS[dtype]
+  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
+  const view = source.read(absolute_offset, values_per_sample(shape) * reader.bytes)
+  return { shape, value: (idx: number) => reader.read(view, idx * reader.bytes) }
+}
+
+const read_source_ndarray = (source: ByteSource, ref: { ndarray: unknown[] }): number[][] => {
+  const { shape, value } = ndarray_reader(source, ref)
   if (shape.length !== 1 && shape.length !== 2) throw new Error(`Unsupported shape`)
   const [rows, columns] = shape.length === 1 ? [1, shape[0]] : shape
   return Array.from({ length: rows }, (_unused, row_idx) => {
@@ -81,6 +102,17 @@ export const read_ndarray_from_view = (
     return row
   })
 }
+
+// `view` starts at absolute `base_offset` in the container
+export const read_ndarray_from_view = (
+  view: DataView,
+  ref: { ndarray: unknown[] },
+  base_offset = 0,
+): number[][] =>
+  read_source_ndarray(
+    buffer_source(view.buffer as ArrayBuffer, base_offset - view.byteOffset),
+    ref,
+  )
 
 // Mass (amu) ASE divides an atom's momentum by: the one the file records, else the element's
 // standard atomic mass (what ASE assigns an Atoms without masses). Shared by every reader that
@@ -112,24 +144,14 @@ export interface AseFrameOptions {
   // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers,
   // so a frame with its own topology header never depends on (or decodes) earlier ones
   inherit?: () => { numbers?: number[]; pbc?: Pbc }
-  base_offset?: number
 }
 
-const read_frame_json = (
-  view: DataView,
-  buffer: ArrayBuffer,
-  frame_offset: number,
-  base_offset = 0,
-): string => {
-  const offset = frame_offset - base_offset
-  if (offset < 0 || offset + 8 > buffer.byteLength)
-    throw new Error(
-      `frame offset ${frame_offset} lies outside the ${buffer.byteLength} byte slice at ${base_offset}`,
-    )
-  const json_length = Number(view.getBigInt64(offset, true))
+const read_frame_json = (source: ByteSource, frame_offset: number): string => {
+  const json_length = Number(source.read(frame_offset, 8).getBigInt64(0, true))
   if (json_length > MAX_ASE_HEADER_BYTES)
     throw new Error(`frame JSON too large: ${json_length} bytes`)
-  return decoder.decode(new Uint8Array(buffer, offset + 8, json_length))
+  const view = source.read(frame_offset + 8, json_length)
+  return decoder.decode(new Uint8Array(view.buffer, view.byteOffset, view.byteLength))
 }
 
 const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
@@ -234,18 +256,18 @@ type AseDecodeOptions = AseFrameOptions & { warn: WarnFn }
 // What every decode mode reads off a frame's header: topology, cell, calculator metadata and
 // forces, with every check. Positions and momenta stay unread until a mode asks for them.
 function read_ase_frame_header(
-  view: DataView,
-  buffer: ArrayBuffer,
+  source: ByteSource,
   frame_offset: number,
   step: number,
-  { fallback_numbers, fallback_pbc, inherit, base_offset = 0, warn }: AseDecodeOptions,
+  { fallback_numbers, fallback_pbc, inherit, warn }: AseDecodeOptions,
 ) {
-  const frame_data = JSON.parse(read_frame_json(view, buffer, frame_offset, base_offset))
-  const read_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
-    read_ndarray_from_view(view, ref, base_offset)
+  const frame_data = JSON.parse(read_frame_json(source, frame_offset))
+  const read_frame_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
+    read_source_ndarray(source, ref)
   const positions_ref: unknown = frame_data[`positions.`] ?? frame_data.positions
+  // From the shape alone: a plot row must not read every frame's positions off disk
   const n_atoms = is_ndarray_ref(positions_ref)
-    ? ndarray_reader(view, positions_ref, base_offset).shape[0]
+    ? ndarray_rows(positions_ref)
     : (positions_ref as number[][] | undefined)?.length
 
   // ASE's reader: a frame with its own numbers carries its whole topology header (numbers and
@@ -254,7 +276,7 @@ function read_ase_frame_header(
   const inherited = own_numbers === undefined ? inherit?.() : undefined
   const numbers_ref = own_numbers ?? fallback_numbers ?? inherited?.numbers
   const numbers: number[] = numbers_ref?.ndarray
-    ? read_ndarray(numbers_ref).flat()
+    ? read_frame_ndarray(numbers_ref).flat()
     : (numbers_ref as number[])
 
   if (!numbers || n_atoms === undefined) {
@@ -269,7 +291,10 @@ function read_ase_frame_header(
   const pbc = ase_pbc(pbc_value)
 
   // Per-atom forces (eV/Å) go on the sites, only their statistics into the metadata
-  const { forces: raw_forces, ...calculator } = ase_calculator_data(frame_data, read_ndarray)
+  const { forces: raw_forces, ...calculator } = ase_calculator_data(
+    frame_data,
+    read_frame_ndarray,
+  )
   const forces = checked_site_forces(
     raw_forces,
     n_atoms,
@@ -285,7 +310,7 @@ function read_ase_frame_header(
   const cell = ase_cell(frame_data)
   return {
     frame_data,
-    read_ndarray,
+    read_ndarray: read_frame_ndarray,
     positions_ref,
     n_atoms,
     own_numbers,
@@ -296,16 +321,27 @@ function read_ase_frame_header(
     cell,
   }
 }
+// Desktop hosts read one frame's byte span off disk and decode that slice alone: `buffer`
+// holds the container's bytes from absolute `base_offset` on (`view` is unused, kept for
+// their call signature)
+export const decode_ase_frame = (
+  _view: DataView,
+  buffer: ArrayBuffer,
+  frame_offset: number,
+  step: number,
+  { base_offset, ...options }: AseDecodeOptions & { plot_row?: boolean; base_offset?: number },
+): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } =>
+  decode_ase_source_frame(buffer_source(buffer, base_offset), frame_offset, step, options)
+
 // `plot_row: true` skips reading positions and building sites but keeps every check, the
 // metadata and the lattice, so its plot row equals the full decode's
-export function decode_ase_frame(
-  view: DataView,
-  buffer: ArrayBuffer,
+function decode_ase_source_frame(
+  source: ByteSource,
   frame_offset: number,
   step: number,
   options: AseDecodeOptions & { plot_row?: boolean },
 ): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
-  const args = [view, buffer, frame_offset, step, options] as const
+  const args = [source, frame_offset, step, options] as const
   if (!options.plot_row) {
     const { numeric, numbers, pbc } = decode_ase_numeric_frame(...args)
     return { frame: materialize_frame(numeric), numbers, pbc }
@@ -327,19 +363,18 @@ export function decode_ase_frame(
 // into the packed coordinates (20k atoms: 10.3 -> 2.9 ms per read). decode_ase_frame
 // materializes it, so both see one frame.
 function decode_ase_numeric_frame(
-  view: DataView,
-  buffer: ArrayBuffer,
+  source: ByteSource,
   frame_offset: number,
   step: number,
   options: AseDecodeOptions,
 ): { numeric: NumericFrame; numbers: number[]; pbc: Pbc } {
-  const header = read_ase_frame_header(view, buffer, frame_offset, step, options)
+  const header = read_ase_frame_header(source, frame_offset, step, options)
   const { frame_data, read_ndarray, positions_ref, n_atoms, own_numbers } = header
   const { numbers, pbc, forces, metadata, cell } = header
   const elements = convert_atomic_numbers(numbers)
   const positions = new Float64Array(n_atoms * 3)
   if (is_ndarray_ref(positions_ref)) {
-    const { shape, value } = ndarray_reader(view, positions_ref, options.base_offset)
+    const { shape, value } = ndarray_reader(source, positions_ref)
     if (shape.length !== 2 || shape[1] !== 3)
       throw new Error(`Invalid position at site 1: expected 3 finite coordinates`)
     for (let idx = 0; idx < positions.length; idx++) {
@@ -425,27 +460,32 @@ export interface AseFrames {
   metadata?: Record<string, unknown>
 }
 
-export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
-  if (data.byteLength < 48 || decoder.decode(new Uint8Array(data, 0, 8)) !== `- of Ulm`) {
+// `data`: the whole file, or a ByteSource reading it on demand (released with the frames)
+export function open_ase_frames(data: ArrayBuffer | ByteSource, warn: WarnFn): AseFrames {
+  let source: ByteSource | null = data instanceof ArrayBuffer ? buffer_source(data) : data
+  const { byte_length } = source
+  const header_view = byte_length < 48 ? undefined : source.read(0, 48)
+  if (
+    !header_view ||
+    decoder.decode(new Uint8Array(header_view.buffer, header_view.byteOffset, 8)) !==
+      `- of Ulm`
+  ) {
     throw new Error(`Invalid ASE trajectory`)
   }
-  const { n_items, offsets_pos } = read_ase_header(new DataView(data))
+  const { n_items, offsets_pos } = read_ase_header(header_view)
   if (n_items <= 0) throw new Error(`Invalid frame count`)
-  if (offsets_pos < 0 || offsets_pos + n_items * 8 > data.byteLength) {
+  if (offsets_pos < 0 || offsets_pos + n_items * 8 > byte_length) {
     throw new Error(
-      `Invalid ASE frame offsets table bounds: offsets_pos=${offsets_pos}, n_items=${n_items}, byte_length=${data.byteLength}`,
+      `Invalid ASE frame offsets table bounds: offsets_pos=${offsets_pos}, n_items=${n_items}, byte_length=${byte_length}`,
     )
   }
-  let source: { buffer: ArrayBuffer; view: DataView } | null = {
-    buffer: data,
-    view: new DataView(data),
-  }
-  const live = (): { buffer: ArrayBuffer; view: DataView } => {
+  const offsets = source.read(offsets_pos, n_items * 8)
+  const live = (): ByteSource => {
     if (!source) throw new Error(`ASE trajectory buffer was released`)
     return source
   }
   const frame_offset = (frame_idx: number): number =>
-    Number(live().view.getBigInt64(offsets_pos + frame_idx * 8, true))
+    Number(offsets.getBigInt64(frame_idx * 8, true))
   const frame_error = (frame_idx: number, offset: number, error: unknown): Error =>
     new Error(
       `ASE trajectory frame ${display_idx(frame_idx)} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
@@ -461,8 +501,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
   ): Result => {
     const offset = frame_offset(frame_idx)
     try {
-      const { buffer, view } = live()
-      const result = decode(view, buffer, offset, frame_idx, {
+      const result = decode(live(), offset, frame_idx, {
         // frame 0 inherits from nothing (and must not recurse into its own decode)
         inherit:
           frame_idx === 0
@@ -481,14 +520,13 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     }
   }
   const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame =>
-    decode_with(frame_idx, (view, buffer, offset, step, options) =>
-      decode_ase_frame(view, buffer, offset, step, { ...options, plot_row }),
+    decode_with(frame_idx, (byte_source, offset, step, options) =>
+      decode_ase_source_frame(byte_source, offset, step, { ...options, plot_row }),
     ).frame
   const frame_header = (frame_idx: number): Record<string, unknown> => {
     const offset = frame_offset(frame_idx)
     try {
-      const { buffer, view } = live()
-      return JSON.parse(read_frame_json(view, buffer, offset))
+      return JSON.parse(read_frame_json(live(), offset))
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
     }
@@ -501,7 +539,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     if (ref === undefined) return undefined
     if (!ref || typeof ref !== `object` || !(`ndarray` in ref) || !Array.isArray(ref.ndarray))
       throw new Error(`ASE ${name} must be a numeric array`)
-    const column = ndarray_reader(live().view, { ndarray: ref.ndarray })
+    const column = ndarray_reader(live(), { ndarray: ref.ndarray })
     if (
       column.shape.length !== (width === 1 ? 1 : 2) ||
       (width !== 1 && column.shape[1] !== width)
@@ -521,7 +559,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       const header = frame_header(frame_idx)
       const ref = header[`positions.`] ?? header.positions
       if (!is_ndarray_ref(ref)) return true
-      const { shape, value } = ndarray_reader(live().view, ref)
+      const { shape, value } = ndarray_reader(live(), ref)
       for (let idx = 0; idx < values_per_sample(shape); idx++)
         if (!Number.isFinite(value(idx))) return false
     } catch {}
@@ -644,6 +682,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     decode: (frame_idx) => decode_frame(frame_idx, false),
     plot_row_frame: (frame_idx) => decode_frame(frame_idx, true),
     release: () => {
+      source?.release?.()
       source = null
     },
   }

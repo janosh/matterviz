@@ -32,7 +32,6 @@ import {
   trajectory_signal,
 } from './h5-utils'
 import type { LazyTrajectorySource } from './shared'
-import type { TrajectoryRunSummary } from '../run'
 
 const SCHEMA = `md-trajectory-v1`
 const FORMAT = `MD HDF5`
@@ -79,11 +78,7 @@ const to_a_per_fs = (name: string, values: Float64Array): Float64Array => {
 export const is_md_h5_file = (file: H5File): boolean =>
   string_value(attr(file, `schema`))?.startsWith(`md-trajectory-`) ?? false
 
-export const parse_md_h5_file = (
-  file: H5File,
-  group_path?: string,
-  replica?: TrajectoryRunSummary,
-): LazyTrajectorySource => {
+export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTrajectorySource => {
   if (string_value(attr(file, `schema`)) !== SCHEMA)
     throw new Error(`${FORMAT} requires schema ${SCHEMA}`)
   if (group_path !== undefined && group_path !== `/`)
@@ -211,38 +206,20 @@ export const parse_md_h5_file = (
         end,
       ),
     )
-  // The primary validates all axes and plot samples once. Replicas open the same immutable
-  // File, so repeating thousands of compressed scalar reads only delays frame preparation.
+  const steps = Array.from(read_samples(`md_step`, 0, frame_count))
+  const times = read_samples(`time_fs`, 0, frame_count)
+  const local_steps = read_samples(`local_step`, 0, frame_count)
   if (
-    replica &&
-    (replica.frame_count !== frame_count ||
-      replica.atom_count !== n_atoms ||
-      replica.preview.step !== initial_step ||
-      replica.time_step?.value !== timestep_fs ||
-      replica.time_step.unit !== `fs` ||
-      !replica.properties.complete)
-  )
-    throw new Error(`${FORMAT} replica metadata does not match its source`)
-  const steps = replica
-    ? Array.from({ length: frame_count }, (_unused, idx) => initial_step + idx)
-    : Array.from(read_samples(`md_step`, 0, frame_count))
-  const times = replica
-    ? Float64Array.from(steps, (step) => step * timestep_fs)
-    : read_samples(`time_fs`, 0, frame_count)
-  if (!replica) {
-    const local_steps = read_samples(`local_step`, 0, frame_count)
-    if (
-      steps.some(
-        (step, idx) =>
-          step !== initial_step + idx ||
-          local_steps[idx] !== idx ||
-          times[idx] !== step * timestep_fs,
-      )
+    steps.some(
+      (step, idx) =>
+        step !== initial_step + idx ||
+        local_steps[idx] !== idx ||
+        times[idx] !== step * timestep_fs,
     )
-      throw new Error(
-        `${FORMAT} committed step/time axes must be consecutive at ${timestep_fs} fs`,
-      )
-  }
+  )
+    throw new Error(
+      `${FORMAT} committed step/time axes must be consecutive at ${timestep_fs} fs`,
+    )
   const check_frame = (frame_idx: number): void => {
     if (!is_valid_index(frame_idx, frame_count))
       throw new Error(
@@ -374,8 +351,8 @@ export const parse_md_h5_file = (
       }),
     }
   }
-  let preview = replica?.preview
-  if (!preview && n_atoms > ATOM_BATCH_SIZE) {
+  let preview: LazyTrajectorySource[`preview`]
+  if (n_atoms > ATOM_BATCH_SIZE) {
     const preview_stride = preview_atom_stride(n_atoms)
     const preview_values = read_numeric_buffer(datasets.positions, `/frames/positions`, [
       [0, 1],
@@ -413,22 +390,20 @@ export const parse_md_h5_file = (
     read_atoms,
     collect_positions,
     preview,
-    properties:
-      replica?.properties.rows ??
-      sampled_property_rows(
-        frame_count,
-        (idx) => steps[idx],
-        (indices, stride) => {
-          const scalars = SCALARS.map(
-            (name) => [name, read_samples(name, 0, frame_count, stride)] as const,
-          )
-          return indices.map((frame_idx, sample_idx) => ({
-            ...Object.fromEntries(scalars.map(([name, values]) => [name, values[sample_idx]])),
-            time: times[frame_idx],
-            volume,
-          }))
-        },
-      ),
+    properties: sampled_property_rows(
+      frame_count,
+      (idx) => steps[idx],
+      (indices, stride) => {
+        const scalars = SCALARS.map(
+          (name) => [name, read_samples(name, 0, frame_count, stride)] as const,
+        )
+        return indices.map((frame_idx, sample_idx) => ({
+          ...Object.fromEntries(scalars.map(([name, values]) => [name, values[sample_idx]])),
+          time: times[frame_idx],
+          volume,
+        }))
+      },
+    ),
     signals: Object.fromEntries(
       Object.entries(channels).map(([key, { width, unit }]) => [
         key,

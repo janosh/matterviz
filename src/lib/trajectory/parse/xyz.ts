@@ -41,7 +41,8 @@ import {
   type NumericFrame,
   write_frame_vector,
 } from '../frame'
-import { ase_momentum_mass, ase_velocity } from './ase'
+import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
+import { ase_momentum_mass, ase_velocity, type ByteSource } from './ase'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
@@ -700,6 +701,15 @@ function find_non_finite_line(
   return -1
 }
 
+// The frame walk's complete frames, and the one the end of the text cuts short (if any)
+const walk_xyz_frames = (lines: TextLines): [XyzFrameSpec[], XyzFrameSpec | null] => {
+  const specs: XyzFrameSpec[] = []
+  const frames = iter_xyz_frames(lines)
+  let next = frames.next()
+  for (; !next.done; next = frames.next()) specs.push(next.value)
+  return [specs, next.value]
+}
+
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
 // a frame whose atom block runs past the end of the file (iter_xyz_frames returns its header
 // instead of yielding it) or a final frame whose last atom line, the file's last line, is
@@ -709,11 +719,7 @@ function find_non_finite_line(
 // atoms are still finite) and would end the run unreadable, so like the LAMMPS reader the last
 // frame is read in full and skipped while it holds any (eager parsing also skips one mid-run).
 export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[] {
-  const specs: XyzFrameSpec[] = []
-  const frames = iter_xyz_frames(lines)
-  let next = frames.next()
-  for (; !next.done; next = frames.next()) specs.push(next.value)
-  const torn = next.value
+  const [specs, torn] = walk_xyz_frames(lines)
   let end = torn?.start ?? lines.count // past the last line a dropped tail does not hold
   const drop = (spec: XyzFrameSpec, reason: string) =>
     `Dropping truncated final XYZ frame ${display_idx(specs.length)} (line ${spec.start + 1}): ${reason}`
@@ -743,6 +749,48 @@ export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[]
     )
   if (truncated) warn(truncated)
   return specs
+}
+
+// Byte offset of every frame of the XYZ file behind `source`, then its size: what reads its
+// frames one at a time off disk (indexed_text_run) instead of holding the text in memory. The
+// file is walked in line-aligned windows decoded as latin1, whose one char per byte makes a
+// line's offset a byte offset (the walk reads only counts and numbers). null for a file that
+// takes its whole text to index: a single frame, a frame past the JS string limit, or anything
+// index_xyz_frames warns about (lines between frames, a torn, half-written or non-finite tail).
+export function index_xyz_file(source: ByteSource, window_bytes = 2 ** 24): number[] | null {
+  const { byte_length } = source
+  const decoder = new TextDecoder(`latin1`)
+  const scanner = new LineScanner()
+  const offsets: number[] = []
+  for (let pos = 0, span = window_bytes; pos < byte_length;) {
+    const size = Math.min(span, byte_length - pos)
+    if (size > MAX_STRING_CHARS) return null
+    const view = source.read(pos, size)
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, size)
+    const final = pos + size === byte_length
+    const text = decoder.decode(final ? bytes : bytes.subarray(0, bytes.lastIndexOf(10) + 1))
+    const lines = new TextLines(text)
+    const [frames, torn] = walk_xyz_frames(lines)
+    // What a window leaves to the next: the frame its end cuts, or one ending on its last
+    // line, which the walk sampled as if a writer could have left that line half-written
+    const rest = final ? null : frames.at(-1)?.end === lines.count ? frames.pop() : torn
+    const end = frames.at(-1)?.end ?? 0
+    const contiguous = frames.every(
+      (frame, idx) => frame.start === (frames[idx - 1]?.end ?? 0),
+    )
+    if (!contiguous || end !== (rest ? rest.start : lines.count)) return null
+    const last = final && frames.at(-1)
+    const dropped_tail =
+      last &&
+      (ends_in_partial_line(lines, last, scanner) ||
+        find_non_finite_line(lines, last, scanner) >= 0)
+    if (dropped_tail) return null
+    for (const frame of frames) offsets.push(pos + lines.offset(frame.start))
+    if (!rest) break
+    if (rest.start === 0) span *= 2 // its frame outgrows the window
+    else pos += lines.offset(rest.start)
+  }
+  return offsets.length > 1 ? [...offsets, byte_length] : null
 }
 
 // Why the frame walk refused the first frame's `token x y z` atom lines: a species token that

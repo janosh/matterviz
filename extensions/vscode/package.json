@@ -135,6 +135,11 @@
           "default": false,
           "description": "Open MatterViz viewer beside the current editor instead of replacing it. When false (default), the viewer replaces the active tab."
         },
+        "matterviz.telemetry": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log trajectory transport and playback measurements (frame round trips, wire bytes, host read time, displayed FPS) as JSON lines in the MatterViz output channel. Nothing leaves your machine."
+        },
         "matterviz.color_scheme": {
           "type": "string",
           "default": "Vesta",

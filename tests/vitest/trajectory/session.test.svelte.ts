@@ -8,7 +8,7 @@ import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { FramePreparer, display_frame_bytes } from '#lib/trajectory/prepare.js'
 // Headless session: cache LRU + reset on run swap, latest-request-wins with aborted stale
 // reads, scrub vs commit, prefetch, controller, property mirroring and playback wrap through
-// the shared sequence player (whose own behaviour is covered by sequence-player.test).
+// the shared sequence player (whose own behaviour svelte-widgets tests).
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import type { TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
@@ -1072,6 +1072,55 @@ describe(`resolve_frame`, () => {
       expect(read.mock.calls.at(-1)).toEqual([0, undefined])
       expect(session.current_frame).toBe(displayed)
       expect(session.cached_bytes).toBe(cached_bytes)
+    },
+  )
+  // A remote host rounds frames read during playback (TrajectoryRun.rounds_display_frames):
+  // pausing re-reads the shown frame exactly, and an export never reuses a rounded copy.
+  // Prepared reads (a host run with worker preparation) pass the precision on too.
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    `playback reads are rounded only from a rounding source (%s, prepared %s), paused reads exact`,
+    async (rounds, prepares) => {
+      const run = Object.assign(trajectory_from_frames(frames(3)), {
+        ...(rounds && { rounds_display_frames: true as const }),
+      })
+      const source_read = run.read_frame.bind(run)
+      const read = vi.spyOn(run, `read_frame`).mockImplementation((idx, signal, channels) => {
+        const frame = source_read(idx, signal, channels)
+        if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
+        return channels?.precision === `display` ? { ...frame, approximate: true } : frame
+      })
+      if (prepares)
+        run.prepare_frame = async (idx, preparation, signal) => ({
+          frame: await run.read_frame(idx, signal, preparation.channels),
+          preparation,
+        })
+      const { host, session } = make_session({
+        run,
+        ...(prepares && { preparation: PREPARATION }),
+      })
+      await flush_microtasks()
+      expect(session.numeric_frame?.approximate).toBeUndefined()
+      session.player.play()
+      host.index = 1
+      flushSync()
+      await flush_microtasks()
+      expect(session.numeric_frame?.approximate).toBe(rounds || undefined)
+      read.mockClear()
+      session.player.pause()
+      flushSync()
+      await flush_microtasks()
+      // exact frame 1 replaces the rounded one; a local source had nothing to re-read
+      expect(session.numeric_frame?.approximate).toBeUndefined()
+      expect(read.mock.calls.map(([idx, , channels]) => [idx, channels])).toEqual(
+        rounds ? [[1, undefined]] : [],
+      )
+      read.mockClear()
+      expect((await session.resolve_frame(1))?.structure.sites).toHaveLength(3)
+      expect(read).not.toHaveBeenCalled()
     },
   )
   it(`forwards cancellation to frame reads and allows retry`, async () => {

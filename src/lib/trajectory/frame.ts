@@ -22,7 +22,9 @@ import type { WarnFn } from './parse/shared'
 const SITE_FIELDS = new Set([`xyz`, `abc`, `species`, `label`, `properties`])
 // Select from each frame's dense channels; a channel may be absent in individual frames.
 // Omit vectors to read all channels; [] requests coordinates without vector payloads.
-export type FrameChannels = { vectors?: readonly string[] }
+// precision 'display': a frame shown in motion (playback), which a remote host may send
+// rounded to 16 bits per coordinate (see frame_to_wire); local reads are always exact
+export type FrameChannels = { vectors?: readonly string[]; precision?: `display` }
 const SPECIES_FIELDS = new Set([`element`, `occu`])
 const has_exact_fields = (record: object, fields: ReadonlySet<string>): boolean => {
   const keys = Object.keys(record)
@@ -49,6 +51,9 @@ export type NumericFrame = {
   // Display preparation wraps periodic coordinates once, before transfer to the renderer.
   // Source reads and independently owned analysis packets keep their original coordinates.
   wrapped?: true
+  // Rounded for display in motion (FrameChannels.precision): exports and measurements
+  // re-read the source instead
+  approximate?: true
 }
 
 export function wrap_frame_coordinates(data: NumericFrame): NumericFrame {
