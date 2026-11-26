@@ -4,7 +4,7 @@
   import type { StructureOptions } from '#lib/structure/index.js'
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
-  import { DEFAULT_FPS_RANGE, FPS_STEP } from '#lib/constants.js'
+  import { DEFAULT_FPS_RANGE } from '#lib/constants.js'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import StatGrid from 'svelte-widgets/StatGrid.svelte'
@@ -205,7 +205,6 @@
     get auto_play() {
       return auto_play && Boolean(active)
     },
-    fps_step: FPS_STEP,
   })
 
   // Playback keys work while the viewer is focused or hovered, as in Trajectory, not only

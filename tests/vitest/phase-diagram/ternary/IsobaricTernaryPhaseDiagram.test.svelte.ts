@@ -653,6 +653,20 @@ describe(`PhaseStabilityMap`, () => {
     expect(state.selected_phase).toBe(second_row)
   })
 
+  test(`a fractional scroll offset moves the rows by whole pixels`, async () => {
+    const ctx = mock_canvas_context({ setLineDash: vi.fn() })
+    const props = { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }
+    try {
+      mount_it(PhaseStabilityMap, props)
+      const map = doc_query(`.phase-stability-map`)
+      map.scrollTop = 4.6
+      map.dispatchEvent(new Event(`scroll`))
+      await vi.waitFor(() => expect(ctx.translate).toHaveBeenLastCalledWith(0, -5))
+    } finally {
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore()
+    }
+  })
+
   // The cached row layer is keyed on the colors by identity: a JSON key reads every function
   // scheme as `{}`, so swapping one never repainted the rows
   test(`swapping a function color scheme repaints the cached rows`, async () => {

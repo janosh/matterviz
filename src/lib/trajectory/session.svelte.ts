@@ -12,14 +12,13 @@ import type { NumericFrame, FrameChannels } from './frame'
 import { encode_frame, FrameView, materialize_frame } from './frame'
 import { create_sequence_player } from 'svelte-widgets/sequence-player'
 import type { SequencePlayerInputs } from 'svelte-widgets/sequence-player'
-import { FPS_STEP } from '#lib/constants.js'
 import { display_idx } from '#lib/labels.js'
 import { clamp, to_error, value_key } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'
 
-// Playback inputs bind current_step_idx through index and set_index.
+// The host's bound step index and fps as getter/setter thunks, plus its player callbacks.
 type PlayerCallbacks = `can_advance` | `on_play` | `on_pause` | `on_end` | `on_loop`
 interface TrajectorySessionInputs extends Pick<SequencePlayerInputs, PlayerCallbacks> {
   index: () => number
@@ -85,6 +84,7 @@ export function create_trajectory_session(
   const frame_view = new FrameView()
   let rendered: unknown
   let frame_failure: Error | undefined
+  let failure_pause = false // fail_frame is pausing playback to report a failed read
   // Latest request (and whether playback stepped past it), skip streak, one warning per frame
   let last_request: { run: TrajectoryRun; idx: number; skipped?: boolean } | undefined
   let skip_streak = 0
@@ -105,6 +105,9 @@ export function create_trajectory_session(
   })
   const request_key = $derived(value_key(preparation ?? { channels }))
   const matches_request = (frame: SessionFrame): boolean => frame.request_key === request_key
+  // a rounded playback frame stands in for the exact one during playback only
+  const precise_enough = ({ frame }: SessionFrame): boolean =>
+    player.is_playing || !frame.approximate
   // whether a read issued now comes back rounded (see read_display)
   const reads_rounded = (run: TrajectoryRun): boolean =>
     player.is_playing && Boolean(run.rounds_display_frames)
@@ -323,7 +326,9 @@ export function create_trajectory_session(
       if (!skipped.has(frame_idx)) skipped = new Map(skipped).set(frame_idx, warning)
       return
     }
+    failure_pause = true
     player.pause()
+    failure_pause = false
     inputs.on_frame_error?.(frame_idx, frame_failure)
   }
 
@@ -354,9 +359,8 @@ export function create_trajectory_session(
         ? candidate
         : undefined
     const cached = frame_idx !== null && cache_owner === run ? cache_get(frame_idx) : undefined
-    // a rounded playback frame serves playback only: paused, the exact frame is read
-    const cache_hit =
-      cached && matches_request(cached) && (player.is_playing || !cached.frame.approximate)
+    const usable = cached && matches_request(cached) ? cached : undefined
+    const cache_hit = usable && precise_enough(usable)
     if (next && frame_idx !== null) prefetched.delete(frame_idx)
     // Sequential playback retains the remainder of its pipeline. Seeks and settings/run
     // changes cancel it immediately, including work still opening a preparation worker.
@@ -377,9 +381,12 @@ export function create_trajectory_session(
       return
     }
     claim_cache(run)
-    if (cache_hit) {
+    if (usable) {
+      // paused, a rounded frame shows at once and stays until the exact read below lands
       drop_trailing()
-      show(run, frame_idx, cached)
+      if (cache_hit || loaded?.frame !== usable.frame) show(run, frame_idx, usable)
+    }
+    if (cache_hit) {
       schedule_prefetch(run, frame_idx)
       return
     }
@@ -428,10 +435,7 @@ export function create_trajectory_session(
           trailing.shift() // this read
         }
         show(run, frame_idx, frame)
-        if (in_flight) return
-        // landed after a pause: it stays on screen until its exact copy replaces it
-        if (frame.frame.approximate && !player.is_playing) request_frame(run, frame_idx)
-        else schedule_prefetch(run, frame_idx)
+        if (!in_flight) schedule_prefetch(run, frame_idx)
       },
       (error: unknown) => {
         const trail_idx = trail_idx_of(controller)
@@ -479,7 +483,7 @@ export function create_trajectory_session(
         const idx = (from_idx + ahead) % run.frame_count
         if (idx === from_idx || prefetched.has(idx) || cache_owner !== run) continue
         const cached = cache.get(idx)
-        if (cached && matches_request(cached)) {
+        if (cached && matches_request(cached) && precise_enough(cached)) {
           protected_frames.add(idx)
           continue
         }
@@ -724,7 +728,6 @@ export function create_trajectory_session(
     get auto_play() {
       return inputs.should_auto_play() && inputs.run() !== undefined
     },
-    fps_step: FPS_STEP,
     can_advance: () =>
       inputs.can_advance?.() !== false &&
       // A skipped frame leaves the scene as it was, so there is no new render to wait for
@@ -740,12 +743,22 @@ export function create_trajectory_session(
     },
     on_pause: () => {
       cancel_prefetch()
-      // the bound frame is re-read exactly when a rounded one is shown or still in flight;
-      // the rounded frame stays on screen until its exact copy replaces it. Not when the
-      // pause reports a failed read: re-reading would retry it before the error is shown.
-      if (!frame_failure && (loaded?.frame.approximate || (in_flight && in_flight_rounded)))
-        request_frame(inputs.run(), inputs.index())
       inputs.on_pause?.()
+      // re-reading a failed frame would retry it before the error is shown
+      if (failure_pause) return
+      const [run, idx] = [inputs.run(), inputs.index()]
+      // The bound frame is re-read exactly when a rounded one is shown or still in flight;
+      // the rounded frame stays on screen until its exact copy replaces it. In a microtask,
+      // so a pause that precedes a seek (go_to) doesn't re-read the frame being left.
+      queueMicrotask(() => {
+        if (
+          (loaded?.frame.approximate || (in_flight && in_flight_rounded)) &&
+          !player.is_playing &&
+          inputs.run() === run &&
+          inputs.index() === idx
+        )
+          request_frame(run, idx)
+      })
     },
     on_end: inputs.on_end,
     on_loop: inputs.on_loop,

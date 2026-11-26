@@ -2,9 +2,10 @@
   // Phase × temperature stability map: one row per phase coloured by energy above hull, with
   // the exact stability windows as solid bars and transition temperatures as dashed lines.
   // Click/drag sets the temperature; clicking a formula selects the phase. Everything but the
-  // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
-  // Both canvases span only the visible rows and follow the scroll position: at one canvas of
-  // all rows each, 380 phases took 2 x 58 MB of backing store on a 2x display.
+  // cursor and row highlights is cached in an offscreen layer that is blitted per frame and
+  // re-rendered only when its inputs or the scroll position change. Both canvases span only
+  // the visible rows and follow the scroll position: at one canvas of all rows each, 380
+  // phases took 2 x 58 MB of backing store on a 2x display.
   import { clamp } from 'svelte-widgets/utils'
   import { add_alpha } from '#lib/colors/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
@@ -318,7 +319,8 @@
   {...rest}
   bind:clientHeight={visible_height}
   onscroll={(event) => {
-    scroll_top = event.currentTarget.scrollTop
+    // whole px: a fractional offset (HiDPI, zoom) would blur the translated bars and text
+    scroll_top = Math.round(event.currentTarget.scrollTop)
     onscroll?.(event) // a host's own handler still runs
   }}
   class={[`phase-stability-map`, rest.class]}

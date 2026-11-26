@@ -1424,12 +1424,15 @@
       (site_sidebar !== false || controls_config.visible(`site-table`)) &&
       has_site_data(sidebar_sites))
   })
-  // `auto` docks from a 900 px row, measured with the sidebar included (0 once it unmounts) so
-  // docking it cannot shrink the viewer below the bar. Narrower, the viewer would keep under
-  // ~600 px, where its floating panes (export, info, ~28em) cover most of the scene.
+  // Row width (px) an `auto` site sidebar docks from, measured with the sidebar included (0
+  // once it unmounts) so docking it cannot shrink the viewer below the bar. Narrower, the
+  // viewer would keep under ~600 px, where its floating panes (export, info, ~28em) cover
+  // most of the scene.
+  const SIDEBAR_DOCK_MIN_WIDTH = 900
   let site_sidebar_shown = $derived(
     site_data_available &&
-      (site_sidebar === true || (site_sidebar === `auto` && width + sidebar_width >= 900)),
+      (site_sidebar === true ||
+        (site_sidebar === `auto` && width + sidebar_width >= SIDEBAR_DOCK_MIN_WIDTH)),
   )
   // With a docked sidebar or in fullscreen the outer row takes the caller's size, the viewer fills it
   let row_sized = $derived(site_sidebar_shown || fullscreen)

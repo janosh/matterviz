@@ -19,7 +19,6 @@
   // axes, one rotation link and the frame cache. A dropped file replaces the data of the panes
   // it fills (see `fill`); while a sweep is shown only sweep JSONs are taken.
   import { format_num } from 'svelte-widgets/format'
-  import { FPS_STEP } from '#lib/constants.js'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import { create_on_screen, create_prop_state } from 'svelte-widgets/effects'
   import type { ShowControlsProp } from '#lib/controls.js'
@@ -408,7 +407,6 @@
     },
     fps_range: SWEEP_FPS_RANGE,
     auto_play: false,
-    fps_step: FPS_STEP,
     // playback waits for the next frames' data, and while the viewer is off screen
     can_advance: () =>
       on_screen.current &&

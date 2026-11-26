@@ -198,6 +198,16 @@ describe(`display modes`, () => {
     expect(structure_props().show_image_atoms).toBe(playing)
     play_button.click()
     await vi.waitFor(() => expect(structure_props().show_image_atoms).toBe(true))
+    // the structure pane's toggle is the user's choice: it survives the next play and pause
+    for (const chosen of [false, true]) {
+      structure_props().show_image_atoms = chosen
+      for (const label of [`Pause`, `Play`]) {
+        play_button.click()
+        await vi.waitFor(() => expect(play_button.getAttribute(`aria-label`)).toBe(label))
+        const paused = label === `Play`
+        expect(structure_props().show_image_atoms).toBe(chosen && (paused || playing))
+      }
+    }
   })
 
   test(`large runs use complete structure frames`, async () => {

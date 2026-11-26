@@ -5,7 +5,8 @@ import { createRawSnippet, flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, mount_in_test, query, trigger_resize_observer } from '../setup'
 
-// Drive the rAF loop by hand: each frame callback is queued, run_frame pops and runs one
+// Drive the rAF loop by hand: each frame callback is queued, the returned function pops and
+// runs one
 const stub_animation_frames = () => {
   const callbacks: FrameRequestCallback[] = []
   let next_id = 1
@@ -13,18 +14,16 @@ const stub_animation_frames = () => {
     callbacks.push(callback_fn)
     return next_id++
   })
-  const cancel_raf = vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
-  const performance_now = vi.spyOn(performance, `now`).mockReturnValue(0)
+  vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
   onTestFinished(() => {
     vi.restoreAllMocks()
   })
-  const run_frame = (timestamp: number) => {
+  return (timestamp: number) => {
     const callback = callbacks.shift()
     if (!callback) throw new Error(`Missing animation frame callback`)
     callback(timestamp)
     flushSync()
   }
-  return { callbacks, cancel_raf, performance_now, run_frame }
 }
 
 // `never` hides the bar, except that an active fullscreen controller inside must stay mounted
@@ -63,7 +62,7 @@ test.each([
   [185, true],
 ])(`a %ipx SequenceControlBar stacks the slider row: %s`, (bar_width, stacked) => {
   // happy-dom has no layout: elements report the width their data-width names
-  const { run_frame } = stub_animation_frames()
+  const run_frame = stub_animation_frames()
   vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
     this: Element,
   ) {

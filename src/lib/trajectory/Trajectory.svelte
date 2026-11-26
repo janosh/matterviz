@@ -561,6 +561,10 @@
     frame: session.numeric_frame ?? undefined,
   })
   let structure_display_mode = $derived(structure_props.display_mode ?? `structure`)
+  // Writable: the structure pane toggles it, a host-side change resets it (value-level like
+  // configured_trajectory_lines). Off unless asked for.
+  let configured_image_atoms = $derived(Boolean(structure_props.show_image_atoms))
+  let image_atoms = $derived(configured_image_atoms)
   let atom_color_config = $derived(
     structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
   )
@@ -1893,13 +1897,14 @@
               // analysis on every slider event dominated small-molecule scrubbing
               analyze_symmetry: false,
               ...structure_props,
-              // Off unless asked for, and off while worker-prepared frames play: a frame with
-              // image atoms is not the one prepared, so its sites, bonds and atom records were
-              // rebuilt on the main thread every frame (64 ms at 30k atoms). Back on pause.
-              show_image_atoms:
-                Boolean(structure_props.show_image_atoms) &&
-                !(player.is_playing && frame_preparation),
             }}
+            // Off while worker-prepared frames play: a frame with image atoms is not the one
+            // prepared, so its sites, bonds and atom records were rebuilt on the main thread
+            // every frame (64 ms at 30k atoms). Back on pause.
+            bind:show_image_atoms={
+              () => image_atoms && !(player.is_playing && frame_preparation),
+              (value) => (image_atoms = value)
+            }
             show_controls={structure_controls}
             tooltip={structure_props.tooltip === false ? false : site_tooltip}
             bind:scene_props={
