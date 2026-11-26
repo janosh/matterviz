@@ -191,8 +191,9 @@ export default defineConfig({
   optimizeDeps: {
     // Deps the startup scan misses trigger a re-optimize + reload mid page load (two Svelte
     // runtimes, a 500 from `get_first_child`). It skips dynamic imports inside functions only
-    // markup calls, like +layout.svelte's `{@attach link_sources}` source links.
-    include: [`svelte-widgets/source-links`],
+    // markup calls, like +layout.svelte's `{@attach link_sources}` source links, and worker
+    // entries (`new URL(..., import.meta.url)`), whose reload flaked the camera-flight e2e.
+    include: [`svelte-widgets/source-links`, `svelte-widgets/worker-serve`],
     rolldownOptions: { plugins: [scan_virtual_relative_imports] },
   },
   // The @threlte/extras barrel loads three-perf (for PerfMonitor, unused here), which imports

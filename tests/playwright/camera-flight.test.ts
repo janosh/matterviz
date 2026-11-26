@@ -366,7 +366,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
       await preview.click()
       await expect(pause).toBeVisible()
       await expect(home).toBeDisabled({ timeout: 10_000 })
-      await expect(play_button).toHaveText(`⏸`)
+      await expect(play_button).toHaveAccessibleName(`Pause`)
       await play_button.click()
     }
     await expect(flight.getByRole(`alert`)).toHaveCount(0)
