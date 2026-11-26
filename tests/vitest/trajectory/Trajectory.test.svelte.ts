@@ -1,6 +1,6 @@
 // Rendering, props, panes and events of Trajectory over a supplied TrajectoryRun.
-// Playback mechanics live in sequence-player.test, frame loading/caching in session.test and
-// file acquisition in Trajectory-loading.test; none of that is re-tested here.
+// Playback mechanics are tested in svelte-widgets (sequence-player), frame loading/caching in
+// session.test and file acquisition in Trajectory-loading.test; none of that is re-tested here.
 import type {
   TrajectoryController,
   TrajectoryRun,
@@ -174,6 +174,32 @@ const axis_labels = (target: ParentNode): string[] =>
   )
 
 describe(`display modes`, () => {
+  // A frame with image atoms is not the one its worker prepared (sites, bonds and atom records
+  // were rebuilt on the main thread per frame), so they wait for pause while such frames play
+  test.each([
+    [`hide while worker-prepared frames play`, true, false],
+    [`stay while unprepared frames play`, false, true],
+  ])(`requested image atoms %s`, async (_desc, prepared, playing) => {
+    const structure_props = last_props<StructureProps>(structure_component)
+    const frames = [0, 10, 20].map((step) => make_trajectory_frame(step, 2))
+    const run = trajectory_from_frames(frames)
+    const preparer = new FramePreparer()
+    const prepare_frame: TrajectoryRun[`prepare_frame`] = async (idx, preparation) =>
+      preparer.prepare(await run.read_frame(idx), preparation)
+    // assigned in place: a spread would turn the preview getter into a value $state proxies
+    Object.assign(run, { atom_count: 2000, ...(prepared && { prepare_frame }) })
+    const structure = { show_image_atoms: true }
+    const props = $state(
+      default_props({ trajectory: run, auto_play: true, structure_props: structure }),
+    )
+    await mount_ticked(props)
+    const play_button = doc_query<HTMLButtonElement>(`.play-button`)
+    await vi.waitFor(() => expect(play_button.getAttribute(`aria-label`)).toBe(`Pause`))
+    expect(structure_props().show_image_atoms).toBe(playing)
+    play_button.click()
+    await vi.waitFor(() => expect(structure_props().show_image_atoms).toBe(true))
+  })
+
   test(`large runs use complete structure frames`, async () => {
     const frames = [0, 10, 20].map((step) => make_trajectory_frame(step, 2))
     for (const frame of frames)

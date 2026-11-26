@@ -215,7 +215,12 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(disabled_buttons()).toEqual([true, true]))
   })
 
-  test(`imports validated paths and discards the flight origin on structure replacement`, async () => {
+  // a trajectory's frames replace the structure under one series key: only a new series
+  // rebuilds the flight session (per frame, that leaked every frame its batch had shown)
+  test.each([
+    [`discards the flight origin on structure replacement`, undefined, true],
+    [`keeps the flight across the frames of one series`, `run`, false],
+  ])(`imports validated paths and %s`, async (_desc, series_key, discards) => {
     mock_canvas_context()
     vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockReturnValue(
       `data:image/webp;base64,thumbnail`,
@@ -244,6 +249,7 @@ describe(`StructureExportPane`, () => {
         get structure() {
           return structure.current
         },
+        series_key,
         wrapper: wrapper_div,
         flight_pane_open: true,
       },
@@ -283,7 +289,8 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(home?.disabled).toBe(false))
     const inspected = controller.capture()
     source.set(structuredClone(simple_structure))
-    await vi.waitFor(() => expect(home?.disabled).toBe(true))
+    await tick()
+    await vi.waitFor(() => expect(home?.disabled).toBe(discards))
     expect(controller.capture()).toEqual(inspected)
   })
 

@@ -80,6 +80,10 @@
   // a boolean, so per-hover override arrays don't re-mute every site color
   const overriding = $derived(bond_colors !== undefined)
   const drawn_site_colors = $derived(overriding ? site_colors.map(mute) : site_colors)
+  // Linear RGB per site, resolved once per palette rather than per cylinder and frame
+  const site_rgb = $derived(
+    Float32Array.from(drawn_site_colors.flatMap((css) => css_to_linear_rgb(css))),
+  )
   const diffuse = dot(normalView, vec3(1, 1, 1).normalize()).max(0)
   const bond_color = tinted.mul(ambient_intensity.add(directional_intensity.mul(diffuse)))
   // Colors are uploaded in linear space; the renderer applies tone mapping and sRGB output.
@@ -99,7 +103,7 @@
   })
 
   $effect(() => {
-    if (mesh.update_colors(bonds, placements, drawn_site_colors, uniform_color, bond_colors))
+    if (mesh.update_colors(bonds, placements, site_rgb, uniform_color, bond_colors))
       invalidate()
   })
 

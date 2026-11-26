@@ -362,7 +362,8 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
 
 // bond_colors overrides the endpoint-site gradient per bond, copy by copy for multiple orders
 const linear = (css: string) => css_to_linear_rgb(css).map(Math.fround)
-const site_colors = [`#ff0000`, `#0000ff`]
+const palette = (...colors: string[]) => Float32Array.from(colors.flatMap(linear))
+const site_colors = palette(`#ff0000`, `#0000ff`)
 const instance = (attribute: { array: ArrayLike<number> }, idx: number) =>
   Array.from(attribute.array).slice(idx * 3, idx * 3 + 3)
 
@@ -394,7 +395,7 @@ test(`bond_colors override both bond ends, keep site colors elsewhere, drop the 
   expect(instance(mesh.colors_start, 0)).toEqual(linear(`#ff0000`))
   expect(instance(mesh.colors_end, 0)).toEqual(linear(`#0000ff`))
   // uniform site colors take the fast path unless overridden
-  const uniform = [`#00ff00`, `#00ff00`]
+  const uniform = palette(`#00ff00`, `#00ff00`)
   expect(mesh.update_colors(bonds, placements, uniform, `#00ff00`, overrides)).toBe(true)
   expect([0, 2].map((idx) => instance(mesh.colors_start, idx))).toEqual([
     linear(`#ffffff`),

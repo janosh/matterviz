@@ -64,6 +64,7 @@ import {
   get_orig_site_idx,
   is_image_site,
   merge_site_properties,
+  numeric_sites,
   snapshot_topologies,
   site_count,
 } from './site'
@@ -248,6 +249,8 @@ function create_change_tracker() {
 // Whether a site's coordinates are read through a proxy: structuredClone refuses every Proxy,
 // and probing one 3-number array costs nothing next to the clone it guards
 const is_proxied = (structure: AnyStructure): boolean => {
+  // a numeric frame is plain by construction, and reading its sites materializes every record
+  if (numeric_sites.has(structure)) return false
   // sites can be missing from an invalid input, which the viewer reports rather than throws on
   const probe = structure.sites?.[0]?.abc
   if (!probe) return false

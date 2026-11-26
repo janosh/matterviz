@@ -49,6 +49,15 @@ export class InstanceColors extends InstancedBufferAttribute {
     return true
   }
 
+  // Linear RGB written straight into `array`: upload the drawn range, forget its CSS history
+  upload(count: number): void {
+    this.css.length = 0
+    this.uniform_color = undefined
+    this.clearUpdateRanges()
+    this.addUpdateRange(0, count * 3)
+    this.needsUpdate = true
+  }
+
   fill_color(color: string, count = this.count): boolean {
     if (color === this.uniform_color && count <= this.css.length) return false
     let first = 0

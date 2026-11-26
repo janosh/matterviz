@@ -10,6 +10,7 @@ import * as neighbor_list from '#lib/structure/neighbor-list.js'
 import type { StructureSession } from '#lib/structure/session.svelte.js'
 import { MAX_HISTORY } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
@@ -233,6 +234,21 @@ describe(`display pipeline`, () => {
     expect(make_session({}, { structure: () => plain }).session.normalized_structure).toBe(
       plain,
     )
+    // a numeric trajectory frame is read as it is, without materializing its site records
+    const numbers = Uint8Array.of(1, 8)
+    const md_frame = create_numeric_md_frame(
+      Array(6).fill(0),
+      numbers,
+      undefined,
+      undefined,
+      0,
+      {},
+      [],
+    )
+    const frame = new FrameView().update(md_frame).structure
+    const materialize = vi.spyOn(frame, `sites`, `get`)
+    expect(make_session({}, { structure: () => frame }).session.plain_input).toBe(frame)
+    expect(materialize).not.toHaveBeenCalled()
     // a structure the viewer loads itself is proxied by the binding but read as it is
     session.adopt_structure(plain)
     flushSync()

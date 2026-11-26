@@ -862,11 +862,16 @@
   })
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
-  let vector_keys = $derived(
-    structure && site_count(structure) > 0
-      ? get_structure_vector_keys(tool_structure ?? structure)
-      : [],
-  )
+  // Keys are memoized per structure object, so only its identity is tracked: reading through a
+  // host's deep-$state structure (even just its site count) kept each replaced one alive
+  // (~14 MB per replacement at 2k sites)
+  let vector_keys = $derived.by(() => {
+    const base = structure
+    const target = tool_structure ?? base
+    return untrack(() =>
+      base && target && site_count(base) > 0 ? get_structure_vector_keys(target) : [],
+    )
+  })
   let vector_keys_signature = $derived(vector_keys.join(`\0`))
   let vectors_auto_populated_for = ``
   let last_auto_configs: Record<string, unknown> | undefined
@@ -1658,6 +1663,7 @@
                 bind:export_pane_open={() => is_pane_open(`export`), pane_setter(`export`)}
                 bind:flight_pane_open={() => is_pane_open(`flight`), pane_setter(`flight`)}
                 structure={session.mapped_normalized_structure}
+                {series_key}
                 {sym_data}
                 {wrapper}
                 {scene}

@@ -1892,11 +1892,16 @@
             allow_file_drop={false}
             style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
             {...{
-              show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
               // Coordinate playback is not a stream of new crystals to classify: symmetry
               // analysis on every slider event dominated small-molecule scrubbing
               analyze_symmetry: false,
               ...structure_props,
+              // Off unless asked for, and off while worker-prepared frames play: a frame with
+              // image atoms is not the one prepared, so its sites, bonds and atom records were
+              // rebuilt on the main thread every frame (64 ms at 30k atoms). Back on pause.
+              show_image_atoms:
+                Boolean(structure_props.show_image_atoms) &&
+                !(player.is_playing && frame_preparation),
             }}
             show_controls={structure_controls}
             tooltip={structure_props.tooltip === false ? false : site_tooltip}

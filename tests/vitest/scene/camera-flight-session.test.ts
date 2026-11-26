@@ -1,6 +1,8 @@
 import type { CameraPose } from '#lib/scene/camera-flight.js'
 import type { FlightTimeline } from '#lib/scene/camera-flight-session.js'
 import { create_camera_flight_session } from '#lib/scene/camera-flight-session.js'
+import { setFlagsFromString } from 'node:v8'
+import { runInNewContext } from 'node:vm'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { expect, it, vi } from 'vite-plus/test'
 import { flight_controller } from './mount'
@@ -156,3 +158,30 @@ it(`disposal aborts pending reads and releases the camera without reviving old p
   expect(playing()).toBe(false)
   expect(await session.run(`seek`, ({ show }) => show(moved, 1))).toBe(false)
 })
+
+it.each([`dispose`, `cancel`, `restore`] as const)(
+  `%s leaves no abort reason whose captured stack retains the caller`,
+  async (method) => {
+    const { session, timeline, moved } = setup()
+    // Held like a superseded frame read holds them: the signal outlives the call that aborts it
+    const signals: AbortSignal[] = []
+    timeline.prepare = (_idx, signal) => {
+      signals.push(signal)
+      return new Promise<void>(() => {})
+    }
+    const task = session.run(`seek`, ({ show }) => show(moved, 2))
+    await vi.waitFor(() => expect(signals).toHaveLength(1))
+    // The caller is the receiver of a frame on the stack an abort reason would capture
+    const caller = (() => {
+      const owner = { stop: () => void session[method]() }
+      owner.stop()
+      return new WeakRef(owner)
+    })()
+    expect(await task).toBe(false)
+    expect(signals[0].aborted).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 0)) // a WeakRef target lives out its task
+    setFlagsFromString(`--expose-gc`)
+    runInNewContext(`gc`)()
+    expect(caller.deref()).toBeUndefined()
+  },
+)

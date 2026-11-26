@@ -1530,3 +1530,54 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     })
   })
 })
+
+// A host replacing a deep-$state structure every frame (an animation loop) must not keep the
+// replaced ones alive: reading through each one's site proxies once retained ~14 MB per swap
+// at 2k sites. Both heaps are measured after forced GC, so the margin is far below one leak.
+test(`replaced structures are collected`, async ({ page }) => {
+  await goto_structure_test(page)
+  const swap = (n_swaps: number) =>
+    page.evaluate(async (count) => {
+      const [side, cell] = [13, 39] // 2197 sites
+      const lattice = {
+        matrix: [
+          [cell, 0, 0],
+          [0, cell, 0],
+          [0, 0, cell],
+        ],
+        pbc: [true, true, true],
+        a: cell,
+        b: cell,
+        c: cell,
+        alpha: 90,
+        beta: 90,
+        gamma: 90,
+        volume: cell ** 3,
+      }
+      for (let idx = 0; idx < count; idx++) {
+        const sites = Array.from({ length: side ** 3 }, (_, site_idx) => {
+          const abc = [
+            site_idx % side,
+            Math.floor(site_idx / side) % side,
+            Math.floor(site_idx / side ** 2),
+          ].map((step) => step / side + (idx % 10) / 1000)
+          const species = [{ element: `Cu`, occu: 1, oxidation_state: 0 }]
+          const xyz = abc.map((frac) => frac * cell)
+          return { species, abc, xyz, label: `Cu`, properties: { force: [0, 0, 0.1] } }
+        })
+        globalThis.dispatchEvent(
+          new CustomEvent(`set-structure`, { detail: { structure: { lattice, sites } } }),
+        )
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+      }
+    }, n_swaps)
+  const session = await page.context().newCDPSession(page)
+  const heap_mb = async () => {
+    for (let pass = 0; pass < 3; pass++) await session.send(`HeapProfiler.collectGarbage`)
+    return (await session.send(`Runtime.getHeapUsage`)).usedSize / 1e6
+  }
+  await swap(10) // warm up caches and compiled code
+  const before = await heap_mb()
+  await swap(30)
+  expect(await heap_mb()).toBeLessThan(before + 50) // the leak added ~430 MB here
+})
