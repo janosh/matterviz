@@ -14,12 +14,22 @@
     fullscreen = $bindable(false),
     hidden = false,
     wrapper,
+    on_change,
     ...rest
   }: ComponentProps<typeof WidgetFullscreenButton> = $props()
 
   // marks a wrapper as a fullscreen root so nested viewers can spot an outer owner
   const VIEWER_ATTR = `data-mv-fullscreen-root`
   const shortcut_flash = create_shortcut_flash<`fullscreen`>()
+
+  // The widget reports each real browser transition of its wrapper. Without one nothing goes
+  // fullscreen and the flag itself is the state, so its flips are reported here instead.
+  let reported = fullscreen
+  $effect(() => {
+    if (fullscreen === reported) return
+    reported = fullscreen
+    if (!wrapper) on_change?.(fullscreen)
+  })
 
   // A host that cannot fullscreen holds no fullscreen state: a bound `true` (a "start in
   // fullscreen" setting) would leave the viewer's fixed fullscreen styles on with no exit.
@@ -59,6 +69,7 @@
 {#if host.fullscreen}<WidgetFullscreenButton
     bind:fullscreen
     {wrapper}
+    {on_change}
     aria-keyshortcuts={SHORTCUTS.fullscreen.keys}
     title={shortcut_title(
       `fullscreen`,

@@ -41,7 +41,7 @@ const mount_button = (wrapper?: HTMLElement) => {
 }
 
 describe(`FullscreenButton`, () => {
-  test(`without a wrapper the button toggles its flag and reports no transition`, async () => {
+  test(`without a wrapper the flag is the state and every flip is reported`, async () => {
     const { state, on_change, button } = mount_button()
     const view_box = () => button.querySelector(`svg`)?.getAttribute(`viewBox`)
     expect(button.getAttribute(`aria-pressed`)).toBe(`false`)
@@ -59,7 +59,7 @@ describe(`FullscreenButton`, () => {
     flushSync()
     await tick()
     expect(state.fullscreen).toBe(false)
-    expect(on_change).not.toHaveBeenCalled()
+    expect(on_change.mock.calls).toEqual([[true], [false]])
   })
 
   test(`with a wrapper only real browser transitions are reported`, async () => {
