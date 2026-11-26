@@ -51,8 +51,9 @@ export type NumericFrame = {
   // Display preparation wraps periodic coordinates once, before transfer to the renderer.
   // Source reads and independently owned analysis packets keep their original coordinates.
   wrapped?: true
-  // Rounded for display in motion (FrameChannels.precision): exports and measurements
-  // re-read the source instead
+  // Rounded for display in motion (FrameChannels.precision), at most range / 131070 off:
+  // exports re-read the source; a paused viewer re-reads it exactly, so measurements made
+  // before that copy lands see the rounded coordinates
   approximate?: true
 }
 
@@ -411,7 +412,8 @@ export class FrameView {
             revision: fixed?.revision,
             count: sites.length,
             identities: [],
-            elements,
+            // a copy: a preparation worker transfers the frame's own array away
+            elements: elements?.slice(),
           })
     let frame: TrajectoryFrame
     if (sites instanceof Uint8Array) {

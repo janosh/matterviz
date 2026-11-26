@@ -21,6 +21,7 @@ test(`summarizes received and displayed frames per window, then starts a new win
     () => clock,
   )
   expect(telemetry.enabled).toBe(true)
+  telemetry.animation_frame(1000) // paused, nothing shown yet: not a playback cadence
   // frames arrive 100 ms apart, each shown 20 ms after it arrived: 10 fps over 1 s
   for (let idx = 0; idx < 11; idx++) {
     clock = idx * 100

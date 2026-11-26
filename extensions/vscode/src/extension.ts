@@ -610,7 +610,8 @@ async function broadcast_file_updated(
     for (const webview of subscribers) {
       post_to_webview(webview, { command: `fileUpdated`, file_path, data, theme })
     }
-    prewarm_run(file_path, data)
+    // the last panel may have closed during the read, leaving nothing to dispose the run
+    if (active_watcher_subscribers.get(file_path)?.size) prewarm_run(file_path, data)
   } catch (error) {
     console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
     // once per failure, not per subscriber; shown, as in start_watching_file

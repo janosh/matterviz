@@ -13,7 +13,7 @@ import { create_prepare_pool, prepare_worker_count } from '#lib/trajectory/prepa
 import { summarize_run } from '#lib/trajectory/run.js'
 import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { describe, expect, it, test, vi } from 'vite-plus/test'
+import { describe, expect, it, onTestFinished, test, vi } from 'vite-plus/test'
 import { synthetic_extxyz } from './fixtures'
 
 const backing = trajectory_from_frames(
@@ -81,7 +81,10 @@ describe(`create_prepare_pool`, () => {
     expect(display.bonds).toEqual(expected.bonds)
     expect(display.bond_placements).toEqual(expected.bond_placements)
     expect(display.frame.coordinates).toEqual(expected.frame.coordinates)
-    expect(on_timing).toHaveBeenCalledWith({ prepare_ms: 1, wait_ms: expect.any(Number) })
+    // reported after the job settles
+    await vi.waitFor(() =>
+      expect(on_timing).toHaveBeenCalledWith({ prepare_ms: 1, wait_ms: expect.any(Number) }),
+    )
     expect(workers).toHaveLength(1) // opened on demand
     pool.dispose()
     expect(workers[0].terminated).toBe(true)
@@ -110,8 +113,12 @@ describe(`create_prepare_pool`, () => {
 
   it(`ends workers idle for 10 s, never one with a job, and reopens on demand`, async () => {
     vi.useFakeTimers()
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
     const { workers, create_worker, release } = make_workers({ hold: true })
     const pool = create_prepare_pool({ create_worker, transfers, size: 2 })
+    onTestFinished(pool.dispose)
     const busy = pool.prepare(await fresh_frame(0), PREPARATION)
     vi.advanceTimersByTime(20_000) // a running job keeps its worker
     expect(workers[0].terminated).toBe(false)
@@ -125,8 +132,34 @@ describe(`create_prepare_pool`, () => {
     expect(workers).toHaveLength(2) // a fresh worker
     release()
     expect((await next).bonds).toBeDefined()
-    pool.dispose()
-    vi.useRealTimers()
+  })
+
+  // Neither a worker that can't be created nor a throwing timing callback strands a job
+  it(`a throwing worker factory fails only its job; on_timing can't block settling`, async () => {
+    const { create_worker } = make_workers()
+    let fail_next = true
+    const on_timing = vi.fn(() => {
+      throw new Error(`telemetry broke`)
+    })
+    const pool = create_prepare_pool({
+      create_worker: () => {
+        if (fail_next) {
+          fail_next = false
+          throw new Error(`no workers here`)
+        }
+        return create_worker()
+      },
+      transfers,
+      size: 1,
+      on_timing,
+    })
+    onTestFinished(pool.dispose)
+    const failed = pool.prepare(await fresh_frame(0), PREPARATION)
+    await expect(failed).rejects.toThrow(`no workers here`)
+    // the timing error surfaces separately, after the job resolved
+    const unhandled = new Promise((resolve) => process.once(`uncaughtException`, resolve))
+    expect((await pool.prepare(await fresh_frame(1), PREPARATION)).bonds).toBeDefined()
+    expect(await unhandled).toMatchObject({ message: `telemetry broke` })
   })
 
   it(`a failing worker rejects only its own job; dispose rejects the rest`, async () => {

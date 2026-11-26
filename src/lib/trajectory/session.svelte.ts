@@ -105,6 +105,9 @@ export function create_trajectory_session(
   })
   const request_key = $derived(value_key(preparation ?? { channels }))
   const matches_request = (frame: SessionFrame): boolean => frame.request_key === request_key
+  // whether a read issued now comes back rounded (see read_display)
+  const reads_rounded = (run: TrajectoryRun): boolean =>
+    player.is_playing && Boolean(run.rounds_display_frames)
   const read_display = (
     run: TrajectoryRun,
     idx: number,
@@ -115,10 +118,9 @@ export function create_trajectory_session(
     // TrajectoryRun.rounds_display_frames) arrive approximate; pausing re-reads exactly.
     // Outside request_key, so a rounded frame and its exact re-read share one cache slot.
     const requested = preparation ? preparation.channels : channels
-    const read_channels: FrameChannels | undefined =
-      player.is_playing && run.rounds_display_frames
-        ? { ...requested, precision: `display` }
-        : requested
+    const read_channels: FrameChannels | undefined = reads_rounded(run)
+      ? { ...requested, precision: `display` }
+      : requested
     if (preparation) {
       if (!run.prepare_frame) throw new Error(`Trajectory source cannot prepare frames`)
       return run
@@ -238,6 +240,7 @@ export function create_trajectory_session(
   type PrefetchRequest = {
     run: TrajectoryRun
     key: string
+    rounded: boolean
     bytes: number
     records: number
     controller: AbortController
@@ -253,7 +256,9 @@ export function create_trajectory_session(
   // which frees their decoder for the target.
   let in_flight_key: string | undefined
   let in_flight_idx = -1
-  type Read = { controller: AbortController; idx: number }
+  let in_flight_rounded = false
+  // `rounded`: requested at display precision, so it can't stand in for an exact read
+  type Read = { controller: AbortController; idx: number; rounded: boolean }
   const trailing: Read[] = []
   const supersede = (reads: Read[]): void => {
     for (const { controller } of reads)
@@ -263,7 +268,8 @@ export function create_trajectory_session(
   const trail_idx_of = (controller: AbortController): number =>
     trailing.findIndex((read) => read.controller === controller)
   const cancel_in_flight = (trail = false): void => {
-    if (in_flight) trailing.push({ controller: in_flight, idx: in_flight_idx })
+    if (in_flight)
+      trailing.push({ controller: in_flight, idx: in_flight_idx, rounded: in_flight_rounded })
     in_flight = undefined
     if (!trail) drop_trailing()
   }
@@ -338,9 +344,15 @@ export function create_trajectory_session(
       if (waiter.run !== run || waiter.idx !== frame_idx)
         waiter.settle(new DOMException(`Displayed frame request superseded`, `AbortError`))
     }
+    // a rounded read in flight serves playback only, like a rounded cached frame
+    const rounded = Boolean(run && reads_rounded(run))
     const candidate = frame_idx === null ? undefined : prefetched.get(frame_idx)
     const next =
-      candidate?.run === run && candidate?.key === request_key ? candidate : undefined
+      candidate?.run === run &&
+      candidate?.key === request_key &&
+      (rounded || !candidate.rounded)
+        ? candidate
+        : undefined
     const cached = frame_idx !== null && cache_owner === run ? cache_get(frame_idx) : undefined
     // a rounded playback frame serves playback only: paused, the exact frame is read
     const cache_hit =
@@ -372,9 +384,13 @@ export function create_trajectory_session(
       return
     }
     // A retained read of this frame (a drag back over it) is the target again, not a re-read
-    const retained = next ? -1 : trailing.findIndex(({ idx }) => idx === frame_idx)
+    const retained = next
+      ? -1
+      : trailing.findIndex((read) => read.idx === frame_idx && (rounded || !read.rounded))
     if (retained !== -1) {
-      in_flight = trailing.splice(retained, 1)[0].controller
+      const read = trailing.splice(retained, 1)[0]
+      in_flight = read.controller
+      in_flight_rounded = read.rounded
       in_flight_idx = frame_idx
       return
     }
@@ -396,6 +412,7 @@ export function create_trajectory_session(
     in_flight = controller
     in_flight_key = request_key
     in_flight_idx = frame_idx
+    in_flight_rounded = next?.rounded ?? rounded
     pending.then(
       (frame) => {
         // Cancelled preparation may still finish on the primary worker; never retain it.
@@ -411,7 +428,10 @@ export function create_trajectory_session(
           trailing.shift() // this read
         }
         show(run, frame_idx, frame)
-        if (!in_flight) schedule_prefetch(run, frame_idx)
+        if (in_flight) return
+        // landed after a pause: it stays on screen until its exact copy replaces it
+        if (frame.frame.approximate && !player.is_playing) request_frame(run, frame_idx)
+        else schedule_prefetch(run, frame_idx)
       },
       (error: unknown) => {
         const trail_idx = trail_idx_of(controller)
@@ -487,6 +507,7 @@ export function create_trajectory_session(
           const request: PrefetchRequest = {
             run,
             key: request_key,
+            rounded: reads_rounded(run),
             controller,
             result,
             bytes,
@@ -719,8 +740,11 @@ export function create_trajectory_session(
     },
     on_pause: () => {
       cancel_prefetch()
-      // the rounded frame stays on screen until its exact copy replaces it
-      if (loaded?.frame.approximate) request_frame(loaded.run, loaded.idx)
+      // the bound frame is re-read exactly when a rounded one is shown or still in flight;
+      // the rounded frame stays on screen until its exact copy replaces it. Not when the
+      // pause reports a failed read: re-reading would retry it before the error is shown.
+      if (!frame_failure && (loaded?.frame.approximate || (in_flight && in_flight_rounded)))
+        request_frame(inputs.run(), inputs.index())
       inputs.on_pause?.()
     },
     on_end: inputs.on_end,

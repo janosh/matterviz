@@ -142,6 +142,15 @@ describe(`ASE frame slicing`, () => {
     }
     // ranged reads only: no single read spans a whole frame span, let alone the file
     expect(Math.max(...reads)).toBeLessThan(Math.min(...spans.map((span) => span.size)))
+    // an analysis batch reads only its atoms' rows, not whole columns
+    const batch_bytes = (count: number) => {
+      reads.length = 0
+      const batch = from_file.read_atoms?.({ frame_idx: 1, start: 0, count })
+      expect(batch).toEqual(in_memory.read_atoms?.({ frame_idx: 1, start: 0, count }))
+      return reads.reduce((sum, length) => sum + length, 0)
+    }
+    const n_atoms = from_file.read(1).sites.length
+    expect(batch_bytes(1)).toBeLessThan(batch_bytes(n_atoms))
     from_file.release?.()
     expect(released).toBe(true)
     expect(() => from_file.read(0)).toThrow(`ASE trajectory buffer was released`)

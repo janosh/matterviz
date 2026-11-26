@@ -35,9 +35,9 @@
   // `vectors=1` gives every site a force, drawn as one arrow per atom
   const with_vectors = browser && page.url.searchParams.has(`vectors`)
   // Structure props as JSON, e.g. ?structure={"show_image_atoms":true,"scene_props":{...}}
-  const structure_props = browser
-    ? JSON.parse(page.url.searchParams.get(`structure`) ?? `{}`)
-    : {}
+  // an empty ?structure= counts as absent; invalid JSON fails loudly
+  const structure_param = browser ? page.url.searchParams.get(`structure`) : null
+  const structure_props = structure_param ? JSON.parse(structure_param) : {}
 
   const build_frames = (): TrajectoryFrame[] => {
     const rng = math.mulberry32(7) // seeded so every run sees identical coordinates
@@ -85,18 +85,20 @@
       })
     : null
   const build_ms = browser ? performance.now() - build_start : null
-  if (run && worker_prepare) {
-    const pool = create_prepare_pool<HostPrepareInput>({
-      create_worker: () =>
-        new Worker(
-          new URL(`../../../lib/file-viewer/host-prepare-worker.ts`, import.meta.url),
-          {
-            type: `module`,
-          },
-        ),
-      transfers: host_prepare_transfers,
-    })
-    // memory frames are borrowed, so the pool gets a copy to take; reads ahead like a host run
+  // its workers end with the page, not after idling past a navigation away
+  const pool =
+    run && worker_prepare
+      ? create_prepare_pool<HostPrepareInput>({
+          create_worker: () =>
+            new Worker(
+              new URL(`../../../lib/file-viewer/host-prepare-worker.ts`, import.meta.url),
+              { type: `module` },
+            ),
+          transfers: host_prepare_transfers,
+        })
+      : undefined
+  // memory frames are borrowed, so the pool gets a copy to take; reads ahead like a host run
+  if (run && pool)
     Object.assign(run, {
       read_concurrency: host_read_concurrency(n_atoms),
       prepare_frame: async (idx, preparation, signal) =>
@@ -106,12 +108,12 @@
           signal,
         ),
     } satisfies Partial<TrajectoryRun>)
-  }
 
   let mount_ms = $state<number | null>(null)
   let current_step_idx = $state(0)
   onMount(() => {
     mount_ms = performance.now() - build_start - (build_ms ?? 0)
+    return () => pool?.dispose()
   })
 </script>
 

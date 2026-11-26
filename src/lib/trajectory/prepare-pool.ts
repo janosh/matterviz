@@ -105,9 +105,17 @@ export const create_prepare_pool = <Input>({
     clearTimeout(idle_timer)
     idle_timer = undefined
     for (const job of queued) {
-      const slot =
-        slots.find((candidate) => !candidate.job) ??
-        (slots.length < size ? open_slot() : undefined)
+      let slot: Slot<Input> | undefined
+      try {
+        slot =
+          slots.find((candidate) => !candidate.job) ??
+          (slots.length < size ? open_slot() : undefined)
+      } catch (error) {
+        // a worker that can't be created fails this job; the next one tries again
+        queued.delete(job)
+        job.finish(to_error(error))
+        continue
+      }
       if (!slot) return
       queued.delete(job)
       slot.job = job
@@ -149,11 +157,11 @@ export const create_prepare_pool = <Input>({
             signal?.removeEventListener(`abort`, abort)
             if (outcome instanceof Error) return reject(outcome)
             const { display, prepare_ms } = outcome
-            on_timing?.({
-              prepare_ms,
-              wait_ms: performance.now() - job.started_at - prepare_ms,
-            })
             resolve(display)
+            // after settling, outside the reply handler: a throwing callback can't strand the job
+            // or the queue
+            const wait_ms = performance.now() - job.started_at - prepare_ms
+            if (on_timing) queueMicrotask(() => on_timing({ prepare_ms, wait_ms }))
           },
         }
         signal?.addEventListener(`abort`, abort, { once: true })

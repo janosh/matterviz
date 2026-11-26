@@ -131,8 +131,10 @@ export const create_playback_telemetry = (
       received_at.set(sample.idx, now())
       schedule()
     },
+    // only while this window shows frames: a paused viewer neither grows the samples nor
+    // reports its idle refresh rate as playback cadence
     animation_frame: (interval_ms) => {
-      if (post) frame_intervals.push(interval_ms)
+      if (post && shown_at.length > 0) frame_intervals.push(interval_ms)
     },
     long_task: (duration_ms) => {
       if (post) long_task_ms += duration_ms

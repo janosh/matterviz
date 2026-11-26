@@ -81,13 +81,22 @@ const ndarray_rows = (ref: { ndarray: unknown[] }): number => {
   return shape[0]
 }
 
-// Decode one ULM ndarray item `[shape, dtype, absolute byte offset]`, reading only its bytes
-const ndarray_reader = (source: ByteSource, ref: { ndarray: unknown[] }) => {
+// Decode one ULM ndarray item `[shape, dtype, absolute byte offset]`, reading only its bytes:
+// with `rows`, only that row range (an atom batch of a large frame); `value` takes indices into
+// the whole array either way
+const ndarray_reader = (
+  source: ByteSource,
+  ref: { ndarray: unknown[] },
+  rows?: { start: number; count: number },
+) => {
   const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
   const reader = NDARRAY_READERS[dtype]
   if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
-  const view = source.read(absolute_offset, values_per_sample(shape) * reader.bytes)
-  return { shape, value: (idx: number) => reader.read(view, idx * reader.bytes) }
+  const row_values = shape.length > 1 ? shape[1] : 1
+  const first = rows ? rows.start * row_values : 0
+  const length = rows ? rows.count * row_values : values_per_sample(shape)
+  const view = source.read(absolute_offset + first * reader.bytes, length * reader.bytes)
+  return { shape, value: (idx: number) => reader.read(view, (idx - first) * reader.bytes) }
 }
 
 const read_source_ndarray = (source: ByteSource, ref: { ndarray: unknown[] }): number[][] => {
@@ -534,12 +543,22 @@ export function open_ase_frames(data: ArrayBuffer | ByteSource, warn: WarnFn): A
   const initial_header = frame_header(0)
   // ASE stores numbers, masses and PBC in frame 0, repeating them only when they change.
   // Retain descriptors, not decoded frames: each analysis read copies only its atom batch.
-  const array_column = (header: Record<string, unknown>, name: string, width: number) => {
+  const array_ref = (header: Record<string, unknown>, name: string) => {
     const ref = header[`${name}.`] ?? header[name]
     if (ref === undefined) return undefined
     if (!ref || typeof ref !== `object` || !(`ndarray` in ref) || !Array.isArray(ref.ndarray))
       throw new Error(`ASE ${name} must be a numeric array`)
-    const column = ndarray_reader(live(), { ndarray: ref.ndarray })
+    return { ndarray: ref.ndarray }
+  }
+  const array_column = (
+    header: Record<string, unknown>,
+    name: string,
+    width: number,
+    rows?: { start: number; count: number },
+  ) => {
+    const ref = array_ref(header, name)
+    if (!ref) return undefined
+    const column = ndarray_reader(live(), ref, rows)
     if (
       column.shape.length !== (width === 1 ? 1 : 2) ||
       (width !== 1 && column.shape[1] !== width)
@@ -579,18 +598,26 @@ export function open_ase_frames(data: ArrayBuffer | ByteSource, warn: WarnFn): A
     try {
       // A repeated topology header is complete; absent headers inherit frame 0 (ASE's rule).
       const topology = header[`numbers.`] || header.numbers ? header : initial_header
-      const positions = array_column(header, `positions`, 3)
-      const elements = array_column(topology, `numbers`, 1)
-      if (!positions || !elements || positions.shape[0] !== elements.shape[0])
+      // the atom count comes from the shape alone, so each column reads only the batch's rows
+      const positions_ref = array_ref(header, `positions`)
+      const elements_ref = array_ref(topology, `numbers`)
+      const total_atoms = positions_ref ? ndarray_rows(positions_ref) : 0
+      if (!elements_ref || ndarray_rows(elements_ref) !== total_atoms)
         throw new Error(`ASE positions and atomic numbers must have matching atom counts`)
-      const total_atoms = positions.shape[0]
-      const { start, count } = atom_range(total_atoms, options)
+      const rows = atom_range(total_atoms, options)
+      const { start, count } = rows
       const column = (name: string, width: number, source_header = header) => {
-        const values = array_column(source_header, name, width)
-        if (values && values.shape[0] !== total_atoms)
-          throw new Error(`ASE ${name} has ${values.shape[0]} atoms, expected ${total_atoms}`)
-        return values
+        const ref = array_ref(source_header, name)
+        if (ref && ndarray_rows(ref) !== total_atoms)
+          throw new Error(
+            `ASE ${name} has ${ndarray_rows(ref)} atoms, expected ${total_atoms}`,
+          )
+        return array_column(source_header, name, width, rows)
       }
+      const positions = column(`positions`, 3)
+      const elements = column(`numbers`, 1, topology)
+      if (!positions || !elements)
+        throw new Error(`ASE positions and atomic numbers must have matching atom counts`)
       if (velocity_key && velocity_key !== `velocity`)
         throw new Error(`Unknown ASE velocity property: ${velocity_key}; use velocity`)
       const momenta = velocity_key && column(`momenta`, 3)

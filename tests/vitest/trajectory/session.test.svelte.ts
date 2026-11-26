@@ -38,14 +38,24 @@ const PREPARATION = { bonding_strategy: `electroneg_ratio`, bonding_options: {} 
 // unless read_concurrency says the source pipelines them (as a host does)
 const make_async_run = (frame_list: TrajectoryFrame[], read_concurrency?: number) => {
   const backing = trajectory_from_frames(frame_list)
-  const pending: { idx: number; resolve: () => void; reject: (error: Error) => void }[] = []
+  // `rounded`: read at display precision (playback), answered with an approximate frame
+  const pending: {
+    idx: number
+    rounded: boolean
+    resolve: () => void
+    reject: (error: Error) => void
+  }[] = []
   const reads: number[] = []
-  const host = host_run(summarize_run(backing), (idx, signal) => {
+  const host = host_run(summarize_run(backing), (idx, signal, channels) => {
     reads.push(idx)
+    const rounded = channels?.precision === `display`
     return new Promise<NumericFrame>((resolve, reject) => {
+      const frame = backing.read_frame(idx)
+      if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
       const entry = {
         idx,
-        resolve: () => resolve(backing.read_frame(idx)),
+        rounded,
+        resolve: () => resolve(rounded ? { ...frame, approximate: true } : frame),
         reject,
       }
       pending.push(entry)
@@ -823,7 +833,8 @@ describe(`controller and playback`, () => {
     expect(reads).toEqual([1, 2])
     session.player.pause()
     flushSync()
-    expect(pending).toHaveLength(0)
+    // the read-ahead is dropped; the rounded frame on screen is re-read exactly
+    expect(pending.map(({ idx, rounded }) => [idx, rounded])).toEqual([[1, false]])
     expect(session.current_frame?.step).toBe(10)
   })
 
@@ -1123,6 +1134,26 @@ describe(`resolve_frame`, () => {
       expect(read).not.toHaveBeenCalled()
     },
   )
+  // Pausing while a rounded read is in flight re-reads the bound frame exactly: the rounded
+  // read may still land, but never stands in for the exact one or stays on screen
+  it(`pausing re-reads the bound frame exactly, not reusing a rounded read in flight`, async () => {
+    stub_raf()
+    const { run, pending, resolve_next } = make_async_run(frames(6), 8)
+    const { host, session } = make_session({ run })
+    await flush_microtasks()
+    session.player.play()
+    host.index = 2
+    flushSync()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(pending.find(({ idx }) => idx === 2)?.rounded).toBe(true)
+    session.player.pause()
+    flushSync()
+    await flush_microtasks()
+    expect(pending.filter(({ idx, rounded }) => idx === 2 && !rounded)).toHaveLength(1)
+    while (pending.length) await resolve_next()
+    expect([host.index, session.current_frame?.step]).toEqual([2, 20])
+    expect(session.numeric_frame?.approximate).toBeUndefined()
+  })
   it(`forwards cancellation to frame reads and allows retry`, async () => {
     const { run, reads, pending, resolve_next } = make_async_run(frames(6))
     const { session } = make_session({ run })

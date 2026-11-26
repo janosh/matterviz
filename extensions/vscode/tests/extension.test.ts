@@ -564,6 +564,30 @@ describe(`MatterViz Extension`, () => {
     expect(webview_run_streams.has(panels[0].webview)).toBe(false)
   })
 
+  // A file change prewarms the run for its panels, unless the last one closed during the read:
+  // no panel would remain to dispose it (it would hold the file open until the next change)
+  test.each([false, true])(
+    `a file change prewarms the run (panel closed: %s)`,
+    async (closes) => {
+      const file_path = `/test/changed-${closes}.extxyz.gz`
+      mock_vscode.workspace.fs.stat.mockResolvedValue({
+        size: LARGE_FILE_THRESHOLD + 1,
+        type: 1,
+      })
+      // a load in progress stays in active_runs (a failed one would drop out)
+      mock_vscode.workspace.fs.readFile.mockImplementation(() => new Promise(() => {}))
+      const panel = await render_file(file_path)
+      fire_event(mock_file_system_watcher.onDidChange)
+      if (closes) fire_event(panel.onDidDispose) // while the changed file is read
+      await vi.waitFor(() =>
+        expect(panel.webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ command: `fileUpdated` }),
+        ),
+      )
+      expect(active_runs.has(file_path)).toBe(!closes)
+    },
+  )
+
   // Simultaneous opens share one read. A file change while it loads evicts the load, so the
   // re-request after fileUpdated indexes the new bytes instead of receiving the stale run. A
   // stale load landing after the re-request's, or after its panel closed, installs no forwarder

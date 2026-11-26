@@ -363,9 +363,11 @@ describe(`numeric frames`, () => {
     const view = new FrameView()
     const [first, second] = [0, 1].map((step) => encode_frame(make_trajectory_frame(step)))
     expect(first.topology).toBeUndefined()
-    expect(first.sites).toBeInstanceOf(Uint8Array)
+    if (!(first.sites instanceof Uint8Array)) throw new TypeError(`Expected numeric sites`)
     const identity = snapshot_topologies.get(view.update(first).structure)
     expect(identity).toBeDefined()
+    // a preparation worker transfers each frame's arrays away after preparing it
+    structuredClone(first, { transfer: [first.sites.buffer] })
     expect(snapshot_topologies.get(view.update(second).structure)).toBe(identity)
     const changed = view.update({ ...second, sites: Uint8Array.of(1, 1, 2) }).structure
     expect(snapshot_topologies.get(changed)).not.toBe(identity)

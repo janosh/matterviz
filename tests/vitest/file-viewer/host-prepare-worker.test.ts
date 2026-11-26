@@ -4,7 +4,7 @@ import { select_frame_channels } from '#lib/trajectory/frame.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import type { PrepareReply, PrepareRequest } from '#lib/trajectory/prepare-pool.js'
 import { FramePreparer } from '#lib/trajectory/prepare.js'
-import { expect, test, vi } from 'vite-plus/test'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { read_binary_test_file } from '../test-fixtures'
 
 const PREPARATION = {
@@ -17,12 +17,16 @@ const PREPARATION = {
 test(`decodes host replies (or frame 0) in the worker and prepares them`, async () => {
   const scope = Object.assign(new EventTarget(), { postMessage: vi.fn() })
   vi.stubGlobal(`self`, scope)
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
   vi.resetModules()
   await import(`#lib/file-viewer/host-prepare-worker.js`)
   const run = await open_trajectory(read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`), {
     filename: `relax.traj`,
     index_above_bytes: 0,
   })
+  onTestFinished(() => run.dispose())
   const frame = await run.read_frame(1)
   const preview = await run.read_frame(0)
   if (!(preview.sites instanceof Uint8Array)) throw new TypeError(`Expected numeric sites`)
@@ -64,6 +68,4 @@ test(`decodes host replies (or frame 0) in the worker and prepares them`, async 
     id: 9,
     error: `Malformed host frame: it reuses preview sites, but there is no preview`,
   })
-  run.dispose()
-  vi.unstubAllGlobals()
 })
