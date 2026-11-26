@@ -2,14 +2,14 @@
 // compute-msd.test.ts only ever reaches the synchronous fallback; here a stub Worker
 // is installed before the module is imported so the real postMessage plumbing runs.
 // The generic client (request ids, dedupe, abort, error replies) is covered by
-// worker-client.test.ts; only the MSD-specific contract is asserted here.
+// svelte-widgets' worker-client tests; only the MSD-specific contract is asserted here.
 import type { compute_msd_async as ComputeMsdAsync } from '#lib/msd/async-compute.svelte.js'
 import { compute_msd } from '#lib/msd/compute-msd.js'
 import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-import { create_input_store, type WorkerRequest } from '#lib/worker-serve.js'
+import { create_input_store, type WorkerRequest } from 'svelte-widgets/worker-serve'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vite-plus/test'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'

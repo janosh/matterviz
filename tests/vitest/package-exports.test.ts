@@ -1,11 +1,6 @@
 import * as lib from '#lib'
-import type {
-  VacfInput,
-  VacfOptions,
-  VacfResult,
-  WorkerClient,
-  WorkerRequestOptions,
-} from '#lib'
+import type { VacfInput, VacfOptions, VacfResult } from '#lib'
+import type { WorkerClient, WorkerRequestOptions } from 'svelte-widgets/worker-client'
 import type {
   DecorationSide,
   FreeAnnotationDecorationItem,
@@ -121,7 +116,6 @@ describe(`package.json exports`, () => {
     `./theme/embedded`,
     `./trajectory/parse`,
     `./url-params`,
-    `./workers`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
   })
@@ -207,10 +201,10 @@ describe(`package.json exports`, () => {
     expect(lib.PopoverSelect).toBeTypeOf(`function`)
   })
 
-  // The changelog promises the three worker clients and their shared `WorkerClient` type on
-  // the root barrel; a client missing from its module barrel would only be reachable by
+  // The changelog promises the worker clients on the root barrel, typed by svelte-widgets'
+  // `WorkerClient`; a client missing from its module barrel would only be reachable by
   // deep-importing a .svelte.ts file
-  test(`root barrel publishes every compute_*_async worker client and the WorkerClient type`, () => {
+  test(`root barrel publishes every compute_*_async worker client as a WorkerClient`, () => {
     for (const client of [
       lib.compute_msd_async,
       lib.compute_vacf_async,
@@ -317,7 +311,7 @@ describe(`package.json exports`, () => {
       execFileSync(`git`, git_args, { cwd: repo_root, encoding: `utf8` })
         .split(`\n`)
         .filter(Boolean)
-        // `utils.ts` -> utils, `effects.svelte.ts` -> effects.svelte, `Foo.svelte` -> Foo.svelte
+        // `utils.ts` -> utils, `state.svelte.ts` -> state.svelte, `Foo.svelte` -> Foo.svelte
         .map((file) =>
           file
             .slice(`src/lib/`.length)

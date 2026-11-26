@@ -27,7 +27,7 @@
   } from 'svelte-widgets/icons'
   import type SiteTable from './SiteTable.svelte'
   import { DOCKED_SCROLL_STYLE, has_site_data, load_site_table } from './site-table'
-  import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
+  import DockedSidebar from 'svelte-widgets/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
@@ -93,7 +93,7 @@
   import { join_hover_link } from '#lib/tooltip/index.js'
   import { onDestroy, untrack } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
-  import { create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_shortcut_flash } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -1424,12 +1424,12 @@
       (site_sidebar !== false || controls_config.visible(`site-table`)) &&
       has_site_data(sidebar_sites))
   })
-  // Measured with the sidebar included (0 once it unmounts), so docking it cannot shrink the
-  // viewer below the bar
+  // `auto` docks from a 900 px row, measured with the sidebar included (0 once it unmounts) so
+  // docking it cannot shrink the viewer below the bar. Narrower, the viewer would keep under
+  // ~600 px, where its floating panes (export, info, ~28em) cover most of the scene.
   let site_sidebar_shown = $derived(
     site_data_available &&
-      (site_sidebar === true ||
-        (site_sidebar === `auto` && width + sidebar_width >= SIDEBAR_DOCK_MIN_WIDTH)),
+      (site_sidebar === true || (site_sidebar === `auto` && width + sidebar_width >= 900)),
   )
   // With a docked sidebar or in fullscreen the outer row takes the caller's size, the viewer fills it
   let row_sized = $derived(site_sidebar_shown || fullscreen)

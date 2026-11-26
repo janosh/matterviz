@@ -47,7 +47,7 @@
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from 'svelte-widgets/utils'
-  import { can_create_worker } from '#lib/worker-client.svelte.js'
+  import { can_create_worker } from 'svelte-widgets/worker-client'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'

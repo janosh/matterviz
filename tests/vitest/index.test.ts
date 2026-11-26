@@ -6,7 +6,6 @@ import * as math from '#lib/math.js'
 import * as scene from '#lib/scene/index.js'
 import * as shortcuts from '#lib/shortcuts.js'
 import * as utils from '#lib/utils.js'
-import * as workers from '#lib/workers.js'
 import { expect, test } from 'vite-plus/test'
 
 test(`library exports all Svelte components from #lib/*.svelte`, () => {
@@ -33,17 +32,12 @@ test(`io exports is_binary without misclassifying sparse high bytes`, () => {
 // so internals of those modules can never leak into the root barrel
 test.each([
   [`math`, math, [`Vec3`, `grow_capacity`, `quickselect`, `mulberry32`, `det_3x3`]],
-  [
-    `utils`,
-    utils,
-    [`plain_copy`, `identity_token`, `value_key`, `memo_by_identity`, `yield_turn`],
-  ],
+  [`utils`, utils, [`plain_copy`, `memo_by_identity`, `yield_turn`]],
   [`io`, io, [`is_binary`, `decompress_file`]],
   [`scene`, scene, [`scratch_matrix`]],
   [`labels`, labels, [`format_value`, `plural`]],
   [`shortcuts`, shortcuts, [`SHORTCUTS`]],
   [`host`, host, [`host`]],
-  [`workers`, workers, [`disable_workers`, `check_blob_workers`]],
 ] as const)(`root barrel omits %s names, which stay on their subpath`, (_sub, mod, names) => {
   for (const name of names) {
     expect(lib, name).not.toHaveProperty(name)

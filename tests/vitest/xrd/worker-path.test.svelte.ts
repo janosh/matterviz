@@ -35,7 +35,7 @@ test(`XRD and SAED patterns computed in their workers equal the main-thread ones
   const entries = [`xrd`, `saed`].map((name) => `src/lib/xrd/${name}-worker.ts`)
   const started = stub.instances.map(({ url, options }) => `${options?.type} ${url}`)
   expect(started).toEqual(entries.map((entry) => expect.stringMatching(`^module .*/${entry}`)))
-  const forbidden = [`#lib/worker-client.svelte.js`, `#lib/symmetry/analyze.js`]
+  const forbidden = [`svelte-widgets/worker-client`, `#lib/symmetry/analyze.js`]
   expect_worker_safe_import_graph(entries, 6, forbidden)
   const { default: XrdPlot } = await import(`#lib/xrd/XrdPlot.svelte`)
   const plots = [0, 1].map(() =>

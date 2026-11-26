@@ -6,7 +6,6 @@ import {
   parse_num_token,
   same_while_equal,
   toggle_item,
-  value_key,
   plain_copy,
 } from '#lib/utils.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
@@ -81,21 +80,6 @@ describe(`decode_url_safe_base64`, () => {
   ])(`decodes %s → %s`, (encoded, expected) => {
     expect(decode_url_safe_base64(encoded)).toBe(expected)
   })
-})
-
-// JSON.stringify writes Infinity, -Infinity, NaN and null alike, so a cache keyed on it
-// reused an unlimited option's entry for an unset one
-test(`value_key tells values apart by type and content, and Maps by identity`, () => {
-  const map = new Map([[`a`, 1]])
-  const distinct = [Infinity, -Infinity, Number.NaN, null, `Infinity`, 0, -0, 1, `1`, map]
-  const keys = distinct.map((value) => value_key({ value }))
-  expect(new Set(keys).size).toBe(keys.length)
-  expect(value_key(new Map(map))).not.toBe(value_key(map)) // a Map isn't spelled out as {}
-  expect(value_key({ value: map })).toBe(value_key({ value: map }))
-  // key order and undefined (unset) entries don't matter
-  expect(value_key({ a: 1, b: [Infinity], c: undefined })).toBe(
-    value_key({ b: [Infinity], a: 1 }),
-  )
 })
 
 test(`memo_by_identity recomputes per object only when its key changes`, async () => {

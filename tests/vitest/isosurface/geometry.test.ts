@@ -530,7 +530,7 @@ describe(`compute_isosurface_geometries`, () => {
 })
 
 // === Worker client wiring ===
-// Abort/teardown/dedupe rules of the shared client are covered by worker-client.test.ts
+// Abort/teardown/dedupe rules of the shared client are tested in svelte-widgets
 const stub = install_stub_worker<{ id: number; input: GeometryInput }>(({ input }) =>
   compute_isosurface_geometries(input),
 )

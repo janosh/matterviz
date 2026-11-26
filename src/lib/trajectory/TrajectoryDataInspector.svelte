@@ -12,7 +12,7 @@
   import { vector_reader } from '#lib/structure/vectors.js'
   import { HeatmapTable, type Column } from '#lib/table/index.js'
   import SiteTable from '#lib/structure/SiteTable.svelte'
-  import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
+  import DockedSidebar from 'svelte-widgets/DockedSidebar.svelte'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import {
     DATA_TABLE_PROPS,

@@ -3,7 +3,7 @@
 // Svelte Tween per point. Reading `current` is reactive, so anything drawn from it (instance
 // buffers, the hover halo) follows the animation.
 
-import { motion_duration } from '#lib/effects.svelte.js'
+import { motion_duration } from 'svelte-widgets/effects'
 import { same_values } from '#lib/math.js'
 import { cubicOut } from 'svelte/easing'
 import type { TweenOptions } from 'svelte/motion'

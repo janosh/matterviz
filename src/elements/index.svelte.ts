@@ -2,7 +2,7 @@
 // element mounts its MatterViz component into its own light DOM, so tooltips the components
 // portal to <body> keep their styles. Bundled into dist/elements/ by ./vite.config.ts.
 import { watch_theme } from '#lib/theme/embedded'
-import { check_blob_workers, disable_workers } from '#lib/worker-client.svelte'
+import { check_blob_workers, disable_workers } from 'svelte-widgets/worker-client'
 import { mount, unmount } from 'svelte'
 import elements, { css } from 'virtual:matterviz-elements'
 import { prop_store } from './prop-store.svelte'

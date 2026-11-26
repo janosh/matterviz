@@ -5,43 +5,21 @@
   // collapses the props type below to `any`.
   import WidgetFullscreenButton from 'svelte-widgets/FullscreenButton.svelte'
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
-  import { create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_shortcut_flash } from 'svelte-widgets/browser'
   import { host } from '#lib/host.js'
   import { SHORTCUTS, shortcut_title, viewer_keys } from '#lib/shortcuts.js'
   import { FULLSCREEN_BUTTON_LABELS } from 'svelte-widgets/labels'
 
-  // svelte-widgets' button flips the bound flag on click and reports only browser-initiated
-  // transitions (Esc, F11) through `on_change`. Viewers forward every real transition to
-  // `on_fullscreen_change`, so report from the fullscreenchange event here instead: a click
-  // whose request the browser rejects never reaches the host, and a granted one does.
   let {
     fullscreen = $bindable(false),
     hidden = false,
     wrapper,
-    on_change,
     ...rest
   }: ComponentProps<typeof WidgetFullscreenButton> = $props()
 
   // marks a wrapper as a fullscreen root so nested viewers can spot an outer owner
   const VIEWER_ATTR = `data-mv-fullscreen-root`
   const shortcut_flash = create_shortcut_flash<`fullscreen`>()
-
-  let reported = fullscreen
-  const report = (next: boolean) => {
-    if (next === reported) return
-    reported = next
-    on_change?.(next)
-  }
-  $effect(() => {
-    // without an element to send fullscreen, the flag itself is the state
-    if (!wrapper) {
-      report(fullscreen)
-      return
-    }
-    const handle_change = () => report(document.fullscreenElement === wrapper)
-    document.addEventListener(`fullscreenchange`, handle_change)
-    return () => document.removeEventListener(`fullscreenchange`, handle_change)
-  })
 
   // A host that cannot fullscreen holds no fullscreen state: a bound `true` (a "start in
   // fullscreen" setting) would leave the viewer's fixed fullscreen styles on with no exit.

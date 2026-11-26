@@ -7,7 +7,7 @@
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { fade } from 'svelte/transition'
-  import { motion_duration } from '#lib/effects.svelte.js'
+  import { motion_duration } from 'svelte-widgets/effects'
 
   const PHASE_ICONS = { Gas, Liquid, Solid } as const
 

@@ -5,24 +5,29 @@
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
 import { BondFrame } from '#lib/structure/bond-rendering.js'
-import { value_key } from '#lib/utils.js'
 import { numeric_sites } from '#lib/structure/site.js'
 import type { DisplayFrame, FramePreparation } from './prepare'
 import { display_cache_budget, display_frame_bytes } from './prepare'
 import type { NumericFrame, FrameChannels } from './frame'
 import { encode_frame, FrameView, materialize_frame } from './frame'
-import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
+import { create_sequence_player } from 'svelte-widgets/sequence-player'
+import type { SequencePlayerInputs } from 'svelte-widgets/sequence-player'
+import { FPS_STEP } from '#lib/constants.js'
 import { display_idx } from '#lib/labels.js'
-import { clamp, to_error } from 'svelte-widgets/utils'
+import { clamp, to_error, value_key } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'
 
 // Playback inputs bind current_step_idx through index and set_index.
-interface TrajectorySessionInputs extends Omit<
-  Parameters<typeof create_sequence_player>[0],
-  'count'
-> {
+type PlayerCallbacks = `can_advance` | `on_play` | `on_pause` | `on_end` | `on_loop`
+interface TrajectorySessionInputs extends Pick<SequencePlayerInputs, PlayerCallbacks> {
+  index: () => number
+  set_index: (index: number) => void
+  fps: () => number
+  set_fps: (fps: number) => void
+  fps_range: () => readonly [number, number]
+  should_auto_play: () => boolean
   run: () => TrajectoryRun | undefined
   // A visible renderer acknowledges complete scene submission before playback advances.
   wait_for_render?: () => boolean
@@ -677,13 +682,28 @@ export function create_trajectory_session(
   }
 
   const player = create_sequence_player({
-    count: () => frame_count,
-    index: inputs.index,
-    set_index: commit,
-    fps: inputs.fps,
-    set_fps: inputs.set_fps,
-    fps_range: inputs.fps_range,
-    should_auto_play: () => inputs.should_auto_play() && inputs.run() !== undefined,
+    get count() {
+      return frame_count
+    },
+    get index() {
+      return inputs.index()
+    },
+    set index(idx) {
+      commit(idx)
+    },
+    get fps() {
+      return inputs.fps()
+    },
+    set fps(value) {
+      inputs.set_fps(value)
+    },
+    get fps_range() {
+      return inputs.fps_range()
+    },
+    get auto_play() {
+      return inputs.should_auto_play() && inputs.run() !== undefined
+    },
+    fps_step: FPS_STEP,
     can_advance: () =>
       inputs.can_advance?.() !== false &&
       // A skipped frame leaves the scene as it was, so there is no new render to wait for

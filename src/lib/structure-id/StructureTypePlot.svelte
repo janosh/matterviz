@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { value_key } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import { value_key } from '#lib/utils.js'
   import type { Vec2 } from '#lib/math.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'

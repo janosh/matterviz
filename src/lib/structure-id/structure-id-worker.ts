@@ -1,4 +1,4 @@
-import { serve_worker } from '#lib/worker-serve.js'
+import { serve_worker } from 'svelte-widgets/worker-serve'
 import type { StructureIdOptions } from './compute-structure-id'
 import { compute_structure_id } from './compute-structure-id'
 import type { StructureIdPayload } from './worker-payload'

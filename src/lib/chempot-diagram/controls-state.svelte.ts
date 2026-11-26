@@ -1,6 +1,5 @@
 // Reactive state shared by ChemPotDiagram2D and ChemPotDiagram3D: per-key control overrides,
 // the temperature slice of the entries, the worker computation and the domain colouring
-import { value_key } from '#lib/utils.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
 import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
@@ -9,7 +8,7 @@ import type { Vec2 } from '#lib/math.js'
 import { get_relative_coords } from '#lib/plot/core/interactions.js'
 import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import type { ColorScaleConfig } from '#lib/plot/core/types.js'
-import { clamp, to_error } from 'svelte-widgets/utils'
+import { clamp, to_error, value_key } from 'svelte-widgets/utils'
 import { getAbortSignal, untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data, get_formula_color_data } from './color'

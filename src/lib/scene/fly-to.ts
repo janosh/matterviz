@@ -2,7 +2,7 @@
 // camera's offset from the orbit target about a fixed axis at constant radius, at the eased
 // rate: a lerp of the endpoints would dolly in and out, and pass through the target between
 // opposite handles.
-import { motion_duration } from '#lib/effects.svelte.js'
+import { motion_duration } from 'svelte-widgets/effects'
 import type { Vec3 } from '#lib/math.js'
 import * as THREE from 'three/webgpu'
 

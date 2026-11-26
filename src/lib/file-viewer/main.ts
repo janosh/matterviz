@@ -20,7 +20,7 @@ import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
 import { create_prepare_pool } from '#lib/trajectory/prepare-pool.js'
-import { can_create_worker } from '#lib/worker-client.svelte.js'
+import { can_create_worker } from 'svelte-widgets/worker-client'
 import {
   get_vscode_api,
   host_prepare_transfers,

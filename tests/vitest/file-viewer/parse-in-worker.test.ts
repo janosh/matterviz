@@ -327,7 +327,7 @@ describe(`parse_in_worker`, () => {
       })
       vi.stubGlobal(`Worker`, factory)
       const module = await import(`#lib/file-viewer/parse-in-worker.js`)
-      const availability = await import(`#lib/worker-client.svelte.js`)
+      const availability = await import(`svelte-widgets/worker-client`)
       for (const [idx, failure] of failures.entries()) {
         const content = new TextEncoder().encode(xyz).buffer
         const parsing = module.parse_in_worker(content, `h${idx}.xyz`, false, {

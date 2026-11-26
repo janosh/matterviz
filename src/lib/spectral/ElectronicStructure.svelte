@@ -19,8 +19,9 @@
   // axes, one rotation link and the frame cache. A dropped file replaces the data of the panes
   // it fills (see `fill`); while a sweep is shown only sweep JSONs are taken.
   import { format_num } from 'svelte-widgets/format'
+  import { FPS_STEP } from '#lib/constants.js'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import { create_on_screen, create_prop_state } from '#lib/effects.svelte.js'
+  import { create_on_screen, create_prop_state } from 'svelte-widgets/effects'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
@@ -36,9 +37,9 @@
   import {
     create_sequence_player,
     is_sequence_key_target,
-  } from '#lib/layout/sequence-player.svelte.js'
+  } from 'svelte-widgets/sequence-player'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
-  import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import SequenceControls from 'svelte-widgets/SequenceControls.svelte'
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
@@ -390,13 +391,24 @@
         },
   )
   const playback = create_sequence_player({
-    count: () => series?.frames.length ?? 0,
-    index: () => frame_index,
-    set_index: (idx) => (nav.frame_idx.current = idx),
-    fps: () => fps,
-    set_fps: (value) => (fps = value),
-    fps_range: () => SWEEP_FPS_RANGE,
-    should_auto_play: () => false,
+    get count() {
+      return series?.frames.length ?? 0
+    },
+    get index() {
+      return frame_index
+    },
+    set index(idx) {
+      nav.frame_idx.current = idx
+    },
+    get fps() {
+      return fps
+    },
+    set fps(value) {
+      fps = value
+    },
+    fps_range: SWEEP_FPS_RANGE,
+    auto_play: false,
+    fps_step: FPS_STEP,
     // playback waits for the next frames' data, and while the viewer is off screen
     can_advance: () =>
       on_screen.current &&
@@ -936,9 +948,7 @@
       {/if}
       {#if steps}
         <SequenceControls
-          {controls_config}
-          index={frame_index}
-          count={series.frames.length}
+          visible={controls_config.visible}
           {playback}
           item_name="frame"
           aria_label="{html_to_text(sweep.axis.label)} frame"

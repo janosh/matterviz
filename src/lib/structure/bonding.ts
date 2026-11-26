@@ -1,6 +1,5 @@
 // Bonding algorithms for structure visualization
-
-import { value_key } from '#lib/utils.js'
+import { value_key } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '../element/data'
 import { element_from_atomic_number, is_elem_symbol } from '../element/helpers'

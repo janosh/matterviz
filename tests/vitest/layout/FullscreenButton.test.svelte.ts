@@ -41,7 +41,7 @@ const mount_button = (wrapper?: HTMLElement) => {
 }
 
 describe(`FullscreenButton`, () => {
-  test(`without a wrapper the flag is the state and every flip is reported`, async () => {
+  test(`without a wrapper the button toggles its flag and reports no transition`, async () => {
     const { state, on_change, button } = mount_button()
     const view_box = () => button.querySelector(`svg`)?.getAttribute(`viewBox`)
     expect(button.getAttribute(`aria-pressed`)).toBe(`false`)
@@ -58,7 +58,8 @@ describe(`FullscreenButton`, () => {
     button.click()
     flushSync()
     await tick()
-    expect(on_change.mock.calls).toEqual([[true], [false]])
+    expect(state.fullscreen).toBe(false)
+    expect(on_change).not.toHaveBeenCalled()
   })
 
   test(`with a wrapper only real browser transitions are reported`, async () => {
@@ -210,7 +211,12 @@ describe.each([
     (toggle, show_controls, state) => {
       const on_fullscreen_change = vi.fn<(fullscreen: boolean) => void>()
       const controls_config = normalize_show_controls(show_controls)
-      const props = { controls_config, fullscreen_toggle: toggle, on_fullscreen_change }
+      const props = {
+        controls_config,
+        fullscreen_toggle: toggle,
+        on_fullscreen_change,
+        wrapper: create_wrapper(),
+      }
       mount_in_test(ViewerChrome, bind_props(props, state))
       return on_fullscreen_change
     },
@@ -218,7 +224,8 @@ describe.each([
   [
     `PanelsFullscreenButton`,
     (toggle, controls, state) => {
-      mount_in_test(PanelsFullscreenButton, bind_props({ toggle, controls }, state))
+      const props = { toggle, controls, wrapper: create_wrapper() }
+      mount_in_test(PanelsFullscreenButton, bind_props(props, state))
       return null
     },
   ],

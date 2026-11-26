@@ -84,7 +84,7 @@ vi.mock(`virtual:matterviz-widget-components`, async () => {
   }
   return { default: load_component }
 })
-vi.mock(`matterviz/workers`, () => ({ check_blob_workers }))
+vi.mock(`svelte-widgets/worker-client`, () => ({ check_blob_workers }))
 vi.stubGlobal(`SCOPED_APP_CSS`, ``) // vite.config.ts defines it as the scoped app.css
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 const { stop_theme } = vi.hoisted(() => ({ stop_theme: vi.fn() }))

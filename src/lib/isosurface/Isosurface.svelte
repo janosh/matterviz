@@ -3,13 +3,12 @@
   // volume and optionally a color volume sampled at the vertices through a colormap (e.g.
   // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
   // only remap through the LUT and never rerun marching cubes.
-  import { value_key } from '#lib/utils.js'
   import type { Matrix3x3 } from '../math'
   import { IDENTITY_3X3 } from '../math'
-  import { to_error } from 'svelte-widgets/utils'
+  import { to_error, value_key } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { draw_range_views, indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
-  import { can_create_worker } from '#lib/worker-client.svelte.js'
+  import { can_create_worker } from 'svelte-widgets/worker-client'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'

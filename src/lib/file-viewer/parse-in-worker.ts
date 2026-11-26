@@ -11,7 +11,7 @@ import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.
 import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { to_error } from 'svelte-widgets/utils'
-import { can_create_worker, disable_workers } from '#lib/worker-client.svelte.js'
+import { can_create_worker, disable_workers } from 'svelte-widgets/worker-client'
 import {
   create_prepare_pool,
   prepare_worker_count,

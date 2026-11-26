@@ -2,7 +2,7 @@
 // Async wrapper for compute_structure_id via a persistent Web Worker.
 // Falls back to synchronous main-thread computation during SSR / where Worker is missing.
 import type { AnyStructure } from '#lib/structure/index.js'
-import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { create_worker_client } from 'svelte-widgets/worker-client'
 import { compute_structure_id } from './compute-structure-id'
 import type { StructureIdOptions, StructureIdResult } from './compute-structure-id'
 import { to_structure_id_payload } from './worker-payload'

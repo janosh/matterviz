@@ -9,7 +9,7 @@ import type {
   VolumetricData,
 } from '#lib/isosurface/types.js'
 import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
-import type * as worker_client from '#lib/worker-client.svelte.js'
+import type * as worker_client from 'svelte-widgets/worker-client'
 import { parse_supercell_matrix } from '#lib/structure/supercell.js'
 import { compute_isosurface_geometries } from '#lib/isosurface/geometry.js'
 import { prepare_geometry_grid, type VolumeWindow } from '#lib/isosurface/sampling.js'
@@ -49,7 +49,7 @@ vi.mock(`#lib/isosurface/async-geometry.svelte.js`, () => ({ compute_geometries_
 // Hosts that disable workers (anywidget) leave `Worker` defined, so the gate must be
 // can_create_worker rather than `typeof Worker`; flip `workers_disabled` to simulate one
 const worker_gate = vi.hoisted(() => ({ workers_disabled: false }))
-vi.mock(`#lib/worker-client.svelte.js`, async (import_original) => {
+vi.mock(`svelte-widgets/worker-client`, async (import_original) => {
   const original = await import_original<typeof worker_client>()
   return {
     ...original,

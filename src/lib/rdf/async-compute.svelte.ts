@@ -4,7 +4,7 @@
 // and RdfPlot one request per structure.
 import type { AnyStructure } from '#lib/structure/index.js'
 import { to_structure_id_payload } from '#lib/structure-id/worker-payload.js'
-import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { create_worker_client } from 'svelte-widgets/worker-client'
 import { compute_rdfs, type RdfsOptions } from './compute-rdf'
 import type { RdfPattern } from './index'
 

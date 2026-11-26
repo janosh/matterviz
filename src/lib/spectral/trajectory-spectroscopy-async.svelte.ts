@@ -4,7 +4,7 @@
 // a `.mount()` claim for its lifetime (the worker ends with the last one), never `.cancel()`.
 import type { TrajectorySignal } from '#lib/trajectory/index.js'
 import { plain_position_stream } from '#lib/trajectory/async-result.svelte.js'
-import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { create_worker_client } from 'svelte-widgets/worker-client'
 import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,

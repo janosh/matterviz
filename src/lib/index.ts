@@ -1,7 +1,8 @@
 // Root barrel: Svelte components plus the domain API (analysis, parsing, data types) of each
 // feature module. Shared infrastructure is published only on its own subpath, never here:
 // matterviz/math, /utils, /labels, /constants, /settings, /controls, /colors, /theme, /io,
-// /scene, /sanitize, /url-params, /fft, /lineshape, /shortcuts, /host and /workers.
+// /scene, /sanitize, /url-params, /fft, /lineshape, /shortcuts and /host. Worker controls and
+// the WorkerClient type of every `compute_*_async` client live in svelte-widgets/worker-client.
 export * from './bond-angles'
 export * from './brillouin'
 export * from './chempot-diagram'
@@ -40,6 +41,4 @@ export * from './tooltip'
 export * from './trajectory'
 export * from './vacf'
 export * from './wulff'
-// the type of every `compute_*_async` client exported above (worker controls: matterviz/workers)
-export type { WorkerClient, WorkerRequestOptions } from './workers'
 export * from './xrd'
