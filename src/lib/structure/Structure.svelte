@@ -862,21 +862,15 @@
   })
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
-  // Keys are memoized per structure object, so only its identity is tracked: reading through a
-  // host's deep-$state structure (even just its site count) kept each replaced one alive
-  // (~14 MB per replacement at 2k sites)
-  let vector_keys = $derived.by(() => {
-    const base = structure
-    const target = tool_structure ?? base
-    return untrack(() =>
-      base && target && site_count(base) > 0 ? get_structure_vector_keys(target) : [],
-    )
-  })
-  let vector_keys_signature = $derived(vector_keys.join(`\0`))
+  // The effect reads the site count itself, so a structure its host fills in place gets its
+  // vectors. Not a $derived: one reading through a host's deep-$state structure (even just
+  // its site count) kept each replaced one alive (~14 MB per replacement at 2k sites)
   let vectors_auto_populated_for = ``
   let last_auto_configs: Record<string, unknown> | undefined
   $effect(() => {
-    const signature = vector_keys_signature
+    const target = site_count(structure) > 0 ? (tool_structure ?? structure) : undefined
+    const vector_keys = target ? untrack(() => get_structure_vector_keys(target)) : []
+    const signature = vector_keys.join(`\0`)
     if (!structure || signature === vectors_auto_populated_for) return
     // Drop the previous structure's auto configs; keep externally supplied ones
     const existing = scene_props.vector_configs
