@@ -37,7 +37,10 @@ test(`ships positions, lattice and species, and matches the sync per-pair and al
   expect_module_worker(stub.instances, `src/lib/rdf/rdf-worker.ts`)
   const { input: payload } = stub.posted[0].message
   expect(Object.keys(payload).toSorted()).toEqual([`lattice`, `species`, `xyz`])
-  expect(payload.species).toEqual(crystal.sites.map((site) => site.species))
+  expect(payload.species?.table).toHaveLength(2) // one entry per distinct species
+  expect(structure_from_payload(payload).sites.map((site) => site.species)).toEqual(
+    crystal.sites.map((site) => site.species),
+  )
   expect(result.map((pattern) => pattern.element_pair)).toEqual([
     [`Cl`, `Cl`],
     [`Cl`, `Na`],
