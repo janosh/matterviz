@@ -527,8 +527,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`distribution_property`),
       // Open floating pane (TrajectoryPane), e.g. 'hotspots' or 'flight'
       writeback_prop(`active_pane`),
-      // Docked data inspector sidebar (`auto`: shown from 1000 px wide, as in the component)
-      writeback_prop(`data_inspector_open`, `auto`),
+      // Docked data inspector sidebar, closed by default as in the component
+      writeback_prop(`data_inspector_open`, false),
       derived_prop(
         `structure_props`,
         [...scene_prop_keys, ...traj_structure_prop_keys],

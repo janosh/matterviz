@@ -228,7 +228,7 @@
     trajectory_controls,
     extra_controls,
     active_pane = $bindable(null),
-    data_inspector_open = $bindable(`auto`),
+    data_inspector_open = $bindable(false),
     on_step_change,
     on_play,
     on_pause,
@@ -332,10 +332,9 @@
     // The one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     // The data inspector, a resizable sidebar beside the structure and plot. Not a
-    // floating pane, so it stays open beside whichever pane is active. `auto` (the default)
-    // shows it while the viewer is at least 1000 px wide; toggling it sets true or false.
-    // Hiding its `data-inspector-pane` control (or all controls) hides the sidebar too.
-    data_inspector_open?: boolean | `auto`
+    // floating pane, so it stays open beside whichever pane is active. Hiding its
+    // `data-inspector-pane` control (or all controls) hides the sidebar too.
+    data_inspector_open?: boolean
     // Called after every change of the shown frame (slider, keys, playback, plot click).
     on_step_change?: EventHandler
     // Called when playback starts.
@@ -900,23 +899,9 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
-  // `auto` docks the inspector from this viewer-row width (narrower, it squeezes the structure
-  // and plot), decided once from the row's first measured width: re-deciding on every resize
-  // (fullscreen, a window drag) would shift the viewer under its floating panes
-  const INSPECTOR_DOCK_MIN_WIDTH = 1000
-  let auto_docked = $state(false)
-  let inspector_open = $derived(
-    data_inspector_open === `auto` ? auto_docked : data_inspector_open,
-  )
-  let row_measured = false
-  const measure_row = (width: number) => {
-    if (row_measured || !width) return
-    row_measured = true
-    auto_docked = width >= INSPECTOR_DOCK_MIN_WIDTH
-  }
   // A host that hides the inspector's menu entry could not close it, so it stays closed there
   let inspector_shown = $derived(
-    inspector_open && controls_config.visible(`data-inspector-pane`),
+    data_inspector_open && controls_config.visible(`data-inspector-pane`),
   )
   // The inspector's Info tab replaces the info pane while it shows, so an `info` active_pane
   // opens that tab. Derived from the boolean, so switching between other panes keeps the tab
@@ -1388,7 +1373,7 @@
   )
   // The data inspector is a sidebar with its own open state, the other analyses floating panes
   const analysis_open = (pane: (typeof ANALYSES)[number][`pane`]): boolean =>
-    pane === `data-inspector` ? inspector_open : active_pane === pane
+    pane === `data-inspector` ? data_inspector_open : active_pane === pane
   // hidden analyses don't count: the data inspector can be open where its entry is hidden
   let any_analysis_open = $derived(visible_analyses.some((entry) => analysis_open(entry.pane)))
 </script>
@@ -1738,7 +1723,8 @@
                   title={entry.label}
                   aria-pressed={analysis_open(entry.pane)}
                   onclick={() => {
-                    if (entry.pane === `data-inspector`) data_inspector_open = !inspector_open
+                    if (entry.pane === `data-inspector`)
+                      data_inspector_open = !data_inspector_open
                     else set_pane_open(entry.pane, active_pane !== entry.pane)
                     analysis_menu_open = false
                   }}
@@ -1842,11 +1828,7 @@
       {/if}
     </SequenceControlBar>
 
-    <div
-      class="viewer-row"
-      class:docked-sidebar-row={inspector_shown}
-      bind:clientWidth={null, measure_row}
-    >
+    <div class="viewer-row" class:docked-sidebar-row={inspector_shown}>
       <div
         class="content-area"
         bind:clientWidth={content_size.width}

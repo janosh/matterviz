@@ -45,17 +45,22 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
 
 // A tall inspector table grew the row past the viewer's clipped bottom (Ag run: +149px); the
 // sticky column showed the page's background instead of the sidebar's; the undragged inspector
-// is capped at a third of the row
+// is capped at a quarter of the row
 test(`demo viewers keep a data inspector within its box, a quarter wide, evenly shaded`, async ({
   page,
 }) => {
-  // the inspector docks itself from a 1000px viewer row, which every demo with data reaches
-  // in a 1200px window
-  await page.setViewportSize({ width: 1200, height: 1200 })
+  await page.setViewportSize({ width: 1000, height: 1200 })
   await page.goto(`/trajectory`, { waitUntil: `domcontentloaded` })
   const viewers = page.locator(`.trajectory:has(.trajectory-data-inspector-sidebar)`)
   await load_all_demos(page)
-  await expect(viewers).toHaveCount(5, { timeout: HYDRATION_TIMEOUT })
+  // closed by default: open each demo's inspector from its analysis menu
+  const analysis_buttons = page.locator(`.trajectory-controls button[aria-label="Analysis"]`)
+  await expect(analysis_buttons).toHaveCount(5, { timeout: HYDRATION_TIMEOUT })
+  for (const button of await analysis_buttons.all()) {
+    await button.click()
+    await page.locator(`.analysis-dropdown button`, { hasText: `Data inspector` }).click()
+  }
+  await expect(viewers).toHaveCount(5)
   for (const viewer of await viewers.all()) {
     await viewer.scrollIntoViewIfNeeded()
     const { overflow, width_share, sidebar_bg, sticky_bgs } = await viewer.evaluate(
@@ -82,13 +87,22 @@ test(`demo viewers keep a data inspector within its box, a quarter wide, evenly 
       },
     )
     expect(overflow).toBeLessThanOrEqual(1)
-    // wider, it squashes the structure and plot panes
+    // wider, it squashes the structure and plot panes in a 1000px window
     expect(width_share).toBeLessThanOrEqual(0.25 + 0.002)
     expect(sticky_bgs).toEqual([
       [sidebar_bg, `linear-gradient`],
       [sidebar_bg, `none`],
     ])
   }
+  // narrow, the inspector stacks under the viewer, ruled off in place of the hidden divider
+  await page.setViewportSize({ width: 560, height: 1200 })
+  const viewer = viewers.first()
+  await viewer.scrollIntoViewIfNeeded()
+  await expect(viewer.locator(`:scope > .viewer-row`)).toHaveClass(/docked-sidebar-stacked/)
+  await expect(viewer.locator(`.trajectory-data-inspector-sidebar`)).toHaveCSS(
+    `border-top-width`,
+    `1px`,
+  )
 })
 
 async function select_display_mode(trajectory: Locator, mode_name: string) {
@@ -524,11 +538,11 @@ test.describe(`Trajectory Component`, () => {
     await expect(step_input).toHaveValue(`3`)
 
     const play_button = controls.locator(`.play-button`)
-    await expect(play_button).toHaveText(`▶`)
+    await expect(play_button).toHaveAccessibleName(`Play`)
     await play_button.click()
-    await expect(play_button).toHaveText(`⏸`)
+    await expect(play_button).toHaveAccessibleName(`Pause`)
     await play_button.click()
-    await expect(play_button).toHaveText(`▶`)
+    await expect(play_button).toHaveAccessibleName(`Play`)
 
     // FPS input uses 0.1 increments and shared bounds
     await play_button.click() // Start playing to show FPS controls
@@ -548,7 +562,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(fps_input).toHaveAttribute(`max`, `300`)
     await expect(fps_input).toHaveAttribute(`step`, `0.1`)
     await expect(fps_section.locator(`input[type="range"]`)).toHaveCount(0)
-    await expect(play_button, `0 FPS pauses playback`).toHaveText(`▶`)
+    await expect(play_button, `0 FPS pauses playback`).toHaveAccessibleName(`Play`)
   })
 
   test(
@@ -1199,8 +1213,7 @@ test.describe(`Trajectory Component`, () => {
     }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const trajectory_controls = trajectory.locator(`.trajectory-controls`)
-      // The open data inspector's Info tab replaces the info button; closing it brings it back.
-      // A row this narrow leaves the `auto` inspector closed, so open it first.
+      // The open data inspector's Info tab replaces the info button; closing it brings it back
       const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
       const toggle_inspector = async () => {
         await trajectory_controls.locator(`button[aria-label="Analysis"]`).click()
@@ -1235,7 +1248,9 @@ test.describe(`Trajectory Component`, () => {
       await expect(step_input).toHaveValue(`2`)
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
-      await expect(play_button, `Space in the step input must not play`).toHaveText(`▶`)
+      await expect(play_button, `Space in the step input must not play`).toHaveAccessibleName(
+        `Play`,
+      )
       await page.keyboard.press(`v`)
       await expect(
         trajectory.locator(`.content-area`),

@@ -241,8 +241,6 @@ describe(`display modes`, () => {
       default_props({
         trajectory: run,
         current_step_idx: 0,
-        // closed, so the display packet carries only the channels the scene draws
-        data_inspector_open: false,
         structure_props: {
           scene_props: {
             show_polyhedra: `always`,
@@ -292,9 +290,7 @@ describe(`display modes`, () => {
       }
     const run = trajectory_from_frames(frames)
     const read = vi.spyOn(run, `read_frame`)
-    const props = $state(
-      default_props({ trajectory: run, active_pane: `controls`, data_inspector_open: false }),
-    )
+    const props = $state(default_props({ trajectory: run, active_pane: `controls` }))
     const target = mount_trajectory(props)
     const last_channels = () => read.mock.lastCall?.[2]?.vectors
     await tick()
@@ -552,8 +548,7 @@ describe(`controls`, () => {
   ] as const
 
   test(`every hideable control renders by default`, async () => {
-    // the info button hides while the inspector's Info tab shows the same cards
-    const props = $state(default_props({ data_inspector_open: false }))
+    const props = $state(default_props())
     const target = await mount_ticked(props)
     // a closed inspector: no sidebar, the info button back, the analysis button not lit
     expect(target.querySelector(`.analysis-button`)?.classList.contains(`active`)).toBe(false)
@@ -575,50 +570,27 @@ describe(`controls`, () => {
 
   // A render sample shows every n-th atom: inspector rows name source atoms, the scene numbers
   // its sites, so selection and hover map between the two in both directions
-  // `auto` by default: open from a 1000px viewer row, except where its menu entry is hidden
-  // (there nothing could close it). Its Info tab shows the info pane's cards, so the info
-  // button hides while it shows. The analysis button lights up for it only where its menu
-  // entry shows (null: no button).
+  // Closed by default. Opened, it still stays hidden where its menu entry is hidden (nothing
+  // could close it there). Its Info tab shows the info pane's cards, so the info button hides while
+  // it shows. The analysis button lights up for it only where its menu entry shows (null: no
+  // button).
   // oxfmt-ignore
   test.each([
-    [`default props`, {}, 999, false, true, false],
-    [`default props`, {}, 1000, true, false, true],
-    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, 1200, false, true, false],
-    [`no controls`, { show_controls: `never` as const }, 1200, false, false, null],
-    [`data_inspector_open=false`, { data_inspector_open: false }, 1200, false, true, false],
-    [`data_inspector_open=true`, { data_inspector_open: true }, 375, true, false, true],
+    [`default props`, {}, false, true, false],
+    [`data_inspector_open=true`, { data_inspector_open: true }, true, false, true],
+    [`a hidden menu entry`, { data_inspector_open: true, show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true, false],
+    [`no controls`, { data_inspector_open: true, show_controls: `never` as const }, false, false, null],
   ])(
-    `with %s in a %ipx row the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
-    async (_name, overrides, row_width, shown, info_button, analysis_active) => {
-      vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(row_width)
+    `with %s the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
+    (_name, overrides, shown, info_button, analysis_active) => {
       const target = mount_trajectory(default_props(overrides))
-      const row = query(target, `.viewer-row`)
-      await vi.waitFor(() => expect(row.classList.contains(`docked-sidebar-row`)).toBe(shown))
       const analysis_button = target.querySelector(`.analysis-button`)
       expect(analysis_button?.classList.contains(`active`) ?? null).toBe(analysis_active)
       expect(target.querySelector(`.trajectory-data-inspector-sidebar`) !== null).toBe(shown)
+      expect(query(target, `.viewer-row`).classList.contains(`docked-sidebar-row`)).toBe(shown)
       expect(target.querySelector(`.trajectory-info-toggle`) !== null).toBe(info_button)
     },
   )
-
-  // `auto` decides once from the first measured width: a later narrowing (leaving fullscreen)
-  // keeps it docked rather than shifting the viewer under its floating panes. Toggling it pins
-  // the opposite of what shows, so it stays closed at any width
-  test(`an auto inspector docks once by width and toggles to the opposite`, async () => {
-    const client_width = vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`)
-    client_width.mockReturnValue(1200)
-    const props = $state(default_props({ data_inspector_open: `auto` as const }))
-    const target = mount_trajectory(props)
-    const row = query(target, `.viewer-row`)
-    await vi.waitFor(() => expect(row.classList.contains(`docked-sidebar-row`)).toBe(true))
-    client_width.mockReturnValue(375)
-    trigger_resize_observer(row)
-    await tick()
-    expect(row.classList.contains(`docked-sidebar-row`)).toBe(true)
-    await open_analysis(target, `Data inspector`)
-    expect(props.data_inspector_open).toBe(false)
-    expect(row.classList.contains(`docked-sidebar-row`)).toBe(false)
-  })
 
   // A row too narrow for the viewer's 320px floor plus a usable 260px sidebar (a phone) stacks
   // the inspector under the viewer: beside it, the inspector got a few dozen px
@@ -905,9 +877,7 @@ describe(`controls`, () => {
   // at mount and on every update (ending on the first again, so hidden controls come back)
   test(`hidden: [control] removes that control alone`, async () => {
     const names = HIDEABLE_CONTROLS.map(([name]) => name)
-    const props = $state(
-      default_props({ data_inspector_open: false, show_controls: { hidden: [names[0]] } }),
-    )
+    const props = $state(default_props({ show_controls: { hidden: [names[0]] } }))
     const target = await mount_ticked(props)
     const shown = () =>
       HIDEABLE_CONTROLS.filter(
@@ -1443,6 +1413,7 @@ describe(`banners`, () => {
 
 describe(`panes`, () => {
   test(`active_pane opens exactly one pane at a time`, async () => {
+    // passed, so the bound prop reads back the toggles
     const props = $state(
       default_props({ active_pane: null as Pane, data_inspector_open: false }),
     )
@@ -1555,7 +1526,6 @@ describe(`panes`, () => {
       default_props({
         auto_play: true,
         active_pane: null as Pane,
-        data_inspector_open: false,
         on_pause,
       }),
     )
@@ -1935,7 +1905,7 @@ describe(`panes track progressively loaded property rows`, () => {
 
   // oxfmt-ignore
   test.each([
-    [`info`, { active_pane: `info`, data_inspector_open: false }, /Property Rows\s*(?<count>\d+(?: loaded)?)/,
+    [`info`, { active_pane: `info` }, /Property Rows\s*(?<count>\d+(?: loaded)?)/,
       [`2 loaded`, `5 loaded`, `5`]],
     [`data inspector`, { data_inspector_open: true }, /Frames \((?<count>\d+)\)/, [`2`, `5`, `5`]],
   ] as const)(

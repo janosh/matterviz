@@ -645,22 +645,23 @@ describe(`widget config wiring`, () => {
   })
 })
 
-// A missing/None writeback trait seeds (and reverts to) the component fallback, never null
+// A missing/None writeback trait seeds (and reverts to) the component fallback, never null.
+// Each value differs from the one before it, so every step can fail.
 describe(`writeback wiring`, () => {
   test.each([
     [`structure`, `selected_sites`, [], [3], [5, 6]],
     [`structure`, `hovered_site_idx`, null, 2, 9],
     [`structure`, `active_volume_id`, null, `potential`, `spin`],
-    [`structure`, `display_mode`, `structure`, `slice`, `structure`],
+    [`structure`, `display_mode`, `structure`, `slice`, `slice`],
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`structure`, `active_pane`, null, `flight`, `export`],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `auto`, `plot`, `structure`],
-    [`trajectory`, `plot_type`, `time-series`, `distribution`, `time-series`],
+    [`trajectory`, `plot_type`, `time-series`, `distribution`, `distribution`],
     [`trajectory`, `distribution_property`, null, `energy`, `force_max`],
     [`trajectory`, `active_pane`, null, `hotspots`, `flight`],
-    [`trajectory`, `data_inspector_open`, `auto`, false, true],
-    [`scatter_plot`, `controls_open`, false, true, false],
+    [`trajectory`, `data_inspector_open`, false, true, true],
+    [`scatter_plot`, `controls_open`, false, true, true],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
     [`sunburst`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
@@ -678,19 +679,18 @@ describe(`writeback wiring`, () => {
       const stub = run_widget(widget_type, model)
       expect(stub.read()[key]).toEqual(default_value)
       expect(model.save_count).toBe(0) // initial writeback effects are no-ops
+      expect([local_value, python_value]).not.toContainEqual(default_value)
       stub.write(key, local_value)
       flushSync()
       expect(model.state[key]).toEqual(local_value)
-      // Python -> component without a writeback echo
+      // cleared from Python -> revert to default, without a writeback echo
       const save_count = model.save_count
-      model.push_from_python(key, python_value)
-      flushSync()
-      expect(stub.read()[key]).toEqual(python_value)
-      expect(model.save_count).toBe(save_count)
-
-      model.push_from_python(key, null) // cleared -> revert to default, still no echo
+      model.push_from_python(key, null)
       flushSync()
       expect(stub.read()[key]).toEqual(default_value)
+      model.push_from_python(key, python_value) // Python -> component, still no echo
+      flushSync()
+      expect(stub.read()[key]).toEqual(python_value)
       expect(model.save_count).toBe(save_count)
     },
   )
