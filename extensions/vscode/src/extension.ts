@@ -90,6 +90,8 @@ export const webview_file_paths = new Map<WebviewLike, string>()
 // Stored as the loading promise, so concurrent requests share one read of the file and a file
 // change (dispose_run) evicts a load still in flight instead of letting its stale run land.
 export const active_runs = new Map<string, Promise<TrajectoryRun>>()
+// each load's abort, so a file change stops the index pass it supersedes
+const load_aborts = new WeakMap<Promise<TrajectoryRun>, AbortController>()
 // Atomic numbers of each run's summary preview (frame 0): frames with the same ones omit them
 // (WireFrame sites 'preview'), as the webview holds that preview
 const run_preview_sites = new WeakMap<TrajectoryRun, Uint8Array>()
@@ -643,8 +645,14 @@ function stop_watching_file(file_path: string, webview?: WebviewLike): void {
 }
 
 const dispose_run = (file_path: string): void => {
+  // a file that keeps changing (an MD run writing it) must not pile up index passes
+  const loading = active_runs.get(file_path)
+  if (loading)
+    load_aborts
+      .get(loading)
+      ?.abort(new Error(`${path.basename(file_path)} changed while indexed`))
   // a failed load already reported its error to the requesting webview
-  active_runs.get(file_path)?.then(
+  loading?.then(
     (run) => run.dispose(),
     () => {},
   )
@@ -653,7 +661,10 @@ const dispose_run = (file_path: string): void => {
 
 // A run the host decodes straight off the open file, frame by frame, at any size: an
 // uncompressed ASE .traj (ULM magic) or an XYZ file index_xyz_file can walk, else null
-const open_file_run = async (file_path: string): Promise<TrajectoryRun | null> => {
+const open_file_run = async (
+  file_path: string,
+  signal: AbortSignal,
+): Promise<TrajectoryRun | null> => {
   const filename = path.basename(file_path)
   if (!DISK_RUN_REGEX.test(filename)) return null
   const source = file_byte_source(file_path)
@@ -661,7 +672,7 @@ const open_file_run = async (file_path: string): Promise<TrajectoryRun | null> =
   const collector = create_warning_collector()
   try {
     const is_xyz = !/traj$/i.test(filename)
-    const offsets = is_xyz && (await index_xyz_file(source, collector.warn))
+    const offsets = is_xyz && (await index_xyz_file(source, collector.warn, undefined, signal))
     const magic =
       !is_xyz && source.byte_length >= 8 && new TextDecoder().decode(source.read(0, 8))
     const data = offsets ? { source, offsets } : magic === `- of Ulm` && source
@@ -684,11 +695,12 @@ const prewarm_run = (file_path: string, { content }: FileData): void => {
 }
 
 const load_run = (file_path: string): Promise<TrajectoryRun> => {
+  const controller = new AbortController()
   const open = async (): Promise<TrajectoryRun> => {
     // A timer turn first: indexing blocks this thread (an XYZ file's a window at a time), and
     // what the host just posted (a prewarmed panel's HTML) should reach the webview before that
     await new Promise((resolve) => setTimeout(resolve))
-    const file_run = await open_file_run(file_path)
+    const file_run = await open_file_run(file_path, controller.signal)
     if (file_run) return file_run
     // a read failure goes out without a stage, which the webview takes as `acquire`
     const indexed = await read_indexed_trajectory_file(file_path, path.basename(file_path))
@@ -714,6 +726,7 @@ const load_run = (file_path: string): Promise<TrajectoryRun> => {
     return run
   })
   active_runs.set(file_path, loading)
+  load_aborts.set(loading, controller)
   // Forget a failed load so the next request retries, unless a file change replaced it
   void loading.catch(
     () => active_runs.get(file_path) === loading && active_runs.delete(file_path),

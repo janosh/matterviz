@@ -782,7 +782,13 @@ export async function index_xyz_file(
   source: ByteSource,
   warn: WarnFn,
   window_bytes = 2 ** 24,
+  // aborts a pass a newer one replaced (the file changed while it was walked)
+  signal?: AbortSignal,
 ): Promise<number[] | null> {
+  const next_turn = async () => {
+    await yield_turn()
+    signal?.throwIfAborted()
+  }
   const { byte_length } = source
   const decoder = new TextDecoder(`latin1`)
   const scanner = new LineScanner()
@@ -790,7 +796,7 @@ export async function index_xyz_file(
   // where the complete frames end, and what reports the unfinished one after them
   let [end_offset, end_line, truncated] = [byte_length, 0, ``]
   let [pos, span, line_base] = [0, window_bytes, 0]
-  for (; pos < byte_length; await yield_turn()) {
+  for (; pos < byte_length; await next_turn()) {
     const size = Math.min(span, byte_length - pos)
     if (size > MAX_STRING_CHARS) return null
     const view = source.read(pos, size)
@@ -830,7 +836,7 @@ export async function index_xyz_file(
   // An MD blow-up's frames, read back from the last one as index_xyz_frames does
   let blowup_start = end_line
   let non_finite: [number, string?] | undefined
-  for (; offsets.length > 1; await yield_turn()) {
+  for (; offsets.length > 1; await next_turn()) {
     const start = offsets[offsets.length - 1]
     const lines = new TextLines(decoder.decode(source.read(start, end_offset - start)))
     const [comment, end] = [lines.line(1) ?? ``, lines.count]
