@@ -33,6 +33,10 @@
   } = $props()
 
   let has_been_dragged = $state(false)
+  // Viewer width and fullscreen element a manual position was last checked against, kept while
+  // the pane is closed so a viewer narrowed meanwhile still pulls it in on reopen
+  let manual_width = 0
+  let manual_fullscreen: Element | null = null
   const container_gap_px = 4
   // Leave room for the pane's protruding control tab plus a small inset on both sides.
   const container_width_reserve_px = 32
@@ -106,27 +110,56 @@
       ? globalThis.innerHeight
       : clipper.getBoundingClientRect().bottom
 
+  // Shift the pane sideways just enough to sit inside the container, control tab included
+  const shift_into = (pane_element: HTMLElement, container: HTMLElement): void => {
+    const offset_parent = pane_element.offsetParent
+    if (!(offset_parent instanceof HTMLElement)) return
+    const pane_rect = pane_element.getBoundingClientRect()
+    const visual_right =
+      pane_element.querySelector<HTMLElement>(`:scope > .control-tab`)?.getBoundingClientRect()
+        .right ?? pane_rect.right
+    const container_rect = container.getBoundingClientRect()
+    const min_left = container_rect.left + container_gap_px
+    const max_right = container_rect.right - container_gap_px
+    const shift_left = Math.max(min_left - pane_rect.left, 0)
+    const shift_px = Math.min(shift_left, max_right - visual_right)
+    if (Math.abs(shift_px) < 0.5) return
+    const scale_x =
+      offset_parent.clientWidth > 0
+        ? offset_parent.getBoundingClientRect().width / offset_parent.clientWidth
+        : 1
+    if (scale_x === 0) return
+    pane_element.style.left = `${Number(getComputedStyle(pane_element).left.slice(0, -2)) + shift_px / scale_x}px`
+  }
+
   $effect(() => {
-    // Constrain automatic placement only; manual placement belongs to the user until Reset.
-    if (!open || !pane || position === `fixed` || has_been_dragged) return
+    if (!open || !pane || position === `fixed`) return
     const pane_element = pane
     let container = pane_element.parentElement
     while (container && getComputedStyle(container).containerType === `normal`) {
       container = container.parentElement
     }
     if (!container) return
+    if (has_been_dragged) {
+      // Manual placement is the user's until Reset, unless the viewer narrows under it (a
+      // docking sidebar) and pulls it back inside; leaving fullscreen doesn't count.
+      if (!manual_width) manual_fullscreen = document.fullscreenElement
+      manual_width ||= container.clientWidth
+      const narrow_observer = new ResizeObserver(() => {
+        const [width, fullscreen] = [container.clientWidth, document.fullscreenElement]
+        if (width < manual_width && fullscreen === manual_fullscreen)
+          shift_into(pane_element, container)
+        ;[manual_width, manual_fullscreen] = [width, fullscreen]
+      })
+      narrow_observer.observe(container)
+      return () => narrow_observer.disconnect()
+    }
+    manual_width = 0
 
     const constrain_to_container = (): void => {
       if (!open || has_been_dragged) return
-      const offset_parent = pane_element.offsetParent
-      if (!(offset_parent instanceof HTMLElement)) return
-
+      if (!(pane_element.offsetParent instanceof HTMLElement)) return
       const pane_rect = pane_element.getBoundingClientRect()
-      const visual_right =
-        pane_element
-          .querySelector<HTMLElement>(`:scope > .control-tab`)
-          ?.getBoundingClientRect().right ?? pane_rect.right
-      const container_rect = container.getBoundingClientRect()
       const clippers = clipping_ancestors(pane_element)
       // re-observing is a no-op, and a stale clipper only costs an idempotent re-check
       for (const clipper of clippers) resize_observer.observe(clipper)
@@ -150,18 +183,7 @@
           pane_element.style.setProperty(`--pane-viewport-clamp`, height)
       } else if (pane_element.style.getPropertyValue(`--pane-viewport-clamp`))
         pane_element.style.removeProperty(`--pane-viewport-clamp`)
-      const min_left = container_rect.left + container_gap_px
-      const max_right = container_rect.right - container_gap_px
-      const shift_left = Math.max(min_left - pane_rect.left, 0)
-      const shift_px = Math.min(shift_left, max_right - visual_right)
-      if (Math.abs(shift_px) < 0.5) return
-
-      const scale_x =
-        offset_parent.clientWidth > 0
-          ? offset_parent.getBoundingClientRect().width / offset_parent.clientWidth
-          : 1
-      if (scale_x === 0) return
-      pane_element.style.left = `${Number(getComputedStyle(pane_element).left.slice(0, -2)) + shift_px / scale_x}px`
+      shift_into(pane_element, container)
     }
     const resize_observer = new ResizeObserver(constrain_to_container)
     resize_observer.observe(container)
