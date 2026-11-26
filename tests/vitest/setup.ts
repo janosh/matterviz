@@ -1,12 +1,12 @@
-import { tooltip_paint } from '#lib/colors/index.js'
-import { host } from '#lib/host.js'
-import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout.js'
-import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
-import type { ShortcutScope } from '#lib/shortcuts.js'
+import { tooltip_paint } from '#lib/colors/index'
+import { host } from '#lib/host'
+import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout'
+import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts'
+import type { ShortcutScope } from '#lib/shortcuts'
 import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
 import { is_plain_object } from 'svelte-widgets/utils'
 import { to_worker_error, type WorkerError } from 'svelte-widgets/worker-serve'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { prefersReducedMotion } from 'svelte/motion'
@@ -40,8 +40,8 @@ export function expect_axis_titles_placed(root: ParentNode): void {
 // Exercise real parsers in happy-dom; worker transport has its own tests.
 export async function mock_parse_worker(): Promise<void> {
   const [worker, { parse_file_content }] = await Promise.all([
-    import(`#lib/file-viewer/parse-in-worker.js`),
-    import(`#lib/file-viewer/parse.js`),
+    import(`#lib/file-viewer/parse-in-worker`),
+    import(`#lib/file-viewer/parse`),
   ])
   vi.spyOn(worker, `parse_in_worker`).mockImplementation(
     // Node cannot mount Blobs through h5wasm's worker-only WORKERFS.
@@ -845,21 +845,26 @@ export function expect_worker_safe_import_graph(
   const repo_root = resolve(import.meta.dirname, `../..`)
   const entry_files = entry_paths.map((entry_path) => resolve(repo_root, entry_path))
   const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
+  const is_file = (path: string) => statSync(path, { throwIfNoEntry: false })?.isFile()
+  // Imports are extensionless (`#lib/scene/geometry.svelte` names geometry.svelte.ts), so
+  // probe like the bundler: the path itself, then each extension, then a directory index
   const resolve_specifier = (specifier: string, from_file: string): string | null => {
     let base: string
     if (specifier.startsWith(`#lib`)) {
       base = resolve(repo_root, `src/lib`, specifier.slice(`#lib`.length).replace(/^\//, ``))
     } else if (specifier.startsWith(`.`)) base = resolve(dirname(from_file), specifier)
     else return null
-    // #lib specifiers name the emitted .js file of a .ts source
-    const candidates = source_extensions.some((extension) => base.endsWith(extension))
-      ? [base, base.replace(/\.js$/, `.ts`)]
-      : source_extensions.flatMap((extension) => [
-          `${base}${extension}`,
-          resolve(base, `index${extension}`),
-        ])
-    return candidates.find(existsSync) ?? null
+    const candidates = [
+      base,
+      ...source_extensions.map((extension) => `${base}${extension}`),
+      ...source_extensions.map((extension) => resolve(base, `index${extension}`)),
+    ]
+    return candidates.find(is_file) ?? null
   }
+  // by resolved file, so a relative path or a re-exporting barrel can't route around a ban
+  const forbidden = new Set(
+    forbidden_modules.map((module) => resolve_specifier(module, repo_root) ?? module),
+  )
   const queue = [...entry_files]
   const visited = new Set<string>()
   const violations: string[] = []
@@ -875,16 +880,16 @@ export function expect_worker_safe_import_graph(
       /(?:from|import)\s*\(?\s*['"`](?<specifier>[^'"`]+)['"`]/g,
     )) {
       const specifier = match.groups?.specifier ?? ``
+      const resolved = resolve_specifier(specifier, file)
       if (
         specifier === `svelte` ||
         specifier.startsWith(`svelte/`) ||
-        specifier.endsWith(`.svelte`) ||
-        forbidden_modules.includes(specifier)
+        (resolved ?? specifier).endsWith(`.svelte`) ||
+        forbidden.has(resolved ?? specifier)
       ) {
         violations.push(`${file} imports "${specifier}"`)
         continue
       }
-      const resolved = resolve_specifier(specifier, file)
       if (resolved) queue.push(resolved)
     }
   }

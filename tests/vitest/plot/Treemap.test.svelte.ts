@@ -1,6 +1,6 @@
 import Treemap from '#lib/plot/treemap/Treemap.svelte'
-import type { TreemapArc, TreemapNode } from '#lib/plot/index.js'
-import { PLOT_COLORS } from '#lib/colors/index.js'
+import type { TreemapArc, TreemapNode } from '#lib/plot/index'
+import { PLOT_COLORS } from '#lib/colors/index'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { expect_a1_hover, tree } from './hierarchy-fixtures'

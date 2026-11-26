@@ -5,16 +5,16 @@
   // Shared markup of Sunburst and Treemap inside a ChartShell: breadcrumbs, the svg with its
   // delegated pointer/keyboard handling, tooltip, legend and color bar. Each chart renders its
   // geometry into `marks`; all shared state lives on the HierarchyChartState it passes in.
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { format_value } from '#lib/labels.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { format_value } from '#lib/labels'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { observe_size } from '#lib/plot/core/utils.js'
-  import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
-  import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
-  import type { SunburstNodeHandlerProps } from '#lib/plot/core/utils/hierarchy-layout.js'
+  import { observe_size } from '#lib/plot/core/utils'
+  import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart'
+  import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte'
+  import type { SunburstNodeHandlerProps } from '#lib/plot/core/utils/hierarchy-layout'
   import type { Snippet } from 'svelte'
 
   let {

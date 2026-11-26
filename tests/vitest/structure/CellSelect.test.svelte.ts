@@ -1,5 +1,5 @@
 import CellSelect from '#lib/structure/CellSelect.svelte'
-import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
+import type { CellType, SymmetryDataset } from '#lib/symmetry/index'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, keydown, mouse, set_input } from '../setup'

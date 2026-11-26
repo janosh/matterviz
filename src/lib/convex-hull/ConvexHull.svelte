@@ -1,26 +1,26 @@
 <script lang="ts">
-  import type { AxisConfig } from '#lib/plot/index.js'
-  import { get_convex_hull_defaults } from '#lib/settings.js'
+  import type { AxisConfig } from '#lib/plot/index'
+  import { get_convex_hull_defaults } from '#lib/settings'
   import { untrack } from 'svelte'
-  import { normalize_show_controls } from '#lib/controls.js'
-  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts.js'
+  import { normalize_show_controls } from '#lib/controls'
+  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
-  import { ViewerChrome } from '#lib/layout/index.js'
+  import { ViewerChrome } from '#lib/layout/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { json_source, svg_sources, type ExportSources } from '#lib/io/export.js'
+  import { json_source, svg_sources, type ExportSources } from '#lib/io/export'
   import {
     csv_source,
     export_filename as chart_filename,
-  } from '#lib/plot/core/utils/chart-export.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { join_hover_link } from '#lib/tooltip/index.js'
-  import { first_duplicate } from '#lib/utils.js'
+  } from '#lib/plot/core/utils/chart-export'
+  import { PlotTooltip } from '#lib/plot/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { join_hover_link } from '#lib/tooltip/index'
+  import { first_duplicate } from '#lib/utils'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -47,8 +47,8 @@
     decompose_hull_composition,
     normalize_hull_composition_keys,
   } from './thermodynamics'
-  import type { CompositionType } from '#lib/composition/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { CompositionType } from '#lib/composition/index'
+  import type { ElementSymbol } from '#lib/element/index'
 
   // One public viewer infers dimensionality; renderers only handle their plot geometry.
   type ConvexHullProps = BaseConvexHullProps &

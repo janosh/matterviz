@@ -1,9 +1,9 @@
 // Canvas markers avoid one SVG node per point and batch adjacent shared styles into one
 // path, keeping dense scatter plots efficient.
 
-import { type D3SymbolName, symbol_map } from '#lib/labels.js'
-import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
-import { clamp01 } from '#lib/utils.js'
+import { type D3SymbolName, symbol_map } from '#lib/labels'
+import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils'
+import { clamp01 } from '#lib/utils'
 import { parse_color } from 'svelte-widgets/attachments'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 

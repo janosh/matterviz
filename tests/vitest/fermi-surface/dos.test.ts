@@ -1,9 +1,9 @@
 // band_grid_dos: Gaussian-broadened DOS of a band grid's bands over its unique k-points
-import { band_grid_dos, DOS_SIGMA_SPAN_FRACTION } from '#lib/fermi-surface/dos.js'
-import { parse_fermi_file, with_energy_unit } from '#lib/fermi-surface/parse.js'
-import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
-import type { Vec3 } from '#lib/math.js'
-import { dos_density_label, spectral_value_label } from '#lib/spectral/frequency-units.js'
+import { band_grid_dos, DOS_SIGMA_SPAN_FRACTION } from '#lib/fermi-surface/dos'
+import { parse_fermi_file, with_energy_unit } from '#lib/fermi-surface/parse'
+import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types'
+import type { Vec3 } from '#lib/math'
+import { dos_density_label, spectral_value_label } from '#lib/spectral/frequency-units'
 import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, read_maybe_gz } from '../test-fixtures'
 

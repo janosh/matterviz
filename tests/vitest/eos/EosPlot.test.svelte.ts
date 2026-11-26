@@ -1,5 +1,5 @@
 import EosPlot from '#lib/eos/EosPlot.svelte'
-import type { EosFit } from '#lib/eos/index.js'
+import type { EosFit } from '#lib/eos/index'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 import { bind_props, mount_sized } from '../setup'

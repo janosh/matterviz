@@ -3,9 +3,9 @@
 // CSV download appear once it lands, and a lattice-less run is refused with a reason.
 import { download } from 'svelte-widgets/browser'
 import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-import type { TrajectoryRdf } from '#lib/rdf/index.js'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { TrajectoryRdf } from '#lib/rdf/index'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, set_input } from '../setup'

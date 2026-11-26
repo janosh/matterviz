@@ -1,9 +1,9 @@
 // Obstacle fields the decoration solver routes around, plus the DOM footprint helpers the
 // hosts use to size auto-placed decorations before and after first render.
 
-import { lerp, type Vec2 } from '#lib/math.js'
-import type { Rect, Sides } from '#lib/plot/core/layout.js'
-import { PLACEMENT_CELL } from '#lib/plot/core/layout.js'
+import { lerp, type Vec2 } from '#lib/math'
+import type { Rect, Sides } from '#lib/plot/core/layout'
+import { PLACEMENT_CELL } from '#lib/plot/core/layout'
 import type { DecorationPoint, DecorationSize, Obstacle } from './types'
 
 // True when the user pinned a decoration via its style (an edge property or position:absolute),

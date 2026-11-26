@@ -1,6 +1,6 @@
 import type { AnyStructure } from '#lib'
-import { get_alphabetical_formula } from '#lib/composition/format.js'
-import type { FileInfo } from '#lib/io/index.js'
+import { get_alphabetical_formula } from '#lib/composition/format'
+import type { FileInfo } from '#lib/io/index'
 import {
   detect_structure_type,
   is_structure_like,
@@ -8,9 +8,9 @@ import {
   optimade_to_structure,
   parse_structure_file,
   structure_from_json,
-} from '#lib/structure/parse.js'
-import { is_crystal } from '#lib/structure/validation.js'
-import { fixture_ext, glob_basename, glob_text, site_file_info } from '#site/imports.js'
+} from '#lib/structure/parse'
+import { is_crystal } from '#lib/structure/validation'
+import { fixture_ext, glob_basename, glob_text, site_file_info } from '#site/imports'
 
 export const structures = Object.entries(
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
@@ -52,18 +52,12 @@ export const parse_structure_fixture = (filename: string): AnyStructure => {
   return parse_structure_file(text, filename)
 }
 
-const category_icons: Record<ReturnType<typeof detect_structure_type>, string> = {
-  crystal: `🔷`,
-  molecule: `🧬`,
-  unknown: `❓`,
-}
-
 export const structure_files: FileInfo[] = Object.entries(raw_structure_modules).map(
   ([path, value]) => {
     const file = site_file_info(path, { type: fixture_ext(path).toUpperCase() })
     // raw_text_plugin decompresses eager `?raw` gzip imports before they reach this map.
     const category = detect_structure_type(file.name.replace(/\.gz$/i, ``), glob_text(value))
-    return { ...file, category, category_icon: category_icons[category] }
+    return { ...file, category }
   },
 )
 

@@ -2,8 +2,8 @@
 import {
   detect_compression_format,
   is_browser_decompressible_format,
-} from '#lib/io/decompress.js'
-import { is_binary } from '#lib/io/is-binary.js'
+} from '#lib/io/decompress'
+import { is_binary } from '#lib/io/is-binary'
 
 export {
   Hdf5GroupSelectionRequiredError,
@@ -12,14 +12,14 @@ export {
   trajectory_from_frames,
   trajectory_from_json,
   VaspoutElectronicOnlyError,
-} from '#lib/trajectory/open.js'
-export type { AtomTypeMapping } from '#lib/trajectory/index.js'
+} from '#lib/trajectory/open'
+export type { AtomTypeMapping } from '#lib/trajectory/index'
 export {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
   is_trajectory_file,
   is_trajectory_filename,
-} from '#lib/trajectory/format-detect.js'
+} from '#lib/trajectory/format-detect'
 export { parse_ase_trajectory } from './ase'
 export { open_hdf5_trajectory } from './hdf5'
 export { parse_lammps_trajectory } from './lammps'
@@ -43,7 +43,7 @@ export function get_unsupported_format_message(
   const lower = filename.toLowerCase()
   const compression = detect_compression_format(filename)
   if (compression && !is_browser_decompressible_format(compression)) {
-    return `🚫 ${compression.toUpperCase()} decompression is not supported in the browser\nPlease decompress the file first`
+    return `${compression.toUpperCase()} decompression is not supported in the browser\nPlease decompress the file first`
   }
 
   const formats = [
@@ -53,11 +53,11 @@ export function get_unsupported_format_message(
 
   for (const { extensions, name, tool } of formats) {
     if (extensions.some((ext) => lower.endsWith(ext))) {
-      return `🚫 ${name} format not supported\nConvert with ${tool} first`
+      return `${name} format not supported\nConvert with ${tool} first`
     }
   }
 
   return is_binary(content)
-    ? `🚫 Binary format not supported${filename ? `: ${filename}` : ``}`
+    ? `Binary format not supported${filename ? `: ${filename}` : ``}`
     : null
 }

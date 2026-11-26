@@ -1,16 +1,16 @@
-import type { ShowControlsProp } from '#lib/controls.js'
+import type { ShowControlsProp } from '#lib/controls'
 import Sankey from '#lib/plot/sankey/Sankey.svelte'
-import { plot_color } from '#lib/colors/index.js'
+import { plot_color } from '#lib/colors/index'
 import { color as d3_color } from 'd3-color'
 import type {
   SankeyData,
   SankeyLinkHandlerProps,
   SankeyNode,
   SankeyNodeHandlerProps,
-} from '#lib/plot/index.js'
+} from '#lib/plot/index'
 import type { ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
-import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
+import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey'
 import {
   pin_cycle,
   export_via_pane,

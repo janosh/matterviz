@@ -1,8 +1,8 @@
 // Web Worker branch of analyze_structure_symmetry (see structure-id/worker-path.test.ts for why
 // a stub Worker is installed before the import): moyo's analyze_cell held the main thread for
 // 16-19 s on a 47k-site supercell, so it must run in the worker whenever one can be created.
-import type * as Analyze from '#lib/symmetry/analyze.js'
-import type { MoyoWorkerOptions, MoyoWorkerResult } from '#lib/symmetry/analyze.js'
+import type * as Analyze from '#lib/symmetry/analyze'
+import type { MoyoWorkerOptions, MoyoWorkerResult } from '#lib/symmetry/analyze'
 import type * as MoyoWasm from '@spglib/moyo-wasm'
 import type { MoyoCell } from '@spglib/moyo-wasm'
 import {
@@ -10,7 +10,7 @@ import {
   hall_symbol_entries_from_number,
   wyckoff_positions,
 } from '@spglib/moyo-wasm'
-import { wyckoff_positions_from_moyo } from '#lib/symmetry/wyckoff.js'
+import { wyckoff_positions_from_moyo } from '#lib/symmetry/wyckoff'
 import { afterEach, beforeAll, expect, test, vi } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { init_moyo_for_tests, make_rocksalt } from '../test-fixtures'
@@ -42,7 +42,7 @@ const stub = install_stub_worker<{
 let analyze: typeof Analyze
 
 beforeAll(async () => {
-  analyze = await import(`#lib/symmetry/analyze.js`)
+  analyze = await import(`#lib/symmetry/analyze`)
   await init_moyo_for_tests()
 })
 afterEach(() => {
@@ -72,7 +72,7 @@ test(`analyzes in the moyo worker, never on the main thread, with the main-threa
 
   // the real worker sends that database along, so the page never loads the WASM for lookups
   const replies = vi.spyOn(self, `postMessage`).mockImplementation(() => {})
-  await import(`#lib/symmetry/moyo-worker.js`)
+  await import(`#lib/symmetry/moyo-worker`)
   self.dispatchEvent(new MessageEvent(`message`, { data: message }))
   await vi.waitFor(() => expect(replies).toHaveBeenCalledOnce())
   const reply = replies.mock.calls[0][0] as {

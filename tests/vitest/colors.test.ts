@@ -1,5 +1,5 @@
 import { pick_contrast_color } from 'svelte-widgets/attachments'
-import type { Paint } from '#lib/colors/index.js'
+import type { Paint } from '#lib/colors/index'
 import {
   add_alpha,
   composite_colors,
@@ -19,8 +19,8 @@ import {
   PLOT_COLORS,
   tooltip_paint,
   watch_dark_mode,
-} from '#lib/colors/index.js'
-import { ELEM_SYMBOLS } from '#lib/element/types.js'
+} from '#lib/colors/index'
+import { ELEM_SYMBOLS } from '#lib/element/types'
 import { rgb as d3_rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'

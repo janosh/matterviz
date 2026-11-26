@@ -2,23 +2,17 @@
 // measured geometry, for compute_auto_padding (label band) and PlotAxis (rendering).
 
 import { clamp } from 'svelte-widgets/utils'
-import { format_tick_values } from '#lib/labels.js'
-import {
-  array_max,
-  array_min,
-  assert_non_negative,
-  same_values,
-  to_radians,
-} from '#lib/math.js'
-import { get_tick_label, tick_label_format } from '#lib/plot/core/scales.js'
+import { format_tick_values } from '#lib/labels'
+import { array_max, array_min, assert_non_negative, same_values, to_radians } from '#lib/math'
+import { get_tick_label, tick_label_format } from '#lib/plot/core/scales'
 import {
   DEFAULT_FONT_SPEC,
   get_text_metrics_revision,
   measure_text_line,
   graphemes,
-} from '#lib/plot/core/text-metrics.js'
-import type { FontSpec } from '#lib/plot/core/text-metrics.js'
-import type { AxisConfig, TickAutoLayoutConfig } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/text-metrics'
+import type { FontSpec } from '#lib/plot/core/text-metrics'
+import type { AxisConfig, TickAutoLayoutConfig } from '#lib/plot/core/types'
 
 // Tick label font size: 3% of the frame's smaller side (`min_side`, e.g. `100cqmin` or a
 // linked panels' joint size in px), between 12px (smaller is hard to read on 300px-tall

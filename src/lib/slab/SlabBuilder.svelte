@@ -4,9 +4,9 @@
   // so the caller decides how to render it (typically a second <Structure>).
   import KeyValueList from 'svelte-widgets/KeyValueList.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import type { Vec3 } from '#lib/math.js'
+  import type { Vec3 } from '#lib/math'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { Crystal } from '#lib/structure/index'
   import { to_error } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -199,7 +199,7 @@
   }
   .error {
     color: var(--error-color, tomato);
-    font-family: monospace;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
     white-space: pre-wrap;
   }
 </style>

@@ -5,7 +5,7 @@ import {
   fetch_optimade_providers,
   fetch_optimade_structure,
   fetch_suggested_structures,
-} from '#lib/api/optimade.js'
+} from '#lib/api/optimade'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { mount, tick, unmount } from 'svelte'
 import { MOCK_PROVIDERS, MOCK_STRUCTURES } from '../../fixtures/optimade-mocks'
@@ -52,7 +52,7 @@ test.each([
 ])(
   `changing the input to %j discards the structure (settled=%s)`,
   async (next_id, settled) => {
-    const api = await import(`#lib/api/optimade.js`)
+    const api = await import(`#lib/api/optimade`)
     const pending = Promise.withResolvers<(typeof MOCK_STRUCTURES)[string]>()
     vi.spyOn(api, `fetch_optimade_providers`).mockResolvedValue(MOCK_PROVIDERS)
     vi.spyOn(api, `fetch_suggested_structures`).mockResolvedValue([])
@@ -195,7 +195,7 @@ describe(`OPTIMADE requests`, () => {
     async (kind) => {
       // Isolate the cache so this test exercises both misses and expiry explicitly.
       vi.resetModules()
-      const api = await import(`#lib/api/optimade.js`)
+      const api = await import(`#lib/api/optimade`)
       let now = 0
       vi.spyOn(Date, `now`).mockImplementation(() => now)
       const pending = Promise.withResolvers<Response>()

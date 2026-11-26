@@ -1,7 +1,7 @@
 // Shared hover state of chart components.
 
-import { focus_left } from '#lib/plot/core/interactions.js'
-import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+import { focus_left } from '#lib/plot/core/interactions'
+import { TooltipPin } from '#lib/tooltip/pin.svelte'
 import { untrack } from 'svelte'
 
 // A data swap or a hidden series fires no pointer event, so a hover whose item is gone would

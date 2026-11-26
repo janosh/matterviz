@@ -7,7 +7,7 @@ import {
   same_while_equal,
   toggle_item,
   plain_copy,
-} from '#lib/utils.js'
+} from '#lib/utils'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 // Quoted attribute values may hold `>` or `<`; an unterminated `<` is text, not a tag that

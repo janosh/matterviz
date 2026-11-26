@@ -4,18 +4,18 @@
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
-  import { track_settings } from '#lib/controls.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls'
+  import type { ShowControlsProp } from '#lib/controls'
   import type {
     SunburstLabelRotation,
     SunburstLabelText,
     SunburstShape,
     SunburstValueMode,
-  } from '#lib/plot/core/utils/hierarchy-layout.js'
-  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  } from '#lib/plot/core/utils/hierarchy-layout'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { ControlPane } from '#lib/overlays/index.js'
+  import { ControlPane } from '#lib/overlays/index'
 
   let {
     chart,

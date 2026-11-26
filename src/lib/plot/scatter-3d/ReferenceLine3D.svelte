@@ -1,14 +1,14 @@
 <script lang="ts">
   // ReferenceLine3D: 3D reference lines for axis-parallel, segments, and extended lines
   // Uses Line2 for proper variable-width lines (GPU APIs ignore linewidth on basic lines)
-  import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
+  import type { Point3D, Vec2, Vec3 } from '#lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { range_bounds } from '#lib/plot/core/interactions.js'
-  import { create_to_threejs, span_or } from '#lib/plot/scatter-3d/scene-coords.js'
-  import type { RefLine3D } from '#lib/plot/core/types.js'
+  import { range_bounds } from '#lib/plot/core/interactions'
+  import { create_to_threejs, span_or } from '#lib/plot/scatter-3d/scene-coords'
+  import type { RefLine3D } from '#lib/plot/core/types'
 
   let {
     ref_line,

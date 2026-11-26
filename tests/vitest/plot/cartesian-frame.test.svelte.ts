@@ -6,22 +6,22 @@ import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import type { ShowControlsProp } from '#lib/controls.js'
-import type { Vec2 } from '#lib/math.js'
-import { type AxisConfig, type AxisRanges, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+import type { ShowControlsProp } from '#lib/controls'
+import type { Vec2 } from '#lib/math'
+import { type AxisConfig, type AxisRanges, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types'
 import {
   AXIS_LABEL_HEIGHT,
   DEFAULT_PLOT_PADDING,
   rect_within_rect,
   rects_overlap,
   Y_TITLE_EDGE_AIR,
-} from '#lib/plot/core/layout.js'
+} from '#lib/plot/core/layout'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
-import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
-import type { PaneToggleProps } from '#lib/overlays/index.js'
-import type * as decorations from '#lib/plot/core/decorations/index.js'
-import { solve_decorations } from '#lib/plot/core/decorations/index.js'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte'
+import type { PaneToggleProps } from '#lib/overlays/index'
+import type * as decorations from '#lib/plot/core/decorations/index'
+import { solve_decorations } from '#lib/plot/core/decorations/index'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
@@ -43,7 +43,7 @@ import {
 } from '../setup'
 
 // Passthrough spy, so tests can count decoration solves
-vi.mock(`#lib/plot/core/decorations/index.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/decorations/index`, async (import_original) => {
   const original = await import_original<typeof decorations>()
   return { ...original, solve_decorations: vi.fn(original.solve_decorations) }
 })

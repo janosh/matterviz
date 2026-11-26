@@ -3,10 +3,10 @@
 // get_pourbaix_entries returns them, or a PourbaixDiagram dict with its comp_dict and
 // conc_dict. Solids are filtered as pymatgen's filter_solids does, polymorphs reduced to the
 // most stable one per formula.
-import { get_electro_neg_formula } from '#lib/composition/format.js'
-import { get_reduced_formula } from '#lib/composition/reduce.js'
-import { HULL_STABILITY_TOL } from '#lib/convex-hull/entry-stability.js'
-import { compute_e_above_hull } from '#lib/convex-hull/thermodynamics.js'
+import { get_electro_neg_formula } from '#lib/composition/format'
+import { get_reduced_formula } from '#lib/composition/reduce'
+import { HULL_STABILITY_TOL } from '#lib/convex-hull/entry-stability'
+import { compute_e_above_hull } from '#lib/convex-hull/thermodynamics'
 import type { PourbaixConfig, PourbaixEntry } from './types'
 
 // pymatgen's ΔfG°(H2O, l) MU_H2O (eV), to which its entry energies are referenced

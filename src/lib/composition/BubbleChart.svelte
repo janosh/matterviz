@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+  import { hover_tooltip } from '#lib/tooltip/hover.svelte'
   import { hierarchy, pack } from 'd3-hierarchy'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'

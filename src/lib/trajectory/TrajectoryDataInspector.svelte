@@ -5,12 +5,13 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
   import { untrack } from 'svelte'
-  import { display_idx } from '#lib/labels.js'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index.js'
-  import { numeric_sites, site_count } from '#lib/structure/site.js'
-  import { vector_reader } from '#lib/structure/vectors.js'
-  import { HeatmapTable, type Column } from '#lib/table/index.js'
+  import { display_idx } from '#lib/labels'
+  import { get_electro_neg_formula } from '#lib/composition/index'
+  import FormulaText from '#lib/composition/FormulaText.svelte'
+  import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index'
+  import { numeric_sites, site_count } from '#lib/structure/site'
+  import { vector_reader } from '#lib/structure/vectors'
+  import { HeatmapTable, type Column } from '#lib/table/index'
   import SiteTable from '#lib/structure/SiteTable.svelte'
   import DockedSidebar from 'svelte-widgets/DockedSidebar.svelte'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
@@ -21,7 +22,7 @@
     property_config,
     PROP_PREFIX,
     vec3_norm,
-  } from '#lib/structure/site-table.js'
+  } from '#lib/structure/site-table'
   import { BOOKKEEPING_METADATA_KEYS } from './extract'
   import { sampled_source_indices } from './linked-sites'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
@@ -314,7 +315,9 @@
 
 <!-- as HeatmapTable's default cells, with the unit as a small suffix -->
 {#snippet value_cell({ row, col, val }: CellSnippetArgs)}
-  {is_invalid(val) ? `n/a` : typeof val === `number` ? format_num(val, col.format) : val}
+  {#if row.key === `formula` && typeof val === `string`}<FormulaText text={val} />{:else}
+    {is_invalid(val) ? `n/a` : typeof val === `number` ? format_num(val, col.format) : val}
+  {/if}
   {#if row.unit}<small class="unit">{row.unit}</small>{/if}
 {/snippet}
 
@@ -399,8 +402,10 @@ so a closed inspector builds no tables -->
 </DockedSidebar>
 
 <style>
-  /* Clearer zebra stripes, layered over the opaque sticky column's background too */
+  /* Smaller text than the page's, so the narrow sidebar fits more of each table. Clearer zebra
+     stripes, layered over the opaque sticky column's background too */
   :global(.trajectory-data-inspector-sidebar) {
+    font-size: 0.85em;
     --inspector-stripe: color-mix(in srgb, var(--text-color, CanvasText) 7%, transparent);
     --table-sticky-cell-odd-bg:
       linear-gradient(var(--inspector-stripe), var(--inspector-stripe)),
@@ -453,6 +458,7 @@ so a closed inspector builds no tables -->
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 2pt 5pt;
+    font-size: 0.9em; /* buttons default to the browser's 13.33px, not the sidebar's size */
     background: transparent;
     /* clear host button borders first, else they frame three sides around the underline slot */
     border: 0;

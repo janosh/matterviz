@@ -1,8 +1,8 @@
 // Sweeps (spectral/sweep): validation, computed and supplied descriptors, JSON normalization
-import type { ElementSymbol } from '#lib/element/types.js'
-import type { BandGridData } from '#lib/fermi-surface/types.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import type { Pbc } from '#lib/structure/index.js'
+import type { ElementSymbol } from '#lib/element/types'
+import type { BandGridData } from '#lib/fermi-surface/types'
+import type { Matrix3x3 } from '#lib/math'
+import type { Pbc } from '#lib/structure/index'
 import {
   compute_descriptor,
   descriptor_lines,
@@ -18,9 +18,9 @@ import {
   series_spacing,
   validate_sweep,
   volume_per_atom,
-} from '#lib/spectral/sweep.js'
-import type { DescriptorSpec, Sweep } from '#lib/spectral/sweep.js'
-import type { DosData, ElectronicDos } from '#lib/spectral/types.js'
+} from '#lib/spectral/sweep'
+import type { DescriptorSpec, Sweep } from '#lib/spectral/sweep'
+import type { DosData, ElectronicDos } from '#lib/spectral/types'
 import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 

@@ -2,8 +2,8 @@ import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import ShortcutsList from 'svelte-widgets/ShortcutsList.svelte'
 import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
-import type * as camera_reset from '#lib/scene/camera-reset.js'
-import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
+import type * as camera_reset from '#lib/scene/camera-reset'
+import { reset_scene_cameras } from '#lib/scene/camera-reset'
 import {
   format_shortcut_keys,
   SHORTCUTS,
@@ -11,15 +11,15 @@ import {
   shortcut_entries,
   shortcuts_for,
   viewer_keys,
-} from '#lib/shortcuts.js'
-import type { Shortcut, ShortcutScope } from '#lib/shortcuts.js'
+} from '#lib/shortcuts'
+import type { Shortcut, ShortcutScope } from '#lib/shortcuts'
 import { type Component, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { fire, keydown } from './setup'
 
 const { fullscreen: full, close, reset_camera, wheel_zoom, hover_walk, info_pane } = SHORTCUTS
 
-vi.mock(`#lib/scene/camera-reset.js`, async (original) => ({
+vi.mock(`#lib/scene/camera-reset`, async (original) => ({
   ...(await original<typeof camera_reset>()),
   reset_scene_cameras: vi.fn(() => true),
 }))

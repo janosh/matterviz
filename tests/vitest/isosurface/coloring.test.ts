@@ -5,7 +5,7 @@ import {
   fit_value_range,
   is_signed_range,
   scalars_to_vertex_colors,
-} from '#lib/isosurface/coloring.js'
+} from '#lib/isosurface/coloring'
 import { describe, expect, test } from 'vite-plus/test'
 
 const viridis_opts = {

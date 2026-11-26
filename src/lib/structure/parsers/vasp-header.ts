@@ -1,20 +1,20 @@
 // Shared VASP POSCAR-family header parser: comment / scale / 3 lattice rows /
 // [element symbols] / atom counts / [Selective dynamics] / coordinate mode.
 // Callers supply either an array or text cursor and adapt the result to their error contract.
-import type { ElementSymbol } from '#lib/element/index.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import { ELEM_SYMBOLS } from '#lib/element/types.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { is_elem_symbol } from '#lib/element/helpers'
+import { ELEM_SYMBOLS } from '#lib/element/types'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import {
   is_num_token,
   parse_coordinate,
   parse_float_token,
   strip_potcar_suffix,
   vec3_from_values,
-} from '#lib/structure/parsers/shared.js'
-import { parse_warn } from '#lib/trajectory/parse/shared.js'
-import { parse_leading_num } from '#lib/utils.js'
+} from '#lib/structure/parsers/shared'
+import { parse_warn } from '#lib/trajectory/parse/shared'
+import { parse_leading_num } from '#lib/utils'
 import { to_error } from 'svelte-widgets/utils'
 
 // A VASP 4 header has no symbol line (species come from the POTCAR), so outside strict mode

@@ -1,16 +1,16 @@
-import type { Vec3 } from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import type { AtomColorField } from '#lib/structure/atom-color-field.js'
+import type { Vec3 } from '#lib/math'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import type { AtomColorField } from '#lib/structure/atom-color-field'
 import {
   AtomGroupBuilder,
   type AtomGroupInput,
   type RenderAtom,
   tooltip_fill,
-} from '#lib/structure/atom-groups.js'
-import * as atom_instances from '#lib/structure/atom-instances.js'
-import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
-import { make_site } from '#lib/structure/site.js'
-import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
+} from '#lib/structure/atom-groups'
+import * as atom_instances from '#lib/structure/atom-instances'
+import { merge_split_partial_sites } from '#lib/structure/partial-occupancy'
+import { make_site } from '#lib/structure/site'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 const palette = { C: `#111111`, O: `#222222`, Fe: `#333333`, Ni: `#444444` }

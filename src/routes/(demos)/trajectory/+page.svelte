@@ -1,8 +1,8 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { url_selection } from '#site/state.svelte.js'
-  import { trajectory_files } from '#site/trajectories.js'
+  import { url_selection } from '#site/state.svelte'
+  import { trajectory_files } from '#site/trajectories'
   import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 
   let active_file = $state(``) // last trajectory a viewer loaded (example or dropped file)
@@ -140,7 +140,7 @@
     padding: 1em;
     background: var(--surface-bg-hover);
     border-radius: var(--border-radius);
-    font-family: monospace;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
     font-size: 0.9em;
   }
   .traj-pair {

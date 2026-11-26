@@ -14,12 +14,12 @@ import {
   svg_to_png_blob,
   svg_to_string,
   type ExportSources,
-} from '#lib/io/export.js'
-import { canvas_painters } from '#lib/plot/core/utils.js'
+} from '#lib/io/export'
+import { canvas_painters } from '#lib/plot/core/utils'
 import { download } from 'svelte-widgets/browser'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Color, Vector2, PerspectiveCamera } from 'three/webgpu'
-import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
+import { plan_movie, movie_frame } from '#lib/trajectory/movie'
 import { create_depth_cue, depth_cues } from '#lib/scene/lighting'
 import { crc32 } from 'node:zlib'
 import {

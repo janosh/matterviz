@@ -5,7 +5,7 @@ import {
   detect_view_type,
   is_plottable_data,
   scan_renderable_paths,
-} from '#lib/file-viewer/detect.js'
+} from '#lib/file-viewer/detect'
 import { resolve_path } from 'svelte-widgets/json-tree/path'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 

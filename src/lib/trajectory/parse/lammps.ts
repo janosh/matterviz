@@ -1,11 +1,11 @@
-import { display_idx } from '#lib/labels.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import * as math from '#lib/math.js'
-import { LineScanner } from '#lib/structure/parsers/shared.js'
-import type { Pbc } from '#lib/structure/pbc.js'
-import type { AtomTypeMapping, TrajectoryFrame } from '#lib/trajectory/index.js'
-import { element_from_lammps_type, symbol_to_atomic_number } from '#lib/element/helpers.js'
-import { element_for_mass } from '#lib/element/data.js'
+import { display_idx } from '#lib/labels'
+import type { ElementSymbol } from '#lib/element/types'
+import * as math from '#lib/math'
+import { LineScanner } from '#lib/structure/parsers/shared'
+import type { Pbc } from '#lib/structure/pbc'
+import type { AtomTypeMapping, TrajectoryFrame } from '#lib/trajectory/index'
+import { element_from_lammps_type, symbol_to_atomic_number } from '#lib/element/helpers'
+import { element_for_mass } from '#lib/element/data'
 import {
   create_plot_row_frame,
   create_trajectory_frame,
@@ -14,7 +14,7 @@ import {
   holds_numbers,
   label_sites,
   TextLines,
-} from '#lib/trajectory/helpers.js'
+} from '#lib/trajectory/helpers'
 import type { AseFrames } from './ase'
 import {
   create_numeric_md_frame,

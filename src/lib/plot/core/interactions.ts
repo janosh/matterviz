@@ -1,4 +1,4 @@
-import { LOG_EPS, type Point2D, type Vec2 } from '#lib/math.js'
+import { LOG_EPS, type Point2D, type Vec2 } from '#lib/math'
 import type {
   AxisRanges,
   LegendConfig,
@@ -6,12 +6,12 @@ import type {
   ScaleType,
   Y2SyncConfig,
   Y2SyncMode,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_y2_sync_mode,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 
 // Combine two optional handlers into one that runs the component's own handler first, then
 // the caller's observer, with the same arguments (either may be undefined)

@@ -1,5 +1,5 @@
 import { clamp } from 'svelte-widgets/utils'
-import type { LatticeParams, Pbc } from '#lib/structure/index.js'
+import type { LatticeParams, Pbc } from '#lib/structure/index'
 
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]

@@ -6,9 +6,9 @@ import Sankey from '#lib/plot/sankey/Sankey.svelte'
 import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import TooltipValue from '#lib/tooltip/TooltipValue.svelte'
-import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
-import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip.js'
+import { hover_tooltip } from '#lib/tooltip/hover.svelte'
+import { TooltipPin } from '#lib/tooltip/pin.svelte'
+import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip'
 import { color as d3_color } from 'd3-color'
 import {
   type Component,

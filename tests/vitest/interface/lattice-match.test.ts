@@ -6,11 +6,11 @@ import {
   mul2,
   surface_frame,
   unit_cell_match,
-} from '#lib/interface/lattice-match.js'
-import type { LatticeMatch, LatticeMatchOptions, Matrix2x2 } from '#lib/interface/types.js'
-import { INTERFACE_DEFAULTS } from '#lib/interface/types.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+} from '#lib/interface/lattice-match'
+import type { LatticeMatch, LatticeMatchOptions, Matrix2x2 } from '#lib/interface/types'
+import { INTERFACE_DEFAULTS } from '#lib/interface/types'
+import type { Matrix3x3 } from '#lib/math'
+import * as math from '#lib/math'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 

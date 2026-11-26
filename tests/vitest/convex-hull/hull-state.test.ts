@@ -1,7 +1,7 @@
-import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
-import type { HullModel } from '#lib/convex-hull/model.js'
-import { compute_energy_mode_info, compute_hull_model } from '#lib/convex-hull/model.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+import { filter_entries_at_temperature } from '#lib/convex-hull/helpers'
+import type { HullModel } from '#lib/convex-hull/model'
+import { compute_energy_mode_info, compute_hull_model } from '#lib/convex-hull/model'
+import type { PhaseData } from '#lib/convex-hull/types'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 import { make_phase } from '../test-fixtures'
 

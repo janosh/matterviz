@@ -1,16 +1,16 @@
 // Volume sampling utilities: trilinear interpolation, world-coordinate volume
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
 import {
   create_frac_to_cart,
   IDENTITY_3X3,
   inverse_3x3,
   reciprocal_lattice,
   scale_lattice_matrix,
-} from '#lib/math.js'
-import { diagonal_scaling } from '#lib/structure/supercell.js'
-import { clamp01 } from '#lib/utils.js'
+} from '#lib/math'
+import { diagonal_scaling } from '#lib/structure/supercell'
+import { clamp01 } from '#lib/utils'
 import { lower_corner, type ScalarGrid3D, upper_corner } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
 import { grid_data_range, MAX_GRID_POINTS } from './types'

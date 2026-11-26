@@ -2,32 +2,32 @@
 // (src/scripts/fetch_alexandria_ternaries.py) plus ternary subsets of the Materials Project quaternaries
 // used by the convex-hull demo. Loaded lazily: vite-plugin-json-gz decompresses at build time
 // and each glob entry becomes its own chunk.
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { FileInfo } from '#lib/io/index.js'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { FileInfo } from '#lib/io/index'
 import {
   filter_by_elements,
   hull_system_name,
   quaternary_loader,
-} from '#site/convex-hull/index.js'
+} from '#site/convex-hull/index'
 
 const alexandria_files = import.meta.glob<{ default: PhaseData[] }>(`./*.json.gz`, {
   eager: false,
 })
 
 // Demo categories per system (mirrors SYSTEMS in src/scripts/fetch_alexandria_ternaries.py)
-const CATEGORIES: Record<string, [category: string, icon: string]> = {
-  'Li-Co-O': [`Li-ion cathodes`, `🔋`],
-  'Li-Mn-O': [`Li-ion cathodes`, `🔋`],
-  'Li-Ni-O': [`Li-ion cathodes`, `🔋`],
-  'Li-Ti-O': [`Li-ion anodes`, `🔋`],
-  'Na-Fe-O': [`Na-ion cathodes`, `🧂`],
-  'Li-P-S': [`Solid electrolytes`, `⚡`],
-  'Ca-C-O': [`Carbonates`, `🪨`],
-  'Mg-Si-O': [`Silicates`, `🌋`],
-  'Ba-Ti-O': [`Perovskites`, `💎`],
-  'Fe-Cr-O': [`Alloy oxidation`, `🔩`],
-  'Cu-Zn-O': [`Alloy oxidation`, `🔩`],
-  'Ti-N-O': [`Nitrides`, `🛡️`],
+const CATEGORIES: Record<string, string> = {
+  'Li-Co-O': `Li-ion cathodes`,
+  'Li-Mn-O': `Li-ion cathodes`,
+  'Li-Ni-O': `Li-ion cathodes`,
+  'Li-Ti-O': `Li-ion anodes`,
+  'Na-Fe-O': `Na-ion cathodes`,
+  'Li-P-S': `Solid electrolytes`,
+  'Ca-C-O': `Carbonates`,
+  'Mg-Si-O': `Silicates`,
+  'Ba-Ti-O': `Perovskites`,
+  'Fe-Cr-O': `Alloy oxidation`,
+  'Cu-Zn-O': `Alloy oxidation`,
+  'Ti-N-O': `Nitrides`,
 }
 
 export interface TernarySystemFile extends FileInfo {
@@ -37,14 +37,13 @@ export interface TernarySystemFile extends FileInfo {
 const alexandria_systems: TernarySystemFile[] = Object.entries(alexandria_files).map(
   ([path, loader]) => {
     const system = hull_system_name(path)
-    const [category, category_icon] = CATEGORIES[system] ?? [`Other`, `🧪`]
+    const category = CATEGORIES[system] ?? `Other`
     return {
       name: `${system}.json.gz`,
       label: system,
       url: `alexandria:${system}`,
       type: `json`,
       category,
-      category_icon,
       load: async () => (await loader()).default,
     }
   },
@@ -63,7 +62,6 @@ const mp_systems: TernarySystemFile[] = MP_SUBSETS.flatMap(([file, systems]) => 
     url: `mp:${file}:${system}`,
     type: `json`,
     category: `Materials Project`,
-    category_icon: `🗄️`,
     load: async () => filter_by_elements((await loader()).default, system.split(`-`)),
   }))
 })

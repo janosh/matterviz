@@ -1,9 +1,9 @@
-import { ScatterPlot3D, ScatterPlot3DControls } from '#lib/plot/index.js'
+import { ScatterPlot3D, ScatterPlot3DControls } from '#lib/plot/index'
 import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
 import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type {
   AxisConfig3D,
@@ -12,17 +12,17 @@ import type {
   InternalPoint3D,
   Scatter3DHandlerEvent,
   Surface3DConfig,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import {
   hover_halo_radius,
   normalize_to_scene,
   sample_surface,
   get_3d_auto_ranges,
   span_or,
-} from '#lib/plot/scatter-3d/scene-coords.js'
-import * as scene_coords from '#lib/plot/scatter-3d/scene-coords.js'
+} from '#lib/plot/scatter-3d/scene-coords'
+import * as scene_coords from '#lib/plot/scatter-3d/scene-coords'
 import { mount_scene } from '../scene/mount'
-import { brighten_hex } from '#lib/scene/index.js'
+import { brighten_hex } from '#lib/scene/index'
 import * as extras from '@threlte/extras'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import type { BufferGeometry, Object3D, SphereGeometry } from 'three/webgpu'
@@ -40,12 +40,12 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three/webgpu'
-import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
-import { srgb_parser } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
-import { canvas_overlay_png_blob } from '#lib/io/export.js'
-import type * as colors from '#lib/colors/index.js'
-import { tooltip_paint } from '#lib/colors/index.js'
+import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte'
+import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte'
+import { srgb_parser } from '#lib/plot/scatter-3d/instance-tween.svelte'
+import { canvas_overlay_png_blob } from '#lib/io/export'
+import type * as colors from '#lib/colors/index'
+import { tooltip_paint } from '#lib/colors/index'
 import {
   afterEach,
   beforeEach,
@@ -70,12 +70,12 @@ import {
 
 vi.mock(`$app/env`, () => ({ browser: false }))
 // spied on to count tooltip paint derivations per tween frame
-vi.mock(`#lib/colors/index.js`, async (import_original) => {
+vi.mock(`#lib/colors/index`, async (import_original) => {
   const actual = await import_original<typeof colors>()
   return { ...actual, tooltip_paint: vi.fn(actual.tooltip_paint) }
 })
 // jsdom has no WebGPU canvas to rasterize; the export test checks what the PNG composites
-vi.mock(`#lib/io/export.js`, async (import_original) => ({
+vi.mock(`#lib/io/export`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   canvas_overlay_png_blob: vi.fn(async () => new Blob([`png`], { type: `image/png` })),
 }))

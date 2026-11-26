@@ -1,14 +1,14 @@
 // Applies an open_material result to Structure's document state. Parsing stays in the shared
 // runtime; this only preserves the viewer's multi-volume merge behavior.
-import type { OpenedMaterial } from '#lib/file-viewer/open.js'
-import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/index.js'
+import type { OpenedMaterial } from '#lib/file-viewer/open'
+import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/index'
 import {
   auto_isosurface_settings,
   label_file_volumes,
   merge_imported_volumes,
   normalize_active_volume_id,
-} from '#lib/isosurface/types.js'
-import { plural } from '#lib/labels.js'
+} from '#lib/isosurface/types'
+import { plural } from '#lib/labels'
 import type { AnyStructure } from './index'
 
 // Absolute Cartesian tolerance (A): retain fields across coordinate conversions and

@@ -1,20 +1,20 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import CodeBlock from 'svelte-widgets/CodeBlock.svelte'
   import { ScatterPlot } from '#lib'
   import type {
     CleaningConfig,
     InvalidValueMode,
     TruncationMode,
-  } from '#lib/plot/core/data-cleaning.js'
+  } from '#lib/plot/core/data-cleaning'
   import {
     clean_multi_series,
     clean_series,
     clean_xyz,
     detect_instability,
-  } from '#lib/plot/core/data-cleaning.js'
-  import type { DataSeries, PointStyle } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/data-cleaning'
+  import type { DataSeries, PointStyle } from '#lib/plot/core/types'
 
   // --- Synthetic Data Generators ---
 

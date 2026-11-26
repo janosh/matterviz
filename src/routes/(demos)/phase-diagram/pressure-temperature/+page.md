@@ -24,7 +24,7 @@ Every boundary carries propagated standard errors, as a free-energy pipeline pro
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { PressureTemperaturePhaseDiagram } from 'matterviz'
-  import { iron_pt_diagram } from '#site/phase-diagrams/pressure-temperature.js'
+  import { iron_pt_diagram } from '#site/phase-diagrams/pressure-temperature'
 
   let pinned = $state(``)
 </script>
@@ -55,7 +55,7 @@ A water-like system with temperature on x (`swap_axes`), pressure on a log y axi
 ```svelte example
 <script lang="ts">
   import { PressureTemperaturePhaseDiagram } from 'matterviz'
-  import { water_pt_diagram } from '#site/phase-diagrams/pressure-temperature.js'
+  import { water_pt_diagram } from '#site/phase-diagrams/pressure-temperature'
 
   let pressure_axis = $state({ scale_type: `log`, format: `.0e` })
 </script>

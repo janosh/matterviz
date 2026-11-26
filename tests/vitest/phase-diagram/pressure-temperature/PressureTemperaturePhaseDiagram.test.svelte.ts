@@ -3,14 +3,11 @@ import type {
   PressureUnit,
   PtHoverInfo,
   PtPhaseDiagramData,
-} from '#lib/phase-diagram/pressure-temperature/types.js'
-import type { TempUnit } from '#lib/phase-diagram/types.js'
-import type { AxisConfig } from '#lib/plot/core/types.js'
-import type { Vec2 } from '#lib/math.js'
-import {
-  iron_pt_diagram,
-  water_pt_diagram,
-} from '#site/phase-diagrams/pressure-temperature.js'
+} from '#lib/phase-diagram/pressure-temperature/types'
+import type { TempUnit } from '#lib/phase-diagram/types'
+import type { AxisConfig } from '#lib/plot/core/types'
+import type { Vec2 } from '#lib/math'
+import { iron_pt_diagram, water_pt_diagram } from '#site/phase-diagrams/pressure-temperature'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {

@@ -1229,7 +1229,7 @@ Click the group label to toggle visibility of all series in that group, or click
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { BarPlot, create_axis_loader } from 'matterviz'
-  import { seeded_rng } from '#site/histogram-data.js'
+  import { seeded_rng } from '#site/histogram-data'
 
   // Generate 50 materials with 7 properties each
   const n_materials = 50

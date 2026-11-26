@@ -1,14 +1,10 @@
-import {
-  match_lattices,
-  match_of_matrices,
-  surface_frame,
-} from '#lib/interface/lattice-match.js'
-import { in_plane_supercell, make_interface } from '#lib/interface/stack.js'
-import type { Heterostructure, Matrix2x2 } from '#lib/interface/types.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { make_slab } from '#lib/slab/make-slab.js'
-import type { Crystal } from '#lib/structure/index.js'
+import { match_lattices, match_of_matrices, surface_frame } from '#lib/interface/lattice-match'
+import { in_plane_supercell, make_interface } from '#lib/interface/stack'
+import type { Heterostructure, Matrix2x2 } from '#lib/interface/types'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { make_slab } from '#lib/slab/make-slab'
+import type { Crystal } from '#lib/structure/index'
 import { describe, expect, test } from 'vite-plus/test'
 import { FCC_FACE_CENTRES, fcc_cell, make_crystal, make_rocksalt } from '../test-fixtures'
 

@@ -1,5 +1,5 @@
 import ElementPage from '#root/src/routes/(element)/[slug]/+page.svelte'
-import { selected } from '#lib/state.svelte.js'
+import { selected } from '#lib/state.svelte'
 import { mount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 

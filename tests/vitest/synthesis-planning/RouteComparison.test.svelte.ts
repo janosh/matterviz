@@ -1,9 +1,9 @@
-import type { PhaseData } from '#lib/convex-hull/index.js'
+import type { PhaseData } from '#lib/convex-hull/index'
 import ReactionSlicePlot from '#lib/synthesis-planning/ReactionSlicePlot.svelte'
 import RouteComparison from '#lib/synthesis-planning/RouteComparison.svelte'
 import RouteTable from '#lib/synthesis-planning/RouteTable.svelte'
-import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
-import type { SynthesisRoute } from '#lib/synthesis-planning/types.js'
+import { plan_synthesis } from '#lib/synthesis-planning/plan'
+import type { SynthesisRoute } from '#lib/synthesis-planning/types'
 import { tick } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {

@@ -11,15 +11,15 @@
 // end is drawn, not one object per atom); indexed because each interior point is shared by two
 // segments. Plain typed arrays only, so this module is unit tested without a WebGPU context.
 import { clamp } from 'svelte-widgets/utils'
-import { default_element_colors, get_d3_interpolator } from '#lib/colors/index.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_cart_to_frac, is_valid_index } from '#lib/math.js'
-import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
-import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
-import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { numeric_sites, site_count } from '#lib/structure/site.js'
+import { default_element_colors, get_d3_interpolator } from '#lib/colors/index'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { create_cart_to_frac, is_valid_index } from '#lib/math'
+import { unwrapped_positions_of } from '#lib/trajectory/positions'
+import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index'
+import type { AnyStructure } from '#lib/structure/index'
+import { numeric_sites, site_count } from '#lib/structure/site'
 
 // `element` paints each trail in its atom's color (matching the spheres in the scene),
 // `time` runs a d3 ramp from the oldest sampled frame to the newest so the head of a

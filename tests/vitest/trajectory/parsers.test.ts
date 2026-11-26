@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict'
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
-import { trajectory_frame_to_extxyz_str } from '#lib/trajectory/file-export.js'
+import { materialize_frame_result } from '#lib/trajectory/frame'
+import { trajectory_frame_to_extxyz_str } from '#lib/trajectory/file-export'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
 // open.test.ts covers the loading policy (materialise vs index) and run lifecycle.
 import type { ElementSymbol } from '#lib'
-import { structure_to_json_str, structure_to_xyz_str } from '#lib/structure/export.js'
-import { get_element_counts } from '#lib/structure/density.js'
-import type { Pbc } from '#lib/structure/pbc.js'
-import { parse_xyz, structure_from_json } from '#lib/structure/parse.js'
-import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
-import { is_loaded_signal, is_signal_descriptor } from '#lib/trajectory/run.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { open_trajectory, trajectory_from_json } from '#lib/trajectory/open.js'
+import { structure_to_json_str, structure_to_xyz_str } from '#lib/structure/export'
+import { get_element_counts } from '#lib/structure/density'
+import type { Pbc } from '#lib/structure/pbc'
+import { parse_xyz, structure_from_json } from '#lib/structure/parse'
+import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index'
+import { is_loaded_signal, is_signal_descriptor } from '#lib/trajectory/run'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { open_trajectory, trajectory_from_json } from '#lib/trajectory/open'
 import {
   Hdf5GroupSelectionRequiredError,
   HDF5_MAX_LOGICAL_SLICE_BYTES,
@@ -26,23 +26,23 @@ import {
   read_numeric_samples,
   to_number_array,
   to_scalar_number,
-} from '#lib/trajectory/parse/h5-utils.js'
+} from '#lib/trajectory/parse/h5-utils'
 import {
   FORMAT_PATTERNS,
   is_indexable_trajectory_filename,
   is_trajectory_file,
-} from '#lib/trajectory/format-detect.js'
-import { get_unsupported_format_message } from '#lib/trajectory/parse/index.js'
-import { open_lammps_frames } from '#lib/trajectory/parse/lammps.js'
-import { parse_vasp_xdatcar } from '#lib/trajectory/parse/vasp.js'
-import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
-import { snapshot_topologies } from '#lib/structure/site.js'
+} from '#lib/trajectory/format-detect'
+import { get_unsupported_format_message } from '#lib/trajectory/parse/index'
+import { open_lammps_frames } from '#lib/trajectory/parse/lammps'
+import { parse_vasp_xdatcar } from '#lib/trajectory/parse/vasp'
+import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz'
+import { snapshot_topologies } from '#lib/structure/site'
 import {
   ase_calculator_data,
   parse_ase_trajectory,
   open_ase_frames,
   read_ase_header,
-} from '#lib/trajectory/parse/ase.js'
+} from '#lib/trajectory/parse/ase'
 import {
   AMU_KG,
   BOHR_TO_ANGSTROM,
@@ -50,18 +50,18 @@ import {
   EV_PER_A3_TO_GPA,
   FS_IN_ASE_TIME,
   HARTREE_TO_EV,
-} from '#lib/constants.js'
-import { ATOM_BATCH_SIZE } from '#lib/trajectory/atom-batches.js'
-import { hotspot_mean } from '#lib/trajectory/hotspots.js'
-import { analysis_frame_times, analysis_step_interval } from '#lib/trajectory/analysis.js'
-import { available_x_quantities } from '#lib/trajectory/plotting.js'
-import { reference_checkpoint_interval } from '#lib/trajectory/parse/reference-md-h5.js'
-import { decode_text_chunks } from '#lib/io/decompress.js'
-import { has_multiple_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
-import * as helpers_module from '#lib/trajectory/helpers.js'
-import * as frame_module from '#lib/trajectory/frame.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
+} from '#lib/constants'
+import { ATOM_BATCH_SIZE } from '#lib/trajectory/atom-batches'
+import { hotspot_mean } from '#lib/trajectory/hotspots'
+import { analysis_frame_times, analysis_step_interval } from '#lib/trajectory/analysis'
+import { available_x_quantities } from '#lib/trajectory/plotting'
+import { reference_checkpoint_interval } from '#lib/trajectory/parse/reference-md-h5'
+import { decode_text_chunks } from '#lib/io/decompress'
+import { has_multiple_xyz_frames, TextLines } from '#lib/trajectory/helpers'
+import * as helpers_module from '#lib/trajectory/helpers'
+import * as frame_module from '#lib/trajectory/frame'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text'
 import { join } from 'node:path'
 import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'

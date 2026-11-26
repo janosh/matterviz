@@ -1,12 +1,12 @@
-import { HARTREE_TO_EV, THZ_TO_INVERSE_CM } from '#lib/constants.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import { HARTREE_TO_EV, THZ_TO_INVERSE_CM } from '#lib/constants'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
 import {
   canonical_frequency_unit,
   convert_frequencies,
   frequency_unit_label,
   frequency_unit_text,
-} from '#lib/spectral/frequency-units.js'
-import type { PymatgenCompleteDos } from '#lib/spectral/helpers.js'
+} from '#lib/spectral/frequency-units'
+import type { PymatgenCompleteDos } from '#lib/spectral/helpers'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
   are_qpoints_equivalent,
@@ -38,14 +38,14 @@ import {
   resolve_spin_mode,
   shift_bands_to_fermi,
   shift_to_fermi,
-} from '#lib/spectral/helpers.js'
-import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
-import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
-import { phonon_band_structure_from_modes } from '#lib/spectral/phonon-modes.js'
+} from '#lib/spectral/helpers'
+import type { BaseBandStructure, QPoint } from '#lib/spectral/types'
+import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes'
+import { phonon_band_structure_from_modes } from '#lib/spectral/phonon-modes'
 import cao_json from '#site/electronic/bands/cao-2605-bands.json.gz?raw'
 import vbr2_json from '#site/electronic/bands/vbr2-971787-bands.json.gz?raw'
 import mgb2_band_yaml from '#site/phonons/ir-raman/MgB2-band.yaml.gz?raw'
-import * as math from '#lib/math.js'
+import * as math from '#lib/math'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 import { describe, expect, it, vi } from 'vite-plus/test'
 

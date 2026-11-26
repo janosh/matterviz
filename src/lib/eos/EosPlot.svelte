@@ -1,18 +1,18 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
-  import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
+  import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index'
+  import type { ScatterHandlerProps } from '#lib/plot/core/types'
   // Energy–volume scan with one or more fitted equations of state drawn through it. Hovering a
   // fit curve shows its E0, V0, B0, B0' (± standard errors) and RMSE, keeping the legend to one
   // line per series. Fitting happens here: callers pass raw (volumes, energies) and read the
   // results back through the bindable `fits`.
-  import { plot_color } from '#lib/colors/index.js'
-  import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
+  import { plot_color } from '#lib/colors/index'
+  import { EV_PER_A3_TO_GPA } from '#lib/constants'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { array_extent } from '#lib/math.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { array_extent } from '#lib/math'
+  import { ScatterPlot } from '#lib/plot/index'
+  import { TooltipValue } from '#lib/tooltip/index'
   import { to_error } from 'svelte-widgets/utils'
   import type { EosFit, EosKind, EosParams } from './fit'
   import { EOS_KIND_LABELS, eos_energy, fit_eos } from './fit'

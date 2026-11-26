@@ -1,5 +1,5 @@
-import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
-import type { ElementSymbol } from '#lib/element/index.js'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants'
+import type { ElementSymbol } from '#lib/element/index'
 import {
   build_free_energy_model,
   default_t_range,
@@ -7,14 +7,14 @@ import {
   get_volume_per_atom,
   sisso_g_delta,
   sisso_reduced_mass,
-} from '#lib/phase-diagram/ternary/free-energy.js'
-import { G_ELEMENTS } from '#lib/phase-diagram/ternary/g-els-data.js'
+} from '#lib/phase-diagram/ternary/free-energy'
+import { G_ELEMENTS } from '#lib/phase-diagram/ternary/g-els-data'
 import {
   compute_element_mu_shift,
   compute_gas_chemical_potential,
   get_default_gas_provider,
   get_effective_pressures,
-} from '#lib/convex-hull/gas-thermodynamics.js'
+} from '#lib/convex-hull/gas-thermodynamics'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_phase } from '../../test-fixtures'
 

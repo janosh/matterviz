@@ -1,15 +1,15 @@
 // HeatmapTable: svelte-widgets' DataTable plus per-column color scales, the heatmap controls
 // pane and MatterViz's export pane. The table engine and its row helpers live upstream in
 // svelte-widgets/table.
-import type { D3InterpolateName } from '#lib/colors/index.js'
-import type { ExportFormat } from '#lib/io/export.js'
-import { contrast_color_memo } from '#lib/colors/index.js'
+import type { D3InterpolateName } from '#lib/colors/index'
+import type { ExportFormat } from '#lib/io/export'
+import { contrast_color_memo } from '#lib/colors/index'
 import {
   resolve_color_scale,
   resolve_value_range,
   to_color_scale_config,
-} from '#lib/plot/core/scales.js'
-import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/scales'
+import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types'
 import type {
   CellColor,
   ColorStats,

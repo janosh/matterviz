@@ -1,12 +1,12 @@
-import { make_site } from '#lib/structure/site.js'
+import { make_site } from '#lib/structure/site'
 import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyResult,
-} from '#lib/spectral/index.js'
-import type * as spectroscopy_collect from '#lib/spectral/spectroscopy-collect.js'
+} from '#lib/spectral/index'
+import type * as spectroscopy_collect from '#lib/spectral/spectroscopy-collect'
 import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { types } from 'node:util'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
@@ -31,11 +31,11 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock(`#lib/spectral/spectroscopy-collect.js`, async (import_original) => ({
+vi.mock(`#lib/spectral/spectroscopy-collect`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   collect_trajectory_spectroscopy_input: mocks.collect,
 }))
-vi.mock(`#lib/spectral/trajectory-spectroscopy-async.svelte.js`, () => ({
+vi.mock(`#lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
   compute_trajectory_spectroscopy_async: mocks.compute,
 }))
 
@@ -131,7 +131,7 @@ test.each([
   async (label, value, timing) => {
     const { collect_trajectory_spectroscopy_input } = await vi.importActual<
       typeof spectroscopy_collect
-    >(`#lib/spectral/spectroscopy-collect.js`)
+    >(`#lib/spectral/spectroscopy-collect`)
     mocks.collect.mockImplementation(collect_trajectory_spectroscopy_input)
     const recomputation = Promise.withResolvers<TrajectorySpectroscopyResult>()
     mocks.compute

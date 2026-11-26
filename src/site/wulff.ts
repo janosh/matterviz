@@ -5,10 +5,10 @@
 // wulff/mp-*.json are MP's documents from there, trimmed to the fields used: they keep MP's own
 // Wulff area fractions and shape statistics, so tests/vitest/wulff/compute.test.ts checks
 // compute_wulff_shape against them.
-import { cell_to_lattice_matrix, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { parse_poscar } from '#lib/structure/parse.js'
-import { parse_surface_energies, type WulffFacetInput } from '#lib/wulff/index.js'
+import { cell_to_lattice_matrix, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
+import { parse_poscar } from '#lib/structure/parse'
+import { parse_surface_energies, type WulffFacetInput } from '#lib/wulff/index'
 import ir_doc from './wulff/mp-101.json'
 import ti_doc from './wulff/mp-72.json'
 

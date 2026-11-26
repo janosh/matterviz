@@ -11,8 +11,8 @@ import {
   segment_intersection_params,
   subtract as sub,
   type Vec2,
-} from '#lib/math.js'
-import { clip_segment_to_unit_square } from '#lib/plot/core/decorations/index.js'
+} from '#lib/math'
+import { clip_segment_to_unit_square } from '#lib/plot/core/decorations/index'
 import { critical_boundaries, pressure_log_floor, pt_data_extent } from './data'
 import type { PtPhaseDiagramData, PtRegion } from './types'
 

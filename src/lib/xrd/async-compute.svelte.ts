@@ -2,12 +2,12 @@
 // compute_xrd_pattern and compute_saed_pattern via persistent Web Workers (main-thread fallback
 // without Worker), plus what needs the main thread's symmetry worker: compute-xrd.ts stays free
 // of Svelte for the worker bundles.
-import type { Matrix3x3 } from '#lib/math.js'
-import type { RadiationType } from '#lib/scattering/index.js'
-import type { AnyStructure, Crystal } from '#lib/structure/index.js'
-import { is_crystal } from '#lib/structure/validation.js'
-import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
-import { plain_copy } from '#lib/utils.js'
+import type { Matrix3x3 } from '#lib/math'
+import type { RadiationType } from '#lib/scattering/index'
+import type { AnyStructure, Crystal } from '#lib/structure/index'
+import { is_crystal } from '#lib/structure/validation'
+import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze'
+import { plain_copy } from '#lib/utils'
 import { create_worker_client } from 'svelte-widgets/worker-client'
 import type { XrdWavelength } from './compute-xrd'
 import { compute_xrd_pattern } from './compute-xrd'

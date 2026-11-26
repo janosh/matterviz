@@ -3,7 +3,7 @@ import {
   scott_bandwidth,
   silverman_bandwidth,
   VIOLIN_KDE_OPTS,
-} from '#lib/plot/box/kde.js'
+} from '#lib/plot/box/kde'
 import { describe, expect, test } from 'vite-plus/test'
 
 // Independent O(n*m) Gaussian-sum reference (no subsampling), used to verify gaussian_kde

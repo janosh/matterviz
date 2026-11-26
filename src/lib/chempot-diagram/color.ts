@@ -1,8 +1,8 @@
-import { extract_formula_elements } from '#lib/composition/parse.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import { array_extent, type Vec2 } from '#lib/math.js'
-import { resolve_color_scale } from '#lib/plot/core/scales.js'
-import type { ColorScaleConfig } from '#lib/plot/core/types.js'
+import { extract_formula_elements } from '#lib/composition/parse'
+import type { PhaseData } from '#lib/convex-hull/types'
+import { array_extent, type Vec2 } from '#lib/math'
+import { resolve_color_scale } from '#lib/plot/core/scales'
+import type { ColorScaleConfig } from '#lib/plot/core/types'
 import { group } from 'd3-array'
 import {
   best_form_energy_for_formula as best_form_energy,

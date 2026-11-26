@@ -7,8 +7,8 @@ import {
   fractional_to_cartesian_rotation,
   generate_bz_vertices,
   IBZ_REFERENCE_DIRECTIONS,
-} from '#lib/brillouin/compute.js'
-import { DEFAULT_FIT_PADDING } from '#lib/structure/camera-fit.js'
+} from '#lib/brillouin/compute'
+import { DEFAULT_FIT_PADDING } from '#lib/structure/camera-fit'
 import {
   bz_fit_extent,
   vectors_fit_extent,
@@ -22,10 +22,10 @@ import {
   k_space_size,
   polyhedron_centroid,
   polyhedron_geometry,
-} from '#lib/brillouin/geometry.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { point_group_rotations } from '#lib/symmetry/analyze.js'
+} from '#lib/brillouin/geometry'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { point_group_rotations } from '#lib/symmetry/analyze'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vite-plus/test'
 import {

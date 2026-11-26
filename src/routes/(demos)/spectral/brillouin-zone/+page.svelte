@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { url_selection } from '#site/state.svelte.js'
+  import { url_selection } from '#site/state.svelte'
   import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
   import { BrillouinZone } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { Crystal } from '#lib/structure/index.js'
-  import { is_crystal } from '#lib/structure/validation.js'
-  import { parse_structure_fixture, structure_files, structure_map } from '#site/structures.js'
+  import type { Crystal } from '#lib/structure/index'
+  import { is_crystal } from '#lib/structure/validation'
+  import { parse_structure_fixture, structure_files, structure_map } from '#site/structures'
 
   let dropped_structure = $state<Crystal | undefined>()
   // A Brillouin zone needs a lattice, so molecules stay out of the picker

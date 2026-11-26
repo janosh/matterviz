@@ -1,20 +1,20 @@
-import { atom_field_color } from '#lib/structure/atom-color-field.js'
+import { atom_field_color } from '#lib/structure/atom-color-field'
 import {
   hotspot_field_geometry,
   hotspot_colors,
   hotspot_cloud_colors,
   hotspot_scale,
   hotspot_probe,
-} from '#lib/trajectory/hotspot-colors.js'
-import type { HotspotResult } from '#lib/trajectory/hotspots.js'
-import { hotspot_bin, hotspot_display_values } from '#lib/trajectory/hotspots.js'
-import { encode_frame } from '#lib/trajectory/frame.js'
+} from '#lib/trajectory/hotspot-colors'
+import type { HotspotResult } from '#lib/trajectory/hotspots'
+import { hotspot_bin, hotspot_display_values } from '#lib/trajectory/hotspots'
+import { encode_frame } from '#lib/trajectory/frame'
 import { make_trajectory_frame } from '../test-fixtures'
 import { Color, Vector3 } from 'three/webgpu'
 import { expect, it } from 'vite-plus/test'
-import type { Vec3 } from '#lib/math.js'
-import { make_lattice } from '#lib/structure/parsers/shared.js'
-import { parse_linear_rgb } from '#lib/scene/colors.js'
+import type { Vec3 } from '#lib/math'
+import { make_lattice } from '#lib/structure/parsers/shared'
+import { parse_linear_rgb } from '#lib/scene/colors'
 import { interpolateInferno } from 'd3-scale-chromatic'
 
 const blue = () => new Color(`blue`) // fresh: atom_field_color tints its base in place

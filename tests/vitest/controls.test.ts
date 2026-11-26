@@ -1,10 +1,10 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vite-plus/test'
-import { host } from '#lib/host.js'
+import { host } from '#lib/host'
 import {
   normalize_show_controls,
   shows_fullscreen_toggle,
   track_settings,
-} from '#lib/controls.js'
+} from '#lib/controls'
 
 describe(`normalize_show_controls`, () => {
   it.each([
@@ -150,7 +150,7 @@ it.each([
   Object.defineProperty(document, `fullscreenEnabled`, { value: enabled, configurable: true })
   vi.resetModules()
   try {
-    const { host: fresh_host } = await import(`#lib/host.js`)
+    const { host: fresh_host } = await import(`#lib/host`)
     expect(fresh_host.fullscreen).toBe(expected)
   } finally {
     Reflect.deleteProperty(document, `fullscreenEnabled`)

@@ -1,7 +1,7 @@
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { Vec2 } from '#lib/math.js'
-import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
-import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { Vec2 } from '#lib/math'
+import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics'
+import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte'
 import {
   compute_section,
   compute_ternary_phase_diagram,
@@ -12,11 +12,11 @@ import {
   prepare_diagram,
   prism_composition,
   prism_position,
-} from '#lib/phase-diagram/ternary/compute.js'
+} from '#lib/phase-diagram/ternary/compute'
 import type {
   TernaryPhaseDiagram,
   TernaryPhaseDiagramOptions,
-} from '#lib/phase-diagram/ternary/types.js'
+} from '#lib/phase-diagram/ternary/types'
 import { beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { load_json, make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries, toy_temps } from './fixtures'

@@ -1,18 +1,18 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
-  import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
+  import type { ChemicalElement, ElementSymbol } from '#lib/element/index'
   import type {
     AxisItem,
     CellContext,
     ElementAxisOrderingKey,
-  } from '#lib/heatmap-matrix/index.js'
+  } from '#lib/heatmap-matrix/index'
   import {
     ELEMENT_ORDERINGS,
     ORDERING_LABELS,
     elements_to_axis,
     HeatmapMatrix,
-  } from '#lib/heatmap-matrix/index.js'
+  } from '#lib/heatmap-matrix/index'
 
   // === Demo 1: Full element matrix with ordering controls, tooltip, and click ===
   let ordering = $state<ElementAxisOrderingKey>(`atomic_number`)

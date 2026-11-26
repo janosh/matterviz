@@ -1,10 +1,10 @@
 // Frame-major position accumulation shared by every run that reads frames one at a time
 // (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
-import { is_finite_number } from '#lib/utils.js'
-import { display_idx } from '#lib/labels.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
+import { is_finite_number } from '#lib/utils'
+import { display_idx } from '#lib/labels'
+import type { ElementSymbol } from '#lib/element/index'
+import { element_from_atomic_number } from '#lib/element/helpers'
 import {
   finite_vec3_from_values,
   is_finite_vec3,
@@ -12,9 +12,9 @@ import {
   reciprocal_lattice,
   same_values,
   type Vec3,
-} from '#lib/math.js'
-import type { Pbc } from '#lib/structure/index.js'
-import { site_stride, vector_offset } from '#lib/structure/site.js'
+} from '#lib/math'
+import type { Pbc } from '#lib/structure/index'
+import { site_stride, vector_offset } from '#lib/structure/site'
 import { values_per_sample } from '../helpers'
 import type { NumericFrame } from '../frame'
 import type {

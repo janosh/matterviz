@@ -1,10 +1,10 @@
 <script lang="ts">
   // PlotTooltip pinned to a 3D `position` (local to its parent), flipped and clamped inside
   // the box that would clip it, clear of the hovered object's disk (`anchor_radius`)
-  import type { Vec3 } from '#lib/math.js'
+  import type { Vec3 } from '#lib/math'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
-  import type { Rect } from '#lib/plot/core/layout.js'
+  import { clip_bounds } from '#lib/plot/core/decorations/tooltip'
+  import type { Rect } from '#lib/plot/core/layout'
   import { T, useTask, useThrelte } from '@threlte/core'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { Group, Vector3 } from 'three/webgpu'

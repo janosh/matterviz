@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { format_value_or_num } from '#lib/labels.js'
-  import { size_legend_layout, type SizeLegendEntry } from '#lib/plot/core/size-legend.js'
-  import { DEFAULT_FONT_SPEC, resolve_font_spec } from '#lib/plot/core/text-metrics.js'
+  import { format_value_or_num } from '#lib/labels'
+  import { size_legend_layout, type SizeLegendEntry } from '#lib/plot/core/size-legend'
+  import { DEFAULT_FONT_SPEC, resolve_font_spec } from '#lib/plot/core/text-metrics'
 
   // Reference circles for a bubble chart's size scale (see size-legend.ts). Circles and text
   // take currentColor, so the legend follows the theme's text color.

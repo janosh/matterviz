@@ -1,4 +1,4 @@
-import type { Crystal } from '#lib/structure/index.js'
+import type { Crystal } from '#lib/structure/index'
 import { getAbortSignal } from 'svelte'
 import { analyze_structure_symmetry, type SymmetryDataset } from './analyze'
 

@@ -1,7 +1,7 @@
 // Chemical potential diagrams: TypeScript port of pymatgen's ChemicalPotentialDiagram
 // (pymatgen/analysis/chempot_diagram.py)
 
-import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce'
 import {
   absolute_energy_per_atom,
   compute_e_form_per_atom,
@@ -10,8 +10,8 @@ import {
   get_energy_per_atom,
   has_absolute_energy,
   species_key_element,
-} from '#lib/convex-hull/thermodynamics.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+} from '#lib/convex-hull/thermodynamics'
+import type { PhaseData } from '#lib/convex-hull/types'
 import {
   array_extent,
   array_max,
@@ -30,8 +30,8 @@ import {
   polygon_centroid,
   polygon_signed_area,
   subtract,
-} from '#lib/math.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
+} from '#lib/math'
+import type { Vec2, Vec3 } from '#lib/math'
 import type {
   ChemPotBound,
   ChemPotDiagramConfig,

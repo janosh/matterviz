@@ -1,4 +1,4 @@
-import type { RadiationType, ScatteringSpecies } from '#lib/scattering/index.js'
+import type { RadiationType, ScatteringSpecies } from '#lib/scattering/index'
 import {
   electron_form_factor,
   gaussian_turning_point,
@@ -6,7 +6,7 @@ import {
   pdf_scattering_weights,
   scattering_length,
   xray_form_factor,
-} from '#lib/scattering/index.js'
+} from '#lib/scattering/index'
 import NEUTRON_SCATTERING_LENGTHS from '#lib/scattering/neutron-scattering-lengths.json' with { type: 'json' }
 import { describe, expect, test } from 'vite-plus/test'
 

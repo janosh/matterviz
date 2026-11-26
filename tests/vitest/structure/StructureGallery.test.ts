@@ -1,5 +1,5 @@
-import { get_d3_interpolator } from '#lib/colors/index.js'
-import type { StructureGalleryItem } from '#lib/structure/index.js'
+import { get_d3_interpolator } from '#lib/colors/index'
+import type { StructureGalleryItem } from '#lib/structure/index'
 import StructureGallery from '#lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'

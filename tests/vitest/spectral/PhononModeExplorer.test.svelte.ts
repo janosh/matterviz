@@ -1,12 +1,12 @@
-import type * as brillouin_module from '#lib/brillouin/index.js'
+import type * as brillouin_module from '#lib/brillouin/index'
 import type * as trajectory_component from '#lib/trajectory/Trajectory.svelte'
-import type * as phonon_modes_module from '#lib/spectral/phonon-modes.js'
-import { reciprocal_lattice, type Vec3 } from '#lib/math.js'
-import { frac_k_to_cartesian } from '#lib/spectral/helpers.js'
-import type { PhononModeDataset } from '#lib/spectral/index.js'
-import { parse_born, parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
+import type * as phonon_modes_module from '#lib/spectral/phonon-modes'
+import { reciprocal_lattice, type Vec3 } from '#lib/math'
+import { frac_k_to_cartesian } from '#lib/spectral/helpers'
+import type { PhononModeDataset } from '#lib/spectral/index'
+import { parse_born, parse_phonon_modes } from '#lib/spectral/parse-phonon-modes'
 import PhononModeExplorer from '#lib/spectral/PhononModeExplorer.svelte'
-import { spectrum_from_phonon_data } from '#lib/spectral/ir-raman.js'
+import { spectrum_from_phonon_data } from '#lib/spectral/ir-raman'
 import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
 import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { flushSync, tick, type ComponentProps } from 'svelte'
@@ -30,7 +30,7 @@ import {
 // draws them does not render here)
 type BZProps = ComponentProps<typeof brillouin_module.BrillouinZone>
 const bz_spy = vi.hoisted(() => ({ props: undefined as BZProps | undefined }))
-vi.mock(`#lib/brillouin/index.js`, async (import_original) => {
+vi.mock(`#lib/brillouin/index`, async (import_original) => {
   const original = await import_original<typeof brillouin_module>()
   const BrillouinZone = (...args: Parameters<typeof original.BrillouinZone>) => {
     bz_spy.props = args[1]
@@ -52,7 +52,7 @@ vi.mock(`#lib/trajectory/Trajectory.svelte`, async (import_original) => {
 })
 // Pass-through spy on the supercell builds, recording the polyhedra settings each completed
 const supercell_spy = vi.hoisted(() => ({ calls: [] as unknown[][] }))
-vi.mock(`#lib/spectral/phonon-modes.js`, async (import_original) => {
+vi.mock(`#lib/spectral/phonon-modes`, async (import_original) => {
   const original = await import_original<typeof phonon_modes_module>()
   const phonon_supercell = (...args: Parameters<typeof original.phonon_supercell>) => {
     supercell_spy.calls.push(args)

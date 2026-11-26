@@ -1,14 +1,14 @@
 // Spatial kinetic-energy reduction with bounded atom batches and one frame of bin statistics.
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import {
   AMU_KG,
   AVOGADRO_PER_MOL,
   BOLTZMANN_EV_PER_K,
   ELEMENTARY_CHARGE_C,
-} from '#lib/constants.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { yield_turn } from '#lib/utils.js'
-import { is_finite_vec3_like, is_pbc, is_valid_index, inverse_3x3 } from '#lib/math.js'
+} from '#lib/constants'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { yield_turn } from '#lib/utils'
+import { is_finite_vec3_like, is_pbc, is_valid_index, inverse_3x3 } from '#lib/math'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 

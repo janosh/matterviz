@@ -1,6 +1,6 @@
 import FilePicker from '#lib/FilePicker.svelte'
-import type { FileInfo } from '#lib/io/index.js'
-import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-paint.js'
+import type { FileInfo } from '#lib/io/index'
+import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-paint'
 import { color as d3_color } from 'd3-color'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -183,8 +183,12 @@ describe(`FilePicker`, () => {
     ],
   ])(`recomputes contrast for %s`, async (_desc, paint, token) => {
     const component = mount_picker({
-      files: [{ name: `Si`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` }],
-      file_type_paints: { chgcar: paint },
+      // a second type, else the lone type's badge hides
+      files: [
+        { name: `Si`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` },
+        { name: `Ge`, url: `/files/Ge`, type: `cif`, label: `Ge` },
+      ],
+      file_type_paints: { chgcar: paint, cif: paint },
       style: `${token}: black`,
     })
     flushSync()
@@ -203,7 +207,7 @@ describe(`FilePicker`, () => {
     const count_observers = (n_files: number): number => {
       const observe_spy = vi.spyOn(MutationObserver.prototype, `observe`)
       const files = Array.from({ length: n_files }, (_, idx) => ({
-        name: `file-${idx}.cif`,
+        name: `file-${idx}.${idx % 2 ? `cif` : `xyz`}`, // mixed types, so badges show
         url: `/files/${idx}`,
         label: `File ${idx}`,
       }))
@@ -218,6 +222,63 @@ describe(`FilePicker`, () => {
     // every theme watcher shares one observer, so the count must not scale with badges
     expect(count_observers(5)).toBe(1)
     expect(count_observers(20)).toBe(1)
+  })
+
+  // A badge repeating the one type every file shares is noise: badges show only beside others
+  it.each([
+    [[`yaml`, `yaml`], 0],
+    [[`yaml`, `json`], 2],
+  ])(`labeled files of types %j show %i type badges`, (types, n_badges) => {
+    const files = types.map((type, idx) => ({
+      name: `f${idx}`,
+      url: ``,
+      type,
+      label: `F${idx}`,
+    }))
+    mount_picker({ files })
+    expect(document.querySelectorAll(`.file-type-badge`)).toHaveLength(n_badges)
+  })
+
+  // Formula words in labels and names get real sub/superscripts; names that only look
+  // formula-shaped stay plain
+  it.each([
+    [`BaTiO3 cubic perovskite`, `BaTiO<sub>3</sub> cubic perovskite`],
+    [`δ-CsPbI3 orthorhombic`, `δ-CsPbI<sub>3</sub> orthorhombic`],
+    [`Li2O_relax.traj`, `Li<sub>2</sub>O_relax.traj`],
+    [`SO4^2- ions`, `SO<sub>4</sub><sup>2-</sup> ions`],
+    [`CONTCAR2`, `CONTCAR2`],
+    [`mp-1234.json`, `mp-1234.json`],
+  ])(`renders %s as %s`, (label, html) => {
+    mount_picker({ files: [{ name: `x`, url: ``, label }] })
+    const markup = doc_query(`.file-name`).innerHTML.replaceAll(
+      /<!--[^>]*-->| class="[^"]*"/g,
+      ``,
+    )
+    expect(markup).toBe(html)
+  })
+
+  // A draggable chip can't be text-selected, so pressing on its name pauses the drag until the
+  // pointer lifts, and a click ending a selection in the chip doesn't load the file
+  it(`lets chip names be selected without loading the file`, () => {
+    const on_click = vi.fn()
+    mount_picker({ files: [mock_file(`structure1.cif`), mock_file(`molecule.xyz`)], on_click })
+    const [chip, other_chip] = file_items()
+    const name = doc_query(`.file-name`)
+    name.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+    // every chip, so a selection can run on into the next one
+    expect([chip.draggable, other_chip.draggable]).toEqual([false, false])
+    getSelection()?.selectAllChildren(name)
+    chip.click()
+    expect(on_click).not.toHaveBeenCalled()
+    window.dispatchEvent(new PointerEvent(`pointerup`))
+    expect([chip.draggable, other_chip.draggable]).toEqual([true, true])
+    getSelection()?.removeAllRanges()
+    chip.click()
+    expect(on_click).toHaveBeenCalledOnce()
+    // a touch scroll cancels the press rather than lifting it
+    name.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+    window.dispatchEvent(new PointerEvent(`pointercancel`))
+    expect([chip.draggable, other_chip.draggable]).toEqual([true, true])
   })
 
   const formats = [`CIF`, `XYZ`, `JSON`, `TRAJ`, `DAT`, `POSCAR_FILE`]

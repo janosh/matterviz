@@ -1,16 +1,16 @@
 // The demo's approximate fcc Cu pressure sweep: Birch–Murnaghan pressures, cells and band
 // energies scaled consistently, a model phonon dispersion stiffening with them, spectra built
 // per frame on demand
-import type { BandGridData } from '#lib/fermi-surface/types.js'
+import type { BandGridData } from '#lib/fermi-surface/types'
 import {
   descriptor_value,
   normalize_frame_data,
   validate_sweep,
   volume_per_atom,
-} from '#lib/spectral/sweep.js'
-import { dot, transpose_3x3 } from '#lib/math.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
+} from '#lib/spectral/sweep'
+import { dot, transpose_3x3 } from '#lib/math'
+import type { Matrix3x3 } from '#lib/math'
+import type { BaseBandStructure, PhononDos } from '#lib/spectral/types'
 import {
   CU_COUPLING_EXPONENT,
   CU_GRUNEISEN,
@@ -26,7 +26,7 @@ import {
   scale_band_structure,
   scale_crystal,
   symmetric_eigenvalues,
-} from '#site/electronic/cu-pressure-sweep.js'
+} from '#site/electronic/cu-pressure-sweep'
 import { expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 

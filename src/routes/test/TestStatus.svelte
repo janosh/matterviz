@@ -28,6 +28,6 @@
     margin: 0;
     min-width: 0;
     overflow-wrap: anywhere; /* long JSON readouts must not widen the page */
-    font-family: monospace;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
   }
 </style>

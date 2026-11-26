@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ChemicalElement } from '#lib/element/index.js'
-  import { ELEM_HEATMAP_LABELS } from '#lib/labels.js'
+  import type { ChemicalElement } from '#lib/element/index'
+  import { ELEM_HEATMAP_LABELS } from '#lib/labels'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-widgets/MultiSelect.svelte'
 

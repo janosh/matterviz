@@ -1,9 +1,9 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
-  import type { StructureHandlerData } from '#lib/structure/index.js'
-  import type { TrajHandlerData } from '#lib/trajectory/index.js'
-  import { trajectory_files } from '#site/trajectories.js'
+  import type { StructureHandlerData } from '#lib/structure/index'
+  import type { TrajHandlerData } from '#lib/trajectory/index'
+  import { trajectory_files } from '#site/trajectories'
   import CopyButton from 'svelte-widgets/CopyButton.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
@@ -22,8 +22,8 @@
     const [{ default: FilePicker }, { structure_files }, { molecule_files }] =
       await Promise.all([
         import('#lib/FilePicker.svelte'),
-        import('#site/structures.js'),
-        import('#site/molecules.js'),
+        import('#site/structures'),
+        import('#site/molecules'),
       ])
     return {
       default: FilePicker,

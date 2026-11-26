@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShowControlsState } from '#lib/controls.js'
+  import type { ShowControlsState } from '#lib/controls'
   import type { Snippet } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
   import type { ClassValue } from 'svelte/elements'

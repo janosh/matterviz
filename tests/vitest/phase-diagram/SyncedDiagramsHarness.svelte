@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { IsobaricBinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
-  import type { BinaryPhaseDiagram, DiagramCursor } from '#lib/phase-diagram/types.js'
+  import { IsobaricBinaryPhaseDiagram } from '#lib/phase-diagram/index'
+  import type { BinaryPhaseDiagram, DiagramCursor } from '#lib/phase-diagram/types'
 
   // Two diagrams bound to one cursor; the first can be unmounted mid-hover
   let { diagrams }: { diagrams: [BinaryPhaseDiagram, BinaryPhaseDiagram] } = $props()

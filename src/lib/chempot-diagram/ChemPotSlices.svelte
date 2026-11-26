@@ -8,9 +8,9 @@
   // domain's section measure against that potential (where each phase appears, peaks, ends).
   import { clamp } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import type { Vec2 } from '#lib/math.js'
-  import type { DataSeries } from '#lib/plot/index.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
+  import type { Vec2 } from '#lib/math'
+  import type { DataSeries } from '#lib/plot/index'
+  import { ScatterPlot } from '#lib/plot/index'
   import { domain_formula_text } from './controls-state.svelte'
 
   let {

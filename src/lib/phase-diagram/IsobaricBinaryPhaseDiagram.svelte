@@ -1,19 +1,19 @@
 <script lang="ts">
   import { create_flash } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
-  import { add_alpha } from '#lib/colors/index.js'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import { add_alpha } from '#lib/colors/index'
+  import { DEFAULT_PNG_DPI } from '#lib/constants'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { file_drop_zone } from '#lib/io/file-drop.js'
-  import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { type D3SymbolName, humanize, symbol_map } from '#lib/labels.js'
+  import { file_drop_zone } from '#lib/io/file-drop'
+  import type { FileLoadCallback, FileLoadData } from '#lib/io/types'
+  import { type D3SymbolName, humanize, symbol_map } from '#lib/labels'
   import { symbol } from 'd3-shape'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
-  import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
+  import { ViewerChrome } from '#lib/layout/index'
+  import { sanitize_html, sanitize_svg } from '#lib/sanitize'
   import {
     array_extent,
     compute_bounding_box_2d,
@@ -21,19 +21,19 @@
     polygon_label_point,
     polygon_signed_area,
     type Vec2,
-  } from '#lib/math.js'
-  import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
+  } from '#lib/math'
+  import { type AxisConfig, PlotTooltip } from '#lib/plot/index'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
-  import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
-  import { error_bar_path } from '#lib/plot/core/error-bars.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
-  import { viewer_keys } from '#lib/shortcuts.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import type { LegendConfig, LegendItem } from '#lib/plot/core/types'
+  import { error_bar_path } from '#lib/plot/core/error-bars'
+  import { unique_id } from '#lib/plot/core/utils'
+  import { viewer_keys } from '#lib/shortcuts'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import { svg_sources, type ExportProps } from '#lib/io/export.js'
+  import { svg_sources, type ExportProps } from '#lib/io/export'
   import { compute_isopleth, phase_disagreement } from './analysis'
   import {
     BOUNDARY_STYLES,
@@ -83,7 +83,7 @@
     format_formula_svg,
     format_label_html,
     format_label_svg,
-  } from '#lib/composition/formula-markup.js'
+  } from '#lib/composition/formula-markup'
   import {
     CHAR_WIDTH_EM,
     compute_label_properties,

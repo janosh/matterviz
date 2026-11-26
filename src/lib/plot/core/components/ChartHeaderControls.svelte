@@ -8,10 +8,10 @@
     normalize_show_controls,
     shows_fullscreen_toggle,
     type ShowControlsProp,
-  } from '#lib/controls.js'
+  } from '#lib/controls'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { FullscreenButton } from '#lib/layout/index.js'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import { FullscreenButton } from '#lib/layout/index'
+  import type { PaneToggleProps } from '#lib/overlays/index'
   import type { ComponentProps, Snippet } from 'svelte'
 
   // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, export

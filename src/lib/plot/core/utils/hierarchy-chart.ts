@@ -2,25 +2,25 @@
 // breadcrumbs, color-bar layout, keyboard nav), all on compute_sunburst_layout's flat
 // pre-order arc arrays, so each chart keeps only its geometry.
 
-import { is_opaque_color, opaque_contrast_color } from '#lib/colors/index.js'
-import { format_value } from '#lib/labels.js'
-import type { Vec2 } from '#lib/math.js'
-import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
-import { resolve_pattern } from '#lib/plot/core/patterns.js'
-import { resolve_color_scale } from '#lib/plot/core/scales.js'
-import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import { is_opaque_color, opaque_contrast_color } from '#lib/colors/index'
+import { format_value } from '#lib/labels'
+import type { Vec2 } from '#lib/math'
+import type { ResolvedPattern } from '#lib/plot/core/patterns'
+import { resolve_pattern } from '#lib/plot/core/patterns'
+import { resolve_color_scale } from '#lib/plot/core/scales'
+import type { FontSpec } from '#lib/plot/core/text-metrics'
 import {
   DEFAULT_FONT_SPEC,
   graphemes,
   measure_text_line,
   resolve_font_spec,
-} from '#lib/plot/core/text-metrics.js'
-import type { ColorScale, ColorScaleConfig, LegendItem } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/text-metrics'
+import type { ColorScale, ColorScaleConfig, LegendItem } from '#lib/plot/core/types'
 import type {
   PositionedArc,
   SunburstLabelText,
   SunburstNodeHandlerProps,
-} from '#lib/plot/core/utils/hierarchy-layout.js'
+} from '#lib/plot/core/utils/hierarchy-layout'
 
 // === Labels ===
 

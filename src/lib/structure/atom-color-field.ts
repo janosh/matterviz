@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import { attribute, clamp, float, floor, mix, texture3D, uniform, vec4 } from 'three/tsl'
 import type { MeshStandardNodeMaterial } from 'three/webgpu'
 import {

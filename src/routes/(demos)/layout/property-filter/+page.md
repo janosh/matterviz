@@ -49,7 +49,9 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
 
 <div class="status">
   <span><strong>{filtered_count}</strong> of {bandgaps.length} materials in range</span>
-  <span style="opacity: 0.6; font-family: monospace">{events.at(-1) ?? `No events yet`}</span>
+  <span style="opacity: 0.6; font-family: ui-monospace, Menlo, Consolas, monospace"
+    >{events.at(-1) ?? `No events yet`}</span
+  >
 </div>
 
 <style>

@@ -1,21 +1,21 @@
 <script lang="ts">
-  import { add_alpha } from '#lib/colors/index.js'
-  import { color_interpolator } from '#lib/plot/core/scales.js'
-  import { symbol_map } from '#lib/labels.js'
-  import type { LegendItem, Orientation } from '#lib/plot/core/types.js'
+  import { add_alpha } from '#lib/colors/index'
+  import { color_interpolator } from '#lib/plot/core/scales'
+  import { symbol_map } from '#lib/labels'
+  import type { LegendItem, Orientation } from '#lib/plot/core/types'
   import { fill_gradient_def } from '#lib/plot/core/components/FillArea.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
-  import type { LegendItemExtent } from '#lib/plot/core/decorations/tracks.js'
+  import type { LegendItemExtent } from '#lib/plot/core/decorations/tracks'
   import {
     get_legend_grid_cells,
     LEGEND_FILTER_THRESHOLD,
     legend_cell_extents,
     suggest_legend_tracks,
-  } from '#lib/plot/core/decorations/tracks.js'
-  import type { FillPattern } from '#lib/plot/core/patterns.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  } from '#lib/plot/core/decorations/tracks'
+  import type { FillPattern } from '#lib/plot/core/patterns'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
+  import { unique_id } from '#lib/plot/core/utils'
+  import { sanitize_html } from '#lib/sanitize'
   import { html_to_text } from 'svelte-widgets/utils'
   import {
     symbol as d3_symbol,

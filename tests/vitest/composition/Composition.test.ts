@@ -1,5 +1,5 @@
 import Composition from '#lib/composition/Composition.svelte'
-import { parse_composition } from '#lib/composition/parse.js'
+import { parse_composition } from '#lib/composition/parse'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'

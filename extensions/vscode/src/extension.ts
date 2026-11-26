@@ -4,36 +4,32 @@
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
-} from '#lib/file-viewer/eligibility.js'
-import { plan_host_file_transfer } from '#lib/file-viewer/host-transfer.js'
-import { text_encoding_of } from '#lib/io/decompress.js'
-import type { HostTransferRejectReason } from '#lib/file-viewer/host-transfer.js'
+} from '#lib/file-viewer/eligibility'
+import { plan_host_file_transfer } from '#lib/file-viewer/host-transfer'
+import { text_encoding_of } from '#lib/io/decompress'
+import type { HostTransferRejectReason } from '#lib/file-viewer/host-transfer'
 import type {
   FileData,
   HostToWebviewMessage,
   WebviewBootstrapData,
   WebviewToHostMessage,
   WireFrame,
-} from '#lib/file-viewer/host-protocol.js'
-import {
-  frame_to_wire,
-  HostFileError,
-  wire_frame_bytes,
-} from '#lib/file-viewer/host-protocol.js'
+} from '#lib/file-viewer/host-protocol'
+import { frame_to_wire, HostFileError, wire_frame_bytes } from '#lib/file-viewer/host-protocol'
 import { format_bytes } from 'svelte-widgets/format'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
-import type { DefaultSettings, SettingType } from '#lib/settings.js'
-import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '#lib/settings.js'
-import type { ThemeName } from '#lib/theme/index.js'
-import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, THEME_TYPE } from '#lib/theme/index.js'
+import type { DefaultSettings, SettingType } from '#lib/settings'
+import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '#lib/settings'
+import type { ThemeName } from '#lib/theme/index'
+import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, THEME_TYPE } from '#lib/theme/index'
 // Deep imports: the #lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle
-import { open_trajectory } from '#lib/trajectory/open.js'
-import { create_warning_collector, post_new_warnings } from '#lib/trajectory/parse/shared.js'
-import { index_xyz_file } from '#lib/trajectory/parse/xyz.js'
-import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
-import { summarize_run, type TrajectoryRun } from '#lib/trajectory/run.js'
-import { encode_frame } from '#lib/trajectory/frame.js'
+import { open_trajectory } from '#lib/trajectory/open'
+import { create_warning_collector, post_new_warnings } from '#lib/trajectory/parse/shared'
+import { index_xyz_file } from '#lib/trajectory/parse/xyz'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text'
+import { summarize_run, type TrajectoryRun } from '#lib/trajectory/run'
+import { encode_frame } from '#lib/trajectory/frame'
 import { Buffer } from 'node:buffer'
 import { randomBytes } from 'node:crypto'
 import * as file_system from 'node:fs'

@@ -3,23 +3,23 @@
 // solver, the solved placement and its tweened follow-up. Creates $effects via
 // create_placed_tween, so it must be called during component init.
 
-import type { Point2D } from '#lib/math.js'
+import type { Point2D } from '#lib/math'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type {
   ColorbarDecorationItem,
   DecorationItem,
   DecorationSolution,
   FreeAnnotationDecorationItem,
-} from '#lib/plot/core/decorations/index.js'
+} from '#lib/plot/core/decorations/index'
 import {
   decoration_data_attrs,
   decoration_placement_revision,
   get_decoration_placement,
-} from '#lib/plot/core/decorations/index.js'
-import type { Rect } from '#lib/plot/core/layout.js'
-import { element_position_for_footprint, full_footprint_or } from '#lib/plot/core/layout.js'
-import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
-import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/decorations/index'
+import type { Rect } from '#lib/plot/core/layout'
+import { element_position_for_footprint, full_footprint_or } from '#lib/plot/core/layout'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte'
+import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types'
 import type { ComponentProps } from 'svelte'
 import type { TweenOptions } from 'svelte/motion'
 

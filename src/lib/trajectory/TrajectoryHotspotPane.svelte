@@ -7,16 +7,16 @@
 
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { HotspotCloudSettings, HotspotScale } from './hotspot-colors'
   import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
   import { Graph } from 'svelte-widgets/icons'
-  import { display_idx, from_display_idx } from '#lib/labels.js'
-  import { clamp01 } from '#lib/utils.js'
+  import { display_idx, from_display_idx } from '#lib/labels'
+  import { clamp01 } from '#lib/utils'
   import { to_error, value_key } from 'svelte-widgets/utils'
-  import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway.js'
+  import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway'
   import type { TrajectoryRun } from './run'
   import { create_request_owner } from './async-result.svelte'
   import type {

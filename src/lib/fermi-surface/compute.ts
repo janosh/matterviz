@@ -2,13 +2,13 @@
 // d3 directly, not #lib/colors: its barrel pulls Svelte modules into the extraction worker
 import { rgb } from 'd3-color'
 import { interpolateRdBu } from 'd3-scale-chromatic'
-import { compute_brillouin_zone, generate_bz_vertices } from '#lib/brillouin/compute.js'
-import { bz_fit_extent, k_cell_fit_extent } from '#lib/brillouin/geometry.js'
-import * as math from '#lib/math.js'
-import { EPS } from '#lib/math.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
-import { marching_cubes } from '#lib/marching-cubes.js'
+import { compute_brillouin_zone, generate_bz_vertices } from '#lib/brillouin/compute'
+import { bz_fit_extent, k_cell_fit_extent } from '#lib/brillouin/geometry'
+import * as math from '#lib/math'
+import { EPS } from '#lib/math'
+import type { Vec2, Vec3 } from '#lib/math'
+import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid'
+import { marching_cubes } from '#lib/marching-cubes'
 import { clamp } from 'svelte-widgets/utils'
 import type {
   BandEnergyGrid,

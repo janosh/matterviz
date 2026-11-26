@@ -9,7 +9,7 @@ The symmetry-point labels on the x axis are clickable: each opens a small Brillo
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 
   const band_structs = { '': phonon_bands['mp-2758-Sr4Se4-pbe'] }
 
@@ -29,7 +29,7 @@ The `normalize_band_structure` adapter converts pymatgen `BandStructureSymmLine`
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { electronic_bands } from '#site/electronic/bands/index.js'
+  import { electronic_bands } from '#site/electronic/bands/index'
 </script>
 
 <Bands band_structs={{ '': electronic_bands.cao_2605 }} />
@@ -42,7 +42,7 @@ Spin-polarized electronic band structures can be shown in `overlay`, `up_only`, 
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { electronic_bands } from '#site/electronic/bands/index.js'
+  import { electronic_bands } from '#site/electronic/bands/index'
 </script>
 
 <Bands band_structs={{ '': electronic_bands.vbr2_971787 }} band_spin_mode="overlay" />
@@ -55,7 +55,7 @@ For gapped electronic structures, `Bands` automatically annotates VBM/CBM and th
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { electronic_bands } from '#site/electronic/bands/index.js'
+  import { electronic_bands } from '#site/electronic/bands/index'
 </script>
 
 <Bands
@@ -70,7 +70,7 @@ For gapped electronic structures, `Bands` automatically annotates VBM/CBM and th
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 
   const band_struct = phonon_bands['mp-2758-Sr4Se4-pbe']
 
@@ -98,7 +98,7 @@ When comparing multiple structures, `path_mode="strict"` (the default) fails fas
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 
   const canonical = phonon_bands['mp-2758-Sr4Se4-pbe']
   const alt_path = {
@@ -127,7 +127,7 @@ Use `units` to convert phonon frequencies on the y-axis, and `highlight_regions`
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 </script>
 
 <Bands
@@ -154,7 +154,7 @@ Add `band_widths` to your band structure data - a 2D array matching the shape of
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 
   const base_bs = phonon_bands['mp-2758-Sr4Se4-pbe']
 
@@ -181,7 +181,7 @@ Customize the ribbon appearance with `ribbon_config`. You can set color, opacity
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 
   const base_bs = phonon_bands['mp-2758-Sr4Se4-pbe']
 
@@ -213,7 +213,7 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
 ```svelte example
 <script lang="ts">
   import { Bands } from 'matterviz'
-  import { phonon_bands } from '#site/phonons/index.js'
+  import { phonon_bands } from '#site/phonons/index'
 
   const base_bs = phonon_bands['mp-2758-Sr4Se4-pbe']
 

@@ -2,12 +2,12 @@
 // parsed back, keeps what that format represents (to the precision it prints) and the exporter
 // refuses what the format cannot represent instead of writing a lossy file
 import { readdirSync, statSync } from 'node:fs'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import type { StructTextFormat } from '#lib/structure/export.js'
-import { STRUCT_TEXT_FORMATS } from '#lib/structure/export.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import type { StructTextFormat } from '#lib/structure/export'
+import { STRUCT_TEXT_FORMATS } from '#lib/structure/export'
+import { parse_structure_file } from '#lib/structure/parse'
 import { describe, expect, test } from 'vite-plus/test'
 import {
   complex_structure,

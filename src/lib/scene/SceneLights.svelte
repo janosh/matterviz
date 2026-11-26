@@ -6,9 +6,9 @@
   // in view is always lit.
   // `depth_cue` fades `depth_points` (flat world xyz) toward the viewer's background, from
   // none at the nearest point along the view axis to a `depth_cue` fraction at the farthest.
-  import type { Vec3 } from '#lib/math.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { watch_theme_changes } from '#lib/theme/index.js'
+  import type { Vec3 } from '#lib/math'
+  import { DEFAULTS } from '#lib/settings'
+  import { watch_theme_changes } from '#lib/theme/index'
   import { T, useTask, useThrelte } from '@threlte/core'
   import {
     create_depth_cue,

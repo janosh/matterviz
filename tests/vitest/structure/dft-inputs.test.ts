@@ -1,11 +1,11 @@
-import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
-import { detect_structure_type, parse_structure_file } from '#lib/structure/parse.js'
-import { parse_aims, parse_qe } from '#lib/structure/parsers/dft-inputs.js'
+import { BOHR_TO_ANGSTROM } from '#lib/constants'
+import { detect_structure_type, parse_structure_file } from '#lib/structure/parse'
+import { parse_aims, parse_qe } from '#lib/structure/parsers/dft-inputs'
 import {
   poscar_export_unavailable_reason,
   structure_to_poscar_str,
   structure_to_xyz_str,
-} from '#lib/structure/export.js'
+} from '#lib/structure/export'
 import { describe, expect, test } from 'vite-plus/test'
 
 // Parsed values are compared to hand-computed ones to 12 digits (5e-13 Å or fractional units):

@@ -2,8 +2,8 @@ import { browser } from '$app/env'
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
 import { onMount } from 'svelte'
-import type { ChemicalElement } from '#lib/element/types.js'
-import type { FileInfo, FileLoadMeta } from '#lib/io/types.js'
+import type { ChemicalElement } from '#lib/element/types'
+import type { FileInfo, FileLoadMeta } from '#lib/io/types'
 import type { NavGroup as WidgetNavGroup } from 'svelte-widgets'
 
 // Remove adapter-static HTML filenames before SvelteKit client navigation.
@@ -134,7 +134,8 @@ export const NAV_GROUPS: NavGroup[] = [
       `diff`]),
     Dynamics: [`/trajectory`, `/neb`],
   } },
-  { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
+  { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/thermodynamics`, `/convex-hull`,
+    `/phase-diagram`] },
   // /spectral claims the hub (the label links to it) and new demos, listed last without a heading.
   // Electronic + Phonon (7 items) fill the first of the two dropdown columns, so the column
   // break lands on the shared section's heading
@@ -144,7 +145,7 @@ export const NAV_GROUPS: NavGroup[] = [
     'Electronic & phonon': under(`/spectral`, [`brillouin-zone`, `bands`, `dos`, `bands-and-dos`,
       `brillouin-bands-dos`]),
   } },
-  { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
+  { label: `Elements`, href: `/elements`, prefixes: [`/elements`, `/periodic-table`, `/composition`] },
   { label: `Plots`, href: `/plot`, prefixes: [`/plot`], sections: {
     Charts: under(`/plot`, [`scatter-plot`, `scatter-plot-3d`, `binned-scatter`, `ternary`,
       `bar-plot`, `histogram`, `box-plot`, `violin`]),
@@ -237,6 +238,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/bohr-atoms': [`BohrAtom`],
   '/convex-hull/chempot-diagram': [`ChemPotDiagram`],
   '/convex-hull/synthesis-planning': [`SynthesisPlanner`],
+  '/elements': [],
   '/guides': [],
   '/how-to/hook-up-to-external-api': [],
   '/how-to/use-without-svelte': [`Structure`],
@@ -276,6 +278,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/structure/vectors': [`Structure`],
   '/structure/wulff': [`WulffShape`, `WulffFacetEditor`],
   '/structure/xrd': [`XrdPlot`, `SaedPattern`],
+  '/thermodynamics': [],
   '/trajectory/render': [`Trajectory`],
 }
 

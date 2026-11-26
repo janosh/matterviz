@@ -1,27 +1,27 @@
 <script lang="ts">
-  import { in_range, same_values, type Vec2 } from '#lib/math.js'
+  import { in_range, same_values, type Vec2 } from '#lib/math'
   import AxisLabel from '#lib/plot/core/components/AxisLabel.svelte'
-  import type { Sides } from '#lib/plot/core/layout.js'
+  import type { Sides } from '#lib/plot/core/layout'
   import {
     axis_title_wrap_width,
     resolve_axis_title_layout,
     TITLE_EDGE_AIR,
-  } from '#lib/plot/core/layout.js'
-  import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+  } from '#lib/plot/core/layout'
+  import type { FontSpec } from '#lib/plot/core/text-metrics'
   import {
     DEFAULT_FONT_SPEC,
     invalidate_text_metrics_after_fonts_ready,
     resolve_font_spec,
-  } from '#lib/plot/core/text-metrics.js'
-  import type { TicksOption } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/core/text-metrics'
+  import type { TicksOption } from '#lib/plot/core/scales'
   import {
     centers_tick_lines,
     resolve_tick_layout,
     TICK_LABEL_HEIGHT,
     tick_font_size,
-  } from '#lib/plot/core/tick-layout.js'
-  import type { AxisConfig } from '#lib/plot/core/types.js'
-  import { DEFAULT_GRID_STYLE } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/tick-layout'
+  import type { AxisConfig } from '#lib/plot/core/types'
+  import { DEFAULT_GRID_STYLE } from '#lib/plot/core/types'
   import { onMount, tick as svelte_tick } from 'svelte'
 
   type Side = `x` | `x2` | `y` | `y2`

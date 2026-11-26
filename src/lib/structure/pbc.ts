@@ -1,6 +1,6 @@
 // Periodic boundary conditions utilities
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import {
   get_bond_data,
   get_explicit_bond_metadata,

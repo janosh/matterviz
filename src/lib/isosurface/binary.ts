@@ -3,7 +3,7 @@
 // float64 grids are used in place (the volume borrows the buffer, which must then stay
 // unmodified, or data_range goes stale), float32 ones widened in one pass by volume_from_json.
 // Wire format: extensions/anywidget/readme.md
-import { checked_array, decode_binary_envelope } from '#lib/io/binary-arrays.js'
+import { checked_array, decode_binary_envelope } from '#lib/io/binary-arrays'
 import { type VolumetricData, volume_from_json } from './types'
 
 export function volume_from_binary(payload: unknown): VolumetricData {

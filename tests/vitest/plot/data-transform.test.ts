@@ -2,9 +2,9 @@ import {
   build_legend_items,
   extract_series_color,
   series_text,
-} from '#lib/plot/core/data-transform.js'
-import type { DataSeries } from '#lib/plot/core/types.js'
-import { DEFAULTS } from '#lib/settings.js'
+} from '#lib/plot/core/data-transform'
+import type { DataSeries } from '#lib/plot/core/types'
+import { DEFAULTS } from '#lib/settings'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`data-transform utility functions`, () => {

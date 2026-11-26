@@ -1,8 +1,8 @@
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
-import { CANVAS_MARKER_THRESHOLD } from '#lib/plot/core/canvas-markers.svelte.js'
-import * as spatial_index from '#lib/plot/core/spatial-index.js'
+import { CANVAS_MARKER_THRESHOLD } from '#lib/plot/core/canvas-markers.svelte'
+import * as spatial_index from '#lib/plot/core/spatial-index'
 import { make_rng } from '../numeric-helpers'
-import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
+import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {

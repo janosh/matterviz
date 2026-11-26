@@ -1,9 +1,9 @@
 // Zur–McGill coincidence-lattice matching (J. Appl. Phys. 55, 378 (1984)) of a film surface
 // onto a substrate surface. Each slab's in-plane lattice is first written in its own 2D
 // surface frame, so the search itself only ever touches 2-vectors and integer 2×2 matrices.
-import type { Vec2 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
+import type { Vec2 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
 import type {
   LatticeMatch,
   LatticeMatchOptions,

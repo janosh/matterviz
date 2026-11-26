@@ -5,41 +5,43 @@
   // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
   // pin (its assemblage follows T), click the pin again or press Escape to drop it.
   import { format_num } from 'svelte-widgets/format'
-  import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index'
+  import { get_electro_neg_formula } from '#lib/composition/index'
+  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
-  import { relevant_gases as find_relevant_gases } from '#lib/convex-hull/gas-thermodynamics.js'
-  import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types.js'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import { Pause, Play } from 'svelte-widgets/icons'
+  import { canvas_text_color } from '#lib/canvas-surface.svelte'
+  import { relevant_gases as find_relevant_gases } from '#lib/convex-hull/gas-thermodynamics'
+  import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { file_drop_zone } from '#lib/io/file-drop.js'
-  import { as_text } from '#lib/io/decompress.js'
+  import { file_drop_zone } from '#lib/io/file-drop'
+  import { as_text } from '#lib/io/decompress'
   import {
     canvas_overlay_png_blob,
     type ExportProps,
     type ExportSources,
-  } from '#lib/io/export.js'
-  import type { FileLoadCallback } from '#lib/io/types.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
+  } from '#lib/io/export'
+  import type { FileLoadCallback } from '#lib/io/types'
+  import { ViewerChrome } from '#lib/layout/index'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
-  import type { Vec2 } from '#lib/math.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { viewer_keydown } from '#lib/shortcuts.js'
+  import type { Vec2 } from '#lib/math'
+  import { PlotTooltip } from '#lib/plot/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { viewer_keydown } from '#lib/shortcuts'
   import {
     create_renderer,
     key_walk_root,
     wheel_zoom_gate,
     webgpu_available,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
   import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
@@ -539,7 +541,7 @@
               content: `${playing ? `Pause` : `Heat`} at ${settings.play_speed} K/s (space)`,
             })}
           >
-            {playing ? `⏸` : `▶`}
+            <Icon icon={playing ? Pause : Play} />
           </button>
           <div class="slider-wrap">
             <div class="event-ticks" aria-hidden="true">
@@ -824,7 +826,8 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
-    line-height: 1;
+    display: grid;
+    place-items: center;
   }
   .slider-wrap {
     position: relative;

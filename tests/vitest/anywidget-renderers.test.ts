@@ -659,7 +659,7 @@ describe(`writeback wiring`, () => {
     [`trajectory`, `plot_type`, `time-series`, `distribution`, `time-series`],
     [`trajectory`, `distribution_property`, null, `energy`, `force_max`],
     [`trajectory`, `active_pane`, null, `hotspots`, `flight`],
-    [`trajectory`, `data_inspector_open`, true, false, true],
+    [`trajectory`, `data_inspector_open`, `auto`, false, true],
     [`scatter_plot`, `controls_open`, false, true, false],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],

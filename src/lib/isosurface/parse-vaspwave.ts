@@ -1,12 +1,12 @@
 // Parser for VASP vaspwave.h5 charge (+ magnetization) density: charge/{charge,grid} plus the
 // structure under structure/positions (py4vasp's VASP 6.x schema). Full files run to hundreds
 // of MB, so hosts prune them to these datasets first. Wavefunctions are out of scope.
-import { compute_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math.js'
-import type { Crystal, Site } from '#lib/structure/index.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { make_site } from '#lib/structure/site.js'
+import { compute_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math'
+import type { Crystal, Site } from '#lib/structure/index'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
+import { make_site } from '#lib/structure/site'
 import type * as h5wasm from 'h5wasm'
-import { expand_ion_types } from '#lib/trajectory/helpers.js'
+import { expand_ion_types } from '#lib/trajectory/helpers'
 import {
   is_hdf5_dataset,
   read_dataset,
@@ -15,12 +15,12 @@ import {
   to_number_array,
   to_string_array,
   with_h5_file,
-} from '#lib/trajectory/parse/h5-utils.js'
+} from '#lib/trajectory/parse/h5-utils'
 import { transpose_x_fastest } from './grid'
 import { VASP_BLOCK_LABELS } from './parse'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
-export { is_vaspwave_filename } from '#lib/constants.js'
+export { is_vaspwave_filename } from '#lib/constants'
 
 const CHARGE_PATH = `charge/charge`
 const CHARGE_GRID_PATH = `charge/grid`

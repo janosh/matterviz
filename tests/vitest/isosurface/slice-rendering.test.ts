@@ -3,7 +3,7 @@ import {
   resolve_contour_thresholds,
   resolve_slice_value_range,
   slice_to_rgba,
-} from '#lib/isosurface/slice-rendering.js'
+} from '#lib/isosurface/slice-rendering'
 import { contours } from 'd3-contour'
 import { describe, expect, test } from 'vite-plus/test'
 

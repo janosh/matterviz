@@ -1,7 +1,7 @@
 <script lang="ts">
   import Bands from '#lib/spectral/Bands.svelte'
-  import type { BaseBandStructure } from '#lib/spectral/types.js'
-  import { mock_band_structure_gxm as mock_band_structure } from '#site/spectral-mocks.js'
+  import type { BaseBandStructure } from '#lib/spectral/types'
+  import { mock_band_structure_gxm as mock_band_structure } from '#site/spectral-mocks'
   import TestSection from '../TestSection.svelte'
 
   const bs2: BaseBandStructure = {

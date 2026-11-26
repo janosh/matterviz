@@ -1,8 +1,8 @@
 <script lang="ts">
   // A multi-panel component's one fullscreen button, in and hidden like its host panel's own.
   // Its root (`wrapper`) takes class `mv-panels` to fill the screen with its grid of panels.
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls'
+  import type { ShowControlsProp } from '#lib/controls'
   import FullscreenButton from './FullscreenButton.svelte'
 
   type Props = {

@@ -2,7 +2,7 @@
 // Used by both main package and VSCode extension
 
 import { is_plain_object } from 'svelte-widgets/utils'
-import type { ColorSchemeName } from '#lib/constants.js'
+import type { ColorSchemeName } from '#lib/constants'
 import {
   DEFAULT_FPS_RANGE,
   ELEMENT_COLOR_SCHEME_NAMES,
@@ -10,18 +10,18 @@ import {
   FPS_STEP,
   INDEX_ABOVE_BYTES,
   POLYHEDRA_DEFAULTS,
-} from '#lib/constants.js'
-import type { HullFaceColorMode } from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import { capitalize, symbol_names } from '#lib/labels.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import type { GizmoOptions } from '#lib/scene/gizmo.js'
-import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
-import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
-import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import { JSON_KINDS, plain_copy } from '#lib/utils.js'
-import { is_color_scale } from '#lib/colors/scale-names.js'
+} from '#lib/constants'
+import type { HullFaceColorMode } from '#lib/convex-hull/types'
+import type { ElementSymbol } from '#lib/element/types'
+import { capitalize, symbol_names } from '#lib/labels'
+import type { Vec2, Vec3 } from '#lib/math'
+import type { GizmoOptions } from '#lib/scene/gizmo'
+import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra'
+import type { ImageAtomCompletion } from '#lib/structure/pbc'
+import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility'
+import type { ColorScale } from '#lib/plot/core/types'
+import { JSON_KINDS, plain_copy } from '#lib/utils'
+import { is_color_scale } from '#lib/colors/scale-names'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
 type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }

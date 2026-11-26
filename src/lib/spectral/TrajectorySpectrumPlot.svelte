@@ -5,10 +5,10 @@
     DataSeries,
     FacetPanel,
     FacetPanelContext,
-  } from '#lib/plot/index.js'
-  import { PLOT_COLORS } from '#lib/colors/index.js'
-  import { array_extent } from '#lib/math.js'
-  import { FacetGrid, ScatterPlot } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
+  import { PLOT_COLORS } from '#lib/colors/index'
+  import { array_extent } from '#lib/math'
+  import { FacetGrid, ScatterPlot } from '#lib/plot/index'
   import { frequency_unit_label } from './frequency-units'
   import type {
     RamanChannel,

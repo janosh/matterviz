@@ -3,12 +3,12 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { html_to_text } from 'svelte-widgets/utils'
-  import { plot_color } from '#lib/colors/index.js'
+  import { plot_color } from '#lib/colors/index'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
-  import { build_legend_items, shown_point_style } from '#lib/plot/core/data-transform.js'
-  import { chain_callbacks, resolve_axis_range } from '#lib/plot/core/interactions.js'
+  import { build_legend_items, shown_point_style } from '#lib/plot/core/data-transform'
+  import { chain_callbacks, resolve_axis_range } from '#lib/plot/core/interactions'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -19,8 +19,8 @@
     LegendConfig,
     Scatter3DHandlerEvent,
     Surface3DConfig,
-  } from '#lib/plot/core/types.js'
-  import { assert_series_lengths, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
+  import { assert_series_lengths, SCALE_DEFAULTS } from '#lib/plot/core/types'
   import { Canvas } from '@threlte/core'
   import { onMount } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -30,25 +30,25 @@
     collect_series_extent,
     resolve_color_scale,
     to_color_scale_config,
-  } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/core/scales'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
+  } from '#lib/plot/core/utils/series-visibility'
   import {
     create_renderer,
     key_walk_root,
     wheel_zoom_gate,
     webgpu_available,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import ScatterPlot3DControls, {
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
-  import { viewer_keys } from '#lib/shortcuts.js'
-  import { canvas_overlay_png_blob } from '#lib/io/export.js'
-  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset'
+  import { viewer_keys } from '#lib/shortcuts'
+  import { canvas_overlay_png_blob } from '#lib/io/export'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
   type SceneProps = ComponentProps<typeof ScatterPlot3DScene<Metadata>>

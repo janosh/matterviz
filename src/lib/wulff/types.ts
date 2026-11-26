@@ -1,5 +1,5 @@
-import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
-import type { CameraProjection } from '#lib/settings.js'
+import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math'
+import type { CameraProjection } from '#lib/settings'
 
 // One family of crystal planes {hkl} and its surface energy. `miller` is any representative
 // (the family is expanded with the point group), `energy` in J/m². With a `slope` (J/m² per

@@ -1,10 +1,10 @@
 // Element data structure plus physicality checks that properties follow periodic trends
-import type { ElementSymbol } from '#lib/element/index.js'
-import { element_data } from '#lib/element/index.js'
-import { element_by_symbol, element_for_mass } from '#lib/element/data.js'
-import { element_groups } from '#lib/element/groups.js'
-import { get_electro_neg_formula } from '#lib/composition/format.js'
-import { element_from_lammps_type } from '#lib/element/helpers.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { element_data } from '#lib/element/index'
+import { element_by_symbol, element_for_mass } from '#lib/element/data'
+import { element_groups } from '#lib/element/groups'
+import { get_electro_neg_formula } from '#lib/composition/format'
+import { element_from_lammps_type } from '#lib/element/helpers'
 import { expect, test } from 'vite-plus/test'
 import { CATEGORY_COUNTS as expected_counts } from '../test-fixtures'
 

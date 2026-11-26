@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,

@@ -1,4 +1,4 @@
-import type { PartialSettings } from '#lib/settings.js'
+import type { PartialSettings } from '#lib/settings'
 import {
   build_structure_props_from_settings,
   DEFAULTS,
@@ -6,8 +6,8 @@ import {
   is_valid_setting_value,
   merge,
   SETTINGS_CONFIG,
-} from '#lib/settings.js'
-import type { StructureViewState } from '#lib/settings/viewer-state.js'
+} from '#lib/settings'
+import type { StructureViewState } from '#lib/settings/viewer-state'
 import {
   clear_structure_view_state,
   create_structure_view_state,
@@ -17,9 +17,9 @@ import {
   serialize_structure_view_state,
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
   STRUCTURE_VIEW_STATE_VERSION,
-} from '#lib/settings/viewer-state.js'
-import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
-import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
+} from '#lib/settings/viewer-state'
+import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility'
+import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
@@ -512,7 +512,7 @@ describe(`Settings`, () => {
     // (schema: fps 10, auto_play false, layout "auto", fullscreen_toggle true, fps_range [0,300])
     const synthetic = (props: string, preamble = ``) =>
       `<script lang="ts">
-        import { DEFAULTS } from '#lib/settings.js'
+        import { DEFAULTS } from '#lib/settings'
         ${preamble}
         let { ${props} } = $props()
       </script>`
@@ -573,7 +573,7 @@ describe(`Settings`, () => {
     test(`a get_convex_hull_defaults consumer is held to every hull group`, async () => {
       const source = synthetic(
         `show_stable = $bindable(false), max_hull_dist_show_labels = $bindable(0.1)`,
-        `import { get_convex_hull_defaults } from '#lib/settings.js'`,
+        `import { get_convex_hull_defaults } from '#lib/settings'`,
       )
       expect((await analyze(`synthetic/ConvexHull`, source)).drift).toEqual([
         `show_stable = false (schema: true | true | true)`,

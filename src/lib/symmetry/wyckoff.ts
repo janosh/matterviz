@@ -2,12 +2,12 @@
 // joining them against moyo's space-group database (ITA representative coordinates, site
 // symmetry) and mapping rows onto the sites of a displayed (transformed/supercell) structure.
 import { clamp } from 'svelte-widgets/utils'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
-import { superscript_digits } from '#lib/labels.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { wrap_frac_coord, wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { element_from_atomic_number } from '#lib/element/helpers'
+import { superscript_digits } from '#lib/labels'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
+import { wrap_frac_coord, wrap_to_unit_cell } from '#lib/structure/pbc'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import type { SymmetryDataset } from './analyze'
 

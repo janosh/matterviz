@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { ColorBar, type ColorScaleConfig } from '#lib/plot/index.js'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import { Cohp } from '#lib/spectral/index.js'
+  import { ColorBar, type ColorScaleConfig } from '#lib/plot/index'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
+  import { Cohp } from '#lib/spectral/index'
   import {
     bonding_strength,
     icohp_bond_colors,
@@ -9,18 +9,18 @@
     lobster_quantity_label,
     orbital_key,
     parse_lobster_files,
-  } from '#lib/spectral/lobster.js'
-  import { plot_color } from '#lib/colors/index.js'
-  import { as_text, decompress_file } from '#lib/io/decompress.js'
-  import { Structure } from '#lib/structure/index.js'
+  } from '#lib/spectral/lobster'
+  import { plot_color } from '#lib/colors/index'
+  import { as_text, decompress_file } from '#lib/io/decompress'
+  import { Structure } from '#lib/structure/index'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import { format_num } from 'svelte-widgets/format'
-  import { hover_links, join_hover_link } from '#lib/tooltip/hover-link.svelte.js'
-  import { type LobsterSample, lobster_samples } from '#site/electronic/lobster/index.js'
-  import { url_selection } from '#site/state.svelte.js'
-  import { array_extent } from '#lib/math.js'
-  import { toggle_item } from '#lib/utils.js'
+  import { hover_links, join_hover_link } from '#lib/tooltip/hover-link.svelte'
+  import { type LobsterSample, lobster_samples } from '#site/electronic/lobster/index'
+  import { url_selection } from '#site/state.svelte'
+  import { array_extent } from '#lib/math'
+  import { toggle_item } from '#lib/utils'
 
   const DROPPED = `your files`
   // the bundled sample in ?sample=; dropped files show instead while `show_dropped`

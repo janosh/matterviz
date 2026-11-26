@@ -1,4 +1,4 @@
-import { sanitize_formula } from '#lib/sanitize.js'
+import { sanitize_formula } from '#lib/sanitize'
 
 // HTML for a balanced equation such as `2 Li2CO3 + O2 → 4 LiCoO2`: every species gets
 // subscripts while coefficients and operators stay as text

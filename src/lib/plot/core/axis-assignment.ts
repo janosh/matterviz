@@ -1,4 +1,4 @@
-import type { NumericColumn, ScaleType } from '#lib/plot/core/types.js'
+import type { NumericColumn, ScaleType } from '#lib/plot/core/types'
 
 type AxisSlot = `y` | `y2`
 type VisibilityFilter<Series> = (series: Series, series_idx: number) => boolean

@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   // Outer shell of the non-Cartesian charts: the measured wrapper div, fullscreen mode and the
@@ -23,8 +23,8 @@
   // (`--<prefix>-width`, `--<prefix>-bg`, …) so every chart is themed the same way.
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
-  import type { ExportProps, ExportSources } from '#lib/io/export.js'
+  import type { PaneToggleProps } from '#lib/overlays/index'
+  import type { ExportProps, ExportSources } from '#lib/io/export'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

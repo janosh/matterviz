@@ -1,10 +1,10 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
-  import * as math from '#lib/math.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import type { DataSeries } from '#lib/plot/index.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
+  import { compute_brillouin_zone } from '#lib/brillouin/compute'
+  import * as math from '#lib/math'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import type { DataSeries } from '#lib/plot/index'
+  import { ScatterPlot } from '#lib/plot/index'
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
@@ -18,7 +18,7 @@
     slice_shading_rgba,
   } from './compute'
   import { BAND_COLORS } from './constants'
-  import { rgba_to_data_url } from '#lib/isosurface/slice-rendering.js'
+  import { rgba_to_data_url } from '#lib/isosurface/slice-rendering'
   import type { CarrierType, SliceShading } from './compute'
   import type { BandGridData, FermiSliceData, FermiSurfaceData } from './types'
   import { to_error } from 'svelte-widgets/utils'

@@ -2,11 +2,11 @@
   import { format_num } from 'svelte-widgets/format'
   import { browser } from '$app/env'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
-  import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
+  import { open_material, type OpenedMaterial } from '#lib/file-viewer/open'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { humanize } from '#lib/labels.js'
-  import { volumetric_files } from '#site/isosurfaces.js'
-  import { url_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
+  import { humanize } from '#lib/labels'
+  import { volumetric_files } from '#site/isosurfaces'
+  import { url_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte'
   import type {
     AnyStructure,
     IsosurfaceSettings,

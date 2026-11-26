@@ -5,9 +5,9 @@ import {
   parse_color,
   pick_contrast_color,
 } from 'svelte-widgets/attachments'
-import type { ColorSchemeName } from '#lib/constants.js'
-import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index.js'
-import { clamp01 } from '#lib/utils.js'
+import type { ColorSchemeName } from '#lib/constants'
+import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index'
+import { clamp01 } from '#lib/utils'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
 import jmol_colors from './jmol-colors.json' with { type: 'json' }
@@ -17,7 +17,7 @@ import vesta_colors from './vesta-colors.json' with { type: 'json' }
 
 export * from './backdrop.svelte'
 export * from './scale-names'
-export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '#lib/constants.js'
+export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '#lib/constants'
 
 // Highlight colours shared by every viewer, so one state reads the same everywhere. A hover
 // glows in the hovered mark's own hue instead (brighten_hex, with highlight_edge_color for

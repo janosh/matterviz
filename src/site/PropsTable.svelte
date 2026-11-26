@@ -32,7 +32,7 @@
   // the page loads, so opening a table finds its props ready instead of waiting on the fetch
   // (and on a dev server, the extraction).
   import { page } from '$app/state'
-  import { page_components } from '#site/state.svelte.js'
+  import { page_components } from '#site/state.svelte'
 
   let open: Record<string, boolean> = $state({})
   let expanded: Record<string, boolean> = $state({})
@@ -134,8 +134,9 @@
     cursor: pointer;
     font-weight: bold;
   }
+  /* a font list, not bare `monospace`, which browsers size off 13px instead of the summary's */
   .component-name {
-    font-family: monospace;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
   }
   .table-scroll {
     overflow-x: auto;

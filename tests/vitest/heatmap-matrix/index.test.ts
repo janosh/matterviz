@@ -1,10 +1,10 @@
-import type { ChemicalElement } from '#lib/element/index.js'
+import type { ChemicalElement } from '#lib/element/index'
 import {
   ELEMENT_ORDERINGS,
   elements_to_axis,
   matrix_to_rows,
   ORDERING_LABELS,
-} from '#lib/heatmap-matrix/index.js'
+} from '#lib/heatmap-matrix/index'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`elements_to_axis`, () => {

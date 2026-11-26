@@ -1,14 +1,14 @@
 // Mounts WulffScene against the recording Threlte stub (every facet edge is one instance of a
 // single InstancedMesh, rewritten in place when the energies change) and WulffShape's states
-import { euclidean_dist } from '#lib/math.js'
+import { euclidean_dist } from '#lib/math'
 import {
   compute_wulff_shape,
   type WulffFacetInput,
   type WulffShapeData,
   WulffScene,
   WulffShape,
-} from '#lib/wulff/index.js'
-import { wulff_examples } from '#site/wulff.js'
+} from '#lib/wulff/index'
+import { wulff_examples } from '#site/wulff'
 import { flushSync, mount, unmount } from 'svelte'
 import { InstancedMesh, Matrix4, Vector3 } from 'three/webgpu'
 import { afterEach, beforeAll, expect, test, vi } from 'vite-plus/test'

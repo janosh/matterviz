@@ -1,5 +1,5 @@
 // ConvexHullInfoPane's composition probe across changes of the hull's composition keys
-import type { CompositionType } from '#lib/composition/index.js'
+import type { CompositionType } from '#lib/composition/index'
 import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test } from 'vite-plus/test'

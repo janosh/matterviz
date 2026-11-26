@@ -3,24 +3,21 @@
   // (?frames=300&atoms=64), so the spec needs no fixture file. Mount and per-frame timings
   // are published in the DOM for the test to read. `prepare=worker` prepares frames in the
   // pool host-served (VS Code) runs use, so playback exercises their main-thread path.
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import type { Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
-  import type { Pbc } from '#lib/structure/pbc.js'
-  import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-  import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
+  import type { ElementSymbol } from '#lib/element/index'
+  import type { Vec3 } from '#lib/math'
+  import * as math from '#lib/math'
+  import type { Pbc } from '#lib/structure/pbc'
+  import type { TrajectoryFrame } from '#lib/trajectory/index'
+  import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index'
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
   import TestSection from '../TestSection.svelte'
   import TestStatus from '../TestStatus.svelte'
-  import {
-    host_prepare_transfers,
-    type HostPrepareInput,
-  } from '#lib/file-viewer/host-bridge.js'
-  import { create_prepare_pool } from '#lib/trajectory/prepare-pool.js'
-  import type { TrajectoryRun } from '#lib/trajectory/run.js'
-  import { host_read_concurrency } from '#lib/trajectory/runs/host.js'
+  import { host_prepare_transfers, type HostPrepareInput } from '#lib/file-viewer/host-bridge'
+  import { create_prepare_pool } from '#lib/trajectory/prepare-pool'
+  import type { TrajectoryRun } from '#lib/trajectory/run'
+  import { host_read_concurrency } from '#lib/trajectory/runs/host'
 
   // url.searchParams is off-limits during prerender (it would 500 the static build) and the
   // run is only meaningful in a browser anyway, so the defaults stand until the client runs

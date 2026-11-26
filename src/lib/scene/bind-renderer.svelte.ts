@@ -1,4 +1,4 @@
-import { renderer_registry, scene_registry } from '#lib/io/export.js'
+import { renderer_registry, scene_registry } from '#lib/io/export'
 import { useThrelte } from '@threlte/core'
 import type { Camera, Scene } from 'three/webgpu'
 import { WebGPUBackend, WebGPURenderer } from 'three/webgpu'

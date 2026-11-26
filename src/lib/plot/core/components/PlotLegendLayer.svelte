@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import {
     decoration_data_attrs,
     has_explicit_position,
     LEGEND_STRIP_MAX_FRACTION,
     resolve_legend_layout_tracks,
-  } from '#lib/plot/core/decorations/index.js'
-  import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
-  import { chain_callbacks } from '#lib/plot/core/interactions.js'
+  } from '#lib/plot/core/decorations/index'
+  import type { LegendConfig, LegendItem } from '#lib/plot/core/types'
+  import { chain_callbacks } from '#lib/plot/core/interactions'
   import type { ComponentProps } from 'svelte'
 
   // Auto-placed legend of a CartesianFrame: solved position with tweened follow-up, drag to

@@ -1,8 +1,8 @@
-import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Point2D, Vec3 } from '#lib/math'
 import type { BrillouinZoneData, BZHoverData, KPathData } from './types'
-import * as math from '#lib/math.js'
-import { faces_centroid } from '#lib/scene/geometry.svelte.js'
-import { DEFAULT_CAMERA_VIEW } from '#lib/structure/camera-fit.js'
+import * as math from '#lib/math'
+import { faces_centroid } from '#lib/scene/geometry.svelte'
+import { DEFAULT_CAMERA_VIEW } from '#lib/structure/camera-fit'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
 // Build a renderable mesh from polyhedron vertices + polygonal faces via fan triangulation with flat per-face normals. Assumes convex faces (true for BZ/IBZ polyhedra); non-convex faces would triangulate incorrectly. Shared by BrillouinZoneScene (BZ + IBZ meshes) and FermiSurfaceScene (BZ overlay). Caller owns disposal.

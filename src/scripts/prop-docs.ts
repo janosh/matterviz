@@ -310,6 +310,9 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Comp
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     allowImportingTsExtensions: true,
+    // as in tsconfig.json: TypeScript resolves package.json `imports` patterns without
+    // trying extensions, which extensionless #lib imports need
+    paths: { '#lib': [`${repo_root}/src/lib`], '#lib/*': [`${repo_root}/src/lib/*`] },
     noEmit: true,
     skipLibCheck: true,
     strict: true,

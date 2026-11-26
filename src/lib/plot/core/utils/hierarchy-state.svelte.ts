@@ -2,20 +2,16 @@
 // hover/tooltip, legend muting, coloring, color-bar layout, keyboard). Each chart supplies
 // its projection via the `visible`, `node_center` and `legend_points` hooks.
 
-import { svg_sources, type ExportSources } from '#lib/io/export.js'
+import { svg_sources, type ExportSources } from '#lib/io/export'
 import { is_modifier_chord } from 'svelte-widgets/shortcuts'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-import {
-  closest_data_idx,
-  is_activation_key,
-  pointer_pos,
-} from '#lib/plot/core/interactions.js'
-import type { Sides } from '#lib/plot/core/layout.js'
-import { filter_padding } from '#lib/plot/core/layout.js'
-import { on_fonts_ready } from '#lib/plot/core/text-metrics.js'
-import type { ColorScale, LegendConfig, LegendItem } from '#lib/plot/core/types.js'
-import type { ColorBarSide } from '#lib/plot/core/utils/hierarchy-chart.js'
-import type { TooltipProp } from '#lib/tooltip/index.js'
+import { closest_data_idx, is_activation_key, pointer_pos } from '#lib/plot/core/interactions'
+import type { Sides } from '#lib/plot/core/layout'
+import { filter_padding } from '#lib/plot/core/layout'
+import { on_fonts_ready } from '#lib/plot/core/text-metrics'
+import type { ColorScale, LegendConfig, LegendItem } from '#lib/plot/core/types'
+import type { ColorBarSide } from '#lib/plot/core/utils/hierarchy-chart'
+import type { TooltipProp } from '#lib/tooltip/index'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -28,9 +24,9 @@ import {
   resolve_label_font,
   selection_within,
   toggle_muted,
-} from '#lib/plot/core/utils/hierarchy-chart.js'
-import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
+} from '#lib/plot/core/utils/hierarchy-chart'
+import { csv_source } from '#lib/plot/core/utils/chart-export'
+import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility'
 import type {
   OtherBucketInfo,
   PositionedArc,
@@ -40,8 +36,8 @@ import type {
   SunburstNodeHandlerProps,
   SunburstSort,
   SunburstValueMode,
-} from '#lib/plot/core/utils/hierarchy-layout.js'
-import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
+} from '#lib/plot/core/utils/hierarchy-layout'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout'
 import type { ComponentProps, Snippet } from 'svelte'
 import { tick, untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'

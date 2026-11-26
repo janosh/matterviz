@@ -2,13 +2,9 @@
 // auto-range computation (incl. stacked totals + zero-clamping), stacked-bar
 // offsets and grouped-bar layout info.
 
-import type { Vec2 } from '#lib/math.js'
-import { accumulate_error_extent, type ErrorValues } from '#lib/plot/core/error-bars.js'
-import {
-  accumulate_extent,
-  empty_extent,
-  nice_range_from_extent,
-} from '#lib/plot/core/scales.js'
+import type { Vec2 } from '#lib/math'
+import { accumulate_error_extent, type ErrorValues } from '#lib/plot/core/error-bars'
+import { accumulate_extent, empty_extent, nice_range_from_extent } from '#lib/plot/core/scales'
 import type {
   AxisConfig,
   BarMode,
@@ -16,12 +12,12 @@ import type {
   NumericColumn,
   Orientation,
   ScaleType,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import {
   assert_series_lengths,
   get_scale_type_name,
   is_time_scale,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 
 // Internal series shape with guaranteed numeric x (string categories mapped to integer indices)
 export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<

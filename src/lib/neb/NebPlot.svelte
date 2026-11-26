@@ -2,13 +2,13 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { clamp } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import { track_settings } from '#lib/controls.js'
-  import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '#lib/plot/index.js'
+  import { track_settings } from '#lib/controls'
+  import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '#lib/plot/index'
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
-  import { plot_color } from '#lib/colors/index.js'
-  import { nearest_value_idx } from '#lib/math.js'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
+  import { plot_color } from '#lib/colors/index'
+  import { nearest_value_idx } from '#lib/math'
+  import type { ShortcutScope } from '#lib/shortcuts'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
   import type { PathProfile, PathSplineOptions } from './reaction-path'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'

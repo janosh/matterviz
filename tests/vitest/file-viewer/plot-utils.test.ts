@@ -7,7 +7,7 @@ import {
   col_keys,
   extract_columns,
   suggest_mapping,
-} from '#lib/file-viewer/plot-utils.js'
+} from '#lib/file-viewer/plot-utils'
 
 describe(`extract_columns`, () => {
   test.each([

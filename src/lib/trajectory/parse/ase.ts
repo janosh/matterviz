@@ -1,11 +1,11 @@
-import { display_idx } from '#lib/labels.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import { FS_IN_ASE_TIME } from '#lib/constants.js'
-import * as math from '#lib/math.js'
-import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
-import type { Pbc } from '#lib/structure/index.js'
+import { display_idx } from '#lib/labels'
+import { element_by_symbol } from '#lib/element/data'
+import { element_from_atomic_number } from '#lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/types'
+import { FS_IN_ASE_TIME } from '#lib/constants'
+import * as math from '#lib/math'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared'
+import type { Pbc } from '#lib/structure/index'
 import {
   compute_force_stats,
   checked_site_forces,
@@ -14,8 +14,8 @@ import {
   decode_finite_frames,
   NonFiniteFrameError,
   values_per_sample,
-} from '#lib/trajectory/helpers.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+} from '#lib/trajectory/helpers'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
 import { to_error } from 'svelte-widgets/utils'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn } from './shared'

@@ -2,7 +2,7 @@ import {
   COMPRESSION_EXTENSIONS_REGEX,
   COMPRESSION_FORMATS,
   HDF5_EXT_REGEX,
-} from '#lib/constants.js'
+} from '#lib/constants'
 import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
 // A file's own name (directories dropped: an `elfcar_runs/` or `build/` folder says nothing

@@ -1,7 +1,7 @@
 // Preparation worker for host-served frames (see prepare-pool.ts): decodes the host's wire
 // reply here rather than on the main thread, then prepares it for display
-import { select_frame_channels } from '#lib/trajectory/frame.js'
-import { serve_preparation } from '#lib/trajectory/prepare-serve.js'
+import { select_frame_channels } from '#lib/trajectory/frame'
+import { serve_preparation } from '#lib/trajectory/prepare-serve'
 import type { HostPrepareInput } from './host-bridge'
 import { frame_from_wire } from './host-protocol'
 

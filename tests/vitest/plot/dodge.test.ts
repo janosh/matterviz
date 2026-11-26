@@ -1,4 +1,4 @@
-import { dodge, type DodgeSide } from '#lib/plot/core/dodge.js'
+import { dodge, type DodgeSide } from '#lib/plot/core/dodge'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 

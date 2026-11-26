@@ -29,7 +29,7 @@ Without a definite height the track falls back to a two-row floor rather than la
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '#site/structures.js'
+  import { structures } from '#site/structures'
 
   const make_item = (idx: number): StructureGalleryItem => {
     const structure = structures[idx % structures.length]
@@ -93,7 +93,7 @@ An underscore in a key marks a subscript, so `E_hull` captions the way the quant
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '#site/structures.js'
+  import { structures } from '#site/structures'
 
   // stand-ins for whatever your pipeline computed per structure
   const items: StructureGalleryItem[] = structures.slice(0, 12).map((structure, idx) => ({
@@ -142,7 +142,7 @@ The grip is visible on hover and scales cards on both axes in one drag; arrow ke
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '#site/structures.js'
+  import { structures } from '#site/structures'
 
   const items: StructureGalleryItem[] = structures.slice(0, 12).map((structure, idx) => ({
     id: structure.id ?? `structure-${idx}`,
@@ -173,7 +173,7 @@ A single column has nothing to divide, so it does not stretch to its host: cards
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '#site/structures.js'
+  import { structures } from '#site/structures'
 
   const items: StructureGalleryItem[] = structures.slice(0, 6).map((structure, idx) => ({
     id: structure.id ?? `structure-${idx}`,

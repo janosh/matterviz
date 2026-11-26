@@ -1,27 +1,27 @@
 <script lang="ts">
-  import { get_alphabetical_formula } from '#lib/composition/format.js'
-  import { open_material } from '#lib/file-viewer/open.js'
+  import { get_alphabetical_formula } from '#lib/composition/format'
+  import { open_material } from '#lib/file-viewer/open'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { file_drop_zone } from '#lib/io/file-drop.js'
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import { file_drop_zone } from '#lib/io/file-drop'
+  import type { Matrix3x3, Vec3 } from '#lib/math'
   import {
     compute_lattice_params,
     create_cart_to_frac,
     create_frac_to_cart,
     mulberry32,
-  } from '#lib/math.js'
-  import type { AnyStructure, Crystal } from '#lib/structure/index.js'
-  import { parse_structure_file } from '#lib/structure/parse.js'
-  import { StructureDiff } from '#lib/structure-diff/index.js'
-  import { materialize_frame } from '#lib/trajectory/frame.js'
-  import type { TrajectoryRun } from '#lib/trajectory/run.js'
-  import { latest_load, url_selection } from '#site/state.svelte.js'
+  } from '#lib/math'
+  import type { AnyStructure, Crystal } from '#lib/structure/index'
+  import { parse_structure_file } from '#lib/structure/parse'
+  import { StructureDiff } from '#lib/structure-diff/index'
+  import { materialize_frame } from '#lib/trajectory/frame'
+  import type { TrajectoryRun } from '#lib/trajectory/run'
+  import { latest_load, url_selection } from '#site/state.svelte'
   import {
     parse_structure_fixture,
     same_composition_pairs,
     structure_files,
     structure_map,
-  } from '#site/structures.js'
+  } from '#site/structures'
   import { format_num } from 'svelte-widgets/format'
   import { tooltip } from 'svelte-widgets/attachments'
   import { clamp, to_error } from 'svelte-widgets/utils'

@@ -3,7 +3,7 @@
   // axis scales: the pattern needs one shared px-per-(1/Å) factor to not shear.
   import { format_num } from 'svelte-widgets/format'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { is_activation_key } from '#lib/plot/core/interactions.js'
+  import { is_activation_key } from '#lib/plot/core/interactions'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

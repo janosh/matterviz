@@ -1,7 +1,7 @@
 // Derived views of a binary-phase-diagram/2: phase fractions along an isopleth, where two
 // diagrams disagree on the phase set, and the Gibbs-energy curves with their convex hull
 
-import { sorted_numbers, type Vec2, type Vec3 } from '#lib/math.js'
+import { sorted_numbers, type Vec2, type Vec3 } from '#lib/math'
 import type { BinaryPhaseDiagram, DiagramRegion, GibbsEnergyGrid } from './types'
 import { compute_lever_rule, find_isotherm_intersections, find_region_at } from './utils'
 

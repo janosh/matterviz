@@ -1,8 +1,8 @@
 // Surface energies from Materials Project or pymatgen JSON, as compute_wulff_shape's input.
 // Plain TypeScript: no pymatgen needed to read either.
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { is_plain_object as is_record } from 'svelte-widgets/utils'
-import { is_finite_matrix3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { is_finite_matrix3x3, type Matrix3x3, type Vec3 } from '#lib/math'
 import type { WulffFacetInput } from './types'
 
 // J/m² per eV/Å²: e / 1e-20 m² with CODATA 2018's exact e. The Materials Project's own

@@ -45,7 +45,7 @@ This compact NaCl Γ→X path was generated from the same published PhononDB for
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-  } from '#lib/spectral/index.js'
+  } from '#lib/spectral/index'
   import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
   import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 
@@ -69,7 +69,7 @@ Rocksalt NaCl has one triply degenerate T₁u optical mode. Its IR intensity is 
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-  } from '#lib/spectral/index.js'
+  } from '#lib/spectral/index'
   import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
   import yaml_file from '#site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
 
@@ -96,7 +96,7 @@ The three acoustic modes are identified at Γ and excluded from the stick spectr
     parse_phonon_modes,
     spectrum_from_phonon_data,
     type SpectrumKind,
-  } from '#lib/spectral/index.js'
+  } from '#lib/spectral/index'
   import raman_data from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
   import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
   import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
@@ -132,7 +132,7 @@ Set `presentation="transmittance"` to flip IR bands downwards. `fwhm` sets the p
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-  } from '#lib/spectral/index.js'
+  } from '#lib/spectral/index'
   import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
   import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
@@ -162,8 +162,8 @@ Selected computed quantities are available per mode, so the raw numbers can be t
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-  } from '#lib/spectral/index.js'
-  import { HeatmapTable, type Column } from '#lib/table/index.js'
+  } from '#lib/spectral/index'
+  import { HeatmapTable, type Column } from '#lib/table/index'
   import raman_data from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
   import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
   import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
@@ -220,6 +220,6 @@ Selected computed quantities are available per mode, so the raw numbers can be t
 <summary>Traps this component deliberately avoids</summary>
 
 - IR/Raman data uses `VibrationalSpectrum` to represent discrete modes and intensities. DOS adapters represent sampled density curves and normalize explicitly declared frequency units to THz.
-- **Sticks are broadened, not a sampled density smoothed.** Broadening goes through `broaden_peaks` from `#lib/lineshape.js` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.
+- **Sticks are broadened, not a sampled density smoothed.** Broadening goes through `broaden_peaks` from `#lib/lineshape` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.
 
 </details>

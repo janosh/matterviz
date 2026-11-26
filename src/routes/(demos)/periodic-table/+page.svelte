@@ -2,11 +2,11 @@
   import LazyDemo from '#site/LazyDemo.svelte'
   import type { ChemicalElement, ElementSymbol } from '#lib'
   import { element_data, PeriodicTable } from '#lib'
-  import { array_max, array_min, type Vec2 } from '#lib/math.js'
-  import { TableInset } from '#lib/periodic-table/index.js'
-  import { ColorBar } from '#lib/plot/index.js'
+  import { array_max, array_min, type Vec2 } from '#lib/math'
+  import { TableInset } from '#lib/periodic-table/index'
+  import { ColorBar } from '#lib/plot/index'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
-  import { open_element_page } from '#site/state.svelte.js'
+  import { open_element_page } from '#site/state.svelte'
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value.
   // Unknown values are NaN, which the table draws as a missing (gray) segment rather than

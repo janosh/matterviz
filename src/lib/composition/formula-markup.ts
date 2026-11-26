@@ -1,6 +1,7 @@
 // Formula markup (subscripts/superscripts) as HTML or SVG. Pure string work with no
-// element-data imports, so sanitize.ts (imported by every plot and table) can format
-// formulas without pulling the full periodic-table dataset into consumers' bundles.
+// element-data imports (only the bare symbol list), so sanitize.ts (imported by every plot and
+// table) can format formulas without pulling the periodic-table dataset into consumers' bundles.
+import { ELEM_SYMBOLS } from '#lib/element/types'
 
 // Markup token for rendering a formula: plain text, subscript, or superscript run.
 // (Not FormulaSpecies from ./parse, which is an element/amount pair.)
@@ -58,6 +59,28 @@ export function tokenize_formula_markup(formula: string): FormulaMarkupToken[] {
     else if (other !== `-` && prev?.text !== undefined) prev.text += other
     else tokens.push({ text: other })
   }
+  return tokens
+}
+
+// Formulas inside free text such as file labels ("BaTiO3 cubic perovskite", "δ-CsPbI3",
+// "Li2O_relax.traj"): each standalone run of element symbols with a count or caret charge is
+// marked up, the rest stays plain. Every symbol must be a real element, so file names that look
+// formula-shaped (CONTCAR2, MP2) and ids (mp-1234) pass through, as do space groups (I4/mmm),
+// whose symbols sit against a slash.
+const FORMULA_WORD_RE =
+  /(?<![\p{L}\p{N}/])(?:[A-Z][a-z]?(?:\d+(?:\.\d+)?)?)+(?:\^?\d*[+-])?(?![\p{L}\p{N}/])/gu
+const ELEMENT_SET: ReadonlySet<string> = new Set(ELEM_SYMBOLS)
+export function formula_text_tokens(text: string): FormulaMarkupToken[] {
+  const tokens: FormulaMarkupToken[] = []
+  let plain_from = 0
+  for (const { 0: word, index } of text.matchAll(FORMULA_WORD_RE)) {
+    const symbols = word.match(/[A-Z][a-z]?/g) ?? []
+    if (!/[\d^]/.test(word) || !symbols.every((symbol) => ELEMENT_SET.has(symbol))) continue
+    if (index > plain_from) tokens.push({ text: text.slice(plain_from, index) })
+    tokens.push(...tokenize_formula_markup(word))
+    plain_from = index + word.length
+  }
+  if (plain_from < text.length) tokens.push({ text: text.slice(plain_from) })
   return tokens
 }
 

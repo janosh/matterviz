@@ -1,57 +1,57 @@
 import Structure from '#lib/structure/Structure.svelte'
 import type { AnyStructure, MeasureMode, Site } from '#lib'
-import { create_frac_to_cart, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { create_frac_to_cart, type Matrix3x3, type Vec3 } from '#lib/math'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
   VolumetricData,
-} from '#lib/isosurface/index.js'
-import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
-import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES } from '#lib/colors/index.js'
-import { DEFAULTS } from '#lib/settings.js'
-import { colors } from '#lib/state.svelte.js'
+} from '#lib/isosurface/index'
+import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types'
+import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES } from '#lib/colors/index'
+import { DEFAULTS } from '#lib/settings'
+import { colors } from '#lib/state.svelte'
 import {
   clear_structure_view_state,
   create_structure_view_state,
   load_structure_view_state,
   save_structure_view_state,
-} from '#lib/settings/viewer-state.js'
-import * as symmetry from '#lib/symmetry/index.js'
+} from '#lib/settings/viewer-state'
+import * as symmetry from '#lib/symmetry/index'
 import type {
   StructureBond,
   StructureHandlerData,
   StructurePane,
   StructureView,
-} from '#lib/structure/index.js'
-import { get_element_counts } from '#lib/structure/density.js'
-import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
-import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
+} from '#lib/structure/index'
+import { get_element_counts } from '#lib/structure/density'
+import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes'
+import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc'
 import * as site_table_module from '#lib/structure/site-table'
 // imported up front, as the file loads: the sidebar's lazy import of it (a large component
 // tree) took seconds on a busy machine, inside whichever test opened the sidebar first
 import SiteTable from '#lib/structure/SiteTable.svelte'
-import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
-import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import type { AtomColorConfig } from '#lib/structure/atom-properties'
+import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties'
 import type {
   StructureToolPrediction,
   StructureToolProps,
   StructureToolRun,
   StructureToolViewProps,
-} from '#lib/structure/host-tool.svelte.js'
-import { structure_host_tool } from '#lib/structure/host-tool.svelte.js'
-import { prediction_from_json, prediction_to_json } from '#lib/structure/prediction.js'
-import { make_supercell } from '#lib/structure/supercell.js'
-import * as export_funcs from '#lib/structure/export.js'
+} from '#lib/structure/host-tool.svelte'
+import { structure_host_tool } from '#lib/structure/host-tool.svelte'
+import { prediction_from_json, prediction_to_json } from '#lib/structure/prediction'
+import { make_supercell } from '#lib/structure/supercell'
+import * as export_funcs from '#lib/structure/export'
 import StructureOwnerHarness from './StructureOwnerHarness.svelte'
 import StructureViewport from '#lib/structure/StructureViewport.svelte'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
-import { structures } from '#site/structures.js'
+import { structures } from '#site/structures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { Matrix4, OrthographicCamera } from 'three/webgpu'
 import { rgb } from 'd3-color'
-import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
-import type { AtomColorField } from '#lib/structure/atom-color-field.js'
+import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway'
+import type { AtomColorField } from '#lib/structure/atom-color-field'
 import {
   fire,
   assertHoverScopedShortcut,
@@ -106,7 +106,7 @@ vi.mock(`#lib/structure/StructureScene.svelte`, () => ({
 beforeEach(mock_parse_worker)
 
 // Passthrough spy so individual tests can make make_supercell throw
-vi.mock(`#lib/structure/supercell.js`, async (import_original) => {
+vi.mock(`#lib/structure/supercell`, async (import_original) => {
   const original = await import_original<Record<string, unknown>>()
   return {
     ...original,

@@ -1,5 +1,5 @@
-import type { Vec2 } from '#lib/math.js'
-import type { CompUnit, DiagramRegion, TempUnit } from '#lib/phase-diagram/index.js'
+import type { Vec2 } from '#lib/math'
+import type { CompUnit, DiagramRegion, TempUnit } from '#lib/phase-diagram/index'
 import {
   compute_lever_rule,
   compute_label_properties,
@@ -13,7 +13,7 @@ import {
   named_phase_color,
   PHASE_DIAGRAM_DEFAULTS,
   transform_vertices,
-} from '#lib/phase-diagram/utils.js'
+} from '#lib/phase-diagram/utils'
 import { describe, expect, test } from 'vite-plus/test'
 import { pts, rect } from './fixtures/test-data'
 

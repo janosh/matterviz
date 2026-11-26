@@ -1,14 +1,14 @@
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Site } from '#lib/structure/index.js'
-import type { Vec3 } from '#lib/math.js'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
-import type { AtomColorField } from '#lib/structure/atom-color-field.js'
-import { StructureCutawayGroup } from '#lib/structure/cutaway.js'
-import { PartialAtoms, type PartialAtom } from '#lib/structure/partial-atoms.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Site } from '#lib/structure/index'
+import type { Vec3 } from '#lib/math'
+import { css_to_linear_rgb } from '#lib/scene/colors'
+import type { AtomColorField } from '#lib/structure/atom-color-field'
+import { StructureCutawayGroup } from '#lib/structure/cutaway'
+import { PartialAtoms, type PartialAtom } from '#lib/structure/partial-atoms'
 import {
   compute_slice_geometry,
   merge_split_partial_sites,
-} from '#lib/structure/partial-occupancy.js'
+} from '#lib/structure/partial-occupancy'
 import type { BufferGeometry, Material } from 'three/webgpu'
 import {
   CircleGeometry,

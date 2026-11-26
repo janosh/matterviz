@@ -3,12 +3,12 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { clamp } from 'svelte-widgets/utils'
-  import { plot_color } from '#lib/colors/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
-  import { error_getter } from '#lib/plot/core/error-bars.js'
-  import { format_value_or_num } from '#lib/labels.js'
+  import { plot_color } from '#lib/colors/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export'
+  import { error_getter } from '#lib/plot/core/error-bars'
+  import { format_value_or_num } from '#lib/labels'
   import type {
     BarHandlerProps,
     BarMode,
@@ -23,63 +23,63 @@
     Orientation,
     PlotConfig,
     SizeScaleConfig,
-  } from '#lib/plot/index.js'
-  import { BarPlotControls, ScatterPoint } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
+  import { BarPlotControls, ScatterPoint } from '#lib/plot/index'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils'
   import {
     create_cartesian_frame,
     create_pan_anchor,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import { FACET_AXES, type FacetAxis } from '#lib/plot/core/facets.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
+  import { FACET_AXES, type FacetAxis } from '#lib/plot/core/facets'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
+  } from '#lib/plot/core/utils/series-visibility'
   import {
     get_relative_coords,
     is_activation_key,
     overlaps_rect,
     type PixelRect,
-  } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  } from '#lib/plot/core/interactions'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
-  import { assign_axes } from '#lib/plot/core/axis-assignment.js'
-  import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index.js'
-  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  import { assign_axes } from '#lib/plot/core/axis-assignment'
+  import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index'
   import {
     collect_scale_ranges,
     create_axis_scales,
     resolve_color_scale,
     to_color_scale_config,
     create_size_scale,
-  } from '#lib/plot/core/scales.js'
-  import { get_scale_type_name, has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/scales'
+  import { get_scale_type_name, has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types'
   import {
     build_legend_items,
     shown_point_style,
     series_text,
-  } from '#lib/plot/core/data-transform.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { clamp01, is_finite_number } from '#lib/utils.js'
-  import type { Vec2 } from '#lib/math.js'
-  import { measure_text_width } from '#lib/plot/core/tick-layout.js'
-  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
+  } from '#lib/plot/core/data-transform'
+  import { DEFAULTS } from '#lib/settings'
+  import { clamp01, is_finite_number } from '#lib/utils'
+  import type { Vec2 } from '#lib/math'
+  import { measure_text_width } from '#lib/plot/core/tick-layout'
+  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { create_category_display } from '#lib/plot/core/display.svelte.js'
-  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
+  import { create_category_display } from '#lib/plot/core/display.svelte'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { bar_path } from '#lib/plot/core/svg.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
+  import { bar_path } from '#lib/plot/core/svg'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
+  import { unique_id } from '#lib/plot/core/utils'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import {
     bar_width_at,

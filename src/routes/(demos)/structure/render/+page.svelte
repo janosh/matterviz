@@ -1,22 +1,22 @@
 <script lang="ts">
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { open_material, type MaterialSource } from '#lib/file-viewer/open.js'
-  import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
-  import { canvas_to_png_blob, set_png_dpi } from '#lib/io/export.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import { open_material, type MaterialSource } from '#lib/file-viewer/open'
+  import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types'
+  import { canvas_to_png_blob, set_png_dpi } from '#lib/io/export'
   import {
     apply_structure_material,
     Structure,
     type AnyStructure,
     type StructureDocument,
-  } from '#lib/structure/index.js'
+  } from '#lib/structure/index'
   import {
     analyze_structure_symmetry,
     default_sym_settings,
     transform_cell,
     type CellType,
     type SymmetrySettings,
-  } from '#lib/symmetry/index.js'
-  import { materialize_frame_result } from '#lib/trajectory/index.js'
+  } from '#lib/symmetry/index'
+  import { materialize_frame_result } from '#lib/trajectory/index'
   import type { ComponentProps } from 'svelte'
 
   type StructureProps = Partial<ComponentProps<typeof Structure>>

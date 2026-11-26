@@ -1,13 +1,9 @@
 import type { FrameChannels } from '../frame'
 import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '../frame'
-import {
-  compute_lattice_params,
-  first_non_increasing_index,
-  is_valid_index,
-} from '#lib/math.js'
-import type { Pbc } from '#lib/structure/pbc.js'
-import { convert_atomic_numbers, values_per_sample } from '#lib/trajectory/helpers.js'
-import type { PositionStreamOptions, TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import { compute_lattice_params, first_non_increasing_index, is_valid_index } from '#lib/math'
+import type { Pbc } from '#lib/structure/pbc'
+import { convert_atomic_numbers, values_per_sample } from '#lib/trajectory/helpers'
+import type { PositionStreamOptions, TrajectoryPositionStream } from '#lib/trajectory/index'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {

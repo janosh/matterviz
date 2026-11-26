@@ -1,8 +1,8 @@
 // LOBSTER samples for the /spectral/cohp demo, one folder each (adding a folder adds a sample):
 // COHPCAR/COOPCAR/COBICAR.lobster, optional ICOHPLIST-type lists and POSCAR, and a SOURCE.txt
 // saying where the data comes from (shown with the demo, `[text](url)` links allowed)
-import { type LobsterFiles, parse_lobster_files } from '#lib/spectral/lobster.js'
-import { glob_text } from '#site/imports.js'
+import { type LobsterFiles, parse_lobster_files } from '#lib/spectral/lobster'
+import { glob_text } from '#site/imports'
 
 export type LobsterSample = LobsterFiles & {
   name: string

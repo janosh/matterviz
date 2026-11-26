@@ -2,7 +2,7 @@
   // Camera settings section: projection select plus children. Callers pass changed_keys/on_reset
   // for their children's settings; they're merged with the projection's own tracking and reset.
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import type { CameraProjection } from '#lib/settings.js'
+  import type { CameraProjection } from '#lib/settings'
   import type { ComponentProps } from 'svelte'
 
   let {

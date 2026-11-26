@@ -1,5 +1,5 @@
 // Reference line utilities: helper functions and coordinate resolution
-import { array_extent, to_degrees, to_radians, type Vec2, type Vec4 } from '#lib/math.js'
+import { array_extent, to_degrees, to_radians, type Vec2, type Vec4 } from '#lib/math'
 import type {
   DecorationPoint,
   DecorationScene,
@@ -10,25 +10,20 @@ import type {
   ReferenceAnnotationPosition,
   ReferenceAnnotationSide,
   ReferenceAnnotationTextAnchor,
-} from '#lib/plot/core/decorations/index.js'
+} from '#lib/plot/core/decorations/index'
 import {
   decoration_placement_rects,
   get_decoration_placement,
   solve_decorations,
-} from '#lib/plot/core/decorations/index.js'
-import { range_bounds } from '#lib/plot/core/interactions.js'
-import type { Rect } from '#lib/plot/core/layout.js'
-import type {
-  AxisKey,
-  RefLine,
-  RefLineAnnotation,
-  RefLineValue,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/decorations/index'
+import { range_bounds } from '#lib/plot/core/interactions'
+import type { Rect } from '#lib/plot/core/layout'
+import type { AxisKey, RefLine, RefLineAnnotation, RefLineValue } from '#lib/plot/core/types'
 import {
   measure_text_line,
   resolve_font_size_css,
   resolve_font_spec,
-} from '#lib/plot/core/text-metrics.js'
+} from '#lib/plot/core/text-metrics'
 
 export type IndexedRefLine = RefLine & { idx: number }
 type Scale = (val: number) => number

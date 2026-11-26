@@ -1,28 +1,24 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
-import { display_idx } from '#lib/labels.js'
-import {
-  BOHR_TO_ANGSTROM,
-  filename_token_regex,
-  VASP_VOLUMETRIC_REGEX,
-} from '#lib/constants.js'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
-import { strip_compression_extensions } from '#lib/io/decompress.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal, Site } from '#lib/structure/index.js'
+import { display_idx } from '#lib/labels'
+import { BOHR_TO_ANGSTROM, filename_token_regex, VASP_VOLUMETRIC_REGEX } from '#lib/constants'
+import { element_from_atomic_number } from '#lib/element/helpers'
+import { strip_compression_extensions } from '#lib/io/decompress'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal, Site } from '#lib/structure/index'
 import {
   apply_axis_scale,
   parse_vasp_header,
   read_text_line,
   text_cursor,
-} from '#lib/structure/parsers/vasp-header.js'
-import { parse_float_token, vec3_from_values } from '#lib/structure/parsers/shared.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { make_site } from '#lib/structure/site.js'
-import { normalize_scientific_notation, parse_leading_num } from '#lib/utils.js'
+} from '#lib/structure/parsers/vasp-header'
+import { parse_float_token, vec3_from_values } from '#lib/structure/parsers/shared'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
+import { make_site } from '#lib/structure/site'
+import { normalize_scientific_notation, parse_leading_num } from '#lib/utils'
 import { to_error } from 'svelte-widgets/utils'
 import { transpose_x_fastest } from './grid'
-import { parse_warn } from '#lib/trajectory/parse/shared.js'
+import { parse_warn } from '#lib/trajectory/parse/shared'
 import { grid_data_range, make_volume, type VolumetricFileData } from './types'
 
 // === Parse error contract ===

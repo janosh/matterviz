@@ -1,4 +1,4 @@
-import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
+import { use_async_result } from '#lib/trajectory/async-result.svelte'
 import { flushSync } from 'svelte'
 import { expect, test, vi } from 'vite-plus/test'
 

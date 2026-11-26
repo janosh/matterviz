@@ -1,10 +1,10 @@
 // Module worker for file parsing. TrajectoryRun instances stay in this worker and cross the
 // boundary as a summary plus a MessagePort implementing read_frame/collect_positions.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import type { ParseProgress } from '#lib/trajectory/index.js'
-import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/index.js'
-import { summarize_run } from '#lib/trajectory/run.js'
-import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
+import type { ParseProgress } from '#lib/trajectory/index'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/index'
+import { summarize_run } from '#lib/trajectory/run'
+import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker'
 import { to_error } from 'svelte-widgets/utils'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 import { parse_file_content, type ParseResult } from './parse'

@@ -7,8 +7,8 @@ import {
   TEXT_VIEWER_EXTENSIONS,
   VASP_VIEWER_STEMS,
   VASP_VOLUMETRIC_FILES,
-} from '#lib/constants.js'
-import { SETTINGS_CONFIG, type SettingType } from '#lib/settings.js'
+} from '#lib/constants'
+import { SETTINGS_CONFIG, type SettingType } from '#lib/settings'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [

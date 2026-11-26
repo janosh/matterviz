@@ -1,33 +1,33 @@
 import type { AnyStructure } from '#lib'
-import type { Vec3 } from '#lib/math.js'
-import type { BondPair } from '#lib/structure/index.js'
+import type { Vec3 } from '#lib/math'
+import type { BondPair } from '#lib/structure/index'
 import {
   electroneg_ratio,
   explicit_only,
   is_spectator_center,
   structure_bond_to_bond_pair,
-} from '#lib/structure/bonding.js'
-import { get_pbc_image_sites } from '#lib/structure/pbc.js'
-import { DEFAULTS } from '#lib/settings.js'
-import { cross_3d, dot, scale, subtract } from '#lib/math.js'
+} from '#lib/structure/bonding'
+import { get_pbc_image_sites } from '#lib/structure/pbc'
+import { DEFAULTS } from '#lib/settings'
+import { cross_3d, dot, scale, subtract } from '#lib/math'
 import {
   build_adjacency,
   compute_polyhedra,
   cache_prepared_polyhedra,
   convex_hull_3d,
   polyhedra_options_from,
-} from '#lib/structure/polyhedra.js'
+} from '#lib/structure/polyhedra'
 import {
   create_fat_segments,
   merge_polyhedra_buffers,
   update_fat_segments,
   update_polyhedra_faces,
-} from '#lib/structure/polyhedra-render.js'
-import type { Polyhedron } from '#lib/structure/polyhedra.js'
-import { make_supercell } from '#lib/structure/supercell.js'
-import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
-import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { make_site, numeric_sites } from '#lib/structure/site.js'
+} from '#lib/structure/polyhedra-render'
+import type { Polyhedron } from '#lib/structure/polyhedra'
+import { make_supercell } from '#lib/structure/supercell'
+import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame'
+import { make_site, numeric_sites } from '#lib/structure/site'
 import {
   BufferAttribute,
   BufferGeometry,

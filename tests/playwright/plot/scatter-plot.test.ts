@@ -1,4 +1,4 @@
-import { rects_overlap } from '#lib/plot/core/layout.js'
+import { rects_overlap } from '#lib/plot/core/layout'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   collect_console_errors,

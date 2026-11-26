@@ -1,12 +1,12 @@
 <script lang="ts">
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
-  import type { ColorScale } from '#lib/plot/core/types.js'
+  import { scheme_name, with_scheme } from '#lib/plot/core/scales'
+  import type { ColorScale } from '#lib/plot/core/types'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import type { MultiSelectProps } from 'svelte-widgets'
   import Select from 'svelte-widgets/MultiSelect.svelte'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import type { D3InterpolateName } from '#lib/colors/index'
 
   const ScaleSelect = Select<D3InterpolateName>
 

@@ -4,19 +4,19 @@
 // the energy as mu and isolates the band's sheet (click again for all). Band lines take their
 // sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands and the 3D
 // k-path. Without a band grid only the k-path link remains. ElectronicStructure hosts it.
-import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
-import type { Matrix3x3, Vec2 } from '#lib/math.js'
-import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
-import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte.js'
-import { EV_PER_ENERGY_UNIT } from '#lib/spectral/frequency-units.js'
+import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte'
+import type { Matrix3x3, Vec2 } from '#lib/math'
+import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types'
+import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte'
+import { EV_PER_ENERGY_UNIT } from '#lib/spectral/frequency-units'
 import {
   band_crossings,
   band_line_style,
   BANDS_CSS_COLORS,
   resolve_spin_mode,
-} from '#lib/spectral/helpers.js'
-import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
-import { watch_theme_changes } from '#lib/theme/index.js'
+} from '#lib/spectral/helpers'
+import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types'
+import { watch_theme_changes } from '#lib/theme/index'
 import { resolve_color_property, sheet_color } from './constants'
 import type { BandGridJson } from './parse'
 import type { BandGridData, ColorProperty, FermiHoverData, SpinChannel } from './types'

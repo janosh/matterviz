@@ -1,5 +1,5 @@
-import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
-import type { MaterialSource } from '#lib/file-viewer/open.js'
+import { create_material_loader } from '#lib/file-viewer/material-loader.svelte'
+import type { MaterialSource } from '#lib/file-viewer/open'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { create_drop_event } from '../setup'

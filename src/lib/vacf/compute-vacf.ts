@@ -13,14 +13,14 @@
 // >= n_frames + max_lag makes the circular correlation linear at every reported lag, so the
 // result is the exact origin sum up to round-off (a few tens of f64 eps against the direct
 // loop) at n log n instead of n^2 cost in the frame count.
-import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '#lib/fft.js'
+import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '#lib/fft'
 import {
   frequency_unit_label,
   md_frequency_factor,
   MD_FREQUENCY_UNITS,
   thz_per_inverse_time,
   TIME_UNIT_TO_THZ,
-} from '#lib/spectral/frequency-units.js'
+} from '#lib/spectral/frequency-units'
 import {
   analysis_fail,
   autocorrelation_sums,
@@ -31,7 +31,7 @@ import {
   resolve_lag_time_unit,
   unwrapped_positions_of,
   validate_position_stream_layout,
-} from '#lib/trajectory/positions.js'
+} from '#lib/trajectory/positions'
 import type {
   VacfCurve,
   VacfFrequencyUnit,

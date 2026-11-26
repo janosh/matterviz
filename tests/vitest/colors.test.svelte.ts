@@ -2,7 +2,7 @@ import {
   resolve_backdrop,
   resolve_color_token,
   resolve_css_color,
-} from '#lib/colors/backdrop.svelte.js'
+} from '#lib/colors/backdrop.svelte'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 

@@ -2,28 +2,28 @@
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_bytes, format_num } from 'svelte-widgets/format'
-  import { materialize_frame_result } from '#lib/trajectory/frame.js'
+  import { materialize_frame_result } from '#lib/trajectory/frame'
 
-  import { track_settings } from '#lib/controls.js'
-  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import type { VideoFormat } from '#lib/io/export.js'
+  import { track_settings } from '#lib/controls'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
+  import type { VideoFormat } from '#lib/io/export'
   import {
     export_trajectory_video,
     is_video_export_supported,
     observe_canvas_presence,
-  } from '#lib/io/export.js'
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
+  } from '#lib/io/export'
+  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import type { ExportItem, ExportSection } from '#lib/io/types.js'
-  import { display_idx, from_display_idx } from '#lib/labels.js'
+  import type { ExportItem, ExportSection } from '#lib/io/types'
+  import { display_idx, from_display_idx } from '#lib/labels'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import {
     poscar_export_unavailable_reason,
     xyz_export_unavailable_reason,
-  } from '#lib/structure/export.js'
-  import type { TrajectoryRun } from '#lib/trajectory/index.js'
-  import type { TrajectoryFrameResolver } from '#lib/trajectory/file-export.js'
+  } from '#lib/structure/export'
+  import type { TrajectoryRun } from '#lib/trajectory/index'
+  import type { TrajectoryFrameResolver } from '#lib/trajectory/file-export'
   import {
     collect_frame_property_rows,
     create_poscar_frame_range_zip,
@@ -31,15 +31,15 @@
     frame_rows_to_json,
     serialize_extxyz_frame_range,
     trajectory_export_basename,
-  } from '#lib/trajectory/file-export.js'
+  } from '#lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { abortable } from '#lib/utils.js'
+  import { abortable } from '#lib/utils'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera, Download } from 'svelte-widgets/icons'
-  import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight.js'
+  import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight'
 
   let {
     export_pane_open = $bindable(false),

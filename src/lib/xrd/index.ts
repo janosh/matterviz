@@ -1,8 +1,8 @@
-import { PLOT_COLORS } from '#lib/colors/index.js'
-import type { CompositionType } from '#lib/composition/index.js'
-import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
-import type { RadiationType } from '#lib/scattering/index.js'
-import type { LatticePlane } from '#lib/structure/index.js'
+import { PLOT_COLORS } from '#lib/colors/index'
+import type { CompositionType } from '#lib/composition/index'
+import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math'
+import type { RadiationType } from '#lib/scattering/index'
+import type { LatticePlane } from '#lib/structure/index'
 import type { XrayLine, XrdWavelength } from './compute-xrd'
 
 export * from './async-compute.svelte'

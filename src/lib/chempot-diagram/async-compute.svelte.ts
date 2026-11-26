@@ -1,8 +1,8 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // Async wrapper for compute_chempot_system via Web Worker.
 // Falls back to synchronous main-thread computation during SSR.
-import { slim_phase_entry } from '#lib/convex-hull/helpers.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+import { slim_phase_entry } from '#lib/convex-hull/helpers'
+import type { PhaseData } from '#lib/convex-hull/types'
 import { create_worker_client } from 'svelte-widgets/worker-client'
 import { compute_chempot_system } from './compute'
 import type { ChemPotDiagramConfig, ChemPotSystem } from './types'

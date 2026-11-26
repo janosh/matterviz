@@ -15,7 +15,7 @@ across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   const series = [
     { y: generate_normal(200, 0, 1, seeded_rng(1)), label: `A`, color: `#4c6ef5` },
@@ -45,7 +45,7 @@ inside the violin, the way `plotly.express.violin(box=True)` does.
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   const series = [
     { y: generate_normal(250, 0, 1, seeded_rng(4)), label: `A`, color: `#4c6ef5` },
@@ -77,7 +77,7 @@ keeps the density physical; `show_value_labels` with `value_label_stat="mean"` p
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   // Half-normal-ish positive samples (RMSD is >= 0)
   const make_rmsd = (seed, count, scale) =>
@@ -117,7 +117,7 @@ slot. Series in a shared slot are identified by the legend rather than colored a
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   // Each series is labeled by its element; the legend_group header conveys the dataset
   // (Predicted = left/blue, DFT = right/red), avoiding repeated identical legend entries.

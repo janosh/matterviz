@@ -1,8 +1,8 @@
 // Brillouin zone generation via convex hull
 
 import { format_num } from 'svelte-widgets/format'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import { Vector3 } from 'three/webgpu'
 import { ConvexHull, type VertexNode } from 'three/examples/jsm/math/ConvexHull.js'
 import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './types'

@@ -1,10 +1,10 @@
-import { decode_binary_array, BINARY_FORMAT } from '#lib/io/binary-arrays.js'
-import { volume_from_binary } from '#lib/isosurface/binary.js'
-import { volume_from_json } from '#lib/isosurface/types.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import { trajectory_from_binary } from '#lib/trajectory/binary.js'
-import { trajectory_from_json } from '#lib/trajectory/open.js'
-import { materialize_frame, type NumericFrame } from '#lib/trajectory/frame.js'
+import { decode_binary_array, BINARY_FORMAT } from '#lib/io/binary-arrays'
+import { volume_from_binary } from '#lib/isosurface/binary'
+import { volume_from_json } from '#lib/isosurface/types'
+import type { Matrix3x3 } from '#lib/math'
+import { trajectory_from_binary } from '#lib/trajectory/binary'
+import { trajectory_from_json } from '#lib/trajectory/open'
+import { materialize_frame, type NumericFrame } from '#lib/trajectory/frame'
 import { describe, expect, test } from 'vite-plus/test'
 
 type Typed = Float32Array | Float64Array | Int32Array | Uint8Array

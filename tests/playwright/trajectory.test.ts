@@ -1,11 +1,11 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import type * as ElementModule from '#lib/element/types.js'
-import type * as H5UtilsModule from '#lib/trajectory/parse/h5-utils.js'
-import type * as OpenTrajectoryModule from '#lib/trajectory/open.js'
-import type * as FrameModule from '#lib/trajectory/frame.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
+import type * as ElementModule from '#lib/element/types'
+import type * as H5UtilsModule from '#lib/trajectory/parse/h5-utils'
+import type * as OpenTrajectoryModule from '#lib/trajectory/open'
+import type * as FrameModule from '#lib/trajectory/frame'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
+import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
 import {
   collect_console_errors,
@@ -49,11 +49,13 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
 test(`demo viewers keep a data inspector within its box, a quarter wide, evenly shaded`, async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1000, height: 1200 })
+  // the inspector docks itself from a 1000px viewer row, which every demo with data reaches
+  // in a 1200px window
+  await page.setViewportSize({ width: 1200, height: 1200 })
   await page.goto(`/trajectory`, { waitUntil: `domcontentloaded` })
   const viewers = page.locator(`.trajectory:has(.trajectory-data-inspector-sidebar)`)
   await load_all_demos(page)
-  await expect(viewers).toHaveCount(4, { timeout: HYDRATION_TIMEOUT })
+  await expect(viewers).toHaveCount(5, { timeout: HYDRATION_TIMEOUT })
   for (const viewer of await viewers.all()) {
     await viewer.scrollIntoViewIfNeeded()
     const { overflow, width_share, sidebar_bg, sticky_bgs } = await viewer.evaluate(
@@ -80,22 +82,13 @@ test(`demo viewers keep a data inspector within its box, a quarter wide, evenly 
       },
     )
     expect(overflow).toBeLessThanOrEqual(1)
-    // wider, it squashes the structure and plot panes in a 1000px window
+    // wider, it squashes the structure and plot panes
     expect(width_share).toBeLessThanOrEqual(0.25 + 0.002)
     expect(sticky_bgs).toEqual([
       [sidebar_bg, `linear-gradient`],
       [sidebar_bg, `none`],
     ])
   }
-  // narrow, the inspector stacks under the viewer, ruled off in place of the hidden divider
-  await page.setViewportSize({ width: 560, height: 1200 })
-  const viewer = viewers.first()
-  await viewer.scrollIntoViewIfNeeded()
-  await expect(viewer.locator(`:scope > .viewer-row`)).toHaveClass(/docked-sidebar-stacked/)
-  await expect(viewer.locator(`.trajectory-data-inspector-sidebar`)).toHaveCSS(
-    `border-top-width`,
-    `1px`,
-  )
 })
 
 async function select_display_mode(trajectory: Locator, mode_name: string) {

@@ -1,5 +1,5 @@
-import { renderer_registry, scene_registry } from '#lib/io/export.js'
-import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+import { renderer_registry, scene_registry } from '#lib/io/export'
+import { camera_flight_registry } from '#lib/scene/camera-flight'
 import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
 import { mount, tick, unmount } from 'svelte'
 import type { Scene, WebGPURenderer } from 'three/webgpu'

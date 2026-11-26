@@ -6,8 +6,8 @@ import {
   UNTONE_GUESS,
   UNTONE_MATRICES,
   UNTONE_NEWTON_STEPS,
-} from '#lib/scene/tone-mapping.js'
-import type { Vec3 } from '#lib/math.js'
+} from '#lib/scene/tone-mapping'
+import type { Vec3 } from '#lib/math'
 import { expect, test } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 

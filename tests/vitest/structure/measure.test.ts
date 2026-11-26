@@ -1,6 +1,6 @@
-import { subtract, type Matrix3x3, type Vec3 } from '#lib/math.js'
-import type { MeasureMode, Site } from '#lib/structure/index.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+import { subtract, type Matrix3x3, type Vec3 } from '#lib/math'
+import type { MeasureMode, Site } from '#lib/structure/index'
+import type { Pbc } from '#lib/structure/pbc'
 import {
   angle_arc,
   angle_between_vectors,
@@ -12,7 +12,7 @@ import {
   pbc_chain_positions,
   pick_displacement,
   rolls_measured_sites,
-} from '#lib/structure/measure.js'
+} from '#lib/structure/measure'
 import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix as cubic, make_molecule } from '../test-fixtures'
 

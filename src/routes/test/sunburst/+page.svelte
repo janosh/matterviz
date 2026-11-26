@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
-  import { Sunburst, sunburst_from_labels_parents } from '#lib/plot/index.js'
-  import { spacegroup_sunburst_data } from '#lib/symmetry/index.js'
+  import type { PositionedArc, SunburstNode } from '#lib/plot/index'
+  import { Sunburst, sunburst_from_labels_parents } from '#lib/plot/index'
+  import { spacegroup_sunburst_data } from '#lib/symmetry/index'
   import TestSection from '../TestSection.svelte'
   import TestStatus from '../TestStatus.svelte'
 

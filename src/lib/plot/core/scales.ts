@@ -3,15 +3,15 @@ import {
   type D3InterpolateName,
   get_d3_interpolator,
   is_palette_range,
-} from '#lib/colors/scale-names.js'
-import type { Vec2 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+} from '#lib/colors/scale-names'
+import type { Vec2 } from '#lib/math'
+import * as math from '#lib/math'
 import {
   axis_transform,
   range_bounds,
   resolve_axis_range,
   validate_log_range,
-} from '#lib/plot/core/interactions.js'
+} from '#lib/plot/core/interactions'
 import type {
   AxisDerive,
   ColorScale,
@@ -19,14 +19,14 @@ import type {
   ScaleType,
   SizeScaleConfig,
   TimeInterval,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_time_scale,
   SCALE_DEFAULTS,
-} from '#lib/plot/core/types.js'
-import { clamp01 } from '#lib/utils.js'
+} from '#lib/plot/core/types'
+import { clamp01 } from '#lib/utils'
 import { range, ticks as d3_ticks } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {

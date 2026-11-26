@@ -1,23 +1,23 @@
 // Plotting utilities for trajectory visualization
-import { PLOT_COLORS } from '#lib/colors/index.js'
-import { TRAJECTORY_ENERGY_KEYS } from '#lib/constants.js'
+import { PLOT_COLORS } from '#lib/colors/index'
+import { TRAJECTORY_ENERGY_KEYS } from '#lib/constants'
 import {
   display_idx,
   from_display_idx,
   humanize,
   SCF_AXIS_GROUP,
   trajectory_property_config,
-} from '#lib/labels.js'
-import type { TrajPropertyConfig } from '#lib/labels.js'
-import { first_non_increasing_index, get_coefficient_of_variation, mean } from '#lib/math.js'
+} from '#lib/labels'
+import type { TrajPropertyConfig } from '#lib/labels'
+import { first_non_increasing_index, get_coefficient_of_variation, mean } from '#lib/math'
 import {
   axis_group_key,
   axis_labels as get_axis_labels,
   axis_scale_types as get_axis_scale_types,
   group_axis_series,
-} from '#lib/plot/core/axis-assignment.js'
-import { smooth_moving_average } from '#lib/plot/core/data-cleaning.js'
-import { assert_series_lengths, type DataSeries } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/axis-assignment'
+import { smooth_moving_average } from '#lib/plot/core/data-cleaning'
+import { assert_series_lengths, type DataSeries } from '#lib/plot/core/types'
 import { html_to_text } from 'svelte-widgets/utils'
 import type { TrajectoryMetadata } from './index'
 

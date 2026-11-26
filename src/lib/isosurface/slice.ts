@@ -1,7 +1,7 @@
 // Plane slicing for volumetric data: trilinear samples along an hkl or Cartesian plane
 import { clamp } from 'svelte-widgets/utils'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import { lower_corner, upper_corner } from './grid'
 import type { DisplayRange } from './sampling'
 import type { VolumeSliceSettings } from './slice-settings'

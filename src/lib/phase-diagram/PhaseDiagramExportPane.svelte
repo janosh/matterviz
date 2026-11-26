@@ -1,10 +1,10 @@
 <script lang="ts">
   // Export pane shared by the phase diagram viewers: the figure through the `image_sources`
   // its viewer renders with (SVG or canvas), the diagram itself as JSON
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import type { PaneToggleProps } from '#lib/overlays/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import type { ExportProps, ExportSources } from '#lib/io/export.js'
+  import type { ExportProps, ExportSources } from '#lib/io/export'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {

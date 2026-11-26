@@ -1,5 +1,5 @@
 // Tests for Fermi surface computation, analysis and symmetry-tiling functions
-import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
+import { compute_brillouin_zone } from '#lib/brillouin/compute'
 import {
   auto_interpolation_factor,
   band_carriers,
@@ -15,19 +15,19 @@ import {
   slice_plane_normal,
   slice_shading_rgba,
   upsample_grid,
-} from '#lib/fermi-surface/compute.js'
-import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
-import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
-import type { SliceEnergyMap } from '#lib/fermi-surface/compute.js'
+} from '#lib/fermi-surface/compute'
+import { parse_fermi_file } from '#lib/fermi-surface/parse'
+import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry'
+import type { SliceEnergyMap } from '#lib/fermi-surface/compute'
 import type {
   BandEnergyGrid,
   BandGridData,
   FermiIsosurface,
   FermiSurfaceData,
-} from '#lib/fermi-surface/types.js'
-import { vertex_count } from '#lib/fermi-surface/types.js'
-import * as math from '#lib/math.js'
-import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math.js'
+} from '#lib/fermi-surface/types'
+import { vertex_count } from '#lib/fermi-surface/types'
+import * as math from '#lib/math'
+import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math'
 import { SphereGeometry } from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { describe, expect, test } from 'vite-plus/test'

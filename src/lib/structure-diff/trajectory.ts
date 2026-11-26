@@ -1,9 +1,9 @@
 // Structure diffs along a trajectory, read from a collected position stream: stepping reads no
 // frames and rewrites one scratch reference in place instead of building structures per step.
 // Frames share one atom order, so sites pair by index.
-import type { Vec3 } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import type { TrajectoryMetadata, TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import type { Vec3 } from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
+import type { TrajectoryMetadata, TrajectoryPositionStream } from '#lib/trajectory/index'
 import { compute_structure_diff, type StructureDiffResult } from './compute'
 
 // What each frame is compared against: the first collected frame or the one before it

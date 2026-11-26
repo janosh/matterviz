@@ -1,7 +1,7 @@
 <script lang="ts">
   // Perspective/orthographic camera with OrbitControls + axis Gizmo for every 3D scene
-  import type { Vec3 } from '#lib/math.js'
-  import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
+  import type { Vec3 } from '#lib/math'
+  import { type CameraProjection, DEFAULTS } from '#lib/settings'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, untrack } from 'svelte'

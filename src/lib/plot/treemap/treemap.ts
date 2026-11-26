@@ -7,8 +7,8 @@
 
 import { clamp } from 'svelte-widgets/utils'
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
-import type { Rect } from '#lib/plot/core/layout.js'
-import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
+import type { Rect } from '#lib/plot/core/layout'
+import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout'
 
 // Treemaps consume the same node trees as Sunburst (shared data builders)
 export type TreemapNode<Metadata = Record<string, unknown>> = SunburstNode<Metadata>

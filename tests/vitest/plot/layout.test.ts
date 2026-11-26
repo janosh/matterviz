@@ -1,6 +1,6 @@
-import { host } from '#lib/host.js'
-import { has_controls_row } from '#lib/plot/core/cartesian-frame.svelte.js'
-import type { AutoPaddingConfig, Sides } from '#lib/plot/core/layout.js'
+import { host } from '#lib/host'
+import { has_controls_row } from '#lib/plot/core/cartesian-frame.svelte'
+import type { AutoPaddingConfig, Sides } from '#lib/plot/core/layout'
 import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
@@ -20,10 +20,10 @@ import {
   y_axis_label_x,
   y2_axis_label_x,
   Y_TITLE_EDGE_AIR,
-} from '#lib/plot/core/layout.js'
-import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
-import type { MeasuredAxis, TickStrategy } from '#lib/plot/core/tick-layout.js'
-import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
+} from '#lib/plot/core/layout'
+import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics'
+import type { MeasuredAxis, TickStrategy } from '#lib/plot/core/tick-layout'
+import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 

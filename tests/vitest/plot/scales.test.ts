@@ -1,8 +1,8 @@
-import type { Vec2 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars.js'
-import { axis_transform } from '#lib/plot/core/interactions.js'
-import type { ErrorValues } from '#lib/plot/core/error-bars.js'
+import type { Vec2 } from '#lib/math'
+import * as math from '#lib/math'
+import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars'
+import { axis_transform } from '#lib/plot/core/interactions'
+import type { ErrorValues } from '#lib/plot/core/error-bars'
 import {
   accumulate_extent,
   collect_scale_ranges,
@@ -28,15 +28,15 @@ import {
   nice_range_from_extent,
   scale_arcsinh,
   tick_label_format,
-} from '#lib/plot/core/scales.js'
-import type { TicksOption } from '#lib/plot/core/scales.js'
-import type { ColorScale, ScaleType } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/scales'
+import type { TicksOption } from '#lib/plot/core/scales'
+import type { ColorScale, ScaleType } from '#lib/plot/core/types'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_scale_type_name,
   is_time_scale,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test, vi } from 'vite-plus/test'
 

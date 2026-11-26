@@ -1,9 +1,9 @@
 // Parsers for measured powder-diffraction files. Every parser either returns a pattern or
 // throws an Error naming the format and what was missing — no parser guesses a start angle
 // or step size, because a wrong x axis looks exactly like a real scan.
-import { ext_of } from '#lib/io/is-binary.js'
-import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { array_max } from '#lib/math.js'
+import { ext_of } from '#lib/io/is-binary'
+import { strip_compression_extensions } from '#lib/io/decompress'
+import { array_max } from '#lib/math'
 import { to_error } from 'svelte-widgets/utils'
 import type { XrdPattern } from './index'
 

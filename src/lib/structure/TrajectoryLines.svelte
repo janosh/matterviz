@@ -15,22 +15,22 @@ opacity. `emphasis` (a host run's short trails beside atoms) instead draws 4 px 
 times the attributes since every segment becomes an instanced quad.
 -->
 <script lang="ts">
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  import type { ElementSymbol } from '#lib/element/index'
+  import { DEFAULTS } from '#lib/settings'
   import type {
     TrajectoryLineColorMode,
     TrajectoryLinesStats,
     TrajectoryLineWrapMode,
-  } from '#lib/structure/trajectory-lines.js'
+  } from '#lib/structure/trajectory-lines'
   import {
     TIME_RAMP_SIZE,
     TRAIL_TEXEL_ROW,
     TrajectoryTrail,
     trail_color_texels,
     trail_segments,
-  } from '#lib/structure/trajectory-lines.js'
+  } from '#lib/structure/trajectory-lines'
   import { create_fat_segments, update_fat_segments } from './polyhedra-render'
-  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import {

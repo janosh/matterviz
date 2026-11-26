@@ -1,6 +1,6 @@
-import * as parse_worker from '#lib/file-viewer/parse-in-worker.js'
-import { deliver_raw_file, MaterialOpenError, open_material } from '#lib/file-viewer/open.js'
-import type { ParseResult } from '#lib/file-viewer/parse.js'
+import * as parse_worker from '#lib/file-viewer/parse-in-worker'
+import { deliver_raw_file, MaterialOpenError, open_material } from '#lib/file-viewer/open'
+import type { ParseResult } from '#lib/file-viewer/parse'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { gzip_bytes, make_run, utf16_bom } from '../test-fixtures'
 

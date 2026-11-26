@@ -1,7 +1,7 @@
 // Shared file-drop handler composable for drag-and-drop file loading.
 import { decompress_file, decompress_trajectory_file, is_empty_content } from './decompress'
 import { dropped_file_url, load_from_url, load_trajectory_from_url } from './url-drop'
-import { plural } from '#lib/labels.js'
+import { plural } from '#lib/labels'
 import { to_error } from 'svelte-widgets/utils'
 import type { Attachment } from 'svelte/attachments'
 import { files_from_data_transfer } from 'svelte-widgets/file-drop'

@@ -1,5 +1,5 @@
 import { clamp } from 'svelte-widgets/utils'
-import type { Rect } from '#lib/plot/core/layout.js'
+import type { Rect } from '#lib/plot/core/layout'
 
 const DIRECTIONS = [`right-below`, `left-below`, `right-above`, `left-above`] as const
 type TooltipPlacementDirection = (typeof DIRECTIONS)[number]

@@ -1,9 +1,9 @@
 // Web Worker branch of the XRD and SAED clients (a stub Worker is installed before the import,
 // as happy-dom has none); one stub plays both entries, told apart by the options only SAED takes
-import { compute_xrd_pattern } from '#lib/xrd/compute-xrd.js'
-import type { SaedOptions, XrdOptions } from '#lib/xrd/index.js'
-import { compute_saed_pattern } from '#lib/xrd/saed.js'
-import type { Crystal } from '#lib/structure/index.js'
+import { compute_xrd_pattern } from '#lib/xrd/compute-xrd'
+import type { SaedOptions, XrdOptions } from '#lib/xrd/index'
+import { compute_saed_pattern } from '#lib/xrd/saed'
+import type { Crystal } from '#lib/structure/index'
 import { flushSync, mount, unmount } from 'svelte'
 import { expect, test } from 'vite-plus/test'
 import { expect_worker_safe_import_graph, install_stub_worker } from '../setup'
@@ -15,7 +15,7 @@ const stub = install_stub_worker<Request>(({ input, options }) =>
 )
 
 test(`XRD and SAED patterns computed in their workers equal the main-thread ones, and the XRD worker idles until the last XrdPlot unmounts`, async () => {
-  const xrd = await import(`#lib/xrd/async-compute.svelte.js`) // once the stub is installed
+  const xrd = await import(`#lib/xrd/async-compute.svelte`) // once the stub is installed
   // a viewer's crystal: deeply proxied, with a site property structured clone rejects
   const crystal = $state(make_rocksalt())
   crystal.sites[0].properties = { on_click: () => {} }
@@ -35,7 +35,7 @@ test(`XRD and SAED patterns computed in their workers equal the main-thread ones
   const entries = [`xrd`, `saed`].map((name) => `src/lib/xrd/${name}-worker.ts`)
   const started = stub.instances.map(({ url, options }) => `${options?.type} ${url}`)
   expect(started).toEqual(entries.map((entry) => expect.stringMatching(`^module .*/${entry}`)))
-  const forbidden = [`svelte-widgets/worker-client`, `#lib/symmetry/analyze.js`]
+  const forbidden = [`svelte-widgets/worker-client`, `#lib/symmetry/analyze`]
   expect_worker_safe_import_graph(entries, 6, forbidden)
   const { default: XrdPlot } = await import(`#lib/xrd/XrdPlot.svelte`)
   const plots = [0, 1].map(() =>

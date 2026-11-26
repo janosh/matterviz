@@ -98,7 +98,7 @@ The example below combines the common controls: per-side `type`, `per_series` (o
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
-  import { box_muller, seeded_rng } from '#site/histogram-data.js'
+  import { box_muller, seeded_rng } from '#site/histogram-data'
 
   // deterministic gaussian clusters (seeded rng keeps the demo stable)
   const rng = seeded_rng(7)
@@ -930,7 +930,7 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
 ```svelte example
 <script lang="ts">
   import { FilePicker, ScatterPlot } from 'matterviz'
-  import { url_selection } from '#site/state.svelte.js'
+  import { url_selection } from '#site/state.svelte'
 
   const hc = 1239.84198 // eV nm
   const cu_ka = 1.5406 // Å
@@ -993,7 +993,7 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
 ```svelte example
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
-  import { seeded_rng } from '#site/histogram-data.js'
+  import { seeded_rng } from '#site/histogram-data'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
   // scale type per dimension, each with the log warning shown when its data has values <= 0
@@ -2682,7 +2682,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { ScatterPlot, create_axis_loader, type AxisKey } from 'matterviz'
-  import { seeded_rng } from '#site/histogram-data.js'
+  import { seeded_rng } from '#site/histogram-data'
 
   type MaterialData = {
     density: number
@@ -2884,7 +2884,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
     background: var(--surface-bg-hover, rgba(0, 0, 0, 0.05));
     border-radius: 4px;
     font-size: 0.8em;
-    font-family: monospace;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
     max-height: 80px;
     overflow-y: auto;
   }
@@ -2906,7 +2906,7 @@ Axis changes simulate delayed loading. Color property and palette changes use th
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { ScatterPlot, create_axis_loader } from 'matterviz'
-  import { seeded_rng } from '#site/histogram-data.js'
+  import { seeded_rng } from '#site/histogram-data'
 
   type DataPoint = {
     density: number

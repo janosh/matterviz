@@ -4,9 +4,9 @@ import {
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS,
   VASP_VIEWER_STEMS,
-} from '#lib/constants.js'
-import { DEFAULTS } from '#lib/settings.js'
-import type { ThemeName } from '#lib/theme/index.js'
+} from '#lib/constants'
+import { DEFAULTS } from '#lib/settings'
+import type { ThemeName } from '#lib/theme/index'
 import { Buffer } from 'node:buffer'
 import type * as node_fs from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,12 +15,12 @@ import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
-import type { WebviewToHostMessage, WireFrame } from '#lib/file-viewer/host-protocol.js'
-import { frame_from_wire } from '#lib/file-viewer/host-protocol.js'
-import type { FrameChannels } from '#lib/trajectory/frame.js'
-import { materialize_frame } from '#lib/trajectory/frame.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
+import type { WebviewToHostMessage, WireFrame } from '#lib/file-viewer/host-protocol'
+import { frame_from_wire } from '#lib/file-viewer/host-protocol'
+import type { FrameChannels } from '#lib/trajectory/frame'
+import { materialize_frame } from '#lib/trajectory/frame'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text'
 import {
   activate,
   active_auto_render_panels,

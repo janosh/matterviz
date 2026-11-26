@@ -1,5 +1,5 @@
-import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index.js'
-import { compute_saed_pattern } from '#lib/xrd/saed.js'
+import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index'
+import { compute_saed_pattern } from '#lib/xrd/saed'
 import SaedPattern from '#lib/xrd/SaedPattern.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { expect, test } from 'vite-plus/test'

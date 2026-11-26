@@ -1,14 +1,14 @@
-import type { Vec2 } from '#lib/math.js'
-import { diagram_hit, diagram_points, phase_colors } from '#lib/phase-diagram/diagram.js'
+import type { Vec2 } from '#lib/math'
+import { diagram_hit, diagram_points, phase_colors } from '#lib/phase-diagram/diagram'
 import type {
   BinaryPhaseDiagram,
   BoundaryKind,
   CompUnit,
   PhaseHoverInfo,
   TempUnit,
-} from '#lib/phase-diagram/index.js'
+} from '#lib/phase-diagram/index'
 import PhaseDiagramTooltip from '#lib/phase-diagram/PhaseDiagramTooltip.svelte'
-import { binary_diagrams } from '#site/phase-diagrams.js'
+import { binary_diagrams } from '#site/phase-diagrams'
 import { rgb } from 'd3-color'
 import type { ComponentProps } from 'svelte'
 import { mount } from 'svelte'

@@ -1,12 +1,12 @@
 import CanvasTooltip from '#lib/scene/CanvasTooltip.svelte'
-import type { Vec3 } from '#lib/math.js'
-import { clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
+import type { Vec3 } from '#lib/math'
+import { clip_bounds } from '#lib/plot/core/decorations/tooltip'
 import { createRawSnippet, flushSync } from 'svelte'
 import { PerspectiveCamera } from 'three/webgpu'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { mount_scene } from './mount'
 
-vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/decorations/tooltip`, async (import_original) => {
   const original = await import_original<{ clip_bounds: typeof clip_bounds }>()
   return { ...original, clip_bounds: vi.fn(original.clip_bounds) }
 })

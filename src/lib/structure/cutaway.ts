@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import type { Intersection, Mesh, Object3D, Raycaster } from 'three/webgpu'
 import { ClippingGroup, Matrix4, Plane, Vector3 } from 'three/webgpu'
 

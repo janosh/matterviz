@@ -1,12 +1,12 @@
 // The vitest environment has no Worker, so these exercise the synchronous SSR fallback path
 // of compute_structure_id_async — including that a thrown error becomes a rejection rather
 // than a synchronous throw, which is the contract every caller's .catch() relies on.
-import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
-import { compute_structure_id_async } from '#lib/structure-id/async-compute.svelte.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id'
+import { compute_structure_id_async } from '#lib/structure-id/async-compute.svelte'
 import {
   structure_from_payload,
   to_structure_id_payload,
-} from '#lib/structure-id/worker-payload.js'
+} from '#lib/structure-id/worker-payload'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_bcc, make_fcc } from './lattices'
 

@@ -1,11 +1,11 @@
 // Stack a film slab on a substrate slab: build both coincidence supercells, strain the film
 // onto the substrate's in-plane lattice and pile the two up along the substrate's normal.
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { assemble_crystal } from '#lib/slab/lattice-basis.js'
-import { MAX_SLAB_SITES } from '#lib/slab/types.js'
-import type { Crystal, Site } from '#lib/structure/index.js'
-import { wrap_frac_coord } from '#lib/structure/pbc.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { assemble_crystal } from '#lib/slab/lattice-basis'
+import { MAX_SLAB_SITES } from '#lib/slab/types'
+import type { Crystal, Site } from '#lib/structure/index'
+import { wrap_frac_coord } from '#lib/structure/pbc'
 import {
   det_2x2,
   match_of_matrices,

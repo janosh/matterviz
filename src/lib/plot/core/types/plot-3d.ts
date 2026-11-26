@@ -2,7 +2,7 @@
 // Imports the 2D core types from the barrel and is re-exported by it; nothing in core depends on
 // these, so that re-export cycle is type-only (erased at build, hence harmless).
 
-import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
+import type { Point3D, Vec2, Vec3 } from '#lib/math'
 import type {
   AxisConfig,
   DataSeries,
@@ -115,7 +115,7 @@ export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
   }
 
 // Camera projection types for 3D
-export type { CameraProjection as CameraProjection3D } from '#lib/settings.js'
+export type { CameraProjection as CameraProjection3D } from '#lib/settings'
 
 // 3D style overrides: the base point size, the one style the scene reads (sphere detail is the
 // component's `sphere_segments` prop)

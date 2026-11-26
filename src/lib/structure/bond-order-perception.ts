@@ -1,7 +1,7 @@
 // Bond-order perception adapted from jensengroup/xyz2mol (MIT,
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
-import { cross_3d, subtract, type Vec2 } from '#lib/math.js'
-import type { BondOrder, BondPair, Site, StructureBond } from '#lib/structure/index.js'
+import { cross_3d, subtract, type Vec2 } from '#lib/math'
+import type { BondOrder, BondPair, Site, StructureBond } from '#lib/structure/index'
 import {
   canonicalize_bond_target,
   get_majority_element,

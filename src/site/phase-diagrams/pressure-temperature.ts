@@ -2,8 +2,8 @@
 // literature-like triple points with made-up standard errors that grow with extrapolation
 // distance, the way propagated free-energy errors do. Not for research use.
 
-import type { Vec2 } from '#lib/math.js'
-import type { PtBoundary, PtPhaseDiagramData } from '#lib/phase-diagram/index.js'
+import type { Vec2 } from '#lib/math'
+import type { PtBoundary, PtPhaseDiagramData } from '#lib/phase-diagram/index'
 
 const linspace = (start: number, stop: number, count: number): number[] =>
   Array.from({ length: count }, (_, idx) => start + ((stop - start) * idx) / (count - 1))

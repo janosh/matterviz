@@ -1,12 +1,12 @@
-import { assert_non_negative } from '#lib/math.js'
+import { assert_non_negative } from '#lib/math'
 import {
   DEFAULT_FONT_SPEC,
   graphemes,
   measure_text_line,
   wrap_text_paragraph,
-} from '#lib/plot/core/text-metrics.js'
-import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
-import type { Sides } from '#lib/plot/core/layout.js'
+} from '#lib/plot/core/text-metrics'
+import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics'
+import type { Sides } from '#lib/plot/core/layout'
 import { html_to_text } from 'svelte-widgets/utils'
 
 type PlotTitleAlign = `start` | `middle` | `end`

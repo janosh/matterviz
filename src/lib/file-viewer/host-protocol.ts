@@ -1,12 +1,12 @@
 // Message shapes exchanged between the webview (main.ts / host-bridge.ts) and whatever
 // host embeds it (the VS Code extension, or a desktop host speaking the same protocol).
-import type { PartialSettings } from '#lib/settings.js'
-import type { ThemeName } from '#lib/theme/index.js'
-import type { Vec3 } from '#lib/math.js'
-import { cart_to_frac_with_fallback } from '#lib/structure/parsers/shared.js'
-import { site_stride, vector_offset } from '#lib/structure/site.js'
-import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
-import type { TrajectoryMetadata, TrajectoryRunSummary } from '#lib/trajectory/index.js'
+import type { PartialSettings } from '#lib/settings'
+import type { ThemeName } from '#lib/theme/index'
+import type { Vec3 } from '#lib/math'
+import { cart_to_frac_with_fallback } from '#lib/structure/parsers/shared'
+import { site_stride, vector_offset } from '#lib/structure/site'
+import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame'
+import type { TrajectoryMetadata, TrajectoryRunSummary } from '#lib/trajectory/index'
 
 export interface FileData {
   filename: string

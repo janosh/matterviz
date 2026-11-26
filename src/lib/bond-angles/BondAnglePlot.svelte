@@ -1,14 +1,14 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import type { BarSites, StructurePlotProps } from '#lib/plot/bar/index.js'
+  import type { BarSites, StructurePlotProps } from '#lib/plot/bar/index'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {
     compute_structure_entries,
     to_structure_entries,
-  } from '#lib/plot/core/structure-input.js'
-  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
-  import type { BarHandlerProps } from '#lib/plot/core/types.js'
-  import { memo_by_identity } from '#lib/utils.js'
+  } from '#lib/plot/core/structure-input'
+  import type { StructureEntry } from '#lib/plot/core/structure-input'
+  import type { BarHandlerProps } from '#lib/plot/core/types'
+  import { memo_by_identity } from '#lib/utils'
   import { to_error, value_key } from 'svelte-widgets/utils'
   import {
     bin_bond_angles,

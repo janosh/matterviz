@@ -1,10 +1,10 @@
-import { parse_linear_gradient } from '#lib/io/export.js'
+import { parse_linear_gradient } from '#lib/io/export'
 import {
   chart_export_filename,
   csv_source,
   export_filename,
   series_to_csv_rows,
-} from '#lib/plot/core/utils/chart-export.js'
+} from '#lib/plot/core/utils/chart-export'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`series_to_csv_rows`, () => {

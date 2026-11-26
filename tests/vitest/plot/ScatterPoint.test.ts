@@ -1,5 +1,5 @@
-import { symbol_map, symbol_names } from '#lib/labels.js'
-import type { PointStyle } from '#lib/plot/core/types.js'
+import { symbol_map, symbol_names } from '#lib/labels'
+import type { PointStyle } from '#lib/plot/core/types'
 import ScatterPoint from '#lib/plot/scatter/ScatterPoint.svelte'
 import { symbol, symbolCircle } from 'd3-shape'
 import { flushSync, mount, tick, type ComponentProps } from 'svelte'

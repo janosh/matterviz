@@ -1,10 +1,10 @@
 <script lang="ts">
   import { browser } from '$app/env'
   import { page } from '$app/state'
-  import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-  import { compute_lattice_params, type Matrix3x3 } from '#lib/math.js'
-  import { Structure, type Pbc } from '#lib/structure/index.js'
-  import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
+  import type { TrajectoryFrame } from '#lib/trajectory/index'
+  import { compute_lattice_params, type Matrix3x3 } from '#lib/math'
+  import { Structure, type Pbc } from '#lib/structure/index'
+  import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index'
   import { type ComponentProps, onMount } from 'svelte'
   import TestSection from '../TestSection.svelte'
 

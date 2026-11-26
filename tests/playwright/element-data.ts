@@ -1,4 +1,4 @@
-import type { ChemicalElement } from '#lib/element/types.js'
+import type { ChemicalElement } from '#lib/element/types'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'

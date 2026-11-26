@@ -1,4 +1,4 @@
-import type { MeasureMode } from '#lib/structure/index.js'
+import type { MeasureMode } from '#lib/structure/index'
 import StructureEditToolbar from '#lib/structure/StructureEditToolbar.svelte'
 import { flushSync } from 'svelte'
 import { expect, test } from 'vite-plus/test'

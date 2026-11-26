@@ -2,13 +2,13 @@
 // #lib/coordination): normalising the three accepted `structures` prop shapes and turning a
 // dropped file into a new entry.
 
-import { deliver_raw_file, open_material } from '#lib/file-viewer/open.js'
-import type { MaterialSource } from '#lib/file-viewer/open.js'
-import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-import type { FileLoadCallback } from '#lib/io/index.js'
-import { parse_warnings_notice } from '#lib/labels.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import { deliver_raw_file, open_material } from '#lib/file-viewer/open'
+import type { MaterialSource } from '#lib/file-viewer/open'
+import { raw_file_drop_zone } from '#lib/io/file-drop'
+import type { FileLoadCallback } from '#lib/io/index'
+import { parse_warnings_notice } from '#lib/labels'
+import type { AnyStructure } from '#lib/structure/index'
+import { materialize_frame_result } from '#lib/trajectory/frame'
 import { to_error } from 'svelte-widgets/utils'
 import type { Attachment } from 'svelte/attachments'
 

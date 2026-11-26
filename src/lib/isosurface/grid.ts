@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 
 export type ScalarGridArray = Float32Array | Float64Array
 export type ScalarGridOrder = `x_fastest` | `z_fastest`

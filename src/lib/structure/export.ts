@@ -1,13 +1,13 @@
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { is_plain_object } from 'svelte-widgets/utils'
-import { display_idx } from '#lib/labels.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import { ase_velocity } from '#lib/trajectory/parse/ase.js'
-import { get_electro_neg_formula } from '#lib/composition/format.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
-import type { SymmetryDataset } from '#lib/symmetry/analyze.js'
+import { display_idx } from '#lib/labels'
+import { element_by_symbol } from '#lib/element/data'
+import { ase_velocity } from '#lib/trajectory/parse/ase'
+import { get_electro_neg_formula } from '#lib/composition/format'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index'
+import type { SymmetryDataset } from '#lib/symmetry/analyze'
 import {
   has_lattice_matrix,
   has_usable_lattice,

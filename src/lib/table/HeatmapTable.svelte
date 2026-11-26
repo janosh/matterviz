@@ -5,27 +5,27 @@
   // shared export pane. Sorting, filters, resizing, pinning, selection and the rest are
   // DataTable's.
   import { format_num } from 'svelte-widgets/format'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import type { D3InterpolateName } from '#lib/colors/index'
+  import type { ShowControlsProp } from '#lib/controls'
   import {
     DEFAULT_CONTROLS_MODE,
     normalize_show_controls,
     track_settings,
-  } from '#lib/controls.js'
+  } from '#lib/controls'
   import {
     contrast_color_memo,
     contrast_text_color,
     resolve_backdrop,
     resolve_css_color,
-  } from '#lib/colors/index.js'
+  } from '#lib/colors/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import type { ExportProps } from '#lib/io/export.js'
-  import { ControlPane } from '#lib/overlays/index.js'
-  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
-  import { type ColorScale, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
-  import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
-  import type { Column, ColumnPrefs } from '#lib/table/index.js'
-  import { make_cell_color_scale } from '#lib/table/index.js'
+  import type { ExportProps } from '#lib/io/export'
+  import { ControlPane } from '#lib/overlays/index'
+  import { scheme_name, with_scheme } from '#lib/plot/core/scales'
+  import { type ColorScale, SCALE_DEFAULTS } from '#lib/plot/core/types'
+  import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize'
+  import type { Column, ColumnPrefs } from '#lib/table/index'
+  import { make_cell_color_scale } from '#lib/table/index'
   import { html_to_text } from 'svelte-widgets/utils'
   import { onMount } from 'svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'

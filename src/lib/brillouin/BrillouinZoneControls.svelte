@@ -3,11 +3,11 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
-  import { css_color_to_hex } from '#lib/colors/index.js'
-  import { track_settings } from '#lib/controls.js'
-  import { ControlPane } from '#lib/overlays/index.js'
+  import { css_color_to_hex } from '#lib/colors/index'
+  import { track_settings } from '#lib/controls'
+  import { ControlPane } from '#lib/overlays/index'
   import CameraSection from '#lib/scene/CameraSection.svelte'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { DEFAULTS } from '#lib/settings'
   import type { BrillouinZoneSettings } from './types'
 
   const defaults = DEFAULTS.brillouin

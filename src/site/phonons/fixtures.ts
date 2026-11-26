@@ -2,10 +2,10 @@
 // per-file loaders, plus the normalization index.ts applies to its eager maps. A demo that shows
 // one material at a time loads only that material's files instead of all of them.
 
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
-import { normalize_band_structure, normalize_dos } from '#lib/spectral/index.js'
-import type { Crystal } from '#lib/structure/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { PhononBandStructure, PhononDos } from '#lib/spectral/index'
+import { normalize_band_structure, normalize_dos } from '#lib/spectral/index'
+import type { Crystal } from '#lib/structure/index'
 
 // pymatgen `PhononBandStructureSymmLine.as_dict()` as dumped by the fixture workflow (the
 // reciprocal lattice is spelled `recip_lattice`); `normalize_band_structure` does the conversion

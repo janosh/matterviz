@@ -1,10 +1,11 @@
-import type { FileLoadCallback } from '#lib/io/index.js'
+import type { FileLoadCallback } from '#lib/io/index'
 import {
   basename_from_url,
   dropped_file_url,
   load_from_url,
   load_trajectory_from_url,
-} from '#lib/io/index.js'
+} from '#lib/io/index'
+import { fetch_payload } from '#lib/io/url-drop'
 import { gzipSync, zipSync, zlibSync } from 'fflate'
 import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -124,6 +125,33 @@ test.each([
   ],
 ])(`dropped_file_url: %s → %s`, (_, data, expected) => {
   expect(dropped_file_url(drag_event(data))).toBe(expected)
+})
+
+// Download percents come from Content-Length: whole numbers, each once, clamped where the
+// body outgrows the header, none without a length or for a content-encoded body
+test.each([
+  [{ 'content-length': `100` }, [25, 50, 75, 100]],
+  [{ 'content-length': `50` }, [50, 100]],
+  [{ 'content-length': `50`, 'content-encoding': `gzip` }, []],
+  [{}, []],
+])(`fetch_payload with headers %j reports download percents %j`, async (headers, expected) => {
+  const chunks = Array.from({ length: 4 }, () => new TextEncoder().encode(`x`.repeat(25)))
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk)
+      controller.close()
+    },
+  })
+  globalThis.fetch = vi.fn().mockResolvedValue(new Response(body, { headers }))
+  const percents: number[] = []
+  const { content } = await fetch_payload(
+    `https://example.com/run.xyz`,
+    false,
+    undefined,
+    (pct) => percents.push(pct),
+  )
+  expect(percents).toEqual(expected)
+  expect(content).toBe(`x`.repeat(100)) // the counter passes every byte through unchanged
 })
 
 describe(`load_from_url`, () => {

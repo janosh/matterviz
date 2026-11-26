@@ -1,10 +1,10 @@
 import XrdPlot from '#lib/xrd/XrdPlot.svelte'
 // static so loading the demo page (and the structures it ships) is not billed to the test timeout
 import Page from '#root/src/routes/(demos)/structure/xrd/+page.svelte'
-import { PLOT_COLORS } from '#lib/colors/index.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import type { Hkl, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
-import * as xrd from '#lib/xrd/index.js'
+import { PLOT_COLORS } from '#lib/colors/index'
+import type { Matrix3x3 } from '#lib/math'
+import type { Hkl, XrdPattern, XrdPeak } from '#lib/xrd/index'
+import * as xrd from '#lib/xrd/index'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {

@@ -6,7 +6,7 @@ import {
 } from '#root/src/scripts/prop-docs.ts'
 import type { ComponentDoc, PropDoc } from '#root/src/scripts/prop-docs.ts'
 import PropsTable from '#site/PropsTable.svelte'
-import { PAGE_COMPONENTS, page_components } from '#site/state.svelte.js'
+import { PAGE_COMPONENTS, page_components } from '#site/state.svelte'
 import prop_docs from 'virtual:prop-docs'
 import { flushSync, mount } from 'svelte'
 import { globSync } from 'node:fs'

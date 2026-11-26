@@ -1,12 +1,12 @@
 <script lang="ts">
   import { pick_contrast_color } from 'svelte-widgets/attachments'
   import { format_num } from 'svelte-widgets/format'
-  import { resolve_backdrop } from '#lib/colors/index.js'
+  import { resolve_backdrop } from '#lib/colors/index'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import { format_tick_values } from '#lib/labels.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { format_tick_values } from '#lib/labels'
+  import type { Vec2 } from '#lib/math'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
-  import { validate_log_range } from '#lib/plot/core/interactions.js'
+  import { validate_log_range } from '#lib/plot/core/interactions'
   import {
     color_ramp_scale,
     generate_arcsinh_ticks,
@@ -15,26 +15,26 @@
     is_integer_format,
     resolve_color_scale,
     tick_label_format,
-  } from '#lib/plot/core/scales.js'
-  import { observe_size } from '#lib/plot/core/utils.js'
+  } from '#lib/plot/core/scales'
+  import { observe_size } from '#lib/plot/core/utils'
   import {
     DEFAULT_FONT_SPEC,
     font_spec_to_css,
     measure_text_line,
     resolve_font_spec,
-  } from '#lib/plot/core/text-metrics.js'
+  } from '#lib/plot/core/text-metrics'
   import type {
     AxisOption,
     ColorScale,
     ColorScaleOption,
     Orientation,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
   import {
     get_arcsinh_threshold,
     get_scale_type_name,
     SCALE_DEFAULTS,
-  } from '#lib/plot/core/types.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  } from '#lib/plot/core/types'
+  import { sanitize_html } from '#lib/sanitize'
   import { range as d3_range } from 'd3-array'
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'

@@ -1,17 +1,17 @@
 // ElectronicStructure: one viewer fusing a crystal, its Fermi surface, bands and DOS, linked
-import type * as backdrop from '#lib/colors/backdrop.svelte.js'
-import { sheet_color } from '#lib/fermi-surface/constants.js'
+import type * as backdrop from '#lib/colors/backdrop.svelte'
+import { sheet_color } from '#lib/fermi-surface/constants'
 import type FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-import type { BandGridData } from '#lib/fermi-surface/types.js'
+import type { BandGridData } from '#lib/fermi-surface/types'
 import type Bands from '#lib/spectral/Bands.svelte'
 import type BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type Dos from '#lib/spectral/Dos.svelte'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
 import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
-import type { Sweep, SweepFrame, SweepFrameLoader } from '#lib/spectral/sweep.js'
+import type { Sweep, SweepFrame, SweepFrameLoader } from '#lib/spectral/sweep'
 import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
-import { BANDS_CSS_COLORS, compute_frequency_range } from '#lib/spectral/helpers.js'
+import { BANDS_CSS_COLORS, compute_frequency_range } from '#lib/spectral/helpers'
 import type {
   BaseBandStructure,
   ElectronicDos,
@@ -19,8 +19,8 @@ import type {
   PhononDos,
   PhononSpectra,
   SpectraRecords,
-} from '#lib/spectral/types.js'
-import type { Site } from '#lib/structure/index.js'
+} from '#lib/spectral/types'
+import type { Site } from '#lib/structure/index'
 import { types } from 'node:util'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -54,7 +54,7 @@ const scenes = vi.hoisted(() => ({
 }))
 const scene_stub = vi.hoisted(
   () => async (name: SceneName, position: [number, number, number]) => {
-    const { join_orbit_link } = await import(`#lib/scene/orbit-link.svelte.js`)
+    const { join_orbit_link } = await import(`#lib/scene/orbit-link.svelte`)
     const { OrbitControls } = await import(`three/examples/jsm/controls/OrbitControls.js`)
     const { OrthographicCamera, PerspectiveCamera } = await import(`three/webgpu`)
     return {
@@ -139,7 +139,7 @@ vi.mock(`#lib/spectral/Dos.svelte`, (original) =>
 )
 // the nodes CSS colour tokens are resolved on, for three.js (which parses no var())
 const resolved = vi.hoisted(() => [] as { node: Element; value: string }[])
-vi.mock(`#lib/colors/backdrop.svelte.js`, async (original) => {
+vi.mock(`#lib/colors/backdrop.svelte`, async (original) => {
   const actual = await original<typeof backdrop>()
   return {
     ...actual,

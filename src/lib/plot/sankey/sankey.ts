@@ -9,12 +9,12 @@ import {
   sankeyRight,
 } from 'd3-sankey'
 import type { SankeyLink as D3Link, SankeyNode as D3Node } from 'd3-sankey'
-import type { Vec2 } from '#lib/math.js'
-import { is_valid_index } from '#lib/math.js'
-import type { Orientation } from '#lib/plot/core/types.js'
-import { find_cycle } from '#lib/plot/core/utils/hierarchy-layout.js'
+import type { Vec2 } from '#lib/math'
+import { is_valid_index } from '#lib/math'
+import type { Orientation } from '#lib/plot/core/types'
+import { find_cycle } from '#lib/plot/core/utils/hierarchy-layout'
 import type { SankeyData, SankeyLink, SankeyNode, SankeyNodeAlign } from './sankey-types'
-import { DEFAULTS } from '#lib/settings.js'
+import { DEFAULTS } from '#lib/settings'
 
 // User-carried node props that survive the d3-sankey layout pass
 interface NodeExtra {

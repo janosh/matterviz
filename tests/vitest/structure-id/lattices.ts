@@ -1,11 +1,11 @@
 // Programmatic crystal fixtures for the structure-identification tests. Built from lattice
 // vectors + a fractional basis rather than parsed from files, so the ideal geometry (and hence
 // the expected CNA type and CSP = 0) is exact rather than whatever a CIF rounded to.
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { compute_lattice_params, create_cart_to_frac, create_frac_to_cart } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { make_site } from '#lib/structure/site.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { compute_lattice_params, create_cart_to_frac, create_frac_to_cart } from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
+import { make_site } from '#lib/structure/site'
 import { make_rng } from '../numeric-helpers'
 import { cubic_matrix } from '../test-fixtures'
 

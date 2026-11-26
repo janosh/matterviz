@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
 // Everything is imported through the module barrel, exactly as the demo route does, so a
 // missing or name-clashing export fails these tests rather than the site build.
 import {
@@ -12,17 +12,17 @@ import {
   spectrum_from_phonon_data,
   spectrum_sticks,
   to_transmittance,
-} from '#lib/spectral/ir-raman.js'
+} from '#lib/spectral/ir-raman'
 import {
   apply_born_sum_rule,
   born_charge_sum,
   eigenvector_norm_sq,
   parse_born,
   parse_phonon_modes,
-} from '#lib/spectral/parse-phonon-modes.js'
-import { convert_frequencies, parse_frequency_unit } from '#lib/spectral/frequency-units.js'
+} from '#lib/spectral/parse-phonon-modes'
+import { convert_frequencies, parse_frequency_unit } from '#lib/spectral/frequency-units'
 import IrRamanSpectrum from '#lib/spectral/IrRamanSpectrum.svelte'
-import { is_gamma_point } from '#lib/spectral/helpers.js'
+import { is_gamma_point } from '#lib/spectral/helpers'
 import type {
   BroadenOptions,
   Complex,
@@ -30,9 +30,9 @@ import type {
   PhononModeData,
   SpectrumCurve,
   VibrationalMode,
-} from '#lib/spectral/index.js'
+} from '#lib/spectral/index'
 // broaden_spectrum delegates to it, and that delegation is under test
-import { broaden_peaks } from '#lib/lineshape.js'
+import { broaden_peaks } from '#lib/lineshape'
 import co2_born from '#site/phonons/ir-raman/CO2.BORN?raw'
 import co2_yaml from '#site/phonons/ir-raman/CO2-gamma.yaml.gz?raw'
 import co2_raman_json from '#site/phonons/ir-raman/CO2-raman-tensors.json.gz'

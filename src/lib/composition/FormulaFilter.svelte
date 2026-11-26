@@ -3,7 +3,7 @@
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { make_change_detector } from 'svelte-widgets/utils'
   import { Circle, Close, InformationOutline, Lock, Star, Unlock } from 'svelte-widgets/icons'
-  import { is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
+  import { is_elem_symbol, type ElementSymbol } from '#lib/element/index'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
     create_recent_list,

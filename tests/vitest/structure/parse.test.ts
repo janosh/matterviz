@@ -1,10 +1,10 @@
-import type { OptimadeStructure } from '#lib/api/optimade.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { mul_3x3_vec3, transpose_3x3 } from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { explicit_only } from '#lib/structure/bonding.js'
-import { structure_to_cif_str } from '#lib/structure/export.js'
+import type { OptimadeStructure } from '#lib/api/optimade'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { mul_3x3_vec3, transpose_3x3 } from '#lib/math'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import { explicit_only } from '#lib/structure/bonding'
+import { structure_to_cif_str } from '#lib/structure/export'
 import {
   detect_structure_type,
   normalize_fractional_coords,
@@ -15,8 +15,8 @@ import {
   parse_poscar,
   parse_structure_file,
   parse_xyz,
-} from '#lib/structure/parse.js'
-import { is_structure_file } from '#lib/structure/format-detect.js'
+} from '#lib/structure/parse'
+import { is_structure_file } from '#lib/structure/format-detect'
 import {
   complete_lattice_matrix,
   count_elements,
@@ -25,7 +25,7 @@ import {
   parse_coordinate,
   parse_float_token,
   split_cif_tokens,
-} from '#lib/structure/parsers/shared.js'
+} from '#lib/structure/parsers/shared'
 import benzene_mol2 from '#site/molecules/benzene.mol2?raw'
 import benzene_sdf from '#site/molecules/benzene.sdf?raw'
 import c2ho_scientific_notation_xyz from '#site/molecules/C2HO-scientific-notation.xyz?raw'

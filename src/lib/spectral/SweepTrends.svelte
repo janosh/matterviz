@@ -7,11 +7,11 @@
   // outside its range, or not finite, throws. With load_state_of, points still loading are
   // hollow and failed ones red-edged crosses, a failed frame without a value a faint red
   // vertical line at its axis value.
-  import { plot_color } from '#lib/colors/index.js'
-  import { chain_callbacks } from '#lib/plot/core/interactions.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
+  import { plot_color } from '#lib/colors/index'
+  import { chain_callbacks } from '#lib/plot/core/interactions'
+  import { ScatterPlot } from '#lib/plot/index'
   import { html_to_text } from 'svelte-widgets/utils'
-  import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
+  import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index'
   import type { ComponentProps } from 'svelte'
   import { descriptor_lines, descriptor_point } from './sweep'
   import type { Sweep, SweepFrame, SweepSeries } from './sweep'

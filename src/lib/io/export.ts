@@ -1,15 +1,15 @@
-import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants.js'
+import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants'
 import { blob_to_data_url, download, type DownloadData } from 'svelte-widgets/browser'
 import type { FileSaver } from './file-export.svelte'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
-import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
-import { abortable, hash_string } from '#lib/utils.js'
+import { canvas_painters, unique_id } from '#lib/plot/core/utils'
+import { abortable, hash_string } from '#lib/utils'
 import { clamp, to_error } from 'svelte-widgets/utils'
 // three.js and the scene camera helpers are imported dynamically where GPU canvases need
 // them: every 2D plot imports this module for SVG/PNG export, and static imports put
 // three.js in each plot page's initial bundle
 import type { Camera, Scene, Vector2, WebGPURenderer } from 'three/webgpu'
-import type { CameraFlight } from '#lib/scene/camera-flight.js'
+import type { CameraFlight } from '#lib/scene/camera-flight'
 
 // Maps a Threlte canvas to its renderer so PNG export can look up the renderer for a
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
@@ -1167,8 +1167,8 @@ export async function render_video_frames(
     { render_scene },
   ] = await Promise.all([
     import('three/webgpu'),
-    import('#lib/scene/camera-flight.js'),
-    import('#lib/scene/pan.js'),
+    import('#lib/scene/camera-flight'),
+    import('#lib/scene/pan'),
     import('#lib/scene/lighting'),
   ])
   const sample = camera_flight && create_camera_flight_sampler(camera_flight)

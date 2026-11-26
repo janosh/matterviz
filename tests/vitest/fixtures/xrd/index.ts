@@ -1,4 +1,4 @@
-import type { XrdPattern } from '#lib/xrd/index.js'
+import type { XrdPattern } from '#lib/xrd/index'
 
 // Fixture id = base name without .json/.json.gz. Shared so lookups (e.g. pairing with
 // structure files) derive the same key this index uses.

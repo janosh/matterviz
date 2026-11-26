@@ -10,8 +10,8 @@ import {
   VASP_TRAJECTORY_REGEX,
   VASPRUN_REGEX,
   XYZ_EXTXYZ_REGEX,
-} from '#lib/constants.js'
-import { strip_compression_extensions } from '#lib/io/decompress.js'
+} from '#lib/constants'
+import { strip_compression_extensions } from '#lib/io/decompress'
 
 // A LAMMPS data file always declares its atom count in the header and holds an `Atoms`
 // section; used to tell a real .data file from the many other things called `*.data`

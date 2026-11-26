@@ -1,27 +1,27 @@
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import {
   coerce_elem_symbol,
   element_from_atomic_number,
   is_elem_symbol,
-} from '#lib/element/helpers.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import type { Vec3 } from '#lib/math.js'
-import type * as math from '#lib/math.js'
-import { is_finite_vec3_like } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
+} from '#lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/types'
+import type { Vec3 } from '#lib/math'
+import type * as math from '#lib/math'
+import { is_finite_vec3_like } from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
   LineScanner,
   make_lattice,
-} from '#lib/structure/parsers/shared.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+} from '#lib/structure/parsers/shared'
+import type { Pbc } from '#lib/structure/pbc'
 import {
   make_site,
   numeric_sites,
   NumericSites,
   snapshot_topologies,
-} from '#lib/structure/site.js'
+} from '#lib/structure/site'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
 

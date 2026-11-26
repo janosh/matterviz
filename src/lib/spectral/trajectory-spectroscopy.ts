@@ -1,19 +1,19 @@
-import { display_idx } from '#lib/labels.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import type { WindowType } from '#lib/fft.js'
+import { display_idx } from '#lib/labels'
+import { element_by_symbol } from '#lib/element/data'
+import { is_elem_symbol } from '#lib/element/helpers'
+import type { WindowType } from '#lib/fft'
 import {
   fft_in_place,
   next_power_of_two,
   one_sided_periodogram,
   time_series_window,
   WINDOW_TYPES,
-} from '#lib/fft.js'
-import type { MdFrequencyUnit } from '#lib/spectral/frequency-units.js'
-import { md_frequency_factor, MD_FREQUENCY_UNITS } from '#lib/spectral/frequency-units.js'
-import type { Complex } from '#lib/spectral/types.js'
-import type { Pbc } from '#lib/structure/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+} from '#lib/fft'
+import type { MdFrequencyUnit } from '#lib/spectral/frequency-units'
+import { md_frequency_factor, MD_FREQUENCY_UNITS } from '#lib/spectral/frequency-units'
+import type { Complex } from '#lib/spectral/types'
+import type { Pbc } from '#lib/structure/index'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import {
   cross_3d,
   dot,
@@ -26,14 +26,14 @@ import {
   partition_point,
   same_values,
   transpose_3x3,
-} from '#lib/math.js'
-import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
+} from '#lib/math'
+import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index'
 import {
   unwrap_flat_positions,
   validate_position_stream_layout,
-} from '#lib/trajectory/positions.js'
-import type { VelocitySource } from '#lib/vacf/index.js'
-import { central_difference_velocities } from '#lib/vacf/compute-vacf.js'
+} from '#lib/trajectory/positions'
+import type { VelocitySource } from '#lib/vacf/index'
+import { central_difference_velocities } from '#lib/vacf/compute-vacf'
 
 // `1/step`: cycles per MD step, the honest axis without a recorded timestep (unlike the
 // VACF's `1/frame`, which counts collected frames)

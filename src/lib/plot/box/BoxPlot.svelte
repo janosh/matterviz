@@ -2,12 +2,12 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import { html_to_text } from 'svelte-widgets/utils'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
-  import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { csv_source } from '#lib/plot/core/utils/chart-export'
+  import { parse_axis_label, format_value_or_num } from '#lib/labels'
+  import { array_max, type Point2D, type Vec2 } from '#lib/math'
   import type {
     AxisConfig,
     BandwidthOption,
@@ -21,11 +21,11 @@
     ViolinKind,
     ViolinSide,
     WhiskerMode,
-  } from '#lib/plot/index.js'
-  import { BoxPlotControls } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
+  import { BoxPlotControls } from '#lib/plot/index'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
-  import type { Rect } from '#lib/plot/core/layout.js'
+  import type { Rect } from '#lib/plot/core/layout'
   import {
     CANVAS_MARKER_THRESHOLD,
     canvas_safe_color,
@@ -33,40 +33,40 @@
     create_marker_canvas,
     type MarkerStyle,
     push_marker,
-  } from '#lib/plot/core/canvas-markers.svelte.js'
+  } from '#lib/plot/core/canvas-markers.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
-  import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
-  import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index'
+  import { plot_color, resolve_computed_color } from '#lib/colors/index'
+  import { resolve_color_token } from '#lib/colors/backdrop.svelte'
+  import { build_legend_items } from '#lib/plot/core/data-transform'
   import {
     box_point_offsets,
     compute_box_whiskers,
     summarize_box_samples,
-  } from '#lib/plot/box/box-plot.js'
-  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde.js'
+  } from '#lib/plot/box/box-plot'
+  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde'
   import {
     create_cartesian_frame,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
-  import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout.js'
-  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
+  } from '#lib/plot/core/utils/series-visibility'
+  import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout'
+  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils'
   import {
     axis_transform,
     is_activation_key,
     overlaps_rect,
     type PixelRect,
     pointer_pos,
-  } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  } from '#lib/plot/core/interactions'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
@@ -74,17 +74,17 @@
     edge_range_padding,
     empty_extent,
     nice_range_from_extent,
-  } from '#lib/plot/core/scales.js'
-  import { get_scale_type_name } from '#lib/plot/core/types.js'
-  import { create_category_display } from '#lib/plot/core/display.svelte.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/core/scales'
+  import { get_scale_type_name } from '#lib/plot/core/types'
+  import { create_category_display } from '#lib/plot/core/display.svelte'
+  import { DEFAULTS } from '#lib/settings'
   import type { Snippet } from 'svelte'
-  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { violin_path } from '#lib/plot/core/svg.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
+  import { violin_path } from '#lib/plot/core/svg'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
+  import { unique_id } from '#lib/plot/core/utils'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
 
   // Box style props

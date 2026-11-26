@@ -1,4 +1,4 @@
-import type { ChemicalElement, ElementCategory } from '#lib/element/types.js'
+import type { ChemicalElement, ElementCategory } from '#lib/element/types'
 import {
   DEFAULT_CATEGORY_COLORS,
   default_element_colors,

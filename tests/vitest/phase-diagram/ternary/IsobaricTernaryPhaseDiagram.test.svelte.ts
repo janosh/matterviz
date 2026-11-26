@@ -1,25 +1,26 @@
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { Vec2 } from '#lib/math.js'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { Vec2 } from '#lib/math'
 import type {
   SectionHover,
   TernaryDisplay,
   TernaryPhaseDiagram,
   TernaryPhaseHover,
-} from '#lib/phase-diagram/index.js'
+} from '#lib/phase-diagram/index'
 import {
   compute_section,
   compute_ternary_phase_diagram,
   decompose_composition,
   prepare_diagram,
-} from '#lib/phase-diagram/ternary/compute.js'
+} from '#lib/phase-diagram/ternary/compute'
 import IsobaricTernaryPhaseDiagram from '#lib/phase-diagram/ternary/IsobaricTernaryPhaseDiagram.svelte'
+import { Pause, Play } from 'svelte-widgets/icons'
 import PhaseEventList from '#lib/phase-diagram/ternary/PhaseEventList.svelte'
 import PhaseStabilityMap from '#lib/phase-diagram/ternary/PhaseStabilityMap.svelte'
-import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
+import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types'
 import TernaryPhaseDiagramControls from '#lib/phase-diagram/ternary/TernaryPhaseDiagramControls.svelte'
-import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
+import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte'
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
-import { shortcuts_for } from '#lib/shortcuts.js'
+import { shortcuts_for } from '#lib/shortcuts'
 import { type Component, createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
@@ -155,10 +156,15 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(state.temperature).toBe(1488) // 1% of the 1200 K span
     press(`ArrowLeft`, true)
     expect(state.temperature).toBeCloseTo(1299, 0) // just below the 1300 K transition
+    // label and SVG icon (not a text glyph) flip together
+    const play_state = () => [
+      doc_query(`.play-btn`).getAttribute(`aria-label`),
+      doc_query(`.play-btn svg path`).getAttribute(`d`),
+    ]
     press(` `)
-    expect(doc_query(`.play-btn`).getAttribute(`aria-label`)).toBe(`Pause heating`)
+    expect(play_state()).toEqual([`Pause heating`, Pause.d])
     press(` `)
-    expect(doc_query(`.play-btn`).getAttribute(`aria-label`)).toBe(`Play heating ramp`)
+    expect(play_state()).toEqual([`Play heating ramp`, Play.d])
     // Space on a focused button is left to the button (synthetic keys never trigger native
     // activation, so the observable is an unprevented event), not taken by the heating ramp
     const prism_btn = doc_query<HTMLButtonElement>(`.view-toggle button:last-child`)

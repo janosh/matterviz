@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
-  import type { Column } from '#lib/table/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index'
+  import type { Column } from '#lib/table/index'
+  import { sanitize_html } from '#lib/sanitize'
   import { ColumnPicker } from 'svelte-widgets/table'
   import TestSection from '../TestSection.svelte'
   import TestStatus from '../TestStatus.svelte'

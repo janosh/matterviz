@@ -10,9 +10,9 @@
 // λ_qν ∝ α²(ω_qν)/ω_qν, averaging to λ. A second series puts the same volumes at a stiffer
 // equation of state's pressures (B₀ = 180 GPa), so at one pressure it shows a less compressed
 // cell. Illustrative only: no frame is the result of a calculation at its pressure.
-import { eos_pressure } from '#lib/eos/fit.js'
-import { band_grid_dos } from '#lib/fermi-surface/dos.js'
-import type { BandGridData } from '#lib/fermi-surface/types.js'
+import { eos_pressure } from '#lib/eos/fit'
+import { band_grid_dos } from '#lib/fermi-surface/dos'
+import type { BandGridData } from '#lib/fermi-surface/types'
 import {
   create_cart_to_frac,
   create_frac_to_cart,
@@ -21,18 +21,18 @@ import {
   reciprocal_lattice,
   scale,
   subtract,
-} from '#lib/math.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { trapezoid_weights } from '#lib/spectral/helpers.js'
+} from '#lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { trapezoid_weights } from '#lib/spectral/helpers'
 import type {
   BaseBandStructure,
   ModeValues,
   PhononDos,
   PhononSpectra,
-} from '#lib/spectral/types.js'
-import type { DescriptorSpec, Sweep, SweepFrameLoader } from '#lib/spectral/sweep.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { make_lattice } from '#lib/structure/parsers/shared.js'
+} from '#lib/spectral/types'
+import type { DescriptorSpec, Sweep, SweepFrameLoader } from '#lib/spectral/sweep'
+import type { Crystal } from '#lib/structure/index'
+import { make_lattice } from '#lib/structure/parsers/shared'
 
 // the sweep's series: one equation of state each (its B₀ in GPa) over the same volumes
 const CU_SERIES = [

@@ -1,7 +1,7 @@
 // Sweep structure identification (CNA + CSP) across sampled frames of a trajectory run.
-import { display_idx } from '#lib/labels.js'
-import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
-import { sweep_frames } from '#lib/trajectory/analysis.js'
+import { display_idx } from '#lib/labels'
+import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index'
+import { sweep_frames } from '#lib/trajectory/analysis'
 import { compute_structure_id_async } from './async-compute.svelte'
 import type { StructureIdOptions, StructureIdResult } from './compute-structure-id'
 

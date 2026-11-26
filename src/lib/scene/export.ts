@@ -1,11 +1,11 @@
 // Three.js scene → STL / OBJ+MTL / GLB download, shared by the 3D viewers. The exporters are
 // lazy-imported so viewers that never export don't ship them.
-import { AtomInstances } from '#lib/structure/atom-instances.js'
-import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
-import { BondMesh } from '#lib/structure/bond-mesh.js'
+import { AtomInstances } from '#lib/structure/atom-instances'
+import { ArrowMesh } from '#lib/structure/arrow-mesh'
+import { BondMesh } from '#lib/structure/bond-mesh'
 import { download } from 'svelte-widgets/browser'
-import type { FileSaver } from '#lib/io/file-export.svelte.js'
-import { clamp01 } from '#lib/utils.js'
+import type { FileSaver } from '#lib/io/file-export.svelte'
+import { clamp01 } from '#lib/utils'
 import { to_error } from 'svelte-widgets/utils'
 import type { InstancedMesh, Material, Object3D } from 'three/webgpu'
 import {

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { LegendItem } from '#lib/plot/index.js'
-  import { PlotLegend } from '#lib/plot/index.js'
+  import type { LegendItem } from '#lib/plot/index'
+  import { PlotLegend } from '#lib/plot/index'
   import TestSection from '../TestSection.svelte'
 
   let series_data: LegendItem[] = $state([

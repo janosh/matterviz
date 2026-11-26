@@ -2,22 +2,16 @@
   import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
   import type { Crystal } from '#lib'
-  import type { FileInfo } from '#lib/io/index.js'
+  import type { FileInfo } from '#lib/io/index'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import { plot_color, PLOT_COLORS } from '#lib/colors/index.js'
-  import { file_type_paint } from '#lib/io/index.js'
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import type { LatticePlane } from '#lib/structure/index.js'
-  import { Structure } from '#lib/structure/index.js'
-  import { memo_by_identity } from '#lib/utils.js'
-  import type {
-    RadiationKey,
-    SaedSpot,
-    XrdOptions,
-    XrdPattern,
-    XrdPeak,
-  } from '#lib/xrd/index.js'
+  import { plot_color, PLOT_COLORS } from '#lib/colors/index'
+  import { file_type_paint } from '#lib/io/index'
+  import type { Matrix3x3, Vec3 } from '#lib/math'
+  import type { LatticePlane } from '#lib/structure/index'
+  import { Structure } from '#lib/structure/index'
+  import { memo_by_identity } from '#lib/utils'
+  import type { RadiationKey, SaedSpot, XrdOptions, XrdPattern, XrdPeak } from '#lib/xrd/index'
   import {
     compute_saed_pattern_async,
     compute_xrd_pattern_async,
@@ -28,11 +22,11 @@
     SaedPattern,
     xrd_symmetry_rotations,
     XrdPlot,
-  } from '#lib/xrd/index.js'
+  } from '#lib/xrd/index'
   import { SvelteMap } from 'svelte/reactivity'
-  import { structure_map, structures } from '#site/structures.js'
+  import { structure_map, structures } from '#site/structures'
   import { to_error } from 'svelte-widgets/utils'
-  import { fixture_ext, site_file_info } from '#site/imports.js'
+  import { fixture_ext, site_file_info } from '#site/imports'
   import StructurePicker, { formula_for } from '../../StructurePicker.svelte'
   import StructureTiles from '../../StructureTiles.svelte'
 
@@ -44,9 +38,9 @@
 
   // Extension -> how FilePicker groups, labels and tints that format; one table so category
   // and swatch color cannot drift apart. Unlisted extensions fall back to plain ASCII.
-  type XrdFormat = { category: string; icon: string; color: string }
-  const ascii = { category: `Powder XRD`, icon: `📊` }
-  const gsas = { category: `GSAS/Rietveld`, icon: `🔬`, color: `rgba(255, 215, 0, 0.8)` }
+  type XrdFormat = { category: string; color: string }
+  const ascii = { category: `Powder XRD` }
+  const gsas = { category: `GSAS/Rietveld`, color: `rgba(255, 215, 0, 0.8)` }
   const xrd_formats: Record<string, XrdFormat> = {
     xy: { ...ascii, color: `rgba(50, 205, 50, 0.8)` },
     xye: { ...ascii, color: `rgba(34, 139, 34, 0.8)` }, // darker green: XY with errors
@@ -58,11 +52,11 @@
     gsa: gsas,
     gda: gsas,
     fxye: gsas,
-    xrdml: { category: `PANalytical`, icon: `🇳🇱`, color: `rgba(70, 130, 180, 0.8)` },
-    brml: { category: `Bruker HRXRD`, icon: `🔬`, color: `rgba(255, 140, 0, 0.8)` },
-    raw: { category: `Bruker Binary`, icon: `📦`, color: `rgba(255, 99, 71, 0.8)` },
-    ras: { category: `Rigaku`, icon: `🇯🇵`, color: `rgba(138, 43, 226, 0.8)` },
-    uxd: { category: `Siemens`, icon: `🇩🇪`, color: `rgba(220, 20, 60, 0.8)` },
+    xrdml: { category: `PANalytical`, color: `rgba(70, 130, 180, 0.8)` },
+    brml: { category: `Bruker HRXRD`, color: `rgba(255, 140, 0, 0.8)` },
+    raw: { category: `Bruker Binary`, color: `rgba(255, 99, 71, 0.8)` },
+    ras: { category: `Rigaku`, color: `rgba(138, 43, 226, 0.8)` },
+    uxd: { category: `Siemens`, color: `rgba(220, 20, 60, 0.8)` },
   }
   const xrd_file_paints = Object.fromEntries(
     Object.entries(xrd_formats).map(([ext, { color }]) => [ext, file_type_paint(color)]),
@@ -71,8 +65,8 @@
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map((path) => {
     const ext = fixture_ext(path)
-    const { category, icon } = xrd_formats[ext] ?? ascii
-    return site_file_info(path, { type: ext, category, category_icon: icon })
+    const { category } = xrd_formats[ext] ?? ascii
+    return site_file_info(path, { type: ext, category })
   })
 
   // Point-group rotations group each peak's hkls into symmetry-equivalent families: analyzed

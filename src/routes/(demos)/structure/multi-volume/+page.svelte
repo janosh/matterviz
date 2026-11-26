@@ -2,23 +2,23 @@
   import { format_num } from 'svelte-widgets/format'
   import { browser } from '$app/env'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
-  import { open_material } from '#lib/file-viewer/open.js'
-  import { apply_structure_material } from '#lib/structure/material.js'
+  import { open_material } from '#lib/file-viewer/open'
+  import { apply_structure_material } from '#lib/structure/material'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { auto_color_config } from '#lib/isosurface/coloring.js'
+  import { auto_color_config } from '#lib/isosurface/coloring'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
     VolumetricData,
     VolumetricFileData,
-  } from '#lib/isosurface/types.js'
+  } from '#lib/isosurface/types'
   import {
     DEFAULT_ISOSURFACE_SETTINGS,
     format_data_value,
     label_file_volumes,
-  } from '#lib/isosurface/types.js'
-  import { volumetric_files } from '#site/isosurfaces.js'
-  import { latest_load, replace_url, url_param } from '#site/state.svelte.js'
+  } from '#lib/isosurface/types'
+  import { volumetric_files } from '#site/isosurfaces'
+  import { latest_load, replace_url, url_param } from '#site/state.svelte'
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
   import { untrack } from 'svelte'

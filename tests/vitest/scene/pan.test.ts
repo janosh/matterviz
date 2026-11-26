@@ -1,11 +1,11 @@
-import type { PanControls } from '#lib/scene/pan.js'
+import type { PanControls } from '#lib/scene/pan'
 import {
   attach_pan_gesture,
   clear_pan_offset,
   read_pan_offset,
   restore_camera_view,
   set_pan_offset,
-} from '#lib/scene/pan.js'
+} from '#lib/scene/pan'
 import { Camera, MOUSE, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 

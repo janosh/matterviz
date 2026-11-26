@@ -3,8 +3,8 @@
   import DraggablePane from 'svelte-widgets/DraggablePane.svelte'
   import type { IconData } from 'svelte-widgets/icons'
   import ShortcutsList from 'svelte-widgets/ShortcutsList.svelte'
-  import { host } from '#lib/host.js'
-  import { shortcut_entries, type ShortcutScope } from '#lib/shortcuts.js'
+  import { host } from '#lib/host'
+  import { shortcut_entries, type ShortcutScope } from '#lib/shortcuts'
 
   let {
     open = $bindable(false),

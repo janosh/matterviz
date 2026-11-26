@@ -11,13 +11,13 @@ import {
   parse_doscar,
   parse_icohplist,
   parse_lobster_files,
-} from '#lib/spectral/lobster.js'
-import { add, create_frac_to_cart, type Vec3 } from '#lib/math.js'
-import type { AnyStructure, BondPair } from '#lib/structure/index.js'
-import { parse_poscar } from '#lib/structure/parse.js'
-import { get_pbc_image_sites } from '#lib/structure/pbc.js'
-import { get_site } from '#lib/structure/site.js'
-import { lobster_samples } from '#site/electronic/lobster/index.js'
+} from '#lib/spectral/lobster'
+import { add, create_frac_to_cart, type Vec3 } from '#lib/math'
+import type { AnyStructure, BondPair } from '#lib/structure/index'
+import { parse_poscar } from '#lib/structure/parse'
+import { get_pbc_image_sites } from '#lib/structure/pbc'
+import { get_site } from '#lib/structure/site'
+import { lobster_samples } from '#site/electronic/lobster/index'
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vite-plus/test'
 

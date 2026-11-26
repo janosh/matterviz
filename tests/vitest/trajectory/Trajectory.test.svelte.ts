@@ -7,26 +7,26 @@ import type {
   TrajectoryXQuantity,
   TrajHandlerData,
   HotspotRequest,
-} from '#lib/trajectory/index.js'
+} from '#lib/trajectory/index'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import * as plotting from '#lib/trajectory/plotting.js'
-import * as calc_rdf from '#lib/rdf/compute-rdf.js'
-import type { Site } from '#lib/structure/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import * as plotting from '#lib/trajectory/plotting'
+import * as calc_rdf from '#lib/rdf/compute-rdf'
+import type { Site } from '#lib/structure/index'
 import * as structure_component from '#lib/structure/Structure.svelte'
 import * as msd_pane_module from '#lib/msd/TrajectoryMsdPane.svelte'
 import * as rdf_pane_module from '#lib/rdf/TrajectoryRdfPane.svelte'
 import * as structure_id_pane_module from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
 import { Matrix4 } from 'three/webgpu'
-import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import { FrameView } from '#lib/trajectory/frame.js'
-import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare.js'
+import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run'
+import { host_run } from '#lib/trajectory/runs/host'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
+import { FrameView } from '#lib/trajectory/frame'
+import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare'
 import {
   get_colorable_property_keys,
   get_property_colors,
-} from '#lib/structure/atom-properties.js'
+} from '#lib/structure/atom-properties'
 import {
   resize_element,
   trigger_resize_observer,
@@ -120,7 +120,7 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
 test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
   // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
   const viewer = vi.fn()
-  vi.doMock(`#lib/trajectory/index.js`, () => ({ trajectory_from_frames, Trajectory: viewer }))
+  vi.doMock(`#lib/trajectory/index`, () => ({ trajectory_from_frames, Trajectory: viewer }))
   try {
     const { default: TrajectoryTestPage } =
       await import('../../../src/routes/test/trajectory/+page.svelte')
@@ -131,7 +131,7 @@ test(`trajectory page initializes without reading query parameters during preren
       expect.objectContaining({ id: `loaded-trajectory` }),
     )
   } finally {
-    vi.doUnmock(`#lib/trajectory/index.js`)
+    vi.doUnmock(`#lib/trajectory/index`)
   }
 })
 
@@ -575,26 +575,43 @@ describe(`controls`, () => {
 
   // A render sample shows every n-th atom: inspector rows name source atoms, the scene numbers
   // its sites, so selection and hover map between the two in both directions
-  // Open by default, except where its menu entry is hidden: there nothing could close it.
-  // Its Info tab shows the info pane's cards, so the info button hides while it shows. The
-  // analysis button lights up for it only where its menu entry shows (null: no button).
+  // `auto` by default: open from a 1000px viewer row, except where its menu entry is hidden
+  // (there nothing could close it). Its Info tab shows the info pane's cards, so the info
+  // button hides while it shows. The analysis button lights up for it only where its menu
+  // entry shows (null: no button).
   // oxfmt-ignore
   test.each([
-    [`default props`, {}, true, false, true],
-    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true, false],
-    [`no controls`, { show_controls: `never` as const }, false, false, null],
-    // data_inspector_open=false: in `every hideable control renders by default`
+    [`default props`, {}, 999, false, true, false],
+    [`default props`, {}, 1000, true, false, true],
+    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, 1200, false, true, false],
+    [`no controls`, { show_controls: `never` as const }, 1200, false, false, null],
+    [`data_inspector_open=false`, { data_inspector_open: false }, 1200, false, true, false],
+    [`data_inspector_open=true`, { data_inspector_open: true }, 375, true, false, true],
   ])(
-    `with %s the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
-    (_name, overrides, shown, info_button, analysis_active) => {
+    `with %s in a %ipx row the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
+    async (_name, overrides, row_width, shown, info_button, analysis_active) => {
+      vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(row_width)
       const target = mount_trajectory(default_props(overrides))
+      const row = query(target, `.viewer-row`)
+      await vi.waitFor(() => expect(row.classList.contains(`docked-sidebar-row`)).toBe(shown))
       const analysis_button = target.querySelector(`.analysis-button`)
       expect(analysis_button?.classList.contains(`active`) ?? null).toBe(analysis_active)
       expect(target.querySelector(`.trajectory-data-inspector-sidebar`) !== null).toBe(shown)
-      expect(query(target, `.viewer-row`).classList.contains(`docked-sidebar-row`)).toBe(shown)
       expect(target.querySelector(`.trajectory-info-toggle`) !== null).toBe(info_button)
     },
   )
+
+  // Toggling an `auto` inspector pins the opposite of what shows, so it stays closed at any width
+  test(`toggling an auto inspector stores the opposite of its shown state`, async () => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(1200)
+    const props = $state(default_props({ data_inspector_open: `auto` as const }))
+    const target = mount_trajectory(props)
+    const row = query(target, `.viewer-row`)
+    await vi.waitFor(() => expect(row.classList.contains(`docked-sidebar-row`)).toBe(true))
+    await open_analysis(target, `Data inspector`)
+    expect(props.data_inspector_open).toBe(false)
+    expect(row.classList.contains(`docked-sidebar-row`)).toBe(false)
+  })
 
   // A row too narrow for the viewer's 320px floor plus a usable 260px sidebar (a phone) stacks
   // the inspector under the viewer: beside it, the inspector got a few dozen px
@@ -603,7 +620,7 @@ describe(`controls`, () => {
     [1200, false],
   ])(`a %ipx viewer row stacks the inspector: %s`, async (row_width, stacked) => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(row_width)
-    const target = mount_trajectory(default_props())
+    const target = mount_trajectory(default_props({ data_inspector_open: true }))
     const row = query(target, `.viewer-row`)
     await vi.waitFor(() =>
       expect(row.classList.contains(`docked-sidebar-stacked`)).toBe(stacked),
@@ -614,7 +631,9 @@ describe(`controls`, () => {
   // The inspector's Info tab stands in for the info pane while it shows: an `info` active_pane
   // opens that tab, and switching between other panes keeps whichever tab the user picked
   test(`active_pane="info" opens the inspector's Info tab`, async () => {
-    const props = $state(default_props({ active_pane: `info` as Pane }))
+    const props = $state(
+      default_props({ active_pane: `info` as Pane, data_inspector_open: true }),
+    )
     mount_trajectory(props)
     const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
     const selected_tab = () =>

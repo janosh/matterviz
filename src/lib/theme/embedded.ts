@@ -1,12 +1,12 @@
 // Theme detection for embedded MatterViz views
-import { is_concrete_color, perceived_brightness } from '#lib/colors/index.js'
-import type { ThemeType } from '#lib/theme/index.js'
+import { is_concrete_color, perceived_brightness } from '#lib/colors/index'
+import type { ThemeType } from '#lib/theme/index'
 import {
   declared_color_scheme,
   get_system_mode,
   nearest_declared,
   watch_theme_changes,
-} from '#lib/theme/index.js'
+} from '#lib/theme/index'
 
 declare global {
   var jupyterlab:

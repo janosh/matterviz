@@ -1,13 +1,13 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze'
 import {
   compute_wulff_shape,
   lattice_holohedry,
   type WulffFacetInput,
   type WulffShapeData,
-} from '#lib/wulff/index.js'
-import { oxide_example, wulff_examples } from '#site/wulff.js'
+} from '#lib/wulff/index'
+import { oxide_example, wulff_examples } from '#site/wulff'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import { cubic_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'

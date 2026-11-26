@@ -1,18 +1,14 @@
-import type { NumericFrame } from '#lib/trajectory/frame.js'
-import { frame_transfers } from '#lib/trajectory/frame.js'
-import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import type { FramePreparation } from '#lib/trajectory/prepare.js'
-import { FramePreparer } from '#lib/trajectory/prepare.js'
-import type {
-  PrepareReply,
-  PrepareRequest,
-  PrepareWorker,
-} from '#lib/trajectory/prepare-pool.js'
-import { create_prepare_pool, prepare_worker_count } from '#lib/trajectory/prepare-pool.js'
-import { summarize_run } from '#lib/trajectory/run.js'
-import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { NumericFrame } from '#lib/trajectory/frame'
+import { frame_transfers } from '#lib/trajectory/frame'
+import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
+import type { FramePreparation } from '#lib/trajectory/prepare'
+import { FramePreparer } from '#lib/trajectory/prepare'
+import type { PrepareReply, PrepareRequest, PrepareWorker } from '#lib/trajectory/prepare-pool'
+import { create_prepare_pool, prepare_worker_count } from '#lib/trajectory/prepare-pool'
+import { summarize_run } from '#lib/trajectory/run'
+import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { describe, expect, it, onTestFinished, test, vi } from 'vite-plus/test'
 import { synthetic_extxyz } from './fixtures'
 

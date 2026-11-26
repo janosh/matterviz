@@ -1,9 +1,9 @@
-import { is_finite_number } from '#lib/utils.js'
-import { sort_by_electronegativity } from '#lib/composition/format.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import * as math from '#lib/math.js'
+import { is_finite_number } from '#lib/utils'
+import { sort_by_electronegativity } from '#lib/composition/format'
+import { is_elem_symbol } from '#lib/element/helpers'
+import { count_atoms_in_composition } from '#lib/composition/reduce'
+import type { ElementSymbol } from '#lib/element/index'
+import * as math from '#lib/math'
 import { composition_to_barycentric_nd } from './barycentric-coords'
 import {
   compute_hull_stability,

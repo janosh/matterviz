@@ -1,37 +1,33 @@
-import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants'
+import { element_by_symbol } from '#lib/element/data'
+import type { Matrix3x3 } from '#lib/math'
+import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame'
 import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 import type {
   HotspotGrid,
   HotspotRequest,
   HotspotResult,
   HotspotProgress,
-} from '#lib/trajectory/hotspots.js'
+} from '#lib/trajectory/hotspots'
 import {
   compute_hotspots,
   hotspot_bin,
   hotspot_values,
   hotspot_mean,
   infer_mass_unit,
-} from '#lib/trajectory/hotspots.js'
-import type { ReadAtoms, AtomBatch, AtomReadOptions } from '#lib/trajectory/atom-batches.js'
-import {
-  atom_batch_masses,
-  atom_range,
-  frame_atom_batch,
-} from '#lib/trajectory/atom-batches.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { summarize_run } from '#lib/trajectory/run.js'
-import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
-import { create_trajectory_frame } from '#lib/trajectory/helpers.js'
+} from '#lib/trajectory/hotspots'
+import type { ReadAtoms, AtomBatch, AtomReadOptions } from '#lib/trajectory/atom-batches'
+import { atom_batch_masses, atom_range, frame_atom_batch } from '#lib/trajectory/atom-batches'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { summarize_run } from '#lib/trajectory/run'
+import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker'
+import { create_trajectory_frame } from '#lib/trajectory/helpers'
 import { h5_bytes } from './fixtures'
 import { write_torchsim_si_frames } from '../../fixtures/torchsim-h5'
-import { open_trajectory } from '#lib/trajectory/open.js'
-import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import { hdf5_run } from '#lib/trajectory/runs/hdf5.js'
+import { open_trajectory } from '#lib/trajectory/open'
+import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
+import { hdf5_run } from '#lib/trajectory/runs/hdf5'
 
 // A cell of length `len_x` along x with a unit y-z cross section
 // oxfmt-ignore

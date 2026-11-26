@@ -4,8 +4,8 @@ import {
   is_vaspwave_filename,
   STRUCTURE_EXTENSIONS_REGEX,
   VASP_VOLUMETRIC_REGEX,
-} from '#lib/constants.js'
-import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
+} from '#lib/constants'
+import { parse_fermi_file } from '#lib/fermi-surface/parse'
 import { format_bytes } from 'svelte-widgets/format'
 import {
   as_text,
@@ -13,17 +13,17 @@ import {
   content_byte_size,
   MAX_STRING_CHARS,
   strip_compression_extensions,
-} from '#lib/io/decompress.js'
-import { parse_volumetric_file } from '#lib/isosurface/parse.js'
-import { parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
-import type { StructureToolPrediction } from '#lib/structure/prediction.js'
-import { prediction_from_json } from '#lib/structure/prediction.js'
-import { parse_structure_file, structure_from_json_value } from '#lib/structure/parse.js'
+} from '#lib/io/decompress'
+import { parse_volumetric_file } from '#lib/isosurface/parse'
+import { parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave'
+import type { StructureToolPrediction } from '#lib/structure/prediction'
+import { prediction_from_json } from '#lib/structure/prediction'
+import { parse_structure_file, structure_from_json_value } from '#lib/structure/parse'
 import {
   is_indexable_trajectory_filename,
   KNOWN_FORMAT_EXT_REGEX,
-} from '#lib/trajectory/format-detect.js'
-import { base64_to_array_buffer } from '#lib/utils.js'
+} from '#lib/trajectory/format-detect'
+import { base64_to_array_buffer } from '#lib/utils'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import type {
   OpenTrajectoryOptions,
@@ -31,19 +31,19 @@ import type {
   TrajectoryRun,
   TrajectoryRunSummary,
   TrajectorySource,
-} from '#lib/trajectory/index.js'
-import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
-import type { VolumetricFileData } from '#lib/isosurface/types.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
+} from '#lib/trajectory/index'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types'
+import type { VolumetricFileData } from '#lib/isosurface/types'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types'
+import type { AnyStructure } from '#lib/structure/index'
+import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic'
 import {
   is_trajectory_file,
   open_trajectory,
   VaspoutElectronicOnlyError,
-} from '#lib/trajectory/parse/index.js'
-import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
+} from '#lib/trajectory/parse/index'
+import { collect_parse_warnings } from '#lib/trajectory/parse/shared'
 import { type LargeFileMarker, parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from './types'

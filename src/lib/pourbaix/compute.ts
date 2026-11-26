@@ -8,9 +8,9 @@
 import {
   normalize_formula_unicode,
   parse_formula_with_oxidation,
-} from '#lib/composition/parse.js'
-import { BOLTZMANN_EV_PER_K, EV_TO_KJ_PER_MOL } from '#lib/constants.js'
-import { lerp_vec2, polygon_signed_area, type Vec2 } from '#lib/math.js'
+} from '#lib/composition/parse'
+import { BOLTZMANN_EV_PER_K, EV_TO_KJ_PER_MOL } from '#lib/constants'
+import { lerp_vec2, polygon_signed_area, type Vec2 } from '#lib/math'
 import type {
   PourbaixConditions,
   PourbaixConfig,

@@ -4,9 +4,9 @@
 // De Graef point B back toward the gun (k0 = −(1/λ)·B̂), so down cubic [001] this module puts
 // the FOLZ at l = −1 where they put it at l = +1. Positions, intensities and laue_zone are
 // unaffected; only higher-order-zone hkl labels flip sign. Flip zone_hat to switch.
-import * as math from '#lib/math.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
+import * as math from '#lib/math'
+import type { Vec2, Vec3 } from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
 import {
   electron_wavelength,
   enumerate_reciprocal_points,

@@ -2,7 +2,7 @@
 // data for rendering by IsobaricBinaryPhaseDiagram. Region labels ("A + B") name the phases;
 // axis-aligned boundaries become invariant (horizontal) or solvus (vertical) lines.
 
-import { array_extent, leading_number, mean, type Vec2, type Vec4 } from '#lib/math.js'
+import { array_extent, leading_number, mean, type Vec2, type Vec4 } from '#lib/math'
 import {
   BINARY_DIAGRAM_FORMAT,
   type BinaryPhaseDiagram,

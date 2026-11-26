@@ -4,8 +4,8 @@ import {
   compute_box_whiskers,
   summarize_box_samples,
   WHISKER_MODES,
-} from '#lib/plot/box/box-plot.js'
-import { dodge } from '#lib/plot/core/dodge.js'
+} from '#lib/plot/box/box-plot'
+import { dodge } from '#lib/plot/core/dodge'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vite-plus/test'
 

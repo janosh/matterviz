@@ -2,12 +2,12 @@
 // Used by JsonBrowser and the file renderer to select visualization components.
 
 import { is_plain_object } from 'svelte-widgets/utils'
-import { type VolumetricFileData, volume_from_json } from '#lib/isosurface/types.js'
-import { BINARY_DIAGRAM_FORMAT } from '#lib/phase-diagram/types.js'
+import { type VolumetricFileData, volume_from_json } from '#lib/isosurface/types'
+import { BINARY_DIAGRAM_FORMAT } from '#lib/phase-diagram/types'
 import { build_path } from 'svelte-widgets/json-tree/path'
-import { is_structure_like, optimade_structure_from_raw } from '#lib/structure/parse.js'
-import { make_lattice } from '#lib/structure/parsers/shared.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+import { is_structure_like, optimade_structure_from_raw } from '#lib/structure/parse'
+import { make_lattice } from '#lib/structure/parsers/shared'
+import type { Pbc } from '#lib/structure/pbc'
 
 // Visualization types supported by the file viewer and their badge labels.
 export const TYPE_LABELS = {

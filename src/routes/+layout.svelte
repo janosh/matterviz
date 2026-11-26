@@ -9,17 +9,17 @@
   // from OS preference to the app's data-theme. See that plugin for details.
   // oxlint-disable-next-line import/no-unassigned-import -- global syntax-highlight styles
   import '@wooorm/starry-night/style/both'
-  import { theme_state } from '#lib/state.svelte.js'
+  import { theme_state } from '#lib/state.svelte'
   import {
     apply_theme_to_dom,
     get_theme_preference,
     THEME_OPTIONS,
     THEME_STORAGE_KEY,
-  } from '#lib/theme/index.js'
+  } from '#lib/theme/index'
   import ThemeControl from '#lib/theme/ThemeControl.svelte'
   import pkg from '#root/package.json'
   import Footer from '#site/Footer.svelte'
-  import { nav_routes, routes } from '#site/state.svelte.js'
+  import { nav_routes, routes } from '#site/state.svelte'
   import type { Snippet } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
   import { MediaQuery } from 'svelte/reactivity'
@@ -65,7 +65,7 @@
   let element_actions = $state<CmdAction[]>([])
   $effect(() => {
     if (!cmd_palette_open || element_actions.length) return
-    import(`#lib/element/data.js`).then(
+    import(`#lib/element/data`).then(
       ({ default: element_data }) => {
         element_actions = element_data.map(({ name }) =>
           route_action(`/${name.toLowerCase()}`),
@@ -95,7 +95,7 @@
   const link_sources: Attachment<HTMLElement> = (node) => {
     let stop: (() => void) | undefined
     let detached = false
-    void import('#site/source-links.js').then(({ link_source_mentions }) => {
+    void import('#site/source-links').then(({ link_source_mentions }) => {
       if (!detached) stop = link_source_mentions(node) ?? undefined
     })
     return () => {

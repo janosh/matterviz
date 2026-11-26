@@ -1,8 +1,8 @@
 // Dos' α²F curves: their own density axis over the DOS frequencies, never rescaled or stacked
-import type { DataSeries } from '#lib/plot/index.js'
+import type { DataSeries } from '#lib/plot/index'
 import type ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import Dos from '#lib/spectral/Dos.svelte'
-import type { ElectronicDos, PhononDos } from '#lib/spectral/types.js'
+import type { ElectronicDos, PhononDos } from '#lib/spectral/types'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 

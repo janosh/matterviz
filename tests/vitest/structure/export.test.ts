@@ -1,7 +1,7 @@
 import type { ElementSymbol } from '#lib'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { AnyStructure, Crystal, LatticeType, Site } from '#lib/structure/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { AnyStructure, Crystal, LatticeType, Site } from '#lib/structure/index'
 import {
   symmetrized_cif_unavailable_reason,
   create_structure_filename,
@@ -14,15 +14,10 @@ import {
   structure_to_poscar_str,
   structure_to_xyz_str,
   STRUCT_TEXT_FORMATS,
-} from '#lib/structure/export.js'
-import {
-  parse_cif,
-  parse_poscar,
-  parse_structure_file,
-  parse_xyz,
-} from '#lib/structure/parse.js'
-import { make_site as make_lib_site, species_key } from '#lib/structure/site.js'
-import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
+} from '#lib/structure/export'
+import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '#lib/structure/parse'
+import { make_site as make_lib_site, species_key } from '#lib/structure/site'
+import { analyze_structure_symmetry } from '#lib/symmetry/analyze'
 import { assert, beforeAll, describe, expect, it } from 'vite-plus/test'
 import {
   complex_structure,

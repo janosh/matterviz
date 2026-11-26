@@ -1,12 +1,12 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import type { PhaseData } from '#lib/convex-hull/types.js'
+  import type { PhaseData } from '#lib/convex-hull/types'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { TernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
-  import { format_reaction, IsobaricTernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
+  import type { TernaryPhaseDiagram } from '#lib/phase-diagram/index'
+  import { format_reaction, IsobaricTernaryPhaseDiagram } from '#lib/phase-diagram/index'
   import { to_error } from 'svelte-widgets/utils'
-  import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
-  import { url_param, latest_load, set_url_param } from '#site/state.svelte.js'
+  import { ternary_system_files } from '#site/phase-diagrams/ternary/index'
+  import { url_param, latest_load, set_url_param } from '#site/state.svelte'
   import { onMount } from 'svelte'
 
   const DEFAULT_FILE = `Li-Mn-O.json.gz`

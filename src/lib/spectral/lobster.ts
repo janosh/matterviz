@@ -4,13 +4,13 @@
 // DOSCAR.lobster (total and projected DOS), plus the mapping from integrated values onto a
 // structure's bonds.
 // Layouts follow pymatgen.io.lobster.outputs (Cohpcar, Icohplist, Doscar) and the LOBSTER manual.
-import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { add, create_frac_to_cart, subtract, type Vec3 } from '#lib/math.js'
-import type { AnyStructure, BondPair } from '#lib/structure/index.js'
-import { bond_at, type BondData } from '#lib/structure/bond-rendering.js'
-import { is_structure_file } from '#lib/structure/format-detect.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
-import { get_orig_site_idx, get_site } from '#lib/structure/site.js'
+import { strip_compression_extensions } from '#lib/io/decompress'
+import { add, create_frac_to_cart, subtract, type Vec3 } from '#lib/math'
+import type { AnyStructure, BondPair } from '#lib/structure/index'
+import { bond_at, type BondData } from '#lib/structure/bond-rendering'
+import { is_structure_file } from '#lib/structure/format-detect'
+import { parse_structure_file } from '#lib/structure/parse'
+import { get_orig_site_idx, get_site } from '#lib/structure/site'
 import type { ElectronicDos } from './types'
 
 // COHP: Hamilton-weighted populations (eV), negative where bonding. COOP: overlap-weighted

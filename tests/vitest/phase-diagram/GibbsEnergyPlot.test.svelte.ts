@@ -3,8 +3,8 @@ import type {
   BinaryPhaseDiagram,
   DiagramCursor,
   DiagramXFrame,
-} from '#lib/phase-diagram/types.js'
-import { binary_diagrams } from '#site/phase-diagrams.js'
+} from '#lib/phase-diagram/types'
+import { binary_diagrams } from '#site/phase-diagrams'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'
 import { mount_sized } from '../setup'

@@ -4,11 +4,11 @@
 // sum |e|^2 == 1; atom kappa moves by u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes
 // that weighting: consumers needing displacements divide by sqrt(mass) themselves.
 
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { is_plain_object } from 'svelte-widgets/utils'
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import { load as yaml_load } from 'js-yaml'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import type {
   BornChargeData,
   Complex,

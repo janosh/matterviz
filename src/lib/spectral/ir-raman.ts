@@ -3,9 +3,9 @@
 // produce: callers supply per-mode Raman tensors (LEPSILON finite differences, vasp_raman.py,
 // phonopy-spectroscopy, ...) or precomputed activities; none are invented from eigenvectors.
 
-import { display_idx } from '#lib/labels.js'
-import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
-import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '#lib/lineshape.js'
+import { display_idx } from '#lib/labels'
+import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math'
+import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '#lib/lineshape'
 import { convert_frequencies } from './frequency-units'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import type {

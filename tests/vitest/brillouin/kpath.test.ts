@@ -2,10 +2,10 @@
 // primitive cells. Fixture: pymatgen 2026.7.31 KPathSetyawanCurtarolo(prim).kpath with
 // prim = SpacegroupAnalyzer(Structure.from_spacegroup(...)).get_primitive_standard_structure(
 // international_monoclinic=False), labels rewritten as Γ/Σ and subscript digits.
-import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
+import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
 import { init_moyo_for_tests, load_json, make_crystal } from '../test-fixtures'
 

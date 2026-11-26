@@ -4,11 +4,11 @@
 <script lang="ts">
   import { browser } from '$app/env'
   import { Structure, type StructureHandlerData } from 'matterviz'
-  import { structure_files } from '#site/structures.js'
-  import { molecule_files } from '#site/molecules.js'
+  import { structure_files } from '#site/structures'
+  import { molecule_files } from '#site/molecules'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { decode_url_safe_base64 } from '#lib/utils.js'
-  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte.js'
+  import { decode_url_safe_base64 } from '#lib/utils'
+  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
@@ -220,7 +220,7 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
   import type { AnyStructure } from 'matterviz'
   import type { Vec3 } from 'matterviz/math'
   import { Structure } from 'matterviz'
-  import { structures } from '#site/structures.js'
+  import { structures } from '#site/structures'
 
   const relaxed = structures.find(
     (struct) => `lattice` in struct && struct.sites.length > 3 && struct.sites.length < 30,
@@ -264,7 +264,7 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
 ```svelte example
 <script lang="ts">
   import { CRYSTAL_SYSTEMS, Structure } from 'matterviz'
-  import { structures } from '#site/structures.js'
+  import { structures } from '#site/structures'
 </script>
 
 <ul class="crystal-systems">
@@ -313,7 +313,7 @@ Load structures from text with `Structure source={{ data: text, filename }}` (CI
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { FilePicker, Structure } from 'matterviz'
-  import { url_selection } from '#site/state.svelte.js'
+  import { url_selection } from '#site/state.svelte'
   import c2ho_scientific_notation_xyz from '#site/molecules/C2HO-scientific-notation.xyz?raw'
   import c5_extra_data_xyz from '#site/molecules/C5-extra-data.xyz?raw'
   import cyclohexane from '#site/molecules/cyclohexane.xyz?raw'

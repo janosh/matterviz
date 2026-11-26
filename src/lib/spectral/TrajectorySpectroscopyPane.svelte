@@ -3,13 +3,13 @@
   import { format_num } from 'svelte-widgets/format'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
-  import type { ParseProgress, TrajectoryRun } from '#lib/trajectory/index.js'
-  import { create_request_owner } from '#lib/trajectory/async-result.svelte.js'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index'
+  import type { ParseProgress, TrajectoryRun } from '#lib/trajectory/index'
+  import { create_request_owner } from '#lib/trajectory/async-result.svelte'
   import {
     DEFAULT_POSITION_STREAM_MAX_BYTES,
     suggest_frame_stride,
-  } from '#lib/trajectory/runs/accumulate.js'
+  } from '#lib/trajectory/runs/accumulate'
   import { to_error, value_key } from 'svelte-widgets/utils'
   import {
     collect_trajectory_spectroscopy_input,

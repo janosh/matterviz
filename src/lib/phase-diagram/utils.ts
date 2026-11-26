@@ -1,6 +1,6 @@
 import { format_num } from 'svelte-widgets/format'
-import { point_in_polygon, sorted_numbers, type Vec2 } from '#lib/math.js'
-import type { Sides } from '#lib/plot/core/layout.js'
+import { point_in_polygon, sorted_numbers, type Vec2 } from '#lib/math'
+import type { Sides } from '#lib/plot/core/layout'
 import { line } from 'd3-shape'
 import type {
   CompUnit,

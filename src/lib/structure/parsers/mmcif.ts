@@ -1,10 +1,10 @@
 // mmCIF (PDBx/mmCIF): macromolecular CIF with Cartesian atom sites (`_atom_site.Cartn_x`),
 // shown as deposited (first model, first conformer per atom, no symop expansion or
 // wrapping), which is why it has its own atom-site loop reader rather than parse_cif's.
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { make_site } from '#lib/structure/site.js'
-import { parse_warn } from '#lib/trajectory/parse/shared.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import { make_site } from '#lib/structure/site'
+import { parse_warn } from '#lib/trajectory/parse/shared'
 import {
   cell_frame,
   cif_block_ids,

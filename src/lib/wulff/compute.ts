@@ -1,10 +1,10 @@
 // Wulff construction: the equilibrium shape of a crystal is the inner envelope of the planes
 // n·x = γ(n) over every facet normal n, i.e. the intersection of the half-spaces n·x ≤ γ(n).
 import { format_num } from 'svelte-widgets/format'
-import { compute_convex_hull } from '#lib/brillouin/compute.js'
-import { lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import { compute_convex_hull } from '#lib/brillouin/compute'
+import { lattice_point_group_matrices } from '#lib/fermi-surface/symmetry'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import type { WulffFacet, WulffFacetInput, WulffFamily, WulffShapeData } from './types'
 
 // A vertex within this of a plane lies on it; lengths are normalized to the farthest plane.

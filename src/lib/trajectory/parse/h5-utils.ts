@@ -1,12 +1,12 @@
-import { is_finite_number } from '#lib/utils.js'
-import { transpose_3x3, type Matrix3x3 } from '#lib/math.js'
-import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { is_finite_number } from '#lib/utils'
+import { transpose_3x3, type Matrix3x3 } from '#lib/math'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared'
 import type {
   PositionStreamOptions,
   TrajectoryMetadata,
   TrajectorySignal,
   TrajectorySignalDescriptor,
-} from '#lib/trajectory/index.js'
+} from '#lib/trajectory/index'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import { values_per_sample } from '../helpers'

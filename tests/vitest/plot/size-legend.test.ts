@@ -1,13 +1,13 @@
 import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
-import { create_size_scale } from '#lib/plot/core/scales.js'
+import { create_size_scale } from '#lib/plot/core/scales'
 import {
   size_legend_entries,
   size_legend_layout,
   type SizeLegendEntry,
-} from '#lib/plot/core/size-legend.js'
-import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics.js'
-import type { ScaleType } from '#lib/plot/core/types.js'
-import type { Vec2 } from '#lib/math.js'
+} from '#lib/plot/core/size-legend'
+import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics'
+import type { ScaleType } from '#lib/plot/core/types'
+import type { Vec2 } from '#lib/math'
 import { describe, expect, test } from 'vite-plus/test'
 import { mount_in_test, query } from '../setup'
 

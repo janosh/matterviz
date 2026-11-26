@@ -1,8 +1,8 @@
 // Thermal ellipsoids: one InstancedMesh of unit spheres, each instance stretched by its site's
 // ellipsoid transform (axes · diag(semi_axes), see thermal_ellipsoid). Three's instance node
 // transforms normals by the inverse transpose, so the stretched spheres shade correctly.
-import type { Matrix3x3 } from '#lib/math.js'
-import { grow_capacity } from '#lib/math.js'
+import type { Matrix3x3 } from '#lib/math'
+import { grow_capacity } from '#lib/math'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import type { InstancedAtom } from './atom-instances'
 import { cutaway_excludes, cutaway_planes } from './cutaway'

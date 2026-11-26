@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { grow_capacity } from '#lib/math.js'
-  import type { BondData } from '#lib/structure/bond-rendering.js'
-  import { prepare_bond_placements, BondFrame } from '#lib/structure/bond-rendering.js'
+  import { grow_capacity } from '#lib/math'
+  import type { BondData } from '#lib/structure/bond-rendering'
+  import { prepare_bond_placements, BondFrame } from '#lib/structure/bond-rendering'
   import { T, useThrelte } from '@threlte/core'
   import { attribute, dot, mix, normalView, positionGeometry, uniform, vec3 } from 'three/tsl'
   import { BondMesh, set_bond_placement } from './bond-mesh'
   import { Color, CylinderGeometry, MeshBasicNodeMaterial } from 'three/webgpu'
-  import { css_to_linear_rgb } from '#lib/scene/colors.js'
+  import { css_to_linear_rgb } from '#lib/scene/colors'
 
   let {
     bonds,

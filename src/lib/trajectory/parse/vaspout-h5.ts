@@ -15,18 +15,18 @@
 // vaspwave.h5 charge density is handled by isosurface/parse-vaspwave.ts.
 //
 // Schema reference: py4vasp's VASP 6.x schema definitions.
-import { is_finite_number } from '#lib/utils.js'
-import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
-import { create_frac_to_cart, det_3x3, type Vec3 } from '#lib/math.js'
+import { is_finite_number } from '#lib/utils'
+import { EV_PER_A3_TO_GPA } from '#lib/constants'
+import { create_frac_to_cart, det_3x3, type Vec3 } from '#lib/math'
 import type * as h5wasm from 'h5wasm'
-import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared'
 import {
   compute_force_stats,
   checked_site_forces,
   create_trajectory_frame,
   expand_ion_types,
-} from '#lib/trajectory/helpers.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+} from '#lib/trajectory/helpers'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
 import {
   is_hdf5_group,
   read_dataset,

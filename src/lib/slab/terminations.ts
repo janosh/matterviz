@@ -1,11 +1,11 @@
 // Split an oriented bulk cell into atomic layers and turn the gaps between them into the
 // distinct ways the crystal can be cleaved.
-import { display_idx } from '#lib/labels.js'
-import { get_electro_neg_formula } from '#lib/composition/format.js'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal, Site } from '#lib/structure/index.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { display_idx } from '#lib/labels'
+import { get_electro_neg_formula } from '#lib/composition/format'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal, Site } from '#lib/structure/index'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
 import { make_oriented_bulk } from './lattice-basis'
 import {
   find_lattice_translations,

@@ -11,7 +11,6 @@
     HeatmapMatrix,
     HeatmapTable,
     Histogram,
-    RegressionPlot,
     Sankey,
     ScatterPlot,
     ScatterPlot3D,
@@ -22,6 +21,7 @@
     ViolinPlot,
   } from 'svelte-widgets/icons'
   import SubpageGrid from 'svelte-widgets/SubpageGrid.svelte'
+  import { EquationOfStateIcon, LinkedBrushingIcon } from '#site/overview-icons'
 
   const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
     {
@@ -46,7 +46,7 @@
       label: `Linked Brushing`,
       href: `/plot/linked-brushing`,
       description: `Alt+drag points in one plot to highlight the same items, keyed by point_ids, in other plots and a periodic table.`,
-      icon: ScatterPlot,
+      icon: LinkedBrushingIcon,
     },
     {
       label: `3D Scatter Plot`,
@@ -58,7 +58,7 @@
       label: `Equation of State`,
       href: `/plot/eos`,
       description: `Birch–Murnaghan, Murnaghan and Vinet fits of energy–volume scans, matching pymatgen.`,
-      icon: RegressionPlot,
+      icon: EquationOfStateIcon,
     },
     {
       label: `Bar Plot`,

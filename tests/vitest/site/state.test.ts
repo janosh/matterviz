@@ -1,5 +1,5 @@
 import { goto } from '$app/navigation'
-import type { NavGroup } from '#site/state.svelte.js'
+import type { NavGroup } from '#site/state.svelte'
 import {
   url_param,
   group_nav_routes,
@@ -11,8 +11,8 @@ import {
   open_element_page,
   set_url_param,
   url_selection,
-} from '#site/state.svelte.js'
-import element_data from '#lib/element/data.js'
+} from '#site/state.svelte'
+import element_data from '#lib/element/data'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
@@ -172,6 +172,8 @@ describe(`group_nav_routes`, () => {
     expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
     expect(new Set(all_children).size).toBe(all_children.length)
     expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
+    // every group label links its hub page
+    expect(nav_routes.map(({ href }) => href)).toEqual(NAV_GROUPS.map(({ href }) => href))
     // electronic-only, then phonon-only, then shared electronic/phonon demos, each run under
     // its own dropdown heading (this order puts the two-column break on a heading)
     const shared = `Electronic & phonon`

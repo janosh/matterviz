@@ -2,15 +2,15 @@ import type { AnyStructure } from '#lib'
 import { Check, Copy } from 'svelte-widgets/icons'
 import { download } from 'svelte-widgets/browser'
 import app_css from '#lib/app.css?inline'
-import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export.js'
-import type { CameraFlight } from '#lib/scene/camera-flight.js'
+import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export'
+import type { CameraFlight } from '#lib/scene/camera-flight'
 import {
   camera_flight_registry,
   create_camera_flight_controller,
-} from '#lib/scene/camera-flight.js'
-import { export_scene_as } from '#lib/scene/export.js'
+} from '#lib/scene/camera-flight'
+import { export_scene_as } from '#lib/scene/export'
 import StructureExportPane from '#lib/structure/StructureExportPane.svelte'
-import * as export_funcs from '#lib/structure/export.js'
+import * as export_funcs from '#lib/structure/export'
 import { mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
@@ -40,7 +40,7 @@ const mock_contents = vi.hoisted(() => ({
 }))
 type MockFormat = keyof typeof mock_contents
 
-vi.mock(`#lib/structure/export.js`, async (import_original) => {
+vi.mock(`#lib/structure/export`, async (import_original) => {
   const original = await import_original<typeof export_funcs>()
   const formats = Object.entries(original.STRUCT_TEXT_FORMATS).map(([fmt, spec]) => [
     fmt,
@@ -53,11 +53,11 @@ vi.mock(`#lib/structure/export.js`, async (import_original) => {
   }
 })
 
-vi.mock(`#lib/io/export.js`, async (importOriginal) => ({
+vi.mock(`#lib/io/export`, async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   export_canvas_as_png: vi.fn(),
 }))
-vi.mock(`#lib/scene/export.js`, () => ({ export_scene_as: vi.fn(() => Promise.resolve()) }))
+vi.mock(`#lib/scene/export`, () => ({ export_scene_as: vi.fn(() => Promise.resolve()) }))
 
 describe(`StructureExportPane`, () => {
   let wrapper_div: HTMLDivElement

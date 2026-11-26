@@ -2,11 +2,11 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { create_clipboard_feedback, create_shortcut_flash } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
-  import { TooltipValue } from '#lib/tooltip/index.js'
-  import { webgpu_available } from '#lib/scene/index.js'
-  import { camera_flight_registry } from '#lib/scene/camera-flight.js'
-  import type { VideoFrameOptions } from '#lib/io/export.js'
-  import { export_trajectory_video, render_video_frames } from '#lib/io/export.js'
+  import { TooltipValue } from '#lib/tooltip/index'
+  import { webgpu_available } from '#lib/scene/index'
+  import { camera_flight_registry } from '#lib/scene/camera-flight'
+  import type { VideoFrameOptions } from '#lib/io/export'
+  import { export_trajectory_video, render_video_frames } from '#lib/io/export'
   import type { MoviePlan, MovieRenderOptions, TrajectoryViewerController } from './movie'
   import { plan_movie, movie_frame } from './movie'
   import type {
@@ -14,11 +14,11 @@
     HistogramOptions,
     HistogramSeries,
     Orientation,
-  } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
   import { create_delayed_flag } from 'svelte-widgets/effects'
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls'
+  import type { ShowControlsProp } from '#lib/controls'
+  import type { ElementSymbol } from '#lib/element/index'
   import FileInput from 'svelte-widgets/FileInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
@@ -40,42 +40,42 @@
     parse_axis_label,
     parse_warnings_notice,
     trajectory_property_config,
-  } from '#lib/labels.js'
-  import type { TrajPropertyConfig } from '#lib/labels.js'
-  import { is_valid_index, same_values } from '#lib/math.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  } from '#lib/labels'
+  import type { TrajPropertyConfig } from '#lib/labels'
+  import { is_valid_index, same_values } from '#lib/math'
+  import type { Vec2, Vec3 } from '#lib/math'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton } from '#lib/layout/index.js'
-  import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
-  import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
-  import { ToolbarMenu } from '#lib/overlays/index.js'
+  import { FullscreenButton } from '#lib/layout/index'
+  import { pick_pane_orientation } from '#lib/layout/pane-orientation'
+  import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts'
+  import { ToolbarMenu } from '#lib/overlays/index'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from 'svelte-widgets/SequenceControls.svelte'
   import { is_sequence_key_target } from 'svelte-widgets/sequence-player'
-  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
-  import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
-  import { Histogram, ScatterPlot } from '#lib/plot/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { highlight_site_union } from '#lib/plot/core/structure-input'
+  import type { ScatterHandlerProps } from '#lib/plot/core/types'
+  import { Histogram, ScatterPlot } from '#lib/plot/index'
+  import { DEFAULTS } from '#lib/settings'
   import type {
     Site,
     StructurePane,
     StructureOptions,
     StructureSettings,
-  } from '#lib/structure/index.js'
-  import { get_orig_site_idx, site_stride } from '#lib/structure/site.js'
-  import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
-  import { strategy_bonding_options } from '#lib/structure/bonding.js'
-  import { applies_to_structure } from '#lib/structure/settings.js'
+  } from '#lib/structure/index'
+  import { get_orig_site_idx, site_stride } from '#lib/structure/site'
+  import { polyhedra_options_from } from '#lib/structure/polyhedra'
+  import { strategy_bonding_options } from '#lib/structure/bonding'
+  import { applies_to_structure } from '#lib/structure/settings'
   import {
     type AtomColorConfig,
     DEFAULT_ATOM_COLOR_CONFIG,
-  } from '#lib/structure/atom-properties.js'
-  import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
-  import { is_vector_key } from '#lib/structure/vectors.js'
-  import { has_usable_lattice } from '#lib/structure/validation.js'
-  import { rdf_bin_site_index } from '#lib/rdf/compute-rdf.js'
+  } from '#lib/structure/atom-properties'
+  import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway'
+  import { is_vector_key } from '#lib/structure/vectors'
+  import { has_usable_lattice } from '#lib/structure/validation'
+  import { rdf_bin_site_index } from '#lib/rdf/compute-rdf'
   import { element_site_indices, scene_site_indices, site_source_atoms } from './linked-sites'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
@@ -92,7 +92,7 @@
     hotspot_probe,
     DEFAULT_HOTSPOT_CLOUD,
   } from './hotspot-colors'
-  import { collected_frame_idx } from '#lib/structure/trajectory-lines.js'
+  import { collected_frame_idx } from '#lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
   import { range } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
@@ -110,8 +110,8 @@
   import { TrajectoryDataInspector, TrajectoryExportPane, TrajectoryInfoPane } from './index'
   import { collect_trajectory_positions, no_full_pass_message } from './analysis'
   import DisplacementOverlay from '#lib/structure-diff/DisplacementOverlay.svelte'
-  import { format_drift } from '#lib/structure-diff/compute.js'
-  import { type DiffReference, trajectory_diffs } from '#lib/structure-diff/trajectory.js'
+  import { format_drift } from '#lib/structure-diff/compute'
+  import { type DiffReference, trajectory_diffs } from '#lib/structure-diff/trajectory'
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { suggest_frame_stride } from './runs/accumulate'
   import {
@@ -131,12 +131,8 @@
   import type { TrajectoryRun } from './run'
   import { create_trajectory_session } from './session.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import type {
-    MaterialPayload,
-    MaterialSource,
-    OpenedMaterial,
-  } from '#lib/file-viewer/open.js'
-  import { open_material, MaterialOpenError } from '#lib/file-viewer/open.js'
+  import type { MaterialPayload, MaterialSource, OpenedMaterial } from '#lib/file-viewer/open'
+  import { open_material, MaterialOpenError } from '#lib/file-viewer/open'
   import * as file_io from '../io'
   import { HDF5_EXT_REGEX } from '../constants'
   import { Hdf5GroupSelectionRequiredError, type OpenTrajectoryOptions } from './open'
@@ -232,7 +228,7 @@
     trajectory_controls,
     extra_controls,
     active_pane = $bindable(null),
-    data_inspector_open = $bindable(true),
+    data_inspector_open = $bindable(`auto`),
     on_step_change,
     on_play,
     on_pause,
@@ -336,9 +332,10 @@
     // The one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     // The data inspector, a resizable sidebar beside the structure and plot. Not a
-    // floating pane, so it stays open beside whichever pane is active. Hiding its
-    // `data-inspector-pane` control (or all controls) hides the sidebar too.
-    data_inspector_open?: boolean
+    // floating pane, so it stays open beside whichever pane is active. `auto` (the default)
+    // shows it while the viewer is at least 1000 px wide; toggling it sets true or false.
+    // Hiding its `data-inspector-pane` control (or all controls) hides the sidebar too.
+    data_inspector_open?: boolean | `auto`
     // Called after every change of the shown frame (slider, keys, playback, plot click).
     on_step_change?: EventHandler
     // Called when playback starts.
@@ -903,9 +900,18 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  // `auto` docks the inspector from this viewer-row width (sidebar included, so opening it
+  // can't drop the row below the threshold); narrower, it squeezes the structure and plot
+  const INSPECTOR_DOCK_MIN_WIDTH = 1000
+  let row_width = $state(0)
+  let inspector_open = $derived(
+    data_inspector_open === `auto`
+      ? row_width >= INSPECTOR_DOCK_MIN_WIDTH
+      : data_inspector_open,
+  )
   // A host that hides the inspector's menu entry could not close it, so it stays closed there
   let inspector_shown = $derived(
-    data_inspector_open && controls_config.visible(`data-inspector-pane`),
+    inspector_open && controls_config.visible(`data-inspector-pane`),
   )
   // The inspector's Info tab replaces the info pane while it shows, so an `info` active_pane
   // opens that tab. Derived from the boolean, so switching between other panes keeps the tab
@@ -1377,8 +1383,8 @@
   )
   // The data inspector is a sidebar with its own open state, the other analyses floating panes
   const analysis_open = (pane: (typeof ANALYSES)[number][`pane`]): boolean =>
-    pane === `data-inspector` ? data_inspector_open : active_pane === pane
-  // hidden analyses don't count: the data inspector defaults to open even where it's hidden
+    pane === `data-inspector` ? inspector_open : active_pane === pane
+  // hidden analyses don't count: the data inspector can be open where its entry is hidden
   let any_analysis_open = $derived(visible_analyses.some((entry) => analysis_open(entry.pane)))
 </script>
 
@@ -1503,7 +1509,15 @@
           controller.abort(new DOMException(`Cancelled`, `AbortError`))
           end_load(controller)
         }}
-      />
+      >
+        <!-- outside the live region, which announces stages not percents; the bar exposes the
+        value to assistive tech -->
+        {#if progress && progress.current > 0}
+          <span aria-hidden="true" style="font-variant-numeric: tabular-nums">
+            {format_num(progress.current / progress.total, `.0%`)}
+          </span>
+        {/if}
+      </TaskStatus>
     </div>
   {:else if error_msg}
     <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} />
@@ -1719,8 +1733,7 @@
                   title={entry.label}
                   aria-pressed={analysis_open(entry.pane)}
                   onclick={() => {
-                    if (entry.pane === `data-inspector`)
-                      data_inspector_open = !data_inspector_open
+                    if (entry.pane === `data-inspector`) data_inspector_open = !inspector_open
                     else set_pane_open(entry.pane, active_pane !== entry.pane)
                     analysis_menu_open = false
                   }}
@@ -1824,7 +1837,11 @@
       {/if}
     </SequenceControlBar>
 
-    <div class="viewer-row" class:docked-sidebar-row={inspector_shown}>
+    <div
+      class="viewer-row"
+      class:docked-sidebar-row={inspector_shown}
+      bind:clientWidth={row_width}
+    >
       <div
         class="content-area"
         bind:clientWidth={content_size.width}
@@ -2189,6 +2206,14 @@
     padding-block: 1em;
     text-align: center;
     --task-status-button-justify: center;
+    /* TaskStatus lays the spinner and label out as a flex row, which text-align can't center */
+    :global(.message > div) {
+      justify-content: center;
+    }
+    :global(button) {
+      background: var(--btn-bg);
+      padding: 2pt 8pt;
+    }
   }
   .trajectory {
     display: flex;

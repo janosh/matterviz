@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { shows_fullscreen_toggle, type ShowControlsState } from '#lib/controls.js'
+  import { shows_fullscreen_toggle, type ShowControlsState } from '#lib/controls'
   // Shared control-buttons row (filename chip + snippet buttons/panes + fullscreen toggle) that
   // viewers render as a direct child of their root; themed via neutral --viewer-* CSS vars.
   // Full-width sequence viewers use SequenceControlBar instead.

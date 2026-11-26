@@ -1,26 +1,26 @@
-import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/frame.js'
-import { FramePreparer } from '#lib/trajectory/prepare.js'
-import { prepare_worker_count, type PrepareRequest } from '#lib/trajectory/prepare-pool.js'
-import type { ParseResult } from '#lib/file-viewer/parse.js'
+import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/frame'
+import { FramePreparer } from '#lib/trajectory/prepare'
+import { prepare_worker_count, type PrepareRequest } from '#lib/trajectory/prepare-pool'
+import type { ParseResult } from '#lib/file-viewer/parse'
 import type {
   ParseWorkerRequest,
   ParseWorkerResponse,
   WorkerLike,
-} from '#lib/file-viewer/parse-in-worker.js'
-import { parse_in_worker, ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
-import { parse_file_content } from '#lib/file-viewer/parse.js'
-import { handle_parse_worker_request } from '#lib/file-viewer/parse-worker.js'
-import { prediction_to_json } from '#lib/structure/prediction.js'
+} from '#lib/file-viewer/parse-in-worker'
+import { parse_in_worker, ParseWorkerError } from '#lib/file-viewer/parse-in-worker'
+import { parse_file_content } from '#lib/file-viewer/parse'
+import { handle_parse_worker_request } from '#lib/file-viewer/parse-worker'
+import { prediction_to_json } from '#lib/structure/prediction'
 import { import_without_workers } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 import type {
   Hdf5GroupSelectionRequiredError,
   TrajectoryFrame,
   TrajectoryRun,
-} from '#lib/trajectory/index.js'
-import { summarize_run } from '#lib/trajectory/run.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
+} from '#lib/trajectory/index'
+import { summarize_run } from '#lib/trajectory/run'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker'
 import { afterEach, describe, expect, it, type Mock, vi } from 'vite-plus/test'
 
 // MessagePort/Worker postMessage take no targetOrigin (that's window.postMessage)
@@ -220,8 +220,8 @@ describe(`parse_in_worker`, () => {
     vi.stubGlobal(`Worker`, worker_global)
     const disabled = worker_global !== undefined
     const module = await (disabled
-      ? import_without_workers(() => import(`#lib/file-viewer/parse-in-worker.js`))
-      : import(`#lib/file-viewer/parse-in-worker.js`))
+      ? import_without_workers(() => import(`#lib/file-viewer/parse-in-worker`))
+      : import(`#lib/file-viewer/parse-in-worker`))
     const content = `{"lattice": {"matrix": [[3, 0, 0], [0, 3, 0], [0, 0, 3]]}, "sites": []}`
     const result = await module.parse_in_worker(content, `empty.json`)
     expect(result).toEqual(await parse_file_content(content, `empty.json`))
@@ -239,7 +239,7 @@ describe(`parse_in_worker`, () => {
     // and disposes a trajectory parsed meanwhile, else its listeners leak
     const run = trajectory_from_frames([frame])
     const dispose = vi.spyOn(run, `dispose`)
-    const parse_module = await import(`#lib/file-viewer/parse.js`)
+    const parse_module = await import(`#lib/file-viewer/parse`)
     vi.spyOn(parse_module, `parse_file_content`).mockResolvedValueOnce({
       type: `trajectory`,
       data: run,
@@ -326,7 +326,7 @@ describe(`parse_in_worker`, () => {
         return worker
       })
       vi.stubGlobal(`Worker`, factory)
-      const module = await import(`#lib/file-viewer/parse-in-worker.js`)
+      const module = await import(`#lib/file-viewer/parse-in-worker`)
       const availability = await import(`svelte-widgets/worker-client`)
       for (const [idx, failure] of failures.entries()) {
         const content = new TextEncoder().encode(xyz).buffer

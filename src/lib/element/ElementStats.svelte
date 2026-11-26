@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import type { ChemicalElement } from '#lib/element/index.js'
+  import type { ChemicalElement } from '#lib/element/index'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { CalendarBlank, Gas, Liquid, Scale, Solid, Weight } from 'svelte-widgets/icons'
   import type { IconData } from 'svelte-widgets/icons'

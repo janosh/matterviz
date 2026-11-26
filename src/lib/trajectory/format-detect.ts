@@ -11,11 +11,11 @@ import {
   VASPRUN_REGEX,
   XYZ_EXTENSIONS,
   XYZ_EXTXYZ_REGEX,
-} from '#lib/constants.js'
-import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '#lib/io/is-binary.js'
-import { is_lammps_data_content } from '#lib/structure/format-detect.js'
-import { parse_leading_num } from '#lib/utils.js'
+} from '#lib/constants'
+import { strip_compression_extensions } from '#lib/io/decompress'
+import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '#lib/io/is-binary'
+import { is_lammps_data_content } from '#lib/structure/format-detect'
+import { parse_leading_num } from '#lib/utils'
 import { has_multiple_xyz_frames } from './helpers'
 
 export const is_trajectory_filename = (filename: string): boolean => {

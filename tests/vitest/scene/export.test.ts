@@ -1,12 +1,12 @@
-import { AtomInstances } from '#lib/structure/atom-instances.js'
-import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
-import { BondMesh } from '#lib/structure/bond-mesh.js'
-import { prepare_bond_placements } from '#lib/structure/bond-rendering.js'
+import { AtomInstances } from '#lib/structure/atom-instances'
+import { ArrowMesh } from '#lib/structure/arrow-mesh'
+import { BondMesh } from '#lib/structure/bond-mesh'
+import { prepare_bond_placements } from '#lib/structure/bond-rendering'
 import {
   convert_instanced_meshes_to_regular,
   export_scene_as,
   generate_mtl_content,
-} from '#lib/scene/export.js'
+} from '#lib/scene/export'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import type {
   Material,

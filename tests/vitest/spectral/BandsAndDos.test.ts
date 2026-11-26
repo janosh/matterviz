@@ -1,6 +1,6 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
-import { mock_band_structure as band_structs } from '#site/spectral-mocks.js'
+import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types'
+import { mock_band_structure as band_structs } from '#site/spectral-mocks'
 import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vite-plus/test'

@@ -1,12 +1,12 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
-import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
-import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { display_idx, trajectory_property_config } from '#lib/labels.js'
-import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
-import { is_finite_matrix3x3, transpose_3x3 } from '#lib/math.js'
-import { yield_turn, is_finite_number } from '#lib/utils.js'
+import { EV_PER_A3_TO_GPA } from '#lib/constants'
+import { strip_compression_extensions } from '#lib/io/decompress'
+import { display_idx, trajectory_property_config } from '#lib/labels'
+import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export'
+import { is_finite_matrix3x3, transpose_3x3 } from '#lib/math'
+import { yield_turn, is_finite_number } from '#lib/utils'
 import { to_error } from 'svelte-widgets/utils'
 import { rows_to_csv } from 'svelte-widgets/format'
 import { zipSync } from 'fflate'

@@ -1,7 +1,7 @@
 import type * as bz_component from '#lib/brillouin/BrillouinZone.svelte'
 import BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
 import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
-import type { Matrix3x3 } from '#lib/math.js'
+import type { Matrix3x3 } from '#lib/math'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'

@@ -3,8 +3,8 @@ import { decode_canvas_png, IS_CI, require_bbox, test_without_errors as test } f
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
-import type * as IoExport from '#lib/io/export.js'
-import type * as AtomModule from '#lib/structure/atom-instances.js'
+import type * as IoExport from '#lib/io/export'
+import type * as AtomModule from '#lib/structure/atom-instances'
 import { write_torchsim_si_frames } from '../fixtures/torchsim-h5'
 
 // The page builds a seeded synthetic run from ?frames=&atoms= (see

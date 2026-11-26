@@ -1,14 +1,14 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
-import type { Crystal } from '#lib/structure/index.js'
+import { materialize_frame_result } from '#lib/trajectory/frame'
+import type { Crystal } from '#lib/structure/index'
 import app_css from '#lib/app.css?inline'
-import type { Vec3 } from '#lib/math.js'
-import { parse_poscar, parse_xyz } from '#lib/structure/parse.js'
+import type { Vec3 } from '#lib/math'
+import { parse_poscar, parse_xyz } from '#lib/structure/parse'
 import { download } from 'svelte-widgets/browser'
-import * as io_export from '#lib/io/export.js'
-import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import * as io_export from '#lib/io/export'
+import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import TrajectoryExportPane from '#lib/trajectory/TrajectoryExportPane.svelte'
-import type { TrajectoryPropertyTable } from '#lib/trajectory/file-export.js'
+import type { TrajectoryPropertyTable } from '#lib/trajectory/file-export'
 import {
   collect_frame_property_rows,
   create_poscar_frame_range_zip,
@@ -18,9 +18,9 @@ import {
   serialize_extxyz_frame_range,
   trajectory_export_basename,
   trajectory_frame_to_extxyz_str,
-} from '#lib/trajectory/file-export.js'
-import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+} from '#lib/trajectory/file-export'
+import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
 import { unzipSync } from 'fflate'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
@@ -33,7 +33,7 @@ vi.mock(`svelte-widgets/browser`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   download: vi.fn(),
 }))
-vi.mock(`#lib/io/export.js`, async (import_original) => ({
+vi.mock(`#lib/io/export`, async (import_original) => ({
   ...(await import_original<typeof io_export>()),
   export_trajectory_video: vi.fn().mockResolvedValue(undefined),
 }))

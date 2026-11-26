@@ -3,21 +3,21 @@
   // and its hovered facet lights up), all facet edges as one instanced cylinder mesh and
   // optional crystal axes.
   // Camera, lights and fitting follow BrillouinZoneScene (KSpaceCamera).
-  import { bz_fit_extent, polyhedron_centroid } from '#lib/brillouin/geometry.js'
+  import { bz_fit_extent, polyhedron_centroid } from '#lib/brillouin/geometry'
   import KSpaceCamera from '#lib/brillouin/KSpaceCamera.svelte'
   import PolyhedronMesh from '#lib/brillouin/PolyhedronMesh.svelte'
   import ReciprocalVectors from '#lib/brillouin/ReciprocalVectors.svelte'
-  import type { Matrix3x3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
-  import type { ThreltePointerEvent } from '#lib/scene/index.js'
+  import type { Matrix3x3 } from '#lib/math'
+  import * as math from '#lib/math'
+  import type { ThreltePointerEvent } from '#lib/scene/index'
   import {
     dispose_on_change,
     scene_interactivity,
     scene_key_walk,
     scene_pointer,
-  } from '#lib/scene/index.js'
-  import { write_bond_transform } from '#lib/structure/bond-rendering.js'
-  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  } from '#lib/scene/index'
+  import { write_bond_transform } from '#lib/structure/bond-rendering'
+  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import {

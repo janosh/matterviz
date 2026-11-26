@@ -7,13 +7,13 @@ This example uses bands and DOS from different materials.
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { electronic_bands } from '#site/electronic/bands/index.js'
-  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
+  import { electronic_bands } from '#site/electronic/bands/index'
+  import { dos_spin_polarization } from '#site/electronic/dos/index'
   import { normalize_dos } from 'matterviz'
 
   const total_dos = normalize_dos(dos_spin_polarization)
   if (!total_dos) throw new Error('Invalid DOS fixture')
-  import { structure_map } from '#site/structures.js'
+  import { structure_map } from '#site/structures'
 </script>
 
 <BandsAndDos
@@ -33,7 +33,7 @@ Phonon band structure with acoustic/optical mode styling:
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
+  import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index'
 
   const bands_props = {
     line_kwargs: {
@@ -66,7 +66,7 @@ Phonon band structure with acoustic/optical mode styling:
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
+  import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index'
 </script>
 
 <BandsAndDos
@@ -92,7 +92,7 @@ Customize the Brillouin zone appearance (colors, opacity, edges) via `bz_props`.
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
+  import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index'
 </script>
 
 <BandsAndDos

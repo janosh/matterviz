@@ -1,8 +1,8 @@
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
-import type { Vec2 } from '#lib/math.js'
-import { plot_color } from '#lib/colors/index.js'
-import * as marginal_utils from '#lib/plot/core/marginals.js'
-import type { HistogramSeries } from '#lib/plot/histogram/histogram.js'
+import type { Vec2 } from '#lib/math'
+import { plot_color } from '#lib/colors/index'
+import * as marginal_utils from '#lib/plot/core/marginals'
+import type { HistogramSeries } from '#lib/plot/histogram/histogram'
 import {
   bin_values,
   compute_count_range,
@@ -10,7 +10,7 @@ import {
   compute_histogram_counts,
   log_safe_range,
   normalize_counts,
-} from '#lib/plot/histogram/histogram.js'
+} from '#lib/plot/histogram/histogram'
 import { flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {

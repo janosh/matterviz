@@ -7,13 +7,13 @@
   // the visible rows and follow the scroll position: at one canvas of all rows each, 380
   // phases took 2 x 58 MB of backing store on a 2x display.
   import { clamp } from 'svelte-widgets/utils'
-  import { add_alpha } from '#lib/colors/index.js'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
+  import { add_alpha } from '#lib/colors/index'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'
+  import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte'
   import type { PhaseTemperatureHover, TernaryDisplay, TernaryPhaseDiagram } from './types'
   import { TERNARY_COLORS } from './types'
 

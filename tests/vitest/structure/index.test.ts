@@ -1,7 +1,7 @@
 import type { AnyStructure, Crystal, ElementSymbol, Site } from '#lib'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import * as struct_utils from '#lib/structure/index.js'
-import type { StructureFitOpts } from '#lib/structure/index.js'
+import type { Vec2, Vec3 } from '#lib/math'
+import * as struct_utils from '#lib/structure/index'
+import type { StructureFitOpts } from '#lib/structure/index'
 import {
   camera_needs_fit,
   camera_position_for_target,
@@ -18,16 +18,16 @@ import {
   vector_category,
   vector_display_defaults,
   VECTOR_PALETTE,
-} from '#lib/structure/index.js'
-import { neighbor_query } from '#lib/structure/neighbor-list.js'
-import { applies_to_structure } from '#lib/structure/settings.js'
+} from '#lib/structure/index'
+import { neighbor_query } from '#lib/structure/neighbor-list'
+import { applies_to_structure } from '#lib/structure/settings'
 import {
   make_site as create_site,
   numeric_sites,
   snapshot_topologies,
-} from '#lib/structure/site.js'
-import { generate_lattice_points } from '#lib/structure/supercell.js'
-import { structures } from '#site/structures.js'
+} from '#lib/structure/site'
+import { generate_lattice_points } from '#lib/structure/supercell'
+import { structures } from '#site/structures'
 import { assert, describe, expect, test, vi } from 'vite-plus/test'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 import {
@@ -35,7 +35,7 @@ import {
   encode_frame,
   FrameView,
   materialize_frame,
-} from '#lib/trajectory/frame.js'
+} from '#lib/trajectory/frame'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 
 type RefData = { amounts: Record<string, number>; density: number; center_of_mass: Vec3 }

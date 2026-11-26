@@ -1,7 +1,7 @@
-import type { Vec2 } from '#lib/math.js'
-import { place_reference_annotation } from '#lib/plot/core/decorations/reference-annotations.js'
-import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
-import type { ReferenceLineAxes } from '#lib/plot/core/reference-line.js'
+import type { Vec2 } from '#lib/math'
+import { place_reference_annotation } from '#lib/plot/core/decorations/reference-annotations'
+import { solve_decorations } from '#lib/plot/core/decorations/solve'
+import type { ReferenceLineAxes } from '#lib/plot/core/reference-line'
 import {
   compute_annotation_position,
   create_reference_annotation_candidates,
@@ -13,10 +13,10 @@ import {
   reference_annotation_text_rect,
   resolve_line_endpoints,
   solve_reference_annotations,
-} from '#lib/plot/core/reference-line.js'
-import { create_scale } from '#lib/plot/core/scales.js'
-import type { RefLine } from '#lib/plot/core/types.js'
-import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
+} from '#lib/plot/core/reference-line'
+import { create_scale } from '#lib/plot/core/scales'
+import type { RefLine } from '#lib/plot/core/types'
+import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { mock_canvas_context } from '../setup'
 

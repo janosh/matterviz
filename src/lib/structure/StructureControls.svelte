@@ -5,19 +5,19 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { create_clipboard_feedback } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
-  import { SHORTCUTS } from '#lib/shortcuts.js'
+  import { SHORTCUTS } from '#lib/shortcuts'
   import { numeric_sites, snapshot_topologies } from './site'
   import { site_adp } from './thermal-ellipsoids'
-  import { element_from_atomic_number } from '#lib/element/helpers.js'
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
+  import { element_from_atomic_number } from '#lib/element/helpers'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls'
   import { resolve_cell_vectors, type StructureSettings } from './settings'
-  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import { ControlPane } from '#lib/overlays/index.js'
-  import type { ColorSchemeName } from '#lib/colors/index.js'
-  import { AXIS_COLORS, css_color_to_hex } from '#lib/colors/index.js'
-  import { resolve_theme_text_color } from '#lib/state.svelte.js'
-  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
+  import { ControlPane } from '#lib/overlays/index'
+  import type { ColorSchemeName } from '#lib/colors/index'
+  import { AXIS_COLORS, css_color_to_hex } from '#lib/colors/index'
+  import { resolve_theme_text_color } from '#lib/state.svelte'
+  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants'
   import { scheme_colors } from './element-palette.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -25,26 +25,26 @@
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import IsosurfaceControls from '#lib/isosurface/IsosurfaceControls.svelte'
   import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
-  import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
-  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
-  import { capitalize } from '#lib/labels.js'
+  import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types'
+  import { capitalize } from '#lib/labels'
   import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
-  import type { Vec3 } from '#lib/math.js'
-  import { to_degrees, to_radians } from '#lib/math.js'
+  import { FileExportState } from '#lib/io/file-export.svelte'
+  import type { Vec3 } from '#lib/math'
+  import { to_degrees, to_radians } from '#lib/math'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import type { ZoneAxisMode } from '#lib/scene/index.js'
+  import type { ZoneAxisMode } from '#lib/scene/index'
   import {
     is_valid_zone_axis,
     ZONE_AXIS_MODE_LABELS,
     zone_axis_direction,
-  } from '#lib/scene/index.js'
-  import { ColorScaleSelect } from '#lib/plot/index.js'
-  import type { ColorScale } from '#lib/plot/core/types.js'
-  import type { AtomColorMode, SettingType, VectorLayerConfig } from '#lib/settings.js'
-  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  } from '#lib/scene/index'
+  import { ColorScaleSelect } from '#lib/plot/index'
+  import type { ColorScale } from '#lib/plot/core/types'
+  import type { AtomColorMode, SettingType, VectorLayerConfig } from '#lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings'
   import type { ImageAtomCompletion } from './pbc'
-  import type { StructurePaneSize, StructureViewState } from '#lib/settings/viewer-state.js'
+  import type { StructurePaneSize, StructureViewState } from '#lib/settings/viewer-state'
   import {
     clear_structure_view_state,
     create_structure_view_state,
@@ -53,34 +53,34 @@
     load_structure_view_state,
     save_structure_view_state,
     serialize_structure_view_state,
-  } from '#lib/settings/viewer-state.js'
-  import type { AnyStructure, StructureDisplayMode } from '#lib/structure/index.js'
+  } from '#lib/settings/viewer-state'
+  import type { AnyStructure, StructureDisplayMode } from '#lib/structure/index'
   import {
     get_structure_vector_keys,
     RESET_VIEW_TITLE,
     group_vector_keys,
     vector_palette_color,
-  } from '#lib/structure/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
+  } from '#lib/structure/index'
+  import type { ElementSymbol } from '#lib/element/index'
+  import type { AtomColorConfig } from '#lib/structure/atom-properties'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
     get_atom_color_mode_options,
     next_atom_color_config,
     structure_has_selective_dynamics,
-  } from '#lib/structure/atom-properties.js'
-  import type { DisplacementSummary } from '#lib/structure/measure.js'
-  import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
-  import { get_majority_element, read_pair_cutoffs } from '#lib/structure/bonding.js'
-  import { element_by_symbol } from '#lib/element/data.js'
-  import { is_valid_supercell_input } from '#lib/structure/supercell.js'
+  } from '#lib/structure/atom-properties'
+  import type { DisplacementSummary } from '#lib/structure/measure'
+  import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines'
+  import { get_majority_element, read_pair_cutoffs } from '#lib/structure/bonding'
+  import { element_by_symbol } from '#lib/element/data'
+  import { is_valid_supercell_input } from '#lib/structure/supercell'
   import {
     has_lattice_matrix,
     has_usable_lattice,
     is_periodic,
-  } from '#lib/structure/validation.js'
-  import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
+  } from '#lib/structure/validation'
+  import type { CellType, SymmetryDataset } from '#lib/symmetry/index'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { untrack, type ComponentProps, type Snippet } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'

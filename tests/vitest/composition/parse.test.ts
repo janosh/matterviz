@@ -1,5 +1,5 @@
 import type { CompositionType } from '#lib'
-import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce'
 import {
   extract_formula_elements,
   fractional_composition,
@@ -8,7 +8,7 @@ import {
   parse_formula,
   parse_formula_with_oxidation,
   parse_formula_with_wildcards,
-} from '#lib/composition/parse.js'
+} from '#lib/composition/parse'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`parse_formula`, () => {

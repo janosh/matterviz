@@ -3,13 +3,13 @@
 // The file is scanned as text rather than parsed as XML: parsing runs in a worker without
 // DOMParser, and a DOM of a multi-hundred-MB vasprun (projected DOS, eigenvalues per
 // k-point) would dwarf the few tags a trajectory needs.
-import type { ElementSymbol } from '#lib/element/index.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { parse_float_token } from '#lib/structure/parsers/shared.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import { compute_force_stats, create_trajectory_frame } from '#lib/trajectory/helpers.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { is_elem_symbol } from '#lib/element/helpers'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { parse_float_token } from '#lib/structure/parsers/shared'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
+import { compute_force_stats, create_trajectory_frame } from '#lib/trajectory/helpers'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { vasp_run, vasp_stress_metadata } from './shared'
 

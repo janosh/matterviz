@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type DOMPurifyModule from 'dompurify'
-import type * as SanitizeModule from '#lib/sanitize.js'
+import type * as SanitizeModule from '#lib/sanitize'
 
 // sanitize_html skips DOMPurify for markup it proves inert. happy-dom can't vouch for that, so
 // this checks the shortcut against real DOMPurify in Chromium with sanitize.ts's own config

@@ -1,9 +1,9 @@
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
-import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
-import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath.js'
-import type { BrillouinZoneData } from '#lib/brillouin/types.js'
-import { cross_3d, dot, type Matrix3x3, reciprocal_lattice, subtract } from '#lib/math.js'
-import type * as symmetry from '#lib/symmetry/analyze.js'
+import { compute_brillouin_zone } from '#lib/brillouin/compute'
+import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath'
+import type { BrillouinZoneData } from '#lib/brillouin/types'
+import { cross_3d, dot, type Matrix3x3, reciprocal_lattice, subtract } from '#lib/math'
+import type * as symmetry from '#lib/symmetry/analyze'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
@@ -27,7 +27,7 @@ beforeEach(mock_parse_worker)
 
 // The IBZ needs moyo's point group; stand in for the WASM analysis so a test can make it fail
 const analyze_structure_symmetry = vi.hoisted(() => vi.fn())
-vi.mock(`#lib/symmetry/analyze.js`, async (original) => ({
+vi.mock(`#lib/symmetry/analyze`, async (original) => ({
   ...(await original<typeof symmetry>()),
   analyze_structure_symmetry,
 }))
@@ -485,9 +485,8 @@ test.each([
   [`bcc`, make_crystal(4, bcc_sites)],
 ])(`default k-path of a conventional %s cell lies in the zone`, async (_name, structure) => {
   await init_moyo_for_tests()
-  const { analyze_structure_symmetry: analyze } = await vi.importActual<typeof symmetry>(
-    `#lib/symmetry/analyze.js`,
-  )
+  const { analyze_structure_symmetry: analyze } =
+    await vi.importActual<typeof symmetry>(`#lib/symmetry/analyze`)
   analyze_structure_symmetry.mockImplementationOnce(analyze)
   const { matrix } = structure.lattice
   const { points } = kpath_to_k_path_data(

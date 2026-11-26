@@ -1,6 +1,6 @@
 <script lang="ts">
   import { XrdPlot } from '#lib'
-  import type { XrdPeak } from '#lib/xrd/index.js'
+  import type { XrdPeak } from '#lib/xrd/index'
   import type { ComponentProps } from 'svelte'
 
   let { patterns: initial_patterns, ...props }: ComponentProps<typeof XrdPlot> = $props()

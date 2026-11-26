@@ -1,9 +1,9 @@
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
-import { is_finite_number } from '#lib/utils.js'
-import { display_idx } from '#lib/labels.js'
+import { is_finite_number } from '#lib/utils'
+import { display_idx } from '#lib/labels'
 import { encode_frame, type NumericFrame } from '../frame'
-import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math.js'
+import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math'
 import { frame_property_row } from '../extract'
 import { is_supported_trajectory_signal_shape, values_per_sample } from '../helpers'
 import type { TrajectoryFrame, TrajectoryMetadata, TrajectorySignal } from '../index'

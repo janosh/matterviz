@@ -1,12 +1,12 @@
 // Pure screen-space geometry for BarPlot rendering: line-series point
 // construction and per-bar rect computation.
 
-import type { Point2D, Vec2 } from '#lib/math.js'
-import { error_bar_path, error_getter } from '#lib/plot/core/error-bars.js'
-import type { Rect } from '#lib/plot/core/layout.js'
-import { process_prop } from '#lib/plot/core/data-transform.js'
-import type { BarMode, InternalPoint, Orientation } from '#lib/plot/core/types.js'
-import { finite_or_null } from '#lib/plot/scatter/scatter-data.js'
+import type { Point2D, Vec2 } from '#lib/math'
+import { error_bar_path, error_getter } from '#lib/plot/core/error-bars'
+import type { Rect } from '#lib/plot/core/layout'
+import { process_prop } from '#lib/plot/core/data-transform'
+import type { BarMode, InternalPoint, Orientation } from '#lib/plot/core/types'
+import { finite_or_null } from '#lib/plot/scatter/scatter-data'
 import type { GroupInfo, NumericBarSeries } from './data'
 
 // Point with computed screen coordinates plus original data values

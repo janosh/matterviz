@@ -1,5 +1,5 @@
-import type { VacfResult } from '#lib/vacf/index.js'
-import { compute_vacf } from '#lib/vacf/compute-vacf.js'
+import type { VacfResult } from '#lib/vacf/index'
+import { compute_vacf } from '#lib/vacf/compute-vacf'
 import { describe, expect, it } from 'vite-plus/test'
 import { build_vacf_input, circular_motion, ideal_gas } from './helpers'
 

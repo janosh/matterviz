@@ -1,16 +1,12 @@
 <script lang="ts">
   // Everything the 3D chemical potential diagram draws inside its <Canvas>.
   import { format_num } from 'svelte-widgets/format'
-  import type { FormulaLabelSegment } from '#lib/composition/formula-markup.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import { array_extent } from '#lib/math.js'
-  import type {
-    AxisConfig3D,
-    CameraProjection3D,
-    DisplayConfig3D,
-  } from '#lib/plot/core/types.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import type { ThreltePointerEvent } from '#lib/scene/index.js'
+  import type { FormulaLabelSegment } from '#lib/composition/formula-markup'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import { array_extent } from '#lib/math'
+  import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '#lib/plot/core/types'
+  import { sanitize_html } from '#lib/sanitize'
+  import type { ThreltePointerEvent } from '#lib/scene/index'
   import {
     bind_renderer,
     build_orbit_props,
@@ -26,7 +22,7 @@
     SceneCamera,
     SceneLabel,
     SceneLights,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'

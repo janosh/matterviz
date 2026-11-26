@@ -8,12 +8,12 @@ import {
   build_isosurface_geometry,
   nearest_face_vertex,
   visible_isosurfaces,
-} from '#lib/fermi-surface/geometry.js'
-import type { BandEnergyGrid, FermiIsosurface } from '#lib/fermi-surface/types.js'
-import type { VertexColorOptions } from '#lib/isosurface/coloring.js'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
-import { get_d3_interpolator } from '#lib/colors/index.js'
-import type { Vec3 } from '#lib/math.js'
+} from '#lib/fermi-surface/geometry'
+import type { BandEnergyGrid, FermiIsosurface } from '#lib/fermi-surface/types'
+import type { VertexColorOptions } from '#lib/isosurface/coloring'
+import { css_to_linear_rgb } from '#lib/scene/colors'
+import { get_d3_interpolator } from '#lib/colors/index'
+import type { Vec3 } from '#lib/math'
 import type { BufferAttribute } from 'three/webgpu'
 import { describe, expect, onTestFinished, test } from 'vite-plus/test'
 import { make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'

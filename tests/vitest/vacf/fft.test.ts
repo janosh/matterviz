@@ -6,7 +6,7 @@ import {
   next_power_of_two,
   one_sided_periodogram,
   time_series_window,
-} from '#lib/fft.js'
+} from '#lib/fft'
 import { describe, expect, it } from 'vite-plus/test'
 import { make_rng, max_abs_error } from './helpers'
 

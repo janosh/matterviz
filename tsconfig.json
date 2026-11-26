@@ -5,10 +5,13 @@
     // allow importing @wooorm/starry-night/style/both.css (types via its .d.css.ts) from +layout.svelte
     "allowArbitraryExtensions": true,
     "paths": {
-      // Playwright's TS loader resolves bare specifiers only through `paths`, not package.json
-      // `imports`, so #lib is repeated here for the e2e tests and the src/lib files they load
+      // Repeats package.json `imports`: TypeScript resolves those subpath patterns without
+      // trying extensions, so extensionless #lib/#site imports type-check only through
+      // `paths` (which Playwright's TS loader also needs)
       "#lib": ["./src/lib"],
       "#lib/*": ["./src/lib/*"],
+      "#site": ["./src/site"],
+      "#site/*": ["./src/site/*"],
       // tests and docs examples import the package by name (vite.config.ts aliases it to source)
       "matterviz": ["./src/lib"],
       "matterviz/*": ["./src/lib/*"]

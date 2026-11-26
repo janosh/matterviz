@@ -1,5 +1,5 @@
-import { is_finite_number } from '#lib/utils.js'
-import { leading_number } from '#lib/math.js'
+import { is_finite_number } from '#lib/utils'
+import { leading_number } from '#lib/math'
 
 export interface FontSpec {
   font_family: string

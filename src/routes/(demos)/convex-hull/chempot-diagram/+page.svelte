@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/index.js'
-  import { ChemPotDiagram, ChemPotDiagram3D } from '#lib/chempot-diagram/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import type { PhaseData } from '#lib/convex-hull/index.js'
-  import { filter_by_elements, quaternary_loader } from '#site/convex-hull/index.js'
-  import { create_temp_ternary_entries_li_fe_o } from '#site/convex-hull/demo-temperature.js'
+  import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/index'
+  import { ChemPotDiagram, ChemPotDiagram3D } from '#lib/chempot-diagram/index'
+  import type { ElementSymbol } from '#lib/element/index'
+  import type { PhaseData } from '#lib/convex-hull/index'
+  import { filter_by_elements, quaternary_loader } from '#site/convex-hull/index'
+  import { create_temp_ternary_entries_li_fe_o } from '#site/convex-hull/demo-temperature'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import LazyDemo from '#site/LazyDemo.svelte'
 

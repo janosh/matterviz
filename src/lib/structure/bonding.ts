@@ -1,11 +1,11 @@
 // Bonding algorithms for structure visualization
 import { value_key } from 'svelte-widgets/utils'
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import { element_by_symbol } from '../element/data'
 import { element_from_atomic_number, is_elem_symbol } from '../element/helpers'
-import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { ChemicalElement, ElementSymbol } from '#lib/element/index'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import type {
   AnyStructure,
   BondOrder,
@@ -14,7 +14,7 @@ import type {
   Pbc,
   Site,
   StructureBond,
-} from '#lib/structure/index.js'
+} from '#lib/structure/index'
 import {
   get_image_source_idx,
   get_orig_site_idx,
@@ -22,7 +22,7 @@ import {
   numeric_sites,
   NumericSites,
   site_count,
-} from '#lib/structure/site.js'
+} from '#lib/structure/site'
 import { BOND_ORDERS, BondFrame, pack_bonds, type BondColumns } from './bond-rendering'
 import {
   bin_points,

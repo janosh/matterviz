@@ -1,18 +1,18 @@
 // Mounts Isosurface.svelte against a recording Threlte stub: layer resolution, geometry
 // rebuild/reuse, lobe signs, render ordering and cross-volume vertex coloring.
-import { ISOSURFACE_ERROR_CONTEXT } from '#lib/isosurface/context.js'
-import type * as geometry_module from '#lib/isosurface/geometry.js'
+import { ISOSURFACE_ERROR_CONTEXT } from '#lib/isosurface/context'
+import type * as geometry_module from '#lib/isosurface/geometry'
 import Isosurface from '#lib/isosurface/Isosurface.svelte'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
   VolumetricData,
-} from '#lib/isosurface/types.js'
-import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
+} from '#lib/isosurface/types'
+import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from '#lib/isosurface/types'
 import type * as worker_client from 'svelte-widgets/worker-client'
-import { parse_supercell_matrix } from '#lib/structure/supercell.js'
-import { compute_isosurface_geometries } from '#lib/isosurface/geometry.js'
-import { prepare_geometry_grid, type VolumeWindow } from '#lib/isosurface/sampling.js'
+import { parse_supercell_matrix } from '#lib/structure/supercell'
+import { compute_isosurface_geometries } from '#lib/isosurface/geometry'
+import { prepare_geometry_grid, type VolumeWindow } from '#lib/isosurface/sampling'
 import { flushSync, mount, unmount } from 'svelte'
 import {
   AgXToneMapping,
@@ -45,7 +45,7 @@ const compute_geometries_async = vi.hoisted(() => {
   const release = vi.fn()
   return Object.assign(vi.fn(), { release, mount: () => release })
 })
-vi.mock(`#lib/isosurface/async-geometry.svelte.js`, () => ({ compute_geometries_async }))
+vi.mock(`#lib/isosurface/async-geometry.svelte`, () => ({ compute_geometries_async }))
 // Hosts that disable workers (anywidget) leave `Worker` defined, so the gate must be
 // can_create_worker rather than `typeof Worker`; flip `workers_disabled` to simulate one
 const worker_gate = vi.hoisted(() => ({ workers_disabled: false }))
@@ -60,7 +60,7 @@ vi.mock(`svelte-widgets/worker-client`, async (import_original) => {
 // Throws from the main-thread extraction (e.g. a RangeError when a typed array can't be
 // allocated) while set
 const sync_failure = vi.hoisted(() => ({ error: null as Error | null }))
-vi.mock(`#lib/isosurface/geometry.js`, async (import_original) => {
+vi.mock(`#lib/isosurface/geometry`, async (import_original) => {
   const original = await import_original<typeof geometry_module>()
   return {
     ...original,

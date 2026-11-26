@@ -1,5 +1,5 @@
 import app_css from '#lib/app.css?raw'
-import type { ThemeMode, ThemeName } from '#lib/theme/index.js'
+import type { ThemeMode, ThemeName } from '#lib/theme/index'
 import {
   apply_theme_to_dom,
   COLOR_THEMES,
@@ -9,7 +9,7 @@ import {
   save_theme_preference,
   THEME_TYPE,
   watch_theme_changes,
-} from '#lib/theme/index.js'
+} from '#lib/theme/index'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 const mock_match_media = (matches: boolean) => {

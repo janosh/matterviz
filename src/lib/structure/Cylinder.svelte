@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Vec3 } from '#lib/math.js'
+  import type { Vec3 } from '#lib/math'
   import { T } from '@threlte/core'
   import { cylinder_between } from './geometry'
 

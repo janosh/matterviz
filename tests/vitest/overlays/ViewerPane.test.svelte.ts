@@ -1,4 +1,4 @@
-import type { ShowControlsProp } from '#lib/controls.js'
+import type { ShowControlsProp } from '#lib/controls'
 import ControlPane from '#lib/overlays/ControlPane.svelte'
 import ViewerPane from '#lib/overlays/ViewerPane.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'

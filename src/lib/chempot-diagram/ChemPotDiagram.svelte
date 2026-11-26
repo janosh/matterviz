@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { plural } from '#lib/labels.js'
+  import { plural } from '#lib/labels'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'

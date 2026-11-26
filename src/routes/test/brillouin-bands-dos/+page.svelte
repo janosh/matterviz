@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
-  import { BandsAndDos } from '#lib/spectral/index.js'
-  import type { Crystal, Site } from '#lib/structure/index.js'
+  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math'
+  import { BandsAndDos } from '#lib/spectral/index'
+  import type { Crystal, Site } from '#lib/structure/index'
   import {
     custom_overlay_style,
     mock_band_structure_gxmg as mock_band_structure,
     mock_dos_gxmg as mock_dos,
-  } from '#site/spectral-mocks.js'
+  } from '#site/spectral-mocks'
   import TestSection from '../TestSection.svelte'
 
   const matrix: Matrix3x3 = [

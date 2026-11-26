@@ -4,22 +4,20 @@
 
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '#lib/app.css'
-import { host } from '#lib/host.js'
-import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
-import {
-  merge,
-  build_structure_props_from_settings as structure_props,
-} from '#lib/settings.js'
-import type { DefaultSettings } from '#lib/settings.js'
+import { host } from '#lib/host'
+import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility'
+import { merge, build_structure_props_from_settings as structure_props } from '#lib/settings'
+import type { DefaultSettings } from '#lib/settings'
 import type { DownloadData } from 'svelte-widgets/browser'
-import { set_moyo_wasm_source } from '#lib/symmetry/index.js'
-import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
-import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
-import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
+import { set_moyo_wasm_source } from '#lib/symmetry/index'
+import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index'
+import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index'
+import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import { create_prepare_pool } from '#lib/trajectory/prepare-pool.js'
+import { create_prepare_pool } from '#lib/trajectory/prepare-pool'
+import { AlertCircle } from 'svelte-widgets/icons'
 import { can_create_worker } from 'svelte-widgets/worker-client'
 import {
   get_vscode_api,
@@ -417,6 +415,7 @@ const create_error_display = (
 ): void => {
   // Only a parser that read the file and rejected it earns the format list
   const rejected = error instanceof MaterialOpenError && error.stage === `parse`
+  const error_color = `var(--error-color, var(--vscode-errorForeground, #f85149))`
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
@@ -425,8 +424,9 @@ const create_error_display = (
                 color: var(--vscode-editor-foreground, var(--text-color, CanvasText));
                 height: 100%;
                 display: flex; flex-direction: column; justify-content: center; align-items: center;">
-      <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">Failed to ${rejected ? `Parse` : `Open`} File</h2>
+      <svg viewBox="${AlertCircle.viewBox}" width="48" height="48" aria-hidden="true"
+           style="margin-bottom: 16px; color: ${error_color};"><path fill="currentColor" d="${AlertCircle.d}"/></svg>
+      <h2 style="margin: 0 0 15px 0; color: ${error_color};">Failed to ${rejected ? `Parse` : `Open`} File</h2>
       <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>

@@ -1,9 +1,6 @@
 // Tests for world-coordinate volume sampling, grid compatibility checks, and
 // fractional display-range extraction
-import {
-  compute_isosurface_geometries,
-  MAX_SURFACE_TRIANGLES,
-} from '#lib/isosurface/geometry.js'
+import { compute_isosurface_geometries, MAX_SURFACE_TRIANGLES } from '#lib/isosurface/geometry'
 import {
   compare_volume_grids,
   create_volume_sampler,
@@ -15,11 +12,11 @@ import {
   sanitize_display_range,
   trilinear_interpolate,
   UNIT_CELL_RANGE,
-} from '#lib/isosurface/sampling.js'
-import type { DisplayRange, VolumeWindow } from '#lib/isosurface/sampling.js'
-import type { VolumetricData } from '#lib/isosurface/types.js'
-import { marching_cubes } from '#lib/marching-cubes.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+} from '#lib/isosurface/sampling'
+import type { DisplayRange, VolumeWindow } from '#lib/isosurface/sampling'
+import type { VolumetricData } from '#lib/isosurface/types'
+import { marching_cubes } from '#lib/marching-cubes'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import {
   create_cart_to_frac,
   create_frac_to_cart,
@@ -27,8 +24,8 @@ import {
   det_3x3,
   dot,
   subtract,
-} from '#lib/math.js'
-import { diagonal_matrix } from '#lib/structure/supercell.js'
+} from '#lib/math'
+import { diagonal_matrix } from '#lib/structure/supercell'
 import { describe, expect, test } from 'vite-plus/test'
 import {
   cubic_matrix,

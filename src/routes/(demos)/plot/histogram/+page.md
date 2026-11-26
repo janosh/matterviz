@@ -8,7 +8,7 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { Histogram, type HistogramHandlerProps } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let bins = $state(50)
   let sample_size = $state(1000)
@@ -87,7 +87,7 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let display = $state({ x_grid: true, y_grid: false, y2_grid: false })
   let series = $state([
@@ -138,7 +138,7 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `linear`, label: `Count (Normal/Uniform)` })
@@ -250,7 +250,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `log` })
@@ -326,7 +326,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_signed_data, seeded_rng } from '#site/histogram-data.js'
+  import { generate_signed_data, seeded_rng } from '#site/histogram-data'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
   let x_scale_type = $state(`arcsinh`)
@@ -419,8 +419,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { FilePicker, Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
-  import { url_selection } from '#site/state.svelte.js'
+  import * as utils from '#site/histogram-data'
+  import { url_selection } from '#site/state.svelte'
 
   const selected = url_selection(`dist`, [`bimodal`, `skewed`, `discrete`, `age`, `mixture`])
   let mode = $state(`single`)
@@ -487,7 +487,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let normalize = $state(`density`)
   let bins = $state(40)
@@ -529,7 +529,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let bin_counts = $state([10, 25, 50, 100])
   let data_type = $state(`mixed`)
@@ -576,7 +576,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let color_scheme = $state(`default`)
   let x_format = $state(`number`)
@@ -670,7 +670,7 @@ Binning is a single pass over the samples (100k values into 200 bins takes ~3 ms
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let dataset_size = $state(10000)
   let data_type = $state(`normal`)
@@ -741,7 +741,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let comparison_mode = $state(false)
 
@@ -892,7 +892,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { type HistogramSeries, Histogram, create_axis_loader, type AxisKey } from 'matterviz'
-  import { box_muller, seeded_rng } from '#site/histogram-data.js'
+  import { box_muller, seeded_rng } from '#site/histogram-data'
 
   // One sample of each distribution, drawn from a seeded uniform rng and normal()
   const samplers = {
@@ -1032,7 +1032,7 @@ Display multiple histograms in a responsive 2×2 grid:
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   const plots = [
     {
@@ -1111,7 +1111,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_exponential, generate_normal } from '#site/histogram-data.js'
+  import { generate_exponential, generate_normal } from '#site/histogram-data'
 
   const n_samples = 200
   const y1_values = generate_normal(n_samples, 50, 15)
@@ -1171,7 +1171,7 @@ Plot two distributions with independent x-scales on the same histogram. The prim
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   // Seeded so the two mass distributions are reproducible on reload
   const rng = seeded_rng(42)

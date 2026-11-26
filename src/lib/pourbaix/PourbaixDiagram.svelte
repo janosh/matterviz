@@ -1,23 +1,23 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '#lib/colors/index.js'
-  import { format_formula_html, format_formula_svg } from '#lib/composition/formula-markup.js'
-  import { json_source } from '#lib/io/export.js'
-  import { rgba_to_data_url, slice_to_rgba } from '#lib/isosurface/slice-rendering.js'
-  import { polygon_label_point, type Vec2 } from '#lib/math.js'
+  import { PLOT_COLORS } from '#lib/colors/index'
+  import { format_formula_html, format_formula_svg } from '#lib/composition/formula-markup'
+  import { json_source } from '#lib/io/export'
+  import { rgba_to_data_url, slice_to_rgba } from '#lib/isosurface/slice-rendering'
+  import { polygon_label_point, type Vec2 } from '#lib/math'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { get_relative_coords } from '#lib/plot/core/interactions.js'
-  import { CONTROLS_ROW_HEIGHT } from '#lib/plot/core/layout.js'
+  import { get_relative_coords } from '#lib/plot/core/interactions'
+  import { CONTROLS_ROW_HEIGHT } from '#lib/plot/core/layout'
   import type {
     AxisConfig,
     AxisRanges,
     DisplayConfig,
     UserContentProps,
-  } from '#lib/plot/core/types.js'
-  import type { RefLine } from '#lib/plot/core/types/reference-lines.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
-  import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  } from '#lib/plot/core/types'
+  import type { RefLine } from '#lib/plot/core/types/reference-lines'
+  import { ScatterPlot } from '#lib/plot/index'
+  import { sanitize_html, sanitize_svg } from '#lib/sanitize'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import type { ComponentProps } from 'svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from 'svelte-widgets/format'

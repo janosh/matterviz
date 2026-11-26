@@ -7,7 +7,7 @@ import {
   is_binary_data_extension,
   is_binary_payload,
   magic_head,
-} from '#lib/io/is-binary.js'
+} from '#lib/io/is-binary'
 import { describe, expect, test } from 'vite-plus/test'
 
 const bytes = (...nums: number[]): Uint8Array<ArrayBuffer> => new Uint8Array(nums)

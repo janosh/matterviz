@@ -1,34 +1,34 @@
 <script lang="ts">
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { canvas_sources, type ExportProps } from '#lib/io/export.js'
-  import type { MaterialSource } from '#lib/file-viewer/open.js'
-  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
+  import { canvas_sources, type ExportProps } from '#lib/io/export'
+  import type { MaterialSource } from '#lib/file-viewer/open'
+  import type { BrillouinZoneData } from '#lib/brillouin/index'
   import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
-  import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index.js'
-  import { reciprocal_lattice } from '#lib/math.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index'
+  import { reciprocal_lattice } from '#lib/math'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import ViewerError from '#lib/layout/ViewerError.svelte'
-  import { derived_error_notice } from '#lib/layout/error-notice.svelte.js'
+  import { derived_error_notice } from '#lib/layout/error-notice.svelte'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
-  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
-  import type { FileLoadCallback } from '#lib/io/index.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
+  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte'
+  import type { FileLoadCallback } from '#lib/io/index'
+  import { ViewerChrome } from '#lib/layout/index'
+  import { PlotTooltip } from '#lib/plot/index'
   import {
     create_renderer,
     key_walk_root,
     wheel_zoom_gate,
     model_export_items,
     webgpu_available,
-  } from '#lib/scene/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  } from '#lib/scene/index'
+  import { DEFAULTS } from '#lib/settings'
+  import type { Vec2, Vec3 } from '#lib/math'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
+  import type { Crystal } from '#lib/structure/index'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -48,9 +48,9 @@
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from 'svelte-widgets/utils'
   import { can_create_worker } from 'svelte-widgets/worker-client'
-  import { viewer_keys } from '#lib/shortcuts.js'
-  import { mark_pin } from '#lib/tooltip/pin.svelte.js'
-  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
+  import { viewer_keys } from '#lib/shortcuts'
+  import { mark_pin } from '#lib/tooltip/pin.svelte'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset'
   import type {
     BandGridData,
     FermiErrorData,

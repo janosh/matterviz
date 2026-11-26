@@ -1,17 +1,17 @@
 // Tests for isosurface volumetric file parsers (CHGCAR, .cube)
-import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
+import { BOHR_TO_ANGSTROM } from '#lib/constants'
 import {
   parse_chgcar,
   parse_cube,
   parse_float_block,
   parse_volumetric_file,
-} from '#lib/isosurface/parse.js'
-import type { VolumetricFileData } from '#lib/isosurface/types.js'
-import type { Vec3 } from '#lib/math.js'
+} from '#lib/isosurface/parse'
+import type { VolumetricFileData } from '#lib/isosurface/types'
+import type { Vec3 } from '#lib/math'
 import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
-import { normalize_scientific_notation } from '#lib/utils.js'
+import { normalize_scientific_notation } from '#lib/utils'
 import { grid_value, make_grid, read_maybe_gz } from '../test-fixtures'
-import { create_volume_sampler } from '#lib/isosurface/sampling.js'
+import { create_volume_sampler } from '#lib/isosurface/sampling'
 // spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
 // failing assertion above it, silencing console.warn for the rest of the file
 beforeEach(() => vi.restoreAllMocks())

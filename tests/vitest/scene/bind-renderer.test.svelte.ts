@@ -1,10 +1,10 @@
 import { globSync, readFileSync } from 'node:fs'
-import { renderer_registry, scene_registry } from '#lib/io/export.js'
+import { renderer_registry, scene_registry } from '#lib/io/export'
 import {
   bind_renderer,
   create_renderer,
   webgpu_available,
-} from '#lib/scene/bind-renderer.svelte.js'
+} from '#lib/scene/bind-renderer.svelte'
 import { currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync } from 'svelte'

@@ -1,11 +1,11 @@
-import type { Vec3 } from '#lib/math.js'
-import { is_valid_index } from '#lib/math.js'
-import type { CameraFlight, CameraPose } from '#lib/scene/camera-flight.js'
-import { validate_camera_flight } from '#lib/scene/camera-flight.js'
+import type { Vec3 } from '#lib/math'
+import { is_valid_index } from '#lib/math'
+import type { CameraFlight, CameraPose } from '#lib/scene/camera-flight'
+import { validate_camera_flight } from '#lib/scene/camera-flight'
 import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
-import type { MaterialSource } from '#lib/file-viewer/open.js'
+import type { MaterialSource } from '#lib/file-viewer/open'
 import type { TrajectoryController } from './index'
-import type { VideoFormat } from '#lib/io/export.js'
+import type { VideoFormat } from '#lib/io/export'
 
 export type MovieRenderOptions = {
   signal?: AbortSignal

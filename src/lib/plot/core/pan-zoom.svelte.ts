@@ -3,7 +3,7 @@
 // semantics) stays with the caller via the on_rect_zoom/on_reset/set_range callbacks.
 
 import { clamp } from 'svelte-widgets/utils'
-import type { Point2D, Vec2 } from '#lib/math.js'
+import type { Point2D, Vec2 } from '#lib/math'
 import {
   is_drag,
   MIN_TOUCH_DISTANCE_PIXELS,
@@ -13,9 +13,9 @@ import {
   range_bounds,
   snapshot_ranges,
   zoom_range_by_factor,
-} from '#lib/plot/core/interactions.js'
-import { point_in_rect, type Rect } from '#lib/plot/core/layout.js'
-import type { AxisRanges, PanConfig, ScaleType } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/interactions'
+import { point_in_rect, type Rect } from '#lib/plot/core/layout'
+import type { AxisRanges, PanConfig, ScaleType } from '#lib/plot/core/types'
 
 type Axis = `x` | `x2` | `y` | `y2`
 // `select` marks the rect out for the caller's selection handler instead of a zoom; the

@@ -3,10 +3,10 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { format_num } from 'svelte-widgets/format'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
+  import { sanitize_html } from '#lib/sanitize'
+  import type { Vec2, Vec3 } from '#lib/math'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -19,9 +19,9 @@
     SizeScaleConfig,
     StyleOverrides3D,
     Surface3DConfig,
-  } from '#lib/plot/core/types.js'
-  import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
-  import type { SceneControlProps } from '#lib/scene/index.js'
+  } from '#lib/plot/core/types'
+  import { SCALE_DEFAULTS } from '#lib/plot/core/types'
+  import type { SceneControlProps } from '#lib/scene/index'
   import {
     bind_renderer,
     brighten_hex,
@@ -34,7 +34,7 @@
     scene_key_walk,
     SceneLabel,
     SceneLights,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -42,8 +42,8 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { plot_color } from '#lib/colors/index.js'
-  import { extract_series_color, series_text } from '#lib/plot/core/data-transform.js'
+  import { plot_color } from '#lib/colors/index'
+  import { extract_series_color, series_text } from '#lib/plot/core/data-transform'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
   import {
@@ -51,27 +51,27 @@
     hover_halo_radius,
     normalize_to_scene,
     SCENE_SIZE,
-  } from '#lib/plot/scatter-3d/scene-coords.js'
+  } from '#lib/plot/scatter-3d/scene-coords'
   import PointInstances, {
     type InstanceEvent,
     type InstanceProjection,
   } from '#lib/plot/scatter-3d/PointInstances.svelte'
-  import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+  import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte'
   import {
     create_instance_tween,
     INSTANCE_STRIDE,
     srgb_parser,
-  } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
-  import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+  } from '#lib/plot/scatter-3d/instance-tween.svelte'
+  import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte'
   import {
     collect_size_range,
     create_size_scale,
     generate_ticks,
     get_tick_label,
     tick_label_format,
-  } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/core/scales'
   import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
-  import { finite_or_null } from '#lib/plot/scatter/scatter-data.js'
+  import { finite_or_null } from '#lib/plot/scatter/scatter-data'
 
   let {
     series = [],

@@ -1,24 +1,19 @@
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import { display_idx } from '#lib/labels.js'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
-import {
-  get_orig_site_idx,
-  make_site,
-  site_stride,
-  vector_offset,
-} from '#lib/structure/site.js'
-import { get_pbc_image_sites, wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { is_elem_symbol } from '#lib/element/helpers'
+import { display_idx } from '#lib/labels'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
+import { get_orig_site_idx, make_site, site_stride, vector_offset } from '#lib/structure/site'
+import { get_pbc_image_sites, wrap_to_unit_cell } from '#lib/structure/pbc'
 import {
   polyhedra_options_from,
   type ResolvedPolyhedraOptions,
-} from '#lib/structure/polyhedra.js'
-import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercell.js'
-import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding.js'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import type { NumericFrame } from '#lib/trajectory/frame.js'
-import { numeric_run } from '#lib/trajectory/runs/memory.js'
+} from '#lib/structure/polyhedra'
+import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercell'
+import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import type { NumericFrame } from '#lib/trajectory/frame'
+import { numeric_run } from '#lib/trajectory/runs/memory'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import { acoustic_mode_indices } from './ir-raman'
 import type {

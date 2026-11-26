@@ -1,5 +1,5 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { cell_to_fractional, resolve_cutaway } from '#lib/structure/cutaway.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { cell_to_fractional, resolve_cutaway } from '#lib/structure/cutaway'
 import { Matrix4, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vite-plus/test'
 

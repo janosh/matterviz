@@ -2,9 +2,9 @@
   import LazyDemo from '#site/LazyDemo.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { AnyStructure, StructureSettings } from '#lib/structure/index.js'
-  import { is_crystal, parse_supercell_matrix, Structure } from '#lib/structure/index.js'
-  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '#lib/symmetry/index.js'
+  import type { AnyStructure, StructureSettings } from '#lib/structure/index'
+  import { is_crystal, parse_supercell_matrix, Structure } from '#lib/structure/index'
+  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '#lib/symmetry/index'
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
@@ -14,9 +14,9 @@
     SymmetryElementControls,
     SymmetryStats,
     WyckoffTable,
-  } from '#lib/symmetry/index.js'
-  import { structure_files } from '#site/structures.js'
-  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte.js'
+  } from '#lib/symmetry/index'
+  import { structure_files } from '#site/structures'
+  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`

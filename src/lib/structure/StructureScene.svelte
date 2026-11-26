@@ -1,15 +1,15 @@
 <script lang="ts">
   import { numeric_sites, get_site, site_count } from './site'
-  import type { ColorScale } from '#lib/plot/core/types.js'
-  import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { ColorScale } from '#lib/plot/core/types'
+  import { resolve_color_token } from '#lib/colors/backdrop.svelte'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { ElementSymbol } from '#lib/element/index'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
   import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
-  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
-  import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types'
+  import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import * as math from '#lib/math'
   import { diagonal_scaling } from './supercell'
   import type { AtomColorField } from './atom-color-field'
   import { AtomGroupBuilder, site_anchor, tooltip_fill } from './atom-groups'
@@ -31,13 +31,13 @@
     scene_key_walk,
     SceneCamera,
     SceneLights,
-  } from '#lib/scene/index.js'
-  import type { SceneControlProps, TapEvent } from '#lib/scene/index.js'
-  import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '#lib/settings.js'
-  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  } from '#lib/scene/index'
+  import type { SceneControlProps, TapEvent } from '#lib/scene/index'
+  import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '#lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
   import { create_pulse_animation } from 'svelte-widgets/effects'
-  import { resolve_theme_text_color } from '#lib/state.svelte.js'
+  import { resolve_theme_text_color } from '#lib/state.svelte'
   import { get_element_palette } from './element-palette.svelte'
   import type {
     AnyStructure,
@@ -47,7 +47,7 @@
     MeasureMode,
     Site,
     StructureBond,
-  } from '#lib/structure/index.js'
+  } from '#lib/structure/index'
   import {
     camera_needs_fit,
     camera_position_for_target,
@@ -63,7 +63,7 @@
     structure_fit_frame,
     follow_center,
     outgrows_view,
-  } from '#lib/structure/index.js'
+  } from '#lib/structure/index'
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import { resolve_arrow_size } from './vectors'
   import ArrowInstances from './ArrowInstances.svelte'
@@ -76,12 +76,12 @@
   import SiteHighlights, { type HighlightTarget } from './SiteHighlights.svelte'
   import SiteLabels from './SiteLabels.svelte'
   import SiteTooltip from './SiteTooltip.svelte'
-  import type { AtomPropertyColors } from '#lib/structure/atom-properties.js'
-  import type { SymmetryElement } from '#lib/symmetry/index.js'
-  import { has_visible_symmetry_overlay } from '#lib/symmetry/symmetry-elements.js'
+  import type { AtomPropertyColors } from '#lib/structure/atom-properties'
+  import type { SymmetryElement } from '#lib/symmetry/index'
+  import { has_visible_symmetry_overlay } from '#lib/symmetry/symmetry-elements'
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
-  import * as measure from '#lib/structure/measure.js'
-  import { is_crystal } from '#lib/structure/validation.js'
+  import * as measure from '#lib/structure/measure'
+  import { is_crystal } from '#lib/structure/validation'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { merge_split_partial_sites } from './partial-occupancy'
   import {
@@ -98,7 +98,7 @@
   import AmbientOcclusion from '#lib/scene/AmbientOcclusion.svelte'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, tick, untrack } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Euler, OrthographicCamera, Quaternion, Vector3 } from 'three/webgpu'
   import type { Mesh, WebGPURenderer } from 'three/webgpu'
@@ -131,7 +131,7 @@
     polyhedra_options_from,
     type ResolvedPolyhedraOptions,
   } from './polyhedra'
-  import { same_while_equal } from '#lib/utils.js'
+  import { same_while_equal } from '#lib/utils'
   import { find_drawn_completion_sites, shift_bonds_by_unwrap } from './pbc'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
@@ -140,7 +140,7 @@
     TrajectoryLineWrapMode,
   } from './trajectory-lines'
   import { trajectory_trail_anchors } from './trajectory-lines'
-  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index'
 
   type BondMenuTarget = BondKeyTarget & { position: Vec3 }
 

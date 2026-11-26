@@ -3,8 +3,8 @@ import {
   sort_from_query,
   sort_url_entries,
   weights_to_param,
-} from '#lib/url-params.js'
-import type { WeightsConfig } from '#lib/url-params.js'
+} from '#lib/url-params'
+import type { WeightsConfig } from '#lib/url-params'
 import { expect, test } from 'vite-plus/test'
 
 const default_sort = { column: `force`, dir: `desc` } as const

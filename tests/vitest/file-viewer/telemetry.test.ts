@@ -1,4 +1,4 @@
-import { create_playback_telemetry, type TelemetryRecord } from '#lib/file-viewer/telemetry.js'
+import { create_playback_telemetry, type TelemetryRecord } from '#lib/file-viewer/telemetry'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 
 afterEach(() => vi.useRealTimers())

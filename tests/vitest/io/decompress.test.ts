@@ -9,7 +9,7 @@ import {
   MAX_INFLATED_BYTES,
   MAX_STRING_CHARS,
   MAX_WRAPPER_LAYERS,
-} from '#lib/io/decompress.js'
+} from '#lib/io/decompress'
 import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vite-plus/test'
 

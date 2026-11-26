@@ -2,27 +2,27 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import ViewerError from '#lib/layout/ViewerError.svelte'
-  import { format_value } from '#lib/labels.js'
-  import type { BasePlotProps, LegendConfig, Orientation } from '#lib/plot/index.js'
-  import { plot_color } from '#lib/colors/index.js'
-  import { PlotTooltip, SankeyControls } from '#lib/plot/index.js'
+  import { format_value } from '#lib/labels'
+  import type { BasePlotProps, LegendConfig, Orientation } from '#lib/plot/index'
+  import { plot_color } from '#lib/colors/index'
+  import { PlotTooltip, SankeyControls } from '#lib/plot/index'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
-  import { json_source, svg_sources } from '#lib/io/export.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
+  import { json_source, svg_sources } from '#lib/io/export'
+  import { csv_source } from '#lib/plot/core/utils/chart-export'
   import {
     closest_data_idx,
     is_activation_key,
     pointer_pos,
-  } from '#lib/plot/core/interactions.js'
-  import { filter_padding } from '#lib/plot/core/layout.js'
-  import type { Sides } from '#lib/plot/core/layout.js'
-  import { toggle_muted } from '#lib/plot/core/utils/hierarchy-chart.js'
-  import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
-  import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
-  import type { PositionedLink, PositionedNode } from '#lib/plot/sankey/sankey.js'
+  } from '#lib/plot/core/interactions'
+  import { filter_padding } from '#lib/plot/core/layout'
+  import type { Sides } from '#lib/plot/core/layout'
+  import { toggle_muted } from '#lib/plot/core/utils/hierarchy-chart'
+  import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility'
+  import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey'
+  import type { PositionedLink, PositionedNode } from '#lib/plot/sankey/sankey'
   import type {
     SankeyData,
     SankeyHandlerProps,
@@ -30,11 +30,11 @@
     SankeyLinkHandlerProps,
     SankeyNodeAlign,
     SankeyNodeHandlerProps,
-  } from '#lib/plot/sankey/sankey-types.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/sankey/sankey-types'
+  import { DEFAULTS } from '#lib/settings'
   import { to_error } from 'svelte-widgets/utils'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { viewer_keys } from '#lib/shortcuts.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
+  import { viewer_keys } from '#lib/shortcuts'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'

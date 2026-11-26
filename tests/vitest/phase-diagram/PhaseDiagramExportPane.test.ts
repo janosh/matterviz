@@ -1,4 +1,4 @@
-import { canvas_sources, svg_sources } from '#lib/io/export.js'
+import { canvas_sources, svg_sources } from '#lib/io/export'
 import PhaseDiagramExportPane from '#lib/phase-diagram/PhaseDiagramExportPane.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'

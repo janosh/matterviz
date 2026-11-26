@@ -1,14 +1,11 @@
 <script lang="ts" generics="EntryT extends PhaseData = PhaseData">
   // Unified tooltip component for convex hull diagrams
   import { format_num } from 'svelte-widgets/format'
-  import { tooltip_paint } from '#lib/colors/index.js'
-  import {
-    count_atoms_in_composition,
-    get_electro_neg_formula,
-  } from '#lib/composition/index.js'
-  import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { TooltipContent } from '#lib/tooltip/index.js'
+  import { tooltip_paint } from '#lib/colors/index'
+  import { count_atoms_in_composition, get_electro_neg_formula } from '#lib/composition/index'
+  import { element_by_symbol, type ElementSymbol } from '#lib/element/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { TooltipContent } from '#lib/tooltip/index'
   import type { PolymorphStats } from './helpers'
   import type { ConvexHullTooltipProp, TooltipSnippetProps } from './index'
   import type { EntryCategoryConfig, HighlightStyle, PhaseData } from './types'

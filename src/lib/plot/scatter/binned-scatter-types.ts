@@ -1,12 +1,12 @@
-import type { DenseInternalPoint } from '#lib/plot/scatter/adaptive-density.js'
+import type { DenseInternalPoint } from '#lib/plot/scatter/adaptive-density'
 import type {
   ColorScale,
   LabelPlacementConfig,
   RefLine,
   ScatterHandlerProps,
   SizeScaleConfig,
-} from '#lib/plot/core/types.js'
-import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
+import { SCALE_DEFAULTS } from '#lib/plot/core/types'
 import type { Snippet } from 'svelte'
 
 export type BinnedSizeScaleConfig = SizeScaleConfig & { pick_radius?: number | `auto` }

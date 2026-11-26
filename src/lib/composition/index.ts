@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '#lib/element/index.js'
+import type { ElementSymbol } from '#lib/element/index'
 
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
@@ -9,6 +9,7 @@ export * from './format'
 export * from './formula-markup'
 export { default as Formula } from './Formula.svelte'
 export { default as FormulaFilter } from './FormulaFilter.svelte'
+export { default as FormulaText } from './FormulaText.svelte'
 export * from './parse'
 export * from './reduce'
 export { default as PieChart } from './PieChart.svelte'

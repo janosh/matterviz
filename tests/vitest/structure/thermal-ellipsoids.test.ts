@@ -1,12 +1,12 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { EllipsoidAtoms } from '#lib/structure/ellipsoid-atoms.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { EllipsoidAtoms } from '#lib/structure/ellipsoid-atoms'
 import {
   chi3_cdf,
   ellipsoid_scale,
   symmetric_eigen_3x3,
   thermal_ellipsoid,
-} from '#lib/structure/thermal-ellipsoids.js'
+} from '#lib/structure/thermal-ellipsoids'
 import { Color, InstancedMesh, Raycaster, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vite-plus/test'
 

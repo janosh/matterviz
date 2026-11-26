@@ -1,4 +1,4 @@
-import type { TrajectorySource } from '#lib/trajectory/index.js'
+import type { TrajectorySource } from '#lib/trajectory/index'
 import type { FileExportContext } from './file-export.svelte'
 
 export interface FileInfo {
@@ -7,7 +7,6 @@ export interface FileInfo {
   label?: string // human-readable display name (falls back to name)
   type?: string
   category?: string
-  category_icon?: string
 }
 
 // Stable source identity for content whose logical filename may change after decompression.

@@ -15,9 +15,9 @@ import {
   surface_isovalue_band,
   volume_from_json,
   with_isosurface_defaults,
-} from '#lib/isosurface/types.js'
-import type { VolumetricData } from '#lib/isosurface/types.js'
-import { flatten_grid } from '#lib/isosurface/grid.js'
+} from '#lib/isosurface/types'
+import type { VolumetricData } from '#lib/isosurface/types'
+import { flatten_grid } from '#lib/isosurface/grid'
 import { describe, expect, test } from 'vite-plus/test'
 import { grid_value, make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 

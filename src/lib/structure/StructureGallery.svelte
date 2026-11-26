@@ -1,10 +1,10 @@
 <script lang="ts">
   import { clamp } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { get_d3_interpolator } from '#lib/colors/index.js'
+  import type { D3InterpolateName } from '#lib/colors/index'
+  import { get_d3_interpolator } from '#lib/colors/index'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
-  import type { StructureGalleryItem } from '#lib/structure/index.js'
+  import type { StructureGalleryItem } from '#lib/structure/index'
   import GlassChip from 'svelte-widgets/GlassChip.svelte'
   import { pick_contrast_color, portal } from 'svelte-widgets/attachments'
   import { untrack, type ComponentProps, type Snippet } from 'svelte'

@@ -1,14 +1,14 @@
-import { make_site } from '#lib/structure/site.js'
-import { compute_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
+import { make_site } from '#lib/structure/site'
+import { compute_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy'
 import {
   collect_trajectory_spectroscopy_input,
   spectroscopy_stream_channels,
   trajectory_signal_keys,
-} from '#lib/spectral/spectroscopy-collect.js'
-import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
-import { is_signal_descriptor } from '#lib/trajectory/run.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+} from '#lib/spectral/spectroscopy-collect'
+import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index'
+import { is_signal_descriptor } from '#lib/trajectory/run'
+import { open_trajectory } from '#lib/trajectory/open'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'

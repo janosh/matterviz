@@ -2,8 +2,8 @@ import {
   compute_pourbaix_diagram,
   pourbaix_domains,
   stable_plane_at,
-} from '#lib/pourbaix/compute.js'
-import { import_pymatgen_pourbaix, PYMATGEN_WATER_ENERGY } from '#lib/pourbaix/pymatgen.js'
+} from '#lib/pourbaix/compute'
+import { import_pymatgen_pourbaix, PYMATGEN_WATER_ENERGY } from '#lib/pourbaix/pymatgen'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { expect, test } from 'vite-plus/test'

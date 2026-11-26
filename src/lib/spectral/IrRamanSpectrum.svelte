@@ -1,19 +1,19 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import { TooltipValue } from '#lib/tooltip/index.js'
-  import { track_settings } from '#lib/controls.js'
-  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
+  import { TooltipValue } from '#lib/tooltip/index'
+  import { track_settings } from '#lib/controls'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { array_extent, array_max, type Vec2 } from '#lib/math.js'
+  import { array_extent, array_max, type Vec2 } from '#lib/math'
   import type {
     AxisConfig,
     DataSeries,
     Orientation,
     UserContentProps,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-  import { plot_area_line } from '#lib/plot/core/layout.js'
+  import { plot_area_line } from '#lib/plot/core/layout'
   import {
     convert_frequencies,
     frequency_unit_label,

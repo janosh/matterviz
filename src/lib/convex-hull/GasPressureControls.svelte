@@ -1,7 +1,7 @@
 <script lang="ts">
   import { clamp } from 'svelte-widgets/utils'
-  import type { GasSpecies, GasThermodynamicsConfig } from '#lib/convex-hull/types.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import type { GasSpecies, GasThermodynamicsConfig } from '#lib/convex-hull/types'
+  import { sanitize_html } from '#lib/sanitize'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     compute_gas_chemical_potential,

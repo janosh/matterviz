@@ -1,5 +1,5 @@
 import { expect, type Locator, test } from '@playwright/test'
-import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
+import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types'
 import { get_chart_svg, measure_plot_area } from '../helpers'
 import { dom_click, goto_perf_page, visible_count } from './utils'
 

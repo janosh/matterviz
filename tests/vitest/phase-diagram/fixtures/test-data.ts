@@ -1,4 +1,4 @@
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import {
   BINARY_DIAGRAM_FORMAT,
   type BinaryPhaseDiagram,
@@ -6,7 +6,7 @@ import {
   type LeverRuleResult,
   type PhaseHoverInfo,
   type PhaseObservation,
-} from '#lib/phase-diagram/index.js'
+} from '#lib/phase-diagram/index'
 
 // Vec2 vertices from a flat [x0, y0, x1, y1, ...] list, so polygons stay on one line
 export const pts = (...flat: number[]): Vec2[] =>

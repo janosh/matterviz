@@ -1,10 +1,10 @@
-import { HIGHLIGHT } from '#lib/colors/index.js'
+import { HIGHLIGHT } from '#lib/colors/index'
 import {
   brighten_hex,
   css_to_linear_rgb,
   highlight_edge_color,
   parse_linear_rgb,
-} from '#lib/scene/colors.js'
+} from '#lib/scene/colors'
 import { Color } from 'three/webgpu'
 import { expect, test } from 'vite-plus/test'
 

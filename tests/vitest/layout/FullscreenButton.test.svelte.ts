@@ -1,5 +1,5 @@
 import { fire, bind_props, mock_fullscreen, mount_in_test, mount_sized } from '../setup'
-import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
 import FullscreenButton from '#lib/layout/FullscreenButton.svelte'
 import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
 import ViewerChrome from '#lib/layout/ViewerChrome.svelte'

@@ -1,8 +1,8 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { url_selection } from '#site/state.svelte.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { url_selection } from '#site/state.svelte'
+  import { sanitize_html } from '#lib/sanitize'
   import type { ElementSymbol } from '#lib'
   import type {
     ConvexHullEntry,
@@ -11,27 +11,27 @@
     GasThermodynamicsConfig,
     MagneticOrdering,
     PhaseData,
-  } from '#lib/convex-hull/index.js'
+  } from '#lib/convex-hull/index'
   import {
     ConvexHull,
     ConvexHullStats,
     GAS_SPECIES,
     process_hull_for_stats,
-  } from '#lib/convex-hull/index.js'
+  } from '#lib/convex-hull/index'
   import {
     create_temp_ternary_entries_li_fe_o,
     demo_temperatures,
     make_demo_phase,
     make_polymorph_pair,
-  } from '#site/convex-hull/demo-temperature.js'
+  } from '#site/convex-hull/demo-temperature'
   import {
     filter_by_elements,
     hull_system_name,
     quaternary_files,
     quaternary_loader,
     quinary_files,
-  } from '#site/convex-hull/index.js'
-  import { hover_links } from '#lib/tooltip/index.js'
+  } from '#site/convex-hull/index'
+  import { hover_links } from '#lib/tooltip/index'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 

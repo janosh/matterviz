@@ -2,7 +2,7 @@
 // curve so unclipped edges coincide with their lines. Clipped endpoints use a monotone-cubic
 // approximation: sub-pixel for monotoneX/linear/step, coarser for natural/basis/catmullRom.
 
-import { array_extent, partition_point, sorted_numbers, type Vec2 } from '#lib/math.js'
+import { array_extent, partition_point, sorted_numbers, type Vec2 } from '#lib/math'
 import type { CurveFactory } from 'd3-shape'
 import {
   curveBasis,
@@ -24,11 +24,11 @@ import type {
   FillGradient,
   FillRegion,
   LineCurve,
-} from '#lib/plot/core/types.js'
-import { error_getter, error_lengths } from '#lib/plot/core/error-bars.js'
-import { range_bounds } from '#lib/plot/core/interactions.js'
-import { line_path } from '#lib/plot/core/svg.js'
-import { assert_aligned_lengths, assert_series_lengths } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
+import { error_getter, error_lengths } from '#lib/plot/core/error-bars'
+import { range_bounds } from '#lib/plot/core/interactions'
+import { line_path } from '#lib/plot/core/svg'
+import { assert_aligned_lengths, assert_series_lengths } from '#lib/plot/core/types'
 
 // A 2D point in data (or pixel) coordinates
 export interface Pt {

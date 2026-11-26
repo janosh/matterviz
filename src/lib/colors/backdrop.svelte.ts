@@ -1,5 +1,5 @@
-import { is_concrete_color, is_opaque_color } from '#lib/colors/index.js'
-import { watch_theme_changes } from '#lib/theme/index.js'
+import { is_concrete_color, is_opaque_color } from '#lib/colors/index'
+import { watch_theme_changes } from '#lib/theme/index'
 import { get_bg_color } from 'svelte-widgets/attachments'
 
 const DEFAULT_BACKDROP_VAR = `--page-bg`

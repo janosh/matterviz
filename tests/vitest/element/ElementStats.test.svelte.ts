@@ -1,5 +1,5 @@
 import { format_num } from 'svelte-widgets/format'
-import element_data from '#lib/element/data.js'
+import element_data from '#lib/element/data'
 import ElementStats from '#lib/element/ElementStats.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'

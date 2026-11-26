@@ -1,16 +1,16 @@
 // Pymatgen Trajectory JSON parsing
 import { is_plain_object } from 'svelte-widgets/utils'
-import { display_idx } from '#lib/labels.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { json_species } from '#lib/structure/parse.js'
-import { mat3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import { display_idx } from '#lib/labels'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { json_species } from '#lib/structure/parse'
+import { mat3x3_from_rows } from '#lib/structure/parsers/shared'
 import {
   compute_force_stats,
   checked_site_forces,
   create_trajectory_frame,
-} from '#lib/trajectory/helpers.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+} from '#lib/trajectory/helpers'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 // Replace every numpy array MontyEncoder wrote ({"@module": "numpy", "@class": "array",

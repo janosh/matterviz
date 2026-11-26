@@ -1,7 +1,7 @@
 // Single source of truth for binary-vs-text detection: (1) is_binary string heuristic,
 // (2) has_*_magic byte signatures, (3) extension/filename classification.
 
-import { BINARY_VIEWER_EXTENSIONS } from '#lib/constants.js'
+import { BINARY_VIEWER_EXTENSIONS } from '#lib/constants'
 
 // === (1) string-content heuristic ===
 // Detect binary from UTF-8-decoded text: a NUL byte or a high ratio of non-text chars. Only

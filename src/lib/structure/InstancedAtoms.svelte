@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { grow_capacity } from '#lib/math.js'
+  import { grow_capacity } from '#lib/math'
   // One draw call per visual class; instanceId maps pointer events back to atoms.
   import { AtomInstances, atom_sphere_segments, type InstancedAtom } from './atom-instances'
   import { AtomFieldMaterial, type AtomColorField } from './atom-color-field'

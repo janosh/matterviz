@@ -1,14 +1,14 @@
 // to_structure_entries and its two types are imported from the package ROOT on purpose: they
 // are the headline prop type of CoordinationBarPlot and BondAnglePlot, and the rest of
 // #lib/plot/core is deliberately not published.
-import { highlight_site_union, to_structure_entries } from '#lib/plot/core/structure-input.js'
-import { element_by_symbol } from '#lib/element/data.js'
+import { highlight_site_union, to_structure_entries } from '#lib/plot/core/structure-input'
+import { element_by_symbol } from '#lib/element/data'
 import type { StructureEntry, StructureInput } from '#lib'
 import {
   compute_coordination_nums,
   coordination_bar_sites,
-} from '#lib/coordination/compute-coordination.js'
-import * as calc_module from '#lib/coordination/compute-coordination.js'
+} from '#lib/coordination/compute-coordination'
+import * as calc_module from '#lib/coordination/compute-coordination'
 import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
 import { tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'

@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import MillerIndexInput from '#lib/MillerIndexInput.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'

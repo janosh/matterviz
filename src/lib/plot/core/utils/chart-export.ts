@@ -1,8 +1,8 @@
 // The numbers behind a chart: CSV tables and export filenames (figures go through io/export).
 
-import type { ExportSource } from '#lib/io/export.js'
-import { series_text } from '#lib/plot/core/data-transform.js'
-import type { ArrayColumn, NumericColumn } from '#lib/plot/core/types.js'
+import type { ExportSource } from '#lib/io/export'
+import { series_text } from '#lib/plot/core/data-transform'
+import type { ArrayColumn, NumericColumn } from '#lib/plot/core/types'
 import { html_to_text } from 'svelte-widgets/utils'
 import { type CsvCell, csv_line } from 'svelte-widgets/format'
 

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '#lib/colors/index.js'
-  import type { RdfEntry } from '#lib/rdf/index.js'
-  import { RdfPlot } from '#lib/rdf/index.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import { PLOT_COLORS } from '#lib/colors/index'
+  import type { RdfEntry } from '#lib/rdf/index'
+  import { RdfPlot } from '#lib/rdf/index'
+  import type { Crystal } from '#lib/structure/index'
   import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
   import al2lu from '#site/structures/mp-1234.json'
   import palladium from '#site/structures/mp-2.json'

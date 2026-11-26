@@ -1,12 +1,8 @@
-import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
+import { extract_fermi_surface } from '#lib/fermi-surface/compute'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-import type * as extract_async from '#lib/fermi-surface/extract-async.js'
-import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
-import type {
-  BandGridData,
-  ColorProperty,
-  FermiSurfaceData,
-} from '#lib/fermi-surface/types.js'
+import type * as extract_async from '#lib/fermi-surface/extract-async'
+import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/parse'
+import type { BandGridData, ColorProperty, FermiSurfaceData } from '#lib/fermi-surface/types'
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { can_create_worker } from 'svelte-widgets/worker-client'
@@ -19,8 +15,8 @@ import {
   mock_parse_worker,
   set_select,
 } from '../setup'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { BrillouinZoneData } from '#lib/brillouin/types.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { BrillouinZoneData } from '#lib/brillouin/types'
 import {
   IDENTITY_MATRIX3,
   make_bxsf,
@@ -37,7 +33,7 @@ const extraction = vi.hoisted(() => ({
   release: vi.fn(),
   cancel: vi.fn(),
 }))
-vi.mock(`#lib/fermi-surface/extract-async.js`, async (original) => {
+vi.mock(`#lib/fermi-surface/extract-async`, async (original) => {
   const actual = await original<typeof extract_async>()
   return {
     ...actual,

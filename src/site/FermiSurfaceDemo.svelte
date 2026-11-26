@@ -2,28 +2,24 @@
   import { format_num } from 'svelte-widgets/format'
   import { to_error } from 'svelte-widgets/utils'
   import { open_material } from '#lib'
-  import type { FileInfo } from '#lib/io/index.js'
+  import type { FileInfo } from '#lib/io/index'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import type {
-    BandGridData,
-    FermiSurfaceData,
-    SliceShading,
-  } from '#lib/fermi-surface/index.js'
+  import type { BandGridData, FermiSurfaceData, SliceShading } from '#lib/fermi-surface/index'
   import {
     FermiSlice,
     FermiSurface,
     is_fermi_surface_data,
     with_energy_unit,
-  } from '#lib/fermi-surface/index.js'
-  import type { Vec3 } from '#lib/math.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/fermi-surface/index'
+  import type { Vec3 } from '#lib/math'
+  import { DEFAULTS } from '#lib/settings'
   import {
     FERMI_FILE_ENERGY_UNITS,
     fermi_file_paints,
     fermi_surface_files,
-  } from '#site/fermi-surfaces.js'
-  import { url_param, latest_load, loaded_fixture, set_url_param } from '#site/state.svelte.js'
+  } from '#site/fermi-surfaces'
+  import { url_param, latest_load, loaded_fixture, set_url_param } from '#site/state.svelte'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

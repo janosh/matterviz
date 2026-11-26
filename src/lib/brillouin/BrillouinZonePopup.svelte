@@ -3,10 +3,10 @@
   // Small floating Brillouin zone that marks one or more symmetry points on the k-path; Bands
   // opens it when a symmetry-point tick label is clicked. Same FloatingPopup shell as the
   // convex hull's StructurePopup.
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { Matrix3x3 } from '#lib/math.js'
-  import { FloatingPopup } from '#lib/overlays/index.js'
-  import { KCoords } from '#lib/tooltip/index.js'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { Matrix3x3 } from '#lib/math'
+  import { FloatingPopup } from '#lib/overlays/index'
+  import { KCoords } from '#lib/tooltip/index'
   import type { ComponentProps, Snippet } from 'svelte'
   import BrillouinZone from './BrillouinZone.svelte'
   import { BZ_POPUP_DEFAULT_WIDTH } from './types'

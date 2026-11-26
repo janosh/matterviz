@@ -4,9 +4,9 @@
   // forced StructureViewport to carry context-loss recovery. WebGPU has no equivalent cap, so
   // this route exists to keep that regression visible: every canvas should stay drawn.
   import type { Crystal, ElementSymbol } from '#lib'
-  import { renderer_registry } from '#lib/io/export.js'
-  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
-  import type { Pbc } from '#lib/structure/index.js'
+  import { renderer_registry } from '#lib/io/export'
+  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math'
+  import type { Pbc } from '#lib/structure/index'
   import Structure from '#lib/structure/Structure.svelte'
   import TestSection from '../TestSection.svelte'
 

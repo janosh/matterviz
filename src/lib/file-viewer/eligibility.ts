@@ -14,15 +14,15 @@ import {
   VASP_VOLUMETRIC_REGEX,
   VASPRUN_REGEX,
   XYZ_EXTENSIONS,
-} from '#lib/constants.js'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '#lib/file-viewer/types.js'
+} from '#lib/constants'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '#lib/file-viewer/types'
 import {
   detect_compression_format,
   is_browser_decompressible_format,
   is_stream_compression_format,
-} from '#lib/io/decompress.js'
-import { is_structure_file } from '#lib/structure/format-detect.js'
-import { is_trajectory_filename } from '#lib/trajectory/format-detect.js'
+} from '#lib/io/decompress'
+import { is_structure_file } from '#lib/structure/format-detect'
+import { is_trajectory_filename } from '#lib/trajectory/format-detect'
 
 // Remove every supported wrapper. Indexed host loading accepts stream formats; the
 // browser additionally accepts ZIP, whose entry name is resolved during decompression.

@@ -1,6 +1,6 @@
-import { mean, type Matrix3x3, type Vec3 } from '#lib/math.js'
-import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index.js'
-import { compute_all_pair_rdfs, compute_rdf, shell_volume } from '#lib/rdf/compute-rdf.js'
+import { mean, type Matrix3x3, type Vec3 } from '#lib/math'
+import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index'
+import { compute_all_pair_rdfs, compute_rdf, shell_volume } from '#lib/rdf/compute-rdf'
 import {
   compute_pdf,
   compute_total_pdf,
@@ -9,9 +9,9 @@ import {
   PDF_DEFAULT_N_BINS,
   site_composition,
   weight_pdf_partials,
-} from '#lib/rdf/compute-pdf.js'
-import { neutron_scattering_length } from '#lib/scattering/index.js'
-import type { Crystal } from '#lib/structure/index.js'
+} from '#lib/rdf/compute-pdf'
+import { neutron_scattering_length } from '#lib/scattering/index'
+import type { Crystal } from '#lib/structure/index'
 import { describe, expect, test } from 'vite-plus/test'
 import { FCC_FACE_CENTRES, make_crystal, make_rocksalt } from '../test-fixtures'
 import type { SimpleSite } from '../test-fixtures'

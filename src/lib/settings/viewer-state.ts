@@ -1,4 +1,4 @@
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { is_plain_object } from 'svelte-widgets/utils'
 import type { DefaultSettings } from '../settings'
 import { SETTINGS_CONFIG, validate_setting_value } from '../settings'

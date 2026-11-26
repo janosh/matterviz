@@ -2,8 +2,8 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Check } from 'svelte-widgets/icons'
   import { motion_duration } from 'svelte-widgets/effects'
-  import { is_valid_supercell_input } from '#lib/structure/supercell.js'
-  import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
+  import { is_valid_supercell_input } from '#lib/structure/supercell'
+  import type { CellType, SymmetryDataset } from '#lib/symmetry/index'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import { fade } from 'svelte/transition'
 

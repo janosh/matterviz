@@ -1,13 +1,13 @@
 import PlotAxis from '#lib/plot/core/components/PlotAxis.svelte'
-import { svg_to_string } from '#lib/io/export.js'
+import { svg_to_string } from '#lib/io/export'
 import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
   resolve_axis_title_layout,
   TITLE_EDGE_AIR,
-} from '#lib/plot/core/layout.js'
-import { get_text_metrics_revision } from '#lib/plot/core/text-metrics.js'
-import { TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
+} from '#lib/plot/core/layout'
+import { get_text_metrics_revision } from '#lib/plot/core/text-metrics'
+import { TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { mock_text_measurement, query } from '../setup'

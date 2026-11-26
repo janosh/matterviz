@@ -9,7 +9,7 @@ Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switc
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   const series = [
     { y: generate_normal(250, 0, 1, seeded_rng(1)), label: `A`, color: `#4c6ef5` },
@@ -98,7 +98,7 @@ Quartiles use the type-7 rule `q(p) = x[(n - 1) p]` with linear interpolation be
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   // Add a few extreme values so the modes look visibly different
   const data = [...generate_normal(300, 0, 1, seeded_rng(5)), 6, 7, -6, -7]
@@ -126,7 +126,7 @@ Set `show_value_labels` to print the median (or mean, via `value_label_stat`) ab
 ```svelte example
 <script lang="ts">
   import { BoxPlot } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   const colors = [`#636EFA`, `#EF553B`, `#00CC96`, `#AB63FA`, `#FFA15A`]
   const names = [`eSEN`, `eqV2`, `SevenNet`, `DPA3`, `GRACE`]

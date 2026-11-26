@@ -6,8 +6,8 @@
   import WidgetFullscreenButton from 'svelte-widgets/FullscreenButton.svelte'
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
   import { create_shortcut_flash } from 'svelte-widgets/browser'
-  import { host } from '#lib/host.js'
-  import { SHORTCUTS, shortcut_title, viewer_keys } from '#lib/shortcuts.js'
+  import { host } from '#lib/host'
+  import { SHORTCUTS, shortcut_title, viewer_keys } from '#lib/shortcuts'
   import { FULLSCREEN_BUTTON_LABELS } from 'svelte-widgets/labels'
 
   let {

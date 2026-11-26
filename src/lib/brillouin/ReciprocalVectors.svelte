@@ -1,10 +1,10 @@
 <script lang="ts">
   // Lattice vector arrows (b₁, b₂, b₃ or a, b, c) with HTML labels just past the tips, shared by
   // BrillouinZoneScene, FermiSurfaceScene and WulffScene
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
+  import type { Matrix3x3, Vec3 } from '#lib/math'
+  import * as math from '#lib/math'
   import Arrow from '#lib/structure/Arrow.svelte'
-  import { SceneLabel } from '#lib/scene/index.js'
+  import { SceneLabel } from '#lib/scene/index'
   import type { ComponentProps } from 'svelte'
 
   let {

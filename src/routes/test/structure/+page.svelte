@@ -2,14 +2,14 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import type { Crystal } from '#lib'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { DEFAULTS } from '#lib/settings'
   import type {
     BondEditMode,
     MeasureMode,
     StructureBond,
     StructurePane,
-  } from '#lib/structure/index.js'
-  import { Structure } from '#lib/structure/index.js'
+  } from '#lib/structure/index'
+  import { Structure } from '#lib/structure/index'
   import StructureScene from '#lib/structure/StructureScene.svelte'
   import mp1_struct from '#site/structures/mp-1.json' with { type: 'json' }
   import { type ComponentProps, untrack } from 'svelte'

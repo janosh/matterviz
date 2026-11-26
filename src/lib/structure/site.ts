@@ -1,11 +1,11 @@
 // Shared single-species Site construction used by all structure/trajectory/volumetric parsers,
 // plus the site-provenance reads every consumer of supercell/image-atom copies shares
-import { display_idx } from '#lib/labels.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Vec3 } from '#lib/math.js'
-import { is_valid_index } from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
+import { display_idx } from '#lib/labels'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Vec3 } from '#lib/math'
+import { is_valid_index } from '#lib/math'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import { element_from_atomic_number } from '#lib/element/helpers'
 import type { PreparedVectorGeometry } from './vectors'
 
 // pymatgen-compatible JSON data. Species are written as stored: undecorated ones carry no

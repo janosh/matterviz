@@ -1,9 +1,9 @@
-import type { HullModel } from '#lib/convex-hull/index.js'
+import type { HullModel } from '#lib/convex-hull/index'
 import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
-import * as thermo from '#lib/convex-hull/thermodynamics.js'
-import * as canvas_draw from '#lib/convex-hull/canvas-draw.js'
-import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+import * as thermo from '#lib/convex-hull/thermodynamics'
+import * as canvas_draw from '#lib/convex-hull/canvas-draw'
+import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords'
+import type { PhaseData } from '#lib/convex-hull/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { interpolateReds } from 'd3-scale-chromatic'
 import { SvelteMap } from 'svelte/reactivity'
@@ -40,7 +40,7 @@ beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).
-vi.mock(`#lib/convex-hull/canvas-draw.js`, async (import_actual) => {
+vi.mock(`#lib/convex-hull/canvas-draw`, async (import_actual) => {
   const actual = await import_actual()
   return {
     ...(actual as Record<string, unknown>),

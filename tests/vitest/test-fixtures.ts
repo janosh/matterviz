@@ -1,24 +1,24 @@
 import type { AnyStructure, ElementCategory, ElementSymbol } from '#lib'
-import type { Vec3 } from '#lib/math.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { FermiIsosurface, FermiSurfaceData } from '#lib/fermi-surface/types.js'
-import { flatten_grid } from '#lib/isosurface/grid.js'
-import type { VolumetricData } from '#lib/isosurface/types.js'
-import { make_volume as make_volume_from_values } from '#lib/isosurface/types.js'
-import * as math from '#lib/math.js'
-import type { Crystal, Molecule, Pbc, Site } from '#lib/structure/index.js'
-import type { ImageAtomCompletion, ImageAtomOptions } from '#lib/structure/pbc.js'
-import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
-import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
+import type { Vec3 } from '#lib/math'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { FermiIsosurface, FermiSurfaceData } from '#lib/fermi-surface/types'
+import { flatten_grid } from '#lib/isosurface/grid'
+import type { VolumetricData } from '#lib/isosurface/types'
+import { make_volume as make_volume_from_values } from '#lib/isosurface/types'
+import * as math from '#lib/math'
+import type { Crystal, Molecule, Pbc, Site } from '#lib/structure/index'
+import type { ImageAtomCompletion, ImageAtomOptions } from '#lib/structure/pbc'
+import { polyhedra_options_from } from '#lib/structure/polyhedra'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra'
 import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
   TrajectorySignal,
-} from '#lib/trajectory/index.js'
-import { TrajectoryProperties, type TrajectoryRun } from '#lib/trajectory/run.js'
-import { type MemoryRunExtras, trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import type { SymmetryDataset } from '#lib/symmetry/index.js'
+} from '#lib/trajectory/index'
+import { TrajectoryProperties, type TrajectoryRun } from '#lib/trajectory/run'
+import { type MemoryRunExtras, trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import type { SymmetryDataset } from '#lib/symmetry/index'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -31,7 +31,7 @@ export async function init_moyo_for_tests(): Promise<void> {
   if (moyo_initialized) return
   const [{ default: init_moyo }, { ensure_moyo_wasm_ready }] = await Promise.all([
     import(`@spglib/moyo-wasm`),
-    import(`#lib/symmetry/analyze.js`),
+    import(`#lib/symmetry/analyze`),
   ])
   const wasm_path = `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`
   await init_moyo({ module_or_path: readFileSync(resolve(import.meta.dirname, wasm_path)) })

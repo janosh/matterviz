@@ -1,10 +1,10 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
-import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
-import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
-import { det_3x3, grow_buffer, inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid'
+import type { ScalarGrid3D } from '#lib/isosurface/grid'
+import { det_3x3, grow_buffer, inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math'
 
-export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/isosurface/grid.js'
+export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/isosurface/grid'
 
 // Triangle table: for each of the 256 cube configurations (bit i set = corner i below the
 // isovalue), the edge-index triplets of its triangles

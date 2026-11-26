@@ -1,5 +1,5 @@
 import { stub_reduced_motion } from '../setup'
-import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 

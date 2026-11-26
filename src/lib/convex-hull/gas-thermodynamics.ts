@@ -1,8 +1,8 @@
 // Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { format_num } from 'svelte-widgets/format'
-import { count_atoms_in_composition } from '#lib/composition/reduce.js'
+import { count_atoms_in_composition } from '#lib/composition/reduce'
 import {
   entry_has_temp_data,
   find_lowest_energy_unary_refs,
@@ -10,8 +10,8 @@ import {
   has_absolute_energy,
   unary_ref_score,
 } from './thermodynamics'
-import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
-import type { ElementSymbol } from '#lib/element/index.js'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants'
+import type { ElementSymbol } from '#lib/element/index'
 import type {
   GasAnalysis,
   GasSpecies,

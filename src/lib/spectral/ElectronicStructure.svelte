@@ -19,20 +19,20 @@
   // axes, one rotation link and the frame cache. A dropped file replaces the data of the panes
   // it fills (see `fill`); while a sweep is shown only sweep JSONs are taken.
   import { format_num } from 'svelte-widgets/format'
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls'
   import { create_on_screen, create_prop_state } from 'svelte-widgets/effects'
-  import type { ShowControlsProp } from '#lib/controls.js'
-  import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
-  import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
+  import type { ShowControlsProp } from '#lib/controls'
+  import { open_material, type OpenedMaterial } from '#lib/file-viewer/open'
+  import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte'
   import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-  import { normalize_band_grid, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
-  import type { BandGridJson, FermiSurfaceJson } from '#lib/fermi-surface/parse.js'
-  import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
-  import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
-  import { chain_callbacks } from '#lib/plot/core/interactions.js'
-  import { union_ranges } from '#lib/plot/core/shared-axes.js'
-  import { observe_size } from '#lib/plot/core/utils.js'
-  import { MIN_PANE_SIZE, pick_pane_orientation } from '#lib/layout/pane-orientation.js'
+  import { normalize_band_grid, normalize_fermi_surface } from '#lib/fermi-surface/parse'
+  import type { BandGridJson, FermiSurfaceJson } from '#lib/fermi-surface/parse'
+  import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types'
+  import { is_fermi_surface_data } from '#lib/fermi-surface/types'
+  import { chain_callbacks } from '#lib/plot/core/interactions'
+  import { union_ranges } from '#lib/plot/core/shared-axes'
+  import { observe_size } from '#lib/plot/core/utils'
+  import { MIN_PANE_SIZE, pick_pane_orientation } from '#lib/layout/pane-orientation'
   import {
     create_sequence_player,
     is_sequence_key_target,
@@ -41,7 +41,7 @@
   import SequenceControls from 'svelte-widgets/SequenceControls.svelte'
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
-  import { raw_file_drop_zone } from '#lib/io/file-drop.js'
+  import { raw_file_drop_zone } from '#lib/io/file-drop'
   import {
     array_extent,
     dot,
@@ -49,14 +49,14 @@
     inverse_3x3,
     type Matrix3x3,
     type Vec2,
-  } from '#lib/math.js'
-  import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
-  import { ToolbarMenu } from '#lib/overlays/index.js'
-  import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  } from '#lib/math'
+  import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts'
+  import { ToolbarMenu } from '#lib/overlays/index'
+  import { link_orbits } from '#lib/scene/orbit-link.svelte'
+  import type { Crystal } from '#lib/structure/index'
   import Structure from '#lib/structure/Structure.svelte'
-  import { is_crystal } from '#lib/structure/validation.js'
-  import { materialize_frame_result } from '#lib/trajectory/frame.js'
+  import { is_crystal } from '#lib/structure/validation'
+  import { materialize_frame_result } from '#lib/trajectory/frame'
   import { clamp, html_to_text, is_plain_object, to_error } from 'svelte-widgets/utils'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -101,7 +101,7 @@
   import type { Sweep, SweepFrame, SweepSeries } from './sweep'
   import { create_sweep_frames, type FrameRef, type FrameWindow } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
-  import { DEFAULT_PLOT_PADDING, type Sides } from '#lib/plot/core/layout.js'
+  import { DEFAULT_PLOT_PADDING, type Sides } from '#lib/plot/core/layout'
   import type {
     BaseBandStructure,
     DosData,

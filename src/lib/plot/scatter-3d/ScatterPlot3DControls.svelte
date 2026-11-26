@@ -2,7 +2,7 @@
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import type { DisplayConfig3D } from '#lib/plot/core/types.js'
+  import type { DisplayConfig3D } from '#lib/plot/core/types'
 
   // Shared with ScatterPlot3D, which fills these in before handing `display` to the scene
   export const DISPLAY_DEFAULTS_3D = {
@@ -17,14 +17,14 @@
 </script>
 
 <script lang="ts">
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
-  import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls'
+  import type { ShowControlsProp } from '#lib/controls'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
   import CameraSection from '#lib/scene/CameraSection.svelte'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
-  import type { Vec2 } from '#lib/math.js'
-  import type { AxisConfig3D, CameraProjection3D } from '#lib/plot/core/types.js'
+  import type { ShortcutScope } from '#lib/shortcuts'
+  import type { Vec2 } from '#lib/math'
+  import type { AxisConfig3D, CameraProjection3D } from '#lib/plot/core/types'
   import type { Snippet } from 'svelte'
 
   const defaults = {

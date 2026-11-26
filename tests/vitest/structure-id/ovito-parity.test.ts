@@ -3,11 +3,11 @@
 // (adaptive and fixed-cutoff) and CentroSymmetryModifier over them, and writes the coordinates
 // alongside OVITO's per-atom output. Both implementations therefore see byte-identical positions,
 // so any disagreement is an algorithm difference rather than a fixture difference.
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { compute_lattice_params } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
-import { make_site } from '#lib/structure/site.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { compute_lattice_params } from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id'
+import { make_site } from '#lib/structure/site'
 import { describe, expect, test } from 'vite-plus/test'
 import { load_json } from '../test-fixtures'
 

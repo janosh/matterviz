@@ -1,9 +1,9 @@
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { Point2D, Vec2 } from '#lib/math.js'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { Point2D, Vec2 } from '#lib/math'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
+import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types'
 import type { ComponentProps } from 'svelte'
-import type { TooltipProp } from '#lib/tooltip/index.js'
+import type { TooltipProp } from '#lib/tooltip/index'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen

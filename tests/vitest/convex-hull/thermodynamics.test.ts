@@ -13,17 +13,17 @@ import {
   process_hull_entries,
   process_hull_for_stats,
   system_fractions,
-} from '#lib/convex-hull/thermodynamics.js'
-import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
+} from '#lib/convex-hull/thermodynamics'
+import { filter_entries_at_temperature } from '#lib/convex-hull/helpers'
 import {
   compute_hull_model,
   process_model_entries,
   to_model_composition,
-} from '#lib/convex-hull/model.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { inverse_3x3, mul_3x3_vec3, solve_linear_system } from '#lib/math.js'
+} from '#lib/convex-hull/model'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { inverse_3x3, mul_3x3_vec3, solve_linear_system } from '#lib/math'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../test-fixtures'

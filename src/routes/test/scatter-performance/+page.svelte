@@ -6,7 +6,7 @@
     DataSeries,
     SizeScaleConfig,
     StyleOverrides,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
   import { onMount } from 'svelte'
   import TestControls from '../TestControls.svelte'
   import TestSection from '../TestSection.svelte'

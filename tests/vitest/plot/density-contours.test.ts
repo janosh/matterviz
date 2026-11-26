@@ -5,7 +5,7 @@ import {
   level_densities,
   mass_thresholds,
   multipolygon_path,
-} from '#lib/plot/core/density-contours.js'
+} from '#lib/plot/core/density-contours'
 import { contourDensity, contours } from 'd3-contour'
 import { describe, expect, test } from 'vite-plus/test'
 

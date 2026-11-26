@@ -1,10 +1,10 @@
-import type { Vec2 } from '#lib/math.js'
-import { diagram_errors } from '#lib/phase-diagram/diagram.js'
-import { find_region_at } from '#lib/phase-diagram/utils.js'
+import type { Vec2 } from '#lib/math'
+import { diagram_errors } from '#lib/phase-diagram/diagram'
+import { find_region_at } from '#lib/phase-diagram/utils'
 import {
   parse_phase_diagram_svg,
   trace_region_outline,
-} from '#lib/phase-diagram/svg-to-diagram.js'
+} from '#lib/phase-diagram/svg-to-diagram'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { pts, rect } from './fixtures/test-data'
 

@@ -1,14 +1,14 @@
-import type { PhaseData } from '#lib/convex-hull/index.js'
+import type { PhaseData } from '#lib/convex-hull/index'
 import RecipeCard from '#lib/synthesis-planning/RecipeCard.svelte'
-import * as hull_thermo from '#lib/convex-hull/thermodynamics.js'
-import * as hull_helpers from '#lib/convex-hull/helpers.js'
+import * as hull_thermo from '#lib/convex-hull/thermodynamics'
+import * as hull_helpers from '#lib/convex-hull/helpers'
 import SynthesisPlanner from '#lib/synthesis-planning/SynthesisPlanner.svelte'
-import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
+import { plan_synthesis } from '#lib/synthesis-planning/plan'
 import type {
   SynthesisConditions,
   SynthesisPlan,
   SynthesisPlanRequest,
-} from '#lib/synthesis-planning/types.js'
+} from '#lib/synthesis-planning/types'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, install_stub_worker, set_input } from '../setup'

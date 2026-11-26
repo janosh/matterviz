@@ -4,15 +4,15 @@
   import FilePicker from '#lib/FilePicker.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import * as file_io from '#lib/io/index.js'
-  import type { Vec3 } from '#lib/math.js'
+  import * as file_io from '#lib/io/index'
+  import type { Vec3 } from '#lib/math'
   import type {
     IrRamanOptions,
     PhononBandColoring,
     PhononModeDataset,
     PhononModeSelection,
     SpectrumKind,
-  } from '#lib/spectral/index.js'
+  } from '#lib/spectral/index'
   import {
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
@@ -25,13 +25,13 @@
     PhononModeExplorer,
     qpoint_has_eigenvectors,
     spectrum_from_phonon_data,
-  } from '#lib/spectral/index.js'
-  import { parse_supercell_scaling } from '#lib/structure/index.js'
+  } from '#lib/spectral/index'
+  import { parse_supercell_scaling } from '#lib/structure/index'
   import type { QueryParams, UrlParamEntry } from 'svelte-widgets/browser'
   import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/browser'
   import { to_error } from 'svelte-widgets/utils'
-  import { glob_basename, glob_default } from '#site/imports.js'
-  import { latest_load } from '#site/state.svelte.js'
+  import { glob_basename, glob_default } from '#site/imports'
+  import { latest_load } from '#site/state.svelte'
   import { untrack } from 'svelte'
 
   type FixtureSource = { name: string; href: string }
@@ -251,7 +251,6 @@
       url: ``,
       label,
       category: path ? `band path` : `Γ point`,
-      category_icon: path ? `📈` : `🎯`,
     }),
   )
 

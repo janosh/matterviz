@@ -3,8 +3,8 @@
   // for the column headers, the compact styling, the faint note line
   // and downloads of the curves and their analysis metadata
   import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
-  import { columns_to_csv } from '#lib/trajectory/analysis.js'
+  import { FileExportState } from '#lib/io/file-export.svelte'
+  import { columns_to_csv } from '#lib/trajectory/analysis'
   import type { Snippet } from 'svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Download } from 'svelte-widgets/icons'

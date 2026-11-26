@@ -1,22 +1,22 @@
-import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
+import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame'
 import {
   create_numeric_md_frame,
   encode_frame,
   materialize_frame_result,
-} from '#lib/trajectory/frame.js'
-import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
-import { FramePreparer, display_frame_bytes } from '#lib/trajectory/prepare.js'
+} from '#lib/trajectory/frame'
+import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare'
+import { FramePreparer, display_frame_bytes } from '#lib/trajectory/prepare'
 // Headless session: cache LRU + reset on run swap, latest-request-wins with aborted stale
 // reads, scrub vs commit, prefetch, controller, property mirroring and playback wrap through
 // the shared sequence player (whose own behaviour svelte-widgets tests).
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import type { TrajectoryRun } from '#lib/trajectory/run.js'
-import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
-import { create_trajectory_session } from '#lib/trajectory/session.svelte.js'
-import { get_bond_data } from '#lib/structure/bonding.js'
-import { compute_polyhedra } from '#lib/structure/polyhedra.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import type { TrajectoryRun } from '#lib/trajectory/run'
+import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run'
+import { host_run } from '#lib/trajectory/runs/host'
+import { create_trajectory_session } from '#lib/trajectory/session.svelte'
+import { get_bond_data } from '#lib/structure/bonding'
+import { compute_polyhedra } from '#lib/structure/polyhedra'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { make_trajectory_frame } from '../test-fixtures'

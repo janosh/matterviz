@@ -1,9 +1,9 @@
 <script lang="ts">
   import LazyDemo from './LazyDemo.svelte'
-  import element_data from '#lib/element/data.js'
-  import { array_extent, array_max, array_min, type Vec2 } from '#lib/math.js'
+  import element_data from '#lib/element/data'
+  import { array_extent, array_max, array_min, type Vec2 } from '#lib/math'
   import TableInset from '#lib/periodic-table/TableInset.svelte'
-  import { open_element_page } from '#site/state.svelte.js'
+  import { open_element_page } from '#site/state.svelte'
 
   // Each element shows two values as diagonal triangles (atomic mass + density)
   const densities = element_data.map((element) => element.density || 0)

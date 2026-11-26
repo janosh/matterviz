@@ -2,14 +2,16 @@
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
 import * as lib from '#lib'
-import * as open_module from '#lib/file-viewer/open.js'
-import type { OpenedMaterial } from '#lib/file-viewer/open.js'
+import * as open_module from '#lib/file-viewer/open'
+import type { OpenedMaterial } from '#lib/file-viewer/open'
 import ErrorPage from '#root/src/routes/+error.svelte'
 import DemoHostTool from '#root/src/routes/(demos)/structure/host-tool/DemoHostTool.svelte'
+import ElementsHub from '#root/src/routes/(demos)/elements/+page.svelte'
 import GuidesHub from '#root/src/routes/(demos)/guides/+page.svelte'
 import PeriodicTablePage from '#root/src/routes/(demos)/periodic-table/+page.svelte'
 import PlotHub from '#root/src/routes/(demos)/plot/+page.svelte'
 import SpectralHub from '#root/src/routes/(demos)/spectral/+page.svelte'
+import ThermodynamicsHub from '#root/src/routes/(demos)/thermodynamics/+page.svelte'
 import FacetGridPage from '#root/src/routes/(demos)/plot/facet-grid/+page.svelte'
 import BrillouinZonePage from '#root/src/routes/(demos)/spectral/brillouin-zone/+page.svelte'
 import RdfPage from '#root/src/routes/(demos)/structure/rdf/+page.svelte'
@@ -19,19 +21,19 @@ import PhaseDiagramPage from '#root/src/routes/(demos)/phase-diagram/+page.svelt
 import TernaryPage from '#root/src/routes/(demos)/phase-diagram/ternary/+page.svelte'
 import IsosurfacePage from '#root/src/routes/(demos)/structure/isosurface/+page.svelte'
 import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+page.svelte'
-import { auto_isosurface_settings, type IsosurfaceSettings } from '#lib/isosurface/types.js'
-import type { StructureView } from '#lib/structure/index.js'
-import * as symmetry from '#lib/symmetry/index.js'
-import { quaternary_files } from '#site/convex-hull/index.js'
-import { volumetric_files } from '#site/isosurfaces.js'
-import { all_phase_diagram_files, binary_diagrams } from '#site/phase-diagrams.js'
-import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
-import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
+import { auto_isosurface_settings, type IsosurfaceSettings } from '#lib/isosurface/types'
+import type { StructureView } from '#lib/structure/index'
+import * as symmetry from '#lib/symmetry/index'
+import { quaternary_files } from '#site/convex-hull/index'
+import { volumetric_files } from '#site/isosurfaces'
+import { all_phase_diagram_files, binary_diagrams } from '#site/phase-diagrams'
+import { ternary_system_files } from '#site/phase-diagrams/ternary/index'
+import { synthesis_demo_systems } from '#site/synthesis-planning/index'
 import CompositionDemo from '#site/CompositionDemo.svelte'
 import ConvexHullDemo from '#site/ConvexHullDemo.svelte'
 import FermiSurfaceDemo from '#site/FermiSurfaceDemo.svelte'
 import OptimadeStructureViewer from '#site/OptimadeStructureViewer.svelte'
-import { routes } from '#site/state.svelte.js'
+import { routes } from '#site/state.svelte'
 import { type Component, flushSync, mount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { trigger_intersection } from '../environment'
@@ -52,24 +54,24 @@ vi.mock(`#lib`, async (orig) => ({
   BrillouinZone: await stub(),
   Structure: await stub(),
 }))
-vi.mock(`#lib/phase-diagram/index.js`, async (orig) => ({
+vi.mock(`#lib/phase-diagram/index`, async (orig) => ({
   ...(await orig<object>()),
   IsobaricBinaryPhaseDiagram: await stub(),
   IsobaricTernaryPhaseDiagram: await stub(),
 }))
-vi.mock(`#lib/convex-hull/index.js`, async (orig) => ({
+vi.mock(`#lib/convex-hull/index`, async (orig) => ({
   ...(await orig<object>()),
   ConvexHull: await stub(),
 }))
-vi.mock(`#lib/fermi-surface/index.js`, async (orig) => ({
+vi.mock(`#lib/fermi-surface/index`, async (orig) => ({
   ...(await orig<object>()),
   FermiSurface: await stub(),
 }))
-vi.mock(`#lib/synthesis-planning/index.js`, async (orig) => ({
+vi.mock(`#lib/synthesis-planning/index`, async (orig) => ({
   ...(await orig<object>()),
   SynthesisPlanner: await stub(),
 }))
-vi.mock(`#lib/symmetry/index.js`, async (orig) => ({
+vi.mock(`#lib/symmetry/index`, async (orig) => ({
   ...(await orig<object>()),
   ensure_moyo_wasm_ready: vi.fn(),
   analyze_structure_symmetry: () => Promise.reject(new Error(`wasm fetch failed`)),
@@ -523,6 +525,8 @@ test.each([
   [PlotHub, [`/plot/`]],
   [SpectralHub, [`/spectral/`]],
   [GuidesHub, [`/how-to/`, `/acknowledgements`]],
+  [ThermodynamicsHub, [`/convex-hull`, `/phase-diagram`]],
+  [ElementsHub, [`/periodic-table`, `/composition`]],
 ])(`hub %# links all its pages`, (hub, prefixes) => {
   mount(hub, { target: document.body })
   const hrefs = [...document.querySelectorAll(`a`)].map((link) => link.getAttribute(`href`))

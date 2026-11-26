@@ -1,4 +1,4 @@
-import type { CameraProjection } from '#lib/settings.js'
+import type { CameraProjection } from '#lib/settings'
 import CameraSection from '#lib/scene/CameraSection.svelte'
 import { flushSync } from 'svelte'
 import { expect, test, vi } from 'vite-plus/test'

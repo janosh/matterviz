@@ -6,18 +6,14 @@
   // scene/camera for the export pane and receives the on_camera_move/on_camera_reset
   // callbacks so it drives Structure's external camera API. Camera state stays local to each
   // pane; scene_props supplies caller-controlled pose overrides.
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { ElementSymbol } from '#lib/element/index'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import type { CameraProjection } from '#lib/settings.js'
-  import type {
-    AnyStructure,
-    StructureHandlerData,
-    StructureView,
-  } from '#lib/structure/index.js'
-  import type { DisplacementSummary } from '#lib/structure/measure.js'
-  import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import type { CameraProjection } from '#lib/settings'
+  import type { AnyStructure, StructureHandlerData, StructureView } from '#lib/structure/index'
+  import type { DisplacementSummary } from '#lib/structure/measure'
+  import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, tick, untrack } from 'svelte'
@@ -28,8 +24,8 @@
     read_pan_offset,
     restore_camera_view,
     responsive_gizmo_size,
-  } from '#lib/scene/index.js'
-  import { scope_orbit_link } from '#lib/scene/orbit-link.svelte.js'
+  } from '#lib/scene/index'
+  import { scope_orbit_link } from '#lib/scene/orbit-link.svelte'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'

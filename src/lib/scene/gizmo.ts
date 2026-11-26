@@ -1,8 +1,8 @@
 // Types, layout math and constants for Gizmo.svelte, so callers can type and size a gizmo
 // without importing a .svelte module and the layout is testable without a Threlte context.
 import { clamp } from 'svelte-widgets/utils'
-import { AXIS_COLORS, NEG_AXIS_COLORS } from '#lib/colors/index.js'
-import type { Vec3 } from '#lib/math.js'
+import { AXIS_COLORS, NEG_AXIS_COLORS } from '#lib/colors/index'
+import type { Vec3 } from '#lib/math'
 
 export type GizmoAxisKey = `x` | `y` | `z` | `nx` | `ny` | `nz`
 

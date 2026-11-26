@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { WINDOW_TYPES, type WindowType } from '#lib/fft.js'
-  import type { ViewerPaneOptions } from '#lib/overlays/index.js'
-  import type { TrajectoryRun } from '#lib/trajectory/index.js'
-  import type { AnalysisPaneContext } from '#lib/trajectory/analysis.js'
+  import { WINDOW_TYPES, type WindowType } from '#lib/fft'
+  import type { ViewerPaneOptions } from '#lib/overlays/index'
+  import type { TrajectoryRun } from '#lib/trajectory/index'
+  import type { AnalysisPaneContext } from '#lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import {
     frequency_unit_label,
@@ -10,7 +10,7 @@
     MD_FREQUENCY_UNITS,
     thz_per_inverse_time,
     TIME_UNIT_TO_THZ,
-  } from '#lib/spectral/frequency-units.js'
+  } from '#lib/spectral/frequency-units'
   import { collect_vacf_input, vacf_buffers } from './collect'
   import type { VacfFrequencyUnit, VacfInput, VacfOptions, VacfResult } from './index'
   import VacfPlot from './VacfPlot.svelte'

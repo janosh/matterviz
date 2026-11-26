@@ -1,6 +1,6 @@
 import { download } from 'svelte-widgets/browser'
 import ExportDestination from '#lib/io/ExportDestination.svelte'
-import { FileExportState } from '#lib/io/file-export.svelte.js'
+import { FileExportState } from '#lib/io/file-export.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { set_input } from '../setup'

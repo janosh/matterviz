@@ -1,10 +1,10 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { humanize } from '#lib/labels.js'
-  import { array_extent } from '#lib/math.js'
-  import { sanitize_formula, sanitize_html } from '#lib/sanitize.js'
-  import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
+  import { element_by_symbol, type ElementSymbol } from '#lib/element/index'
+  import { humanize } from '#lib/labels'
+  import { array_extent } from '#lib/math'
+  import { sanitize_formula, sanitize_html } from '#lib/sanitize'
+  import { TooltipContent, TooltipValue } from '#lib/tooltip/index'
   import type {
     BinaryPhaseDiagram,
     CompUnit,
@@ -15,7 +15,7 @@
     TemperatureBand,
     TempUnit,
   } from './types'
-  import { format_label_html } from '#lib/composition/formula-markup.js'
+  import { format_label_html } from '#lib/composition/formula-markup'
   import {
     boundary_description,
     lever_rule_rows,

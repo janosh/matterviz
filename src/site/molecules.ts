@@ -1,6 +1,6 @@
 import type { Molecule } from '#lib'
-import type { FileInfo } from '#lib/io/index.js'
-import { fixture_ext, glob_basename, site_file_info } from '#site/imports.js'
+import type { FileInfo } from '#lib/io/index'
+import { fixture_ext, glob_basename, site_file_info } from '#site/imports'
 
 const molecules = Object.entries(
   import.meta.glob<Molecule>(`./molecules/*.json`, {
@@ -23,6 +23,5 @@ export const molecule_files: FileInfo[] = Object.keys(
   site_file_info(path, {
     type: fixture_ext(path).toUpperCase(),
     category: `molecule`,
-    category_icon: `🧬`,
   }),
 )

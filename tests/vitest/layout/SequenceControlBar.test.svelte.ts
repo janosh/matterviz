@@ -1,5 +1,5 @@
 // Playback (create_sequence_player) and SequenceControls are tested in svelte-widgets
-import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
 import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
 import { createRawSnippet, flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'

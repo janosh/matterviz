@@ -1,14 +1,10 @@
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, it, vi } from 'vite-plus/test'
 import TrajectoryHotspotPane from '#lib/trajectory/TrajectoryHotspotPane.svelte'
-import { trajectory_from_frames, type MemoryRunExtras } from '#lib/trajectory/runs/memory.js'
-import { create_trajectory_frame } from '#lib/trajectory/helpers.js'
-import type {
-  HotspotCoverage,
-  HotspotRequest,
-  HotspotResult,
-} from '#lib/trajectory/hotspots.js'
-import type { HotspotScale } from '#lib/trajectory/hotspot-colors.js'
+import { trajectory_from_frames, type MemoryRunExtras } from '#lib/trajectory/runs/memory'
+import { create_trajectory_frame } from '#lib/trajectory/helpers'
+import type { HotspotCoverage, HotspotRequest, HotspotResult } from '#lib/trajectory/hotspots'
+import type { HotspotScale } from '#lib/trajectory/hotspot-colors'
 import { doc_query, fire, form_controls, set_input } from '../setup'
 
 let mounted: ReturnType<typeof mount> | undefined

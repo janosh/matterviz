@@ -1,5 +1,5 @@
-import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
-import { element_data } from '#lib/element/index.js'
+import type { ChemicalElement, ElementSymbol } from '#lib/element/index'
+import { element_data } from '#lib/element/index'
 
 // === Types ===
 

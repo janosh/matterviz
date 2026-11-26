@@ -1,9 +1,9 @@
 // Display helpers shared by the Wulff viewer, facet editor, area plot and tooltip
 import { format_num } from 'svelte-widgets/format'
-import { PLOT_COLORS } from '#lib/colors/index.js'
+import { PLOT_COLORS } from '#lib/colors/index'
 import { schemeDark2 } from 'd3-scale-chromatic'
-import type { Vec3 } from '#lib/math.js'
-import { format_hkl } from '#lib/xrd/index.js'
+import type { Vec3 } from '#lib/math'
+import { format_hkl } from '#lib/xrd/index'
 import type { WulffFacetInput } from './types'
 
 // Family label {hkl} and plane label (hkl)

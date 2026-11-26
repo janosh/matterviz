@@ -1,10 +1,6 @@
 import TrajectoryInfoPane from '#lib/trajectory/TrajectoryInfoPane.svelte'
-import type {
-  TrajectoryFrame,
-  TrajectoryMetadata,
-  TrajectoryRun,
-} from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { doc_query, set_input } from '../setup'

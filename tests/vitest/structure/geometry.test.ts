@@ -1,5 +1,5 @@
-import { create_cart_to_frac, type Matrix3x3, type Vec3 } from '#lib/math.js'
-import type { BondOrder, BondPair } from '#lib/structure/index.js'
+import { create_cart_to_frac, type Matrix3x3, type Vec3 } from '#lib/math'
+import type { BondOrder, BondPair } from '#lib/structure/index'
 import {
   count_bond_instances,
   bond_neighbors,
@@ -8,7 +8,7 @@ import {
   pack_bonds,
   prepare_bond_placements,
   write_bond_transform,
-} from '#lib/structure/bond-rendering.js'
+} from '#lib/structure/bond-rendering'
 import {
   arrow_axis_geometry,
   cell_vector_arrow_sizes,
@@ -16,13 +16,13 @@ import {
   cylinder_between,
   quaternion_from_direction,
   rotation_from_direction,
-} from '#lib/structure/geometry.js'
+} from '#lib/structure/geometry'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
 import { describe, expect, test, vi } from 'vite-plus/test'
-import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { BondMesh } from '#lib/structure/bond-mesh.js'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
-import { make_site } from '#lib/structure/site.js'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame'
+import { BondMesh } from '#lib/structure/bond-mesh'
+import { css_to_linear_rgb } from '#lib/scene/colors'
+import { make_site } from '#lib/structure/site'
 import { cubic_matrix } from '../test-fixtures'
 
 // Arrows from it along a, b, c run outside the cell, also for negative vector components (last

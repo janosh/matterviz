@@ -1,7 +1,7 @@
-import type { Point2D, Vec2 } from '#lib/math.js'
-import type { Sides } from '#lib/plot/core/layout.js'
-import type { LegendItem } from '#lib/plot/core/types.js'
-import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
+import type { Point2D, Vec2 } from '#lib/math'
+import type { Sides } from '#lib/plot/core/layout'
+import type { LegendItem } from '#lib/plot/core/types'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index'
 
 export type TempUnit = `K` | `°C` | `°F`
 // Display unit of compositions: mole fraction or at.% (data is always mole fraction)

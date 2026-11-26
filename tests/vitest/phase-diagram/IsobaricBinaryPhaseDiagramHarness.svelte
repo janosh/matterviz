@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { IsobaricBinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
-  import type { BinaryPhaseDiagram, DiagramRegion } from '#lib/phase-diagram/types.js'
+  import { IsobaricBinaryPhaseDiagram } from '#lib/phase-diagram/index'
+  import type { BinaryPhaseDiagram, DiagramRegion } from '#lib/phase-diagram/types'
 
   let { loaded_data }: { loaded_data: BinaryPhaseDiagram } = $props()
   let data = $state.raw<BinaryPhaseDiagram | undefined>()

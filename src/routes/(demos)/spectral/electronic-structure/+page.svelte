@@ -1,18 +1,18 @@
 <script lang="ts">
   import { open_material } from '#lib'
-  import type { BandGridData } from '#lib/fermi-surface/index.js'
+  import type { BandGridData } from '#lib/fermi-surface/index'
   import {
     band_grid_dos,
     is_fermi_surface_data,
     with_energy_unit,
-  } from '#lib/fermi-surface/index.js'
-  import { ElectronicStructure, normalize_band_structure } from '#lib/spectral/index.js'
-  import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
-  import { is_crystal } from '#lib/structure/validation.js'
+  } from '#lib/fermi-surface/index'
+  import { ElectronicStructure, normalize_band_structure } from '#lib/spectral/index'
+  import { is_structure_like, structure_from_json } from '#lib/structure/parse'
+  import { is_crystal } from '#lib/structure/validation'
   import { is_plain_object, to_error } from 'svelte-widgets/utils'
   import raw_bands from '#site/electronic/cu-fcc-bands.json.gz'
-  import { cu_pressure_sweep } from '#site/electronic/cu-pressure-sweep.js'
-  import { FERMI_FILE_ENERGY_UNITS, fermi_surface_files } from '#site/fermi-surfaces.js'
+  import { cu_pressure_sweep } from '#site/electronic/cu-pressure-sweep'
+  import { FERMI_FILE_ENERGY_UNITS, fermi_surface_files } from '#site/fermi-surfaces'
   import { onMount } from 'svelte'
 
   // fcc Cu from one simulated calculation: its band grid, its band structure and the structure

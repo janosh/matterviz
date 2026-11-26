@@ -1,11 +1,11 @@
 import * as lib from '#lib'
-import * as host from '#lib/host.js'
-import * as io from '#lib/io/index.js'
-import * as labels from '#lib/labels.js'
-import * as math from '#lib/math.js'
-import * as scene from '#lib/scene/index.js'
-import * as shortcuts from '#lib/shortcuts.js'
-import * as utils from '#lib/utils.js'
+import * as host from '#lib/host'
+import * as io from '#lib/io/index'
+import * as labels from '#lib/labels'
+import * as math from '#lib/math'
+import * as scene from '#lib/scene/index'
+import * as shortcuts from '#lib/shortcuts'
+import * as utils from '#lib/utils'
 import { expect, test } from 'vite-plus/test'
 
 test(`library exports all Svelte components from #lib/*.svelte`, () => {

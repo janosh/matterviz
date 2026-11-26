@@ -4,10 +4,10 @@
   // mode), instanced wedges for partial occupancy, instanced bond cylinders, and coordination
   // polyhedra merged into one face mesh plus one edge LineSegments2. Owns the GPU resources
   // and their per-frame color/buffer updates; picking resolves hits through instanceId.
-  import { element_from_atomic_number } from '#lib/element/helpers.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import type { HoverHandlers } from '#lib/scene/index.js'
-  import type { AnyStructure, Site } from '#lib/structure/index.js'
+  import { element_from_atomic_number } from '#lib/element/helpers'
+  import type { ElementSymbol } from '#lib/element/index'
+  import type { HoverHandlers } from '#lib/scene/index'
+  import type { AnyStructure, Site } from '#lib/structure/index'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { type BufferGeometry, DoubleSide } from 'three/webgpu'

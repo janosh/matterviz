@@ -1,7 +1,7 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import type { ElementPatterns } from '#lib/composition/index.js'
-  import { BarChart, BubbleChart, PieChart } from '#lib/composition/index.js'
+  import type { ElementPatterns } from '#lib/composition/index'
+  import { BarChart, BubbleChart, PieChart } from '#lib/composition/index'
   import CompositionDemo from '#site/CompositionDemo.svelte'
 
   let show_labels = $state(true)
