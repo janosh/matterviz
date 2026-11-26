@@ -4,7 +4,12 @@ import { open_trajectory } from '#lib/trajectory/open'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { compute_vacf } from '#lib/vacf/compute-vacf'
 import { collect_msd_positions } from '#lib/msd/collect'
-import { collect_vacf_input, vacf_buffers, VELOCITY_SITE_PROPERTY } from '#lib/vacf/collect'
+import {
+  collect_vacf_input,
+  msd_stride_buffers,
+  vacf_buffers,
+  VELOCITY_SITE_PROPERTY,
+} from '#lib/vacf/collect'
 import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { make_frame } from '../test-fixtures'
@@ -167,18 +172,20 @@ describe(`collect_vacf_input`, () => {
 
   // positions + velocities = 2 trajectory-sized buffers, plus the unwrapped copy that deriving
   // velocities from wrapped positions in a cell caches (3). Budgeting that path at 1 told a
-  // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget.
+  // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget. MSD budgets
+  // the same whenever VACF derives from the positions it reads.
   it.each([
-    [`stored`, { box_length: 5, velocities: [[1, 0, 0]] }, [1, 1, 2], [1, 1, 1]],
-    [`molecule-derived`, {}, [1, 1, 2], [1, 1, 1]],
-    [`unwrapped-derived`, { box_length: 5, coords_unwrapped: true }, [1, 1, 2], [1, 1, 1]],
-    [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2]],
+    [`stored`, { box_length: 5, velocities: [[1, 0, 0]] }, [1, 1, 2], [1, 1, 1], 2],
+    [`molecule-derived`, {}, [1, 1, 2], [1, 1, 1], 2],
+    [`unwrapped-derived`, { box_length: 5, coords_unwrapped: true }, [1, 1, 2], [1, 1, 1], 2],
+    [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2], 3],
   ])(
     `budgets every buffer compute_vacf holds for %s velocities`,
-    (_label, frame_options, strides, window_strides) => {
+    (_label, frame_options, strides, window_strides, msd_buffers) => {
       const run = trajectory_from_frames(
         Array.from({ length: 1000 }, (_, idx) => make_frame(idx, [[0, 0, 0]], frame_options)),
       )
+      expect(msd_stride_buffers(run)).toBe(msd_buffers)
       const budgets = [72_000, 48_000, 24_000]
       const stride = (max_bytes: number, frame_count?: number) =>
         suggest_analysis_frame_stride(run, max_bytes, vacf_buffers(run), frame_count)

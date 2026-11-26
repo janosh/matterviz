@@ -24,6 +24,11 @@ export const VELOCITY_SITE_PROPERTY = `velocity`
 export const vacf_buffers = (run: TrajectoryRun): number =>
   has_velocities(run.preview) ? 2 : 1 + position_buffers(run)
 
+// MSD's stride-hint budget: VACF's whenever VACF differentiates the same positions, so both
+// hint one stride and a single sweep serves them (collect_trajectory_positions shares it)
+export const msd_stride_buffers = (run: TrajectoryRun): number =>
+  has_velocities(run.preview) ? position_buffers(run) : vacf_buffers(run)
+
 // A frame carries velocities or it does not; write_frame_velocities enforces that
 // all-or-nothing rule, so site 0 speaks for the whole frame.
 const has_velocities = (frame?: TrajectoryFrame): boolean =>

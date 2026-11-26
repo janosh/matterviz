@@ -86,7 +86,7 @@
     // Button text while `collect` runs
     collecting_label?: string
     // Position-sized (3 × f64) buffers per atom-frame the analysis holds, for the estimate
-    // line and the default stride budget, so the two cannot disagree
+    // line and the default stride budget (a `suggest_stride` may budget more, as MSD does)
     position_buffers?: number
     // Time between two SOURCE frames as recorded in the file, seeded into the timestep
     // controls (which only render when `time_unit_fallback` is given) and re-seeded on swap

@@ -171,8 +171,9 @@ describe(`MSD components`, () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain(`recollect failed`))
   })
 
-  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with compute_msd's unwrapped copy
-  it(`budgets compute_msd's unwrapped copy of wrapped cell positions`, async () => {
+  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with compute_msd's unwrapped copy (the
+  // estimate's 2 buffers); the hint budgets VACF's 3 so one sweep can serve both panes
+  it(`budgets compute_msd's unwrapped copy and hints VACF's stride`, async () => {
     const run = trajectory_from_frames(
       Array.from({ length: 20 }, (_, idx) => make_frame(idx, [[0, 0, 0]], { box_length: 5 })),
     )
@@ -183,6 +184,7 @@ describe(`MSD components`, () => {
       }),
     )
     await tick()
-    expect(document.body.textContent).toContain(`needs ≥ 2`)
+    expect(document.body.textContent).toContain(`needs ≥ 3`)
+    expect(document.body.textContent).toContain(`≈ 916 MiB`) // 20 frames x 1M atoms x 2 x 24 B
   })
 })

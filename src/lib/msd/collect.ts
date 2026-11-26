@@ -1,5 +1,5 @@
 // Gather whole-trajectory positions for displacement analysis. Budget a frame_stride with
-// `suggest_analysis_frame_stride(run, max_bytes, position_buffers(run))`.
+// `suggest_analysis_frame_stride(run, max_bytes, msd_stride_buffers(run))`.
 import type { TrajectoryPositionStream, TrajectoryRun } from '#lib/trajectory/index'
 import type { AnalysisStreamOptions } from '#lib/trajectory/analysis'
 import { collect_trajectory_positions } from '#lib/trajectory/analysis'
