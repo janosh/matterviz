@@ -11,7 +11,7 @@
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
-  import { Pause, Play } from 'svelte-widgets/icons'
+  import { TransportPause, TransportPlay } from 'svelte-widgets/icons'
   import { canvas_text_color } from '#lib/canvas-surface.svelte'
   import { relevant_gases as find_relevant_gases } from '#lib/convex-hull/gas-thermodynamics'
   import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types'
@@ -541,7 +541,7 @@
               content: `${playing ? `Pause` : `Heat`} at ${settings.play_speed} K/s (space)`,
             })}
           >
-            <Icon icon={playing ? Pause : Play} />
+            <Icon icon={playing ? TransportPause : TransportPlay} />
           </button>
           <div class="slider-wrap">
             <div class="event-ticks" aria-hidden="true">

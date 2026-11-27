@@ -13,7 +13,7 @@ import {
   prepare_diagram,
 } from '#lib/phase-diagram/ternary/compute'
 import IsobaricTernaryPhaseDiagram from '#lib/phase-diagram/ternary/IsobaricTernaryPhaseDiagram.svelte'
-import { Pause, Play } from 'svelte-widgets/icons'
+import { TransportPause, TransportPlay } from 'svelte-widgets/icons'
 import PhaseEventList from '#lib/phase-diagram/ternary/PhaseEventList.svelte'
 import PhaseStabilityMap from '#lib/phase-diagram/ternary/PhaseStabilityMap.svelte'
 import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types'
@@ -162,9 +162,9 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       doc_query(`.play-btn svg path`).getAttribute(`d`),
     ]
     press(` `)
-    expect(play_state()).toEqual([`Pause heating`, Pause.d])
+    expect(play_state()).toEqual([`Pause heating`, TransportPause.d])
     press(` `)
-    expect(play_state()).toEqual([`Play heating ramp`, Play.d])
+    expect(play_state()).toEqual([`Play heating ramp`, TransportPlay.d])
     // Space on a focused button is left to the button (synthetic keys never trigger native
     // activation, so the observable is an unprevented event), not taken by the heating ramp
     const prism_btn = doc_query<HTMLButtonElement>(`.view-toggle button:last-child`)

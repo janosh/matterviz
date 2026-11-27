@@ -2192,11 +2192,7 @@
     margin: auto;
     padding-block: 1em;
     text-align: center;
-    --task-status-button-justify: center;
-    /* TaskStatus lays the spinner and label out as a flex row, which text-align can't center */
-    :global(.message > div) {
-      justify-content: center;
-    }
+    --task-status-justify: center;
     :global(button) {
       background: var(--btn-bg);
       padding: 2pt 8pt;

@@ -541,7 +541,7 @@
   }
   .export-progress {
     text-align: center;
-    --task-status-button-justify: center;
+    --task-status-justify: center;
   }
   .export-info {
     margin-top: 1ex;
