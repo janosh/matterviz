@@ -270,10 +270,6 @@ export const with_stream_progress = <T>(
     stream_progress = outer
   }
 }
-const advance_stream_progress = (values: number): void => {
-  if (stream_progress?.total)
-    stream_progress.report((stream_progress.done += values) / stream_progress.total)
-}
 
 // Keep each native read bounded even when a full frame exceeds one slice. Split the first
 // varying dimension so concatenating the pieces preserves row-major order, including strides.
@@ -307,7 +303,8 @@ export const read_numeric_buffer = (
     return values
   }
   const values = validated_numeric_hyperslab(dataset, path, ranges)
-  advance_stream_progress(values.length)
+  if (stream_progress?.total)
+    stream_progress.report((stream_progress.done += values.length) / stream_progress.total)
   if (values instanceof Float64Array) {
     // eslint-disable-next-line @typescript-eslint/prefer-for-of -- Measured faster for million-value frame reads.
     for (let idx = 0; idx < values.length; idx++)

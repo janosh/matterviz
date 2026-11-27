@@ -52,11 +52,10 @@ const FORMULA_TOKEN_RE = new RegExp(
 )
 // Multi-phase labels ("La2NiO4 + NiO") split on their " + " separators, which are kept
 const PHASE_SEPARATOR_RE = /(?<separator>\s*\+\s*)/
-const ELEMENT_SET: ReadonlySet<string> = new Set(ELEM_SYMBOLS)
 // hydrogen isotopes, which formulas write as symbols (D2O, T2O, Ti3C2Tx)
 export const ISOTOPE_SYMBOLS: ReadonlySet<string> = new Set([`D`, `T`])
-const is_known_symbol = (symbol: string) =>
-  ELEMENT_SET.has(symbol) || ISOTOPE_SYMBOLS.has(symbol)
+const KNOWN_SYMBOLS: ReadonlySet<string> = new Set([...ELEM_SYMBOLS, ...ISOTOPE_SYMBOLS])
+const is_known_symbol = (symbol: string) => KNOWN_SYMBOLS.has(symbol)
 
 // Markup tokens plus the element symbols they contain (after splitting variables off: Lix -> Li)
 function scan_formula(formula: string): { tokens: FormulaMarkupToken[]; symbols: string[] } {
@@ -85,7 +84,7 @@ function scan_formula(formula: string): { tokens: FormulaMarkupToken[]; symbols:
       const symbol = element.slice(0, -1)
       AFTER_VAR_RE.lastIndex = index + element.length
       const fused_var =
-        !ELEMENT_SET.has(element) &&
+        !is_known_symbol(element) &&
         FUSED_VAR_RE.test(element) &&
         is_known_symbol(symbol) &&
         AFTER_VAR_RE.test(formula)
@@ -108,17 +107,15 @@ export const tokenize_formula_markup = (formula: string): FormulaMarkupToken[] =
 export const compact_formula = (formula: string): string => formula.replaceAll(/\s+/g, ``)
 
 // Formulas inside free text such as file labels ("BaTiO3 cubic perovskite", "δ-CsPbI3",
-// "Li2O_relax.traj"). FORMULA_WORD_RE finds formula-shaped words: letter runs with counts and
+// "Li2O_relax.traj"). FORMULA_WORD_RE finds formula-shaped words (letter runs with counts and
 // caret charges, brackets of any kind and depth, a leading coefficient or isotope mass, a
-// trailing charge. scan_formula then decides what is a symbol and is_formula_word whether the
-// word is a formula, so both renderers agree. Brackets need not balance within a word: each
-// part of a hydrate (CuSO4·5H2O) or site list ((Ba,Sr)TiO3) is its own word, and their tokens
-// join up to the same markup. Words never sit against a letter, digit or slash, so space groups
-// (I4/mmm, P6_3/mmc) and redox pairs (Fe^2+/Fe^3+) stay plain. A caret charge is matched whole or
-// not at all, as is a decimal or fraction: backtracking to a prefix (Fe^2 of Fe^2+/, Li0 of
-// Li0.5Coα) would mark up a partial charge or count.
-// Variables are matched as part of the letter run (Lix, Oδ) or after a closer ((OH)x), never as
-// an optional unit of their own, so a word parses one way only (no exponential backtracking).
+// trailing charge); scan_formula and is_formula_word then decide what is a formula, so both
+// renderers agree. Brackets need not balance: hydrate parts (CuSO4·5H2O) and site lists
+// ((Ba,Sr)TiO3) are separate words whose tokens join up. Words never touch a letter, digit or
+// slash, so space groups (I4/mmm, P6_3/mmc) and redox pairs (Fe^2+/Fe^3+) stay plain. Caret
+// charges, decimals and fractions match whole or not at all (no partial Fe^2 of Fe^2+/, Li0 of
+// Li0.5Coα). Variables match only inside a letter run (Lix, Oδ) or after a closer ((OH)x), so a
+// word parses one way only (no exponential backtracking).
 const WORD_SCRIPTS = String.raw`(?:${COUNT}(?![./]\d)|${PAREN_EXPR})?(?:\^(?:${CARET_CHARGE})(?![\d+\-−]))?`
 const WORD_UNIT = String.raw`(?:\^\d+)?[A-Z][a-z]*δ?${WORD_SCRIPTS}|[(\[{]|[)\]}](?:${VAR}(?![a-z]))?${WORD_SCRIPTS}`
 const FORMULA_WORD_RE = new RegExp(

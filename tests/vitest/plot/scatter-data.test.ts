@@ -559,6 +559,8 @@ describe(`viewport line projection`, () => {
     `decimates a dense %s line keeping each pixel column's drawn y-extent`,
     (curve) => {
       const rng = make_rng(7)
+      const same = (val: number) => val
+      const all_x: Vec2 = [-Infinity, Infinity]
       // ~50 vertices per column, then a tail of 5-6 (kept whole), with dropped NaN ys and breaks
       const steps = Array.from({ length: 3000 }, (_, idx) =>
         idx < 2900 ? 0.01 * rng() : 0.18,
@@ -574,15 +576,7 @@ describe(`viewport line projection`, () => {
           }
           const direction = strict_x_direction(x)
           const project = (px: number, line_curve: LineCurve = curve) =>
-            project_line_points(
-              data,
-              (val) => val,
-              (val) => val,
-              [-Infinity, Infinity],
-              direction,
-              line_curve,
-              px,
-            ).points
+            project_line_points(data, same, same, all_x, direction, line_curve, px).points
           const [full, kept] = [project(0), project(column_px)]
           // non-local curves never decimate, monotone ones only in strict x order
           expect(project(column_px, `natural`)).toEqual(full)

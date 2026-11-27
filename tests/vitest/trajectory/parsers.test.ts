@@ -2969,18 +2969,14 @@ describe(`HDF5`, () => {
   it.each([
     [
       `TorchSim positions`,
-      async () => {
+      () => {
         const [n_frames, n_atoms] = [600, 1200] // 2.16M values: three 8 MB slices as float64
         return h5_bytes(`progress`, (file) => {
-          const positions = Float32Array.from(
+          const data = Float32Array.from(
             { length: n_frames * n_atoms * 3 },
             (_, idx) => idx % 7,
           )
-          file.create_dataset({
-            name: `positions`,
-            data: positions,
-            shape: [n_frames, n_atoms, 3],
-          })
+          file.create_dataset({ name: `positions`, data, shape: [n_frames, n_atoms, 3] })
           create_dataset(file, `atomic_numbers`, Array(n_atoms).fill(14), [n_atoms])
         })
       },

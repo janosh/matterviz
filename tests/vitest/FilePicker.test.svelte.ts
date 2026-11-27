@@ -239,14 +239,9 @@ describe(`FilePicker`, () => {
     expect(document.querySelectorAll(`.file-type-badge`)).toHaveLength(n_badges)
   })
 
-  // Formula words in labels and names get real sub/superscripts; names that only look
-  // formula-shaped stay plain
+  // Labels render through FormulaText (its cases are in composition/FormulaText.test.ts)
   it.each([
-    [`BaTiO3 cubic perovskite`, `BaTiO<sub>3</sub> cubic perovskite`],
-    [`δ-CsPbI3 orthorhombic`, `δ-CsPbI<sub>3</sub> orthorhombic`],
-    [`Li2O_relax.traj`, `Li<sub>2</sub>O_relax.traj`],
     [`SO4^2- ions`, `SO<sub>4</sub><sup>2-</sup> ions`],
-    [`CONTCAR2`, `CONTCAR2`],
     [`mp-1234.json`, `mp-1234.json`],
   ])(`renders %s as %s`, (label, html) => {
     mount_picker({ files: [{ name: `x`, url: ``, label }] })

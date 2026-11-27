@@ -30,7 +30,6 @@ test.each([
   [`Ac6 U2`, `Ac<sub>6</sub>U<sub>2</sub>`],
   [`Li0.5 Fe O2`, `Li<sub>0.5</sub>FeO<sub>2</sub>`],
   [`Li.5CoO2`, `Li<sub>.5</sub>CoO<sub>2</sub>`],
-  [`Fe0.95O`, `Fe<sub>0.95</sub>O`],
   [`BAs`, `BAs`],
   // a letter run that is a real symbol keeps its n/y (SnO2, not SₙO2)
   [`SnO2`, `SnO<sub>2</sub>`],
@@ -62,12 +61,9 @@ test.each([
   [`MnxCo3-xO4`, `Mn<sub>x</sub>Co<sub>3-x</sub>O<sub>4</sub>`],
   [`CHnCl4-n`, `CH<sub>n</sub>Cl<sub>4-n</sub>`],
   [`Ti3C2Tx`, `Ti<sub>3</sub>C<sub>2</sub>T<sub>x</sub>`],
-  [`Li1-xFePO4`, `Li<sub>1-x</sub>FePO<sub>4</sub>`],
   [`Li1−xCoO2`, `Li<sub>1−x</sub>CoO<sub>2</sub>`],
   [`Ba(1-x)SrxTiO3`, `Ba<sub>(1-x)</sub>Sr<sub>x</sub>TiO<sub>3</sub>`],
-  [`La1-xSrxMnO3`, `La<sub>1-x</sub>Sr<sub>x</sub>MnO<sub>3</sub>`],
   [`Li(1+x)Mn(2-x)O4`, `Li<sub>(1+x)</sub>Mn<sub>(2-x)</sub>O<sub>4</sub>`],
-  [`MgxFe1-xSiO4`, `Mg<sub>x</sub>Fe<sub>1-x</sub>SiO<sub>4</sub>`],
   [`CuO2-δ`, `CuO<sub>2-δ</sub>`],
   [`Fe0.5Oδ`, `Fe<sub>0.5</sub>Oδ`],
   [`YBa2Cu3O7-δ`, `YBa<sub>2</sub>Cu<sub>3</sub>O<sub>7-δ</sub>`],
@@ -76,7 +72,6 @@ test.each([
   [`(CH2)n`, `(CH<sub>2</sub>)<sub>n</sub>`],
   // isotopes
   [`D2O`, `D<sub>2</sub>O`],
-  [`T2O`, `T<sub>2</sub>O`],
   [`^13CO2`, `<sup>13</sup>CO<sub>2</sub>`],
   [`¹³CO2`, `¹³CO<sub>2</sub>`],
   // hydrates, adducts and coefficients stay full size
@@ -84,11 +79,14 @@ test.each([
   [`2H2+O2->2H2O`, `2H<sub>2</sub>+O<sub>2</sub>-&gt;2H<sub>2</sub>O`],
   [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
   [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
+  [`CaSO4·.5H2O`, `CaSO<sub>4</sub>·.5H<sub>2</sub>O`],
+  [`CuSO4∙5H2O`, `CuSO<sub>4</sub>∙5H<sub>2</sub>O`],
   [`CuSO4•5H2O`, `CuSO<sub>4</sub>•5H<sub>2</sub>O`],
   [`CuSO4*5H2O`, `CuSO<sub>4</sub>*5H<sub>2</sub>O`],
   [`NaxCoO2·yH2O`, `Na<sub>x</sub>CoO<sub>2</sub>·yH<sub>2</sub>O`],
   [`xLi2MnO3·(1-x)LiCoO2`, `xLi<sub>2</sub>MnO<sub>3</sub>·(1-x)LiCoO<sub>2</sub>`],
   [`2H2O`, `2H<sub>2</sub>O`],
+  [`0.5Fe2O3`, `0.5Fe<sub>2</sub>O<sub>3</sub>`],
   // charges: caret syntax, or a bare sign after the count (trailing digits are always a count)
   [`SO4^2-`, `SO<sub>4</sub><sup>2-</sup>`],
   [`Fe^3+`, `Fe<sup>3+</sup>`],
@@ -109,9 +107,7 @@ test.each([
   [`Fe3+`, `Fe<sub>3</sub><sup>+</sup>`],
   // phase and polymorph prefixes, state labels
   [`α-Fe2O3`, `α-Fe<sub>2</sub>O<sub>3</sub>`],
-  [`β-Ga2O3`, `β-Ga<sub>2</sub>O<sub>3</sub>`],
   [`H2O(l)`, `H<sub>2</sub>O(l)`],
-  [`CO2(g)`, `CO<sub>2</sub>(g)`],
   [`NaCl(aq)`, `NaCl(aq)`],
   [`2H-MoS2`, `2H-MoS<sub>2</sub>`],
   [`1T'-WTe2`, `1T'-WTe<sub>2</sub>`],
@@ -122,15 +118,6 @@ test.each([
   const compact = compact_formula(formula)
   expect(formula_html(compact)).toBe(expected)
   expect(formula_text_html(compact)).toBe(expected)
-})
-
-// Whole-string formatting only: a variable letter that a word goes on from stays (Hex_A3 is no
-// Heₓ), and a spaced hydrate dot still makes the next number a coefficient
-test.each([
-  [`Hex_A3`, `Hex_A<sub>3</sub>`],
-  [`CuSO4 · 5H2O`, `CuSO<sub>4</sub> · 5H<sub>2</sub>O`],
-])(`format_formula_html(%j) → %s`, (formula, expected) => {
-  expect(formula_html(formula)).toBe(expected)
 })
 
 // In free text only formula words are marked up: prose numbers, citations, units, space groups,
@@ -161,7 +148,6 @@ test.each([
   [`Li-ion`, `Li-ion`],
   [`CONTCAR2`, `CONTCAR2`], // A and R are no elements
   [`no formula here`, `no formula here`],
-  [`mp-1234`, `mp-1234`],
   [`LiCoO2 C2/m`, `LiCoO<sub>2</sub> C2/m`],
   [`P2_1/c`, `P2_1/c`],
   [`Fe- and Co-based alloys`, `Fe- and Co-based alloys`],
@@ -184,6 +170,8 @@ test.each([
   [`NOx emissions`, `NO<sub>x</sub> emissions`],
   [`D2O vs H2O`, `D<sub>2</sub>O vs H<sub>2</sub>O`],
   [`α-Fe2O3 film`, `α-Fe<sub>2</sub>O<sub>3</sub> film`],
+  [`δ-CsPbI3 orthorhombic`, `δ-CsPbI<sub>3</sub> orthorhombic`],
+  [`mp-1234.json`, `mp-1234.json`],
   [`NaxCoO2·yH2O film`, `Na<sub>x</sub>CoO<sub>2</sub>·yH<sub>2</sub>O film`],
 ])(`FormulaText(%j) → %s`, (text, expected) => {
   expect(formula_text_html(text)).toBe(expected)

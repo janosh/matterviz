@@ -94,14 +94,10 @@
   // Pressing on a chip's name selects text instead of starting a file drag: a draggable element
   // can't be text-selected, so every chip pauses dragging until the pointer lifts (a selection
   // may run across chips). The badge and padding still drag the file.
-  const allow_text_select = ({
-    currentTarget,
-    target,
-  }: PointerEvent & { currentTarget: HTMLElement }) => {
+  const allow_text_select = ({ target }: PointerEvent) => {
     if (!(target instanceof Element && target.closest(`.file-name`))) return
-    const chips = [
-      ...(currentTarget.parentElement?.querySelectorAll<HTMLElement>(`.file-item`) ?? []),
-    ]
+    const picker = target.closest(`.file-picker`)
+    const chips = [...(picker?.querySelectorAll<HTMLElement>(`.file-item`) ?? [])]
     for (const chip of chips) chip.draggable = false
     // a touch scroll cancels the press instead of lifting it
     const restore = () => chips.forEach((chip) => (chip.draggable = true))

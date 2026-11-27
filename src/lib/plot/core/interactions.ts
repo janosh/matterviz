@@ -303,11 +303,8 @@ export function shared_xy_range(
   has_data: { x?: boolean; y?: boolean },
 ): { range: [number | null, number | null]; auto: Vec2 } {
   const [x_type, y_type] = [axes.x.scale_type, axes.y.scale_type].map(get_scale_type_name)
-  if (x_type !== y_type) {
-    throw new Error(
-      `shared_xy_range needs one scale type on x and y, got ${x_type} and ${y_type}`,
-    )
-  }
+  if (x_type !== y_type)
+    throw new Error(`shared_xy_range needs x and y on one scale, got ${x_type} and ${y_type}`)
   const pin = (bound_idx: 0 | 1): number | null => {
     const [x_pin, y_pin] = [axes.x.range?.[bound_idx], axes.y.range?.[bound_idx]]
     if (x_pin != null && y_pin != null && x_pin !== y_pin) {

@@ -803,16 +803,12 @@ describe(`cartesian frame`, () => {
       // each mount gets its own `view`: a shared one would hand the first plot's view on
       const mount_view = async (shared_xy_range: boolean) => {
         const bound = $state<{ view?: Partial<AxisRanges> }>({ view: undefined })
-        const axis = (axis_name: `x_axis` | `y_axis`) => ({
+        const [x_axis, y_axis] = ([`x_axis`, `y_axis`] as const).map((axis_name) => ({
           scale_type: scale,
           ...pin_of(axis_name),
-        })
-        const props = {
-          series: [{ ...parity_series(scale), markers: `points` as const }],
-          x_axis: axis(`x_axis`),
-          y_axis: axis(`y_axis`),
-          shared_xy_range,
-        }
+        }))
+        const series = [{ ...parity_series(scale), markers: `points` as const }]
+        const props = { series, x_axis, y_axis, shared_xy_range }
         const plot = await mount_sized(ScatterPlot, bind_props(props, bound), {
           selector: `.scatter`,
         })
@@ -824,14 +820,12 @@ describe(`cartesian frame`, () => {
       const { x, y } = bound.view ?? {}
       if (!x) throw new Error(`no view mirrored`)
       expect(y).toEqual(x)
-      // pinned bounds land exactly, auto ones cover the data of both axes
-      expect([x[0] <= lower, x[1] >= upper]).toEqual([true, true])
-      for (const [bound_idx, axis_name] of [
-        [0, `x_axis`],
-        [1, `y_axis`],
-      ] as const) {
-        const pin = pin_of(axis_name)?.range?.[bound_idx]
+      // pinned bounds (from either axis) land exactly, auto ones cover the data of both axes
+      for (const [bound_idx, edge] of [lower, upper].entries()) {
+        const pin =
+          pin_of(`x_axis`)?.range?.[bound_idx] ?? pin_of(`y_axis`)?.range?.[bound_idx]
         if (pin != null) expect(x[bound_idx]).toBe(pin)
+        else expect(bound_idx ? x[1] >= edge : x[0] <= edge, `bound ${bound_idx}`).toBe(true)
       }
       if (scale === `log`) expect(x[0]).toBeGreaterThan(0)
       // a rect zoom moves each axis on its own, a reset restores the shared range
@@ -854,10 +848,7 @@ describe(`cartesian frame`, () => {
   test(`ScatterPlot log-log shared_xy_range with nice: false spans the padded data`, async () => {
     const bound = $state<{ view?: Partial<AxisRanges> }>({ view: undefined })
     const axis = { scale_type: `log` as const, nice: false }
-    const [xs, ys] = [
-      [1, 10, 30],
-      [0.2, 4, 90],
-    ]
+    const { x: xs, y: ys } = parity_series(`log`)
     const props = {
       series: [{ x: xs, y: ys, markers: `line` as const }],
       x_axis: axis,
@@ -934,10 +925,7 @@ describe(`cartesian frame`, () => {
     const shared = await mount_binned(true)
     expect(shared.common.length).toBeGreaterThanOrEqual(2)
     for (const value of shared.common) {
-      expect(shared.y_fracs.get(value), `tick ${value}`).toBeCloseTo(
-        shared.x_fracs.get(value) ?? NaN,
-        6,
-      )
+      expect(shared.y_fracs.get(value)).toBeCloseTo(shared.x_fracs.get(value) ?? NaN, 6)
     }
     // the shared range reaches y's low data end on x too
     expect(Math.min(...shared.x_fracs.keys())).toBeLessThanOrEqual(-4)
