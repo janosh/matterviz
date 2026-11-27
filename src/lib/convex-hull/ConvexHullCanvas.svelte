@@ -14,11 +14,7 @@
     wheel_zoom_surface,
   } from '#lib/scene/index'
   import { Canvas, T } from '@threlte/core'
-  import {
-    export_figure,
-    set_export_painter,
-    type ExportPainter,
-  } from 'svelte-widgets/figure-export'
+  import { export_figure } from 'svelte-widgets/figure-export'
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'
@@ -170,18 +166,8 @@
     // oxfmt-ignore
     repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, color_scale, energy_range, merged_config, overlay],
   })
-  // Exports (this PNG and phase diagrams laying overlays on the canvas) redraw the scene at
-  // export resolution rather than scaling the screen bitmap up
-  const paint_export: ExportPainter = (target, pixel_ratio) => {
-    const { width, height } = interactions.canvas_dims
-    target.width = Math.max(1, Math.round(width * pixel_ratio))
-    target.height = Math.max(1, Math.round(height * pixel_ratio))
-    const ctx = target.getContext(`2d`)
-    if (!ctx) throw new Error(`Canvas 2D context not available`)
-    ctx.scale(pixel_ratio, pixel_ratio)
-    render_frame(ctx)
-  }
-  $effect(() => (canvas ? set_export_painter(canvas, paint_export) : undefined))
+  // the canvas surface registers export painters for both layers, so this PNG (and phase
+  // diagrams laying overlays on the canvas) redraws at export resolution
   export const to_png_blob = async (png_dpi: number): Promise<Blob> => {
     if (!canvas) throw new Error(`Convex hull canvas has not rendered yet`)
     return export_figure(canvas, { format: `png`, dpi: png_dpi })
