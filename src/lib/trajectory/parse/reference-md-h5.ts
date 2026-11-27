@@ -539,6 +539,17 @@ export const parse_reference_md_h5_file = (
         signal_values: (key, start_frame, end_frame) =>
           (end_frame - start_frame) *
           (values_per_sample(signal_manifest[key].sample_shape) + 1),
+        // integrating velocities reads every frame in range once, whatever the stride, and
+        // serves the velocity vector and signal from that same read
+        read_values: (start_frame, end_frame, requested_signals) =>
+          (end_frame - start_frame) *
+          requested_signals.reduce(
+            (total, key) =>
+              key === `velocity`
+                ? total
+                : total + values_per_sample(signal_manifest[key].sample_shape),
+            velocity_sample_size,
+          ),
       },
     )
     const start_frame = options.start_frame ?? 0

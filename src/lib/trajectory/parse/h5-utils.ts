@@ -1,4 +1,4 @@
-import { is_finite_number } from '#lib/utils'
+import { is_finite_number, whole_percent_reporter } from '#lib/utils'
 import { transpose_3x3, type Matrix3x3 } from '#lib/math'
 import { mat3x3_from_rows } from '#lib/structure/parsers/shared'
 import type {
@@ -249,6 +249,32 @@ export const read_numeric_hyperslab = (
     finite_or_throw(value, path),
   )
 
+// A collect_positions read runs synchronously, so its progress lives here meanwhile:
+// resolve_stream_channels sets how many values it reads, and every hyperslab adds what it read.
+// Capped below 100: the total is the budget's estimate, and assembling the stream follows.
+let stream_progress: {
+  total: number
+  done: number
+  report: (fraction: number) => void
+} | null = null
+export const with_stream_progress = <T>(
+  on_percent: (percent: number) => void,
+  read: () => T,
+): T => {
+  const outer = stream_progress // a collect started from a progress callback nests
+  stream_progress = { total: 0, done: 0, report: whole_percent_reporter(on_percent, 99) }
+  stream_progress.report(0)
+  try {
+    return read()
+  } finally {
+    stream_progress = outer
+  }
+}
+const advance_stream_progress = (values: number): void => {
+  if (stream_progress?.total)
+    stream_progress.report((stream_progress.done += values) / stream_progress.total)
+}
+
 // Keep each native read bounded even when a full frame exceeds one slice. Split the first
 // varying dimension so concatenating the pieces preserves row-major order, including strides.
 export const read_numeric_buffer = (
@@ -281,6 +307,7 @@ export const read_numeric_buffer = (
     return values
   }
   const values = validated_numeric_hyperslab(dataset, path, ranges)
+  advance_stream_progress(values.length)
   if (values instanceof Float64Array) {
     // eslint-disable-next-line @typescript-eslint/prefer-for-of -- Measured faster for million-value frame reads.
     for (let idx = 0; idx < values.length; idx++)
@@ -413,7 +440,8 @@ export const signal_descriptors = <Manifest extends { sample_shape: number[]; un
 // The option handling every HDF5 `collect_positions` shares: stride, channel selection and
 // the memory budget. `is_vector` / `is_signal` say which keys the file can stream (and may
 // throw their own shape errors); `values_per_frame(n_vectors)` sizes one selected frame and
-// `signal_values(key)` a whole native-cadence signal.
+// `signal_values(key)` a whole native-cadence signal. Those sizes are also the stream's progress
+// total, unless `read_values` says what a reader that reads differently (unstrided) reads.
 export const resolve_stream_channels = (
   format: string,
   options: PositionStreamOptions,
@@ -423,6 +451,7 @@ export const resolve_stream_channels = (
     is_signal: (key: string) => boolean
     values_per_frame: (n_vectors: number) => number
     signal_values: (key: string, start_frame: number, end_frame: number) => number
+    read_values?: (start_frame: number, end_frame: number, signal_keys: string[]) => number
   },
 ): {
   frame_stride: number
@@ -444,17 +473,23 @@ export const resolve_stream_channels = (
   const frame_indices = sampled_indices(end_frame - start_frame, frame_stride).map(
     (idx) => idx + start_frame,
   )
+  const values_per_frame = channels.values_per_frame(vector_keys.length)
+  const signal_values = signal_keys.reduce(
+    (total, key) => total + channels.signal_values(key, start_frame, end_frame),
+    0,
+  )
   assert_hdf5_stream_budget(
     format,
     end_frame - start_frame,
     frame_indices.length,
-    channels.values_per_frame(vector_keys.length),
-    signal_keys.reduce(
-      (total, key) => total + channels.signal_values(key, start_frame, end_frame),
-      0,
-    ),
+    values_per_frame,
+    signal_values,
     options.max_bytes ?? DEFAULT_POSITION_STREAM_MAX_BYTES,
   )
+  if (stream_progress)
+    stream_progress.total =
+      channels.read_values?.(start_frame, end_frame, signal_keys) ??
+      frame_indices.length * values_per_frame + signal_values
   return { frame_stride, vector_keys, signal_keys, frame_indices }
 }
 

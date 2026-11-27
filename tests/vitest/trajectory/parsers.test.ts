@@ -2962,6 +2962,59 @@ describe(`HDF5`, () => {
     expect(collected.positions).toEqual(Float64Array.from(positions))
   })
 
+  // The reads run synchronously (8 MB slices), each reporting, instead of one 0% for the whole
+  // stream (2.6 s for 192 MB of positions). Reference MD reads every frame once whatever the
+  // stride, and serves velocities from that read: a strided budget estimate as the total stopped
+  // its progress near 70%.
+  it.each([
+    [
+      `TorchSim positions`,
+      async () => {
+        const [n_frames, n_atoms] = [600, 1200] // 2.16M values: three 8 MB slices as float64
+        return h5_bytes(`progress`, (file) => {
+          const positions = Float32Array.from(
+            { length: n_frames * n_atoms * 3 },
+            (_, idx) => idx % 7,
+          )
+          file.create_dataset({
+            name: `positions`,
+            data: positions,
+            shape: [n_frames, n_atoms, 3],
+          })
+          create_dataset(file, `atomic_numbers`, Array(n_atoms).fill(14), [n_atoms])
+        })
+      },
+      {},
+      {},
+      3,
+    ],
+    [
+      `Reference MD velocities, stride 2`,
+      () => make_reference_md_h5_buffer([100, 101], 12),
+      { hdf5_group_path: `/molecules/h2o/replicas/1` },
+      { frame_stride: 2, vector_keys: [`velocity`] },
+      2,
+    ],
+  ])(
+    `reports collect_positions progress per HDF5 read: %s`,
+    async (_name, make, open_options, options, min_reports) => {
+      const content = await make()
+      const percents: number[] = []
+      await collect(await open(content, `progress.h5`, open_options), {
+        ...options,
+        on_progress: ({ current, stage }) => {
+          expect(stage).toBe(`Reading HDF5 datasets`)
+          percents.push(current)
+        },
+      })
+      expect(percents[0]).toBe(0)
+      expect(percents.length).toBeGreaterThanOrEqual(min_reports)
+      expect(percents.every((pct, idx) => idx === 0 || pct > percents[idx - 1])).toBe(true)
+      expect(percents.at(-1)).toBeGreaterThanOrEqual(95)
+      expect(percents.at(-1)).toBeLessThan(100) // the run's completion is the consumer's to report
+    },
+  )
+
   it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
     const run = await open(await make_torch_sim_signal_buffer(), `torch-sim.h5`)
     expect(run.provenance.format).toBe(`hdf5`)

@@ -1,5 +1,6 @@
 import type { LoadedPayload } from './decompress'
 import { classify_payload, compression_wrapper_of } from './decompress'
+import { whole_percent_reporter } from '#lib/utils'
 import type {
   FileInfo,
   FileLoadCallback,
@@ -81,12 +82,11 @@ const with_download_progress = (resp: Response, on_percent: (percent: number) =>
   const total = Number(resp.headers.get(`content-length`))
   const encoding = resp.headers.get(`content-encoding`) ?? `identity`
   if (!total || !resp.body || encoding !== `identity`) return resp
-  let [loaded, reported] = [0, -1]
+  const report = whole_percent_reporter(on_percent)
+  let loaded = 0
   const counter = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
-      loaded += chunk.byteLength
-      const percent = Math.min(100, Math.floor((100 * loaded) / total))
-      if (percent !== reported) on_percent((reported = percent))
+      report((loaded += chunk.byteLength) / total)
       controller.enqueue(chunk)
     },
   })

@@ -54,6 +54,15 @@ export function hash_string(text: string): number {
 
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
 
+// Calls `report` once with each whole percent (at most `cap`) a growing 0-1 fraction reaches
+export const whole_percent_reporter = (report: (percent: number) => void, cap = 100) => {
+  let last = -1
+  return (fraction: number): void => {
+    const percent = Math.min(cap, Math.floor(100 * fraction))
+    if (percent > last) report((last = percent))
+  }
+}
+
 // Tag-stripping, entity-decoding plain text of HTML (SSR-safe), shared with svelte-widgets
 
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
