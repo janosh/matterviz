@@ -220,9 +220,7 @@
               struct.attributes.chemical_formula_descriptive ?? ``,
             )}
             <button onclick={() => navigate_to_structure(struct.id)}>
-              <span style="font-family: ui-monospace, Menlo, Consolas, monospace"
-                >{struct.id}</span
-              >
+              <span style="font-family: var(--font-mono)">{struct.id}</span>
               {#if formula}
                 <span style="font-weight: lighter">{@html sanitize_html(formula)}</span>
               {/if}

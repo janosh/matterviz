@@ -26,6 +26,8 @@
   /* svelte-widgets names (SubpageGrid reads both) */
   --text-muted: var(--text-color-muted);
   --main-max-width: 1100px;
+  /* a font list, not bare `monospace`, which browsers size off 13px instead of the parent's size */
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
   --btn-bg: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.09));
   --btn-bg-hover: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.17));
   --btn-disabled-bg: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.04));
@@ -698,10 +700,9 @@
     border-radius: var(--border-radius);
     background-color: var(--code-bg);
   }
-  /* a key cap a touch smaller than its text, like sub/sup never stretching its line. A font
-     list, not bare `monospace`, which browsers size off 13px instead of the parent's size */
+  /* a key cap a touch smaller than its text, like sub/sup never stretching its line */
   kbd {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.85em;
     line-height: 1;
   }

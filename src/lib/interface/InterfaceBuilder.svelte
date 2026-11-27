@@ -343,7 +343,7 @@
   }
   .error {
     color: var(--error-color, tomato);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     white-space: pre-wrap;
   }
   .empty {

@@ -477,7 +477,7 @@
   }
   .value {
     min-width: 3em;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.9em;
   }
 </style>

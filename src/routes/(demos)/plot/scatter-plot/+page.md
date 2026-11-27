@@ -2884,7 +2884,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
     background: var(--surface-bg-hover, rgba(0, 0, 0, 0.05));
     border-radius: 4px;
     font-size: 0.8em;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     max-height: 80px;
     overflow-y: auto;
   }

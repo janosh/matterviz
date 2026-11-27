@@ -387,7 +387,7 @@
     pointer-events: none;
   }
   .value {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 0.9em;
     text-align: right;
   }

@@ -845,7 +845,7 @@
     color: inherit;
     padding: 2pt 0;
     outline: none;
-    font-family: var(--mono-font, monospace);
+    font-family: var(--font-mono);
     &::placeholder {
       opacity: 0.4;
     }
@@ -959,7 +959,7 @@
     border: none;
     cursor: pointer;
     padding: 4pt 10pt;
-    font-family: var(--mono-font, monospace);
+    font-family: var(--font-mono);
     font-size: 0.88em;
     color: inherit;
   }
@@ -1006,7 +1006,7 @@
     border-radius: 4px;
     padding: 3pt 7pt;
     font-size: 0.82em;
-    font-family: var(--mono-font, monospace);
+    font-family: var(--font-mono);
     color: var(--highlight, #4db6ff);
     cursor: pointer;
     &:hover {
@@ -1024,7 +1024,7 @@
     border: 1px solid rgba(77, 182, 255, 0.35);
     background: rgba(77, 182, 255, 0.12);
     border-radius: 4px;
-    font-family: var(--mono-font, monospace);
+    font-family: var(--font-mono);
     font-size: 0.78em;
     padding: 2pt 6pt;
     cursor: pointer;

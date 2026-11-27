@@ -201,7 +201,7 @@
       padding: 3pt 6pt;
       background: color-mix(in srgb, currentColor 2%, transparent);
       color: inherit;
-      font-family: var(--mono-font, monospace);
+      font-family: var(--font-mono);
       &::placeholder {
         opacity: 0.4;
       }

@@ -86,7 +86,7 @@
       padding: 0.15em 0.3em;
       border: 1px solid var(--border-color, #ccc);
       border-radius: 4px;
-      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-family: var(--font-mono);
       font-size: 0.9em;
       text-align: center;
       box-sizing: border-box;

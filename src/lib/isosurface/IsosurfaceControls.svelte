@@ -847,7 +847,7 @@
       margin: 0;
     }
     .layer-value {
-      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
     }
   }

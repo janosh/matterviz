@@ -552,7 +552,7 @@
     color: var(--btn-color-active, light-dark(#1d4ed8, #93c5fd));
   }
   .sigma-value {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 0.9em;
     text-align: right;
   }

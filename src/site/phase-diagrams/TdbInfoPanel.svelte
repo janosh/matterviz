@@ -135,7 +135,7 @@ binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
       color: white;
       padding: 0 5pt;
       border-radius: 3px;
-      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-family: var(--font-mono);
     }
   }
   .notice {

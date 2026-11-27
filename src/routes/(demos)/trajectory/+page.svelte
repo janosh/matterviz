@@ -140,7 +140,7 @@
     padding: 1em;
     background: var(--surface-bg-hover);
     border-radius: var(--border-radius);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.9em;
   }
   .traj-pair {

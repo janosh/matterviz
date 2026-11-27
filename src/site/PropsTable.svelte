@@ -134,9 +134,8 @@
     cursor: pointer;
     font-weight: bold;
   }
-  /* a font list, not bare `monospace`, which browsers size off 13px instead of the summary's */
   .component-name {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
   }
   .table-scroll {
     overflow-x: auto;
