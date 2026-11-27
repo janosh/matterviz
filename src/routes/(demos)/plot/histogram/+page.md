@@ -22,8 +22,8 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
     label: `Normal Distribution (N=${format_num(sample_size, `~s`)}, μ=50, σ=15)`,
   })
 
-  const describe = ({ value, count, property }: HistogramHandlerProps): string =>
-    `${property} - Value: ${value.toFixed(1)}, Count: ${count}, Percentage: ${format_num(
+  const describe = ({ x: bin_center, count, label }: HistogramHandlerProps): string =>
+    `${label} - Value: ${bin_center.toFixed(1)}, Count: ${count}, Percentage: ${format_num(
       count / sample_size,
       `.2~%`,
     )}`
@@ -48,8 +48,8 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
   </label>
 </div>
 
-{#snippet tooltip({ value, count })}
-  Value: {value.toFixed(1)}<br />Count: {count}<br />
+{#snippet tooltip({ x: bin_center, count })}
+  Value: {bin_center.toFixed(1)}<br />Count: {count}<br />
   %: {format_num(count / sample_size, `.2~%`)}
 {/snippet}
 
@@ -122,9 +122,9 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
   bar={{ opacity: 0.6 }}
   style="height: 400px"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    Score: {value.toFixed(1)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    Score: {bin_center.toFixed(1)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -229,9 +229,9 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
   bind:display
   style="height: 450px; margin-block: 1em;"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    Value: {value.toFixed(2)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    Value: {bin_center.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 
@@ -307,9 +307,9 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   bind:y_axis
   style="height: 450px; margin-block: 1em"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    Value: {value.toExponential(2)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    Value: {bin_center.toExponential(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 
@@ -400,8 +400,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   bind:y_axis
   style="height: 400px"
 >
-  {#snippet tooltip({ value, count })}
-    Value: {value.toFixed(1)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count })}
+    Value: {bin_center.toFixed(1)}<br />Count: {count}
   {/snippet}
 </Histogram>
 
@@ -469,10 +469,10 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
     {{ age: `Age`, discrete: `Rating` }[selected.value] ?? `Value`}: {format_num(
-      value,
+      bin_center,
       selected.value === `discrete` ? `.1f` : `.0f`,
     )}<br />
     Count: {count}<br />%: {format_num(count / current.data.length, `.2~%`)}
@@ -654,10 +654,11 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     color_scheme
   ][0]}; border-radius: 8px;"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    {x_format === `currency` ? `Price: $${value.toFixed(0)}` : `Value: ${value.toFixed(2)}`}<br
-    />
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    {x_format === `currency`
+      ? `Price: $${bin_center.toFixed(0)}`
+      : `Value: ${bin_center.toFixed(2)}`}<br />
     Count: {count}
   {/snippet}
 </Histogram>
@@ -728,8 +729,8 @@ points, {bins} bins, {mode} mode
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />Value: {value.toFixed(2)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />Value: {bin_center.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```

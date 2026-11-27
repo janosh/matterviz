@@ -85,18 +85,15 @@ export function process_hull_entries(
   return { entries: normalized, elements: collect_hull_elements(normalized) }
 }
 
-// Energy per atom with the (total-energy, eV) MP correction applied, else raw energy
+// Energy per atom with the (total-energy, eV) MP correction applied, else raw energy. NaN for
+// entries without atoms or an absolute energy (E_form-only), never a fictitious 0 eV.
 export function get_energy_per_atom(entry: PhaseData): number {
-  // Math.max instead of || so pathological non-positive totals can't flip the sign
-  const atoms = Math.max(count_atoms_in_composition(entry.composition), 1e-12)
-  if (typeof entry.correction === `number`) {
-    const total =
-      typeof entry.energy_per_atom === `number`
-        ? entry.energy_per_atom * atoms
-        : (entry.energy ?? 0)
-    return (total + entry.correction) / atoms
-  }
-  return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
+  const { composition, correction, energy, energy_per_atom } = entry
+  const atoms = count_atoms_in_composition(composition)
+  if (!(atoms > 0)) return NaN
+  if (typeof correction !== `number`) return energy_per_atom ?? (energy ?? NaN) / atoms
+  const total = typeof energy_per_atom === `number` ? energy_per_atom * atoms : (energy ?? NaN)
+  return (total + correction) / atoms
 }
 
 // Whether an entry carries an absolute energy rather than E_form only
@@ -149,8 +146,8 @@ export function compute_e_form_per_atom(
   el_refs: Record<string, PhaseData>,
 ): number | null {
   const atoms = count_atoms_in_composition(entry.composition)
-  const energy_per_atom = get_energy_per_atom(entry)
-  if (!(atoms > 0) || !Number.isFinite(energy_per_atom)) return null
+  const energy_per_atom = get_energy_per_atom(entry) // NaN unless atoms > 0
+  if (!Number.isFinite(energy_per_atom)) return null
   let ref_sum = 0
   for (const [element, amount] of Object.entries(entry.composition)) {
     if (!(amount > 0)) continue

@@ -120,7 +120,7 @@
     y_items={axis_items}
     values={en_diff_values}
     color_scale="interpolateViridis"
-    controls_props={{ children: full_controls }}
+    controls_extra={full_controls}
     hide_empty={hide_mode}
     selection_mode="multi"
     bind:selected_cells
@@ -179,7 +179,7 @@
         values={small_values}
         color_scale="interpolatePlasma"
         symmetric="lower"
-        controls_props={{ children: subset_controls }}
+        controls_extra={subset_controls}
         tile_size="20px"
         gap="1px"
         on_double_click={(cell: CellContext) =>

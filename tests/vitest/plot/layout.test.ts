@@ -581,17 +581,16 @@ describe(`layout utility functions`, () => {
 
     // A host that cannot fullscreen renders no button, so the row it alone held is not reserved.
     it.each([
-      [`hover`, true, true, true],
-      [`never`, true, true, false],
-      [false, true, true, false],
-      [{ mode: `always`, hidden: [`controls`] }, true, true, true], // the fullscreen button remains
-      [{ mode: `always`, hidden: [`controls`] }, false, true, false],
-      [{ mode: `hover`, hidden: [`controls`, `fullscreen`] }, true, true, false],
-      [{ mode: `always`, hidden: [`controls`] }, true, false, false],
-      [`hover`, true, false, true],
+      [`hover`, true, true],
+      [`never`, true, false],
+      [false, true, false],
+      [{ mode: `always`, hidden: [`controls`] }, true, true], // the fullscreen button remains
+      [{ mode: `hover`, hidden: [`controls`, `fullscreen`] }, true, false],
+      [{ mode: `always`, hidden: [`controls`] }, false, false],
+      [`hover`, false, true],
     ] as const)(
-      `has_controls_row(%o, fullscreen_toggle=%s) with host.fullscreen=%s is %s`,
-      (show_controls, fullscreen_toggle, host_fullscreen, expected) => {
+      `has_controls_row(%o) with host.fullscreen=%s is %s`,
+      (show_controls, host_fullscreen, expected) => {
         const prop =
           typeof show_controls === `object`
             ? { ...show_controls, hidden: [...show_controls.hidden] }
@@ -599,7 +598,7 @@ describe(`layout utility functions`, () => {
         const orig_fullscreen = host.fullscreen
         host.fullscreen = host_fullscreen
         try {
-          expect(has_controls_row(prop, fullscreen_toggle)).toBe(expected)
+          expect(has_controls_row(prop)).toBe(expected)
         } finally {
           host.fullscreen = orig_fullscreen
         }

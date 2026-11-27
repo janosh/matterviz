@@ -9,6 +9,7 @@ import type {
   HotspotRequest,
 } from '#lib/trajectory/index'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
+import { normalize_show_controls } from '#lib/controls'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import * as plotting from '#lib/trajectory/plotting'
 import * as calc_rdf from '#lib/rdf/compute-rdf'
@@ -1741,7 +1742,7 @@ describe(`events`, () => {
     mount_trajectory(props)
     doc_query<HTMLButtonElement>(`.fullscreen-button`).click()
     await vi.waitFor(() => expect(props.fullscreen).toBe(true))
-    expect(on_fullscreen_change).toHaveBeenCalledWith(payload(0, 0))
+    expect(on_fullscreen_change).toHaveBeenCalledWith({ ...payload(0, 0), fullscreen: true })
     expect(document.fullscreenElement).toBe(doc_query(`.trajectory`))
     props.show_controls = false
     await tick()
@@ -1751,6 +1752,24 @@ describe(`events`, () => {
     expect(props.fullscreen).toBe(false)
     expect(document.querySelector(`.trajectory > .sequence-control-bar`)).toBeNull()
   })
+
+  // The bar's fullscreen and the inspector's site list stand in for the structure's own
+  test.each([undefined, `always`, { style: `top: 0`, hidden: [`info-pane`] }] as const)(
+    `structure_props.show_controls=%j keeps the structure's fullscreen and site table hidden`,
+    async (show_controls) => {
+      const structure_props = last_props<StructureProps>(structure_component)
+      mount_trajectory(default_props({ structure_props: { show_controls } }))
+      await vi.waitFor(() => expect(structure_props().show_controls).toBeDefined())
+      const config = normalize_show_controls(structure_props().show_controls)
+      const names = [`fullscreen`, `site-table`, `info-pane`, `controls`]
+      expect(names.map(config.visible)).toEqual([
+        false,
+        false,
+        typeof show_controls !== `object`,
+        true,
+      ])
+    },
+  )
 
   test.each([`analysis-button`, `view-mode-button`])(
     `Escape closes %s without flashing and leaves parent-owned fullscreen alone`,

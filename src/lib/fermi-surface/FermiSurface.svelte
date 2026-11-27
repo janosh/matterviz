@@ -1,12 +1,13 @@
 <script lang="ts">
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { canvas_sources, type ExportProps } from '#lib/io/export'
+  import { canvas_sources } from '#lib/io/export'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import type { MaterialSource } from '#lib/file-viewer/open'
   import type { BrillouinZoneData } from '#lib/brillouin/index'
   import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index'
   import { reciprocal_lattice } from '#lib/math'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
+  import { normalize_show_controls } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import ViewerError from '#lib/layout/ViewerError.svelte'
@@ -15,7 +16,7 @@
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback } from '#lib/io/index'
-  import { ViewerChrome } from '#lib/layout/index'
+  import { ViewerChrome, type SceneViewerProps } from '#lib/layout/index'
   import { PlotTooltip } from '#lib/plot/index'
   import {
     create_renderer,
@@ -31,7 +32,6 @@
   import type { Crystal } from '#lib/structure/index'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
   import { detect_irreducible_bz, preview_interpolation_factor } from './compute'
   import * as extraction from './extract-async'
@@ -46,13 +46,14 @@
   } from './geometry'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
-  import { to_error } from 'svelte-widgets/utils'
+  import { chain_handlers, to_error } from 'svelte-widgets/utils'
   import { can_create_worker } from 'svelte-widgets/worker-client'
   import { viewer_keys } from 'svelte-widgets/attachments'
   import { mark_pin } from '#lib/tooltip/pin.svelte'
   import { reset_scene_cameras } from '#lib/scene/camera-reset'
   import type {
     BandGridData,
+    FermiControlName,
     FermiErrorData,
     FermiFileLoadData,
     FermiHover,
@@ -118,7 +119,6 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    fullscreen_toggle = DEFAULTS.fermi.fullscreen_toggle,
     source,
     spinner_props = {},
     loading = $bindable(false),
@@ -133,9 +133,14 @@
     export_formats,
     export_filename,
     on_export,
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
+    scene_controls = {},
     ...rest
   }: Partial<FermiSurfaceSettings> &
-    ExportProps & {
+    SceneViewerProps<
+      FermiControlName,
+      { fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }
+    > & {
       // Both accept the typed-array form `parse_fermi_file` returns and the JSON form (plain
       // `vertices`/`faces` rows, nested energies) that pymatviz/anywidget traits can carry
       fermi_data?: FermiSurfaceData | FermiSurfaceJson
@@ -145,8 +150,6 @@
       structure?: Crystal
       // Brillouin zone drawn around the surface, computed from the available reciprocal lattice (output).
       bz_data?: BrillouinZoneData
-      // Whether the settings pane is open.
-      controls_open?: boolean
       property_name?: string // coloured by in `property` mode (default: the first present)
       // property color bar, shown in `property` mode; null hides it
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
@@ -163,23 +166,9 @@
       // shown alone over selected_bands (e.g. a clicked band line) until a controls band edit
       isolated_band?: number | null
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
-      // Toolbar visibility: `always`, `hover`, `never` (or a boolean), or `{ mode, hidden, style }` to hide named controls.
-      show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>
-      // True while the viewer is fullscreen.
-      fullscreen?: boolean
-      // Output: wrapper width in CSS px.
-      width?: number
-      // Output: wrapper height in CSS px.
-      height?: number
-      // The viewer's root element.
-      wrapper?: HTMLDivElement
-      // Output: true while the pointer is over the viewer.
-      hovered?: boolean
       // Output: true while a file is dragged over the viewer.
       dragover?: boolean
       allow_file_drop?: boolean // false when a parent owns loading
-      // Show the fullscreen button in the controls.
-      fullscreen_toggle?: boolean
       // Fermi-surface or band-grid file (e.g. BXSF, FRMSF): a URL, File or { data, filename }
       source?: MaterialSource
       // Props for the spinner shown while loading or extracting.
@@ -197,17 +186,11 @@
       on_file_load?: (data: FermiFileLoadData) => void
       // Called with `error_msg` when loading or extracting fails.
       on_error?: (data: FermiErrorData) => void
-      // Called with the surface, zone and new `fullscreen` state when fullscreen is toggled.
-      on_fullscreen_change?: (data: {
-        fermi_data?: FermiSurfaceData
-        bz_data?: BrillouinZoneData
-        fullscreen: boolean
-      }) => void
       // Hover tooltip: a snippet replaces its content, a { prefix, suffix } config customizes it, false hides it.
       tooltip?: FermiTooltipProp
       // Called with the hovered band, spin and k-point position (or null when the pointer leaves).
       on_point_hover?: (data: FermiHoverData | null) => void
-    } & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+    } = $props()
 
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
@@ -441,9 +424,9 @@
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
   {...rest}
+  onpointerenter={chain_handlers(() => (hovered = true), rest.onpointerenter)}
+  onpointerleave={chain_handlers(() => (hovered = false), rest.onpointerleave)}
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
   {@attach drop_zone}
   {@attach keys}
@@ -464,7 +447,6 @@
       {controls_config}
       filename={current_filename}
       bind:fullscreen
-      {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--fermi-bg-fullscreen"
       on_fullscreen_change={(value) =>
@@ -503,6 +485,7 @@
           filename={export_filename ?? (current_filename || `fermi-surface`)}
           sources={canvas_sources(() => wrapper?.querySelector(`canvas`))}
           sections={export_sections}
+          bind:png_dpi
           {export_formats}
           {on_export}
           toggle_props={{ class: `fermi-export-toggle`, title: `Export Fermi surface` }}
@@ -518,6 +501,7 @@
         dpr={Math.min(2, window.devicePixelRatio)}
       >
         <FermiSurfaceScene
+          {...scene_controls}
           fermi_data={shown_surface}
           {bz_data}
           color_property={shown_color_property}

@@ -7,12 +7,11 @@
 
   type Props = {
     fullscreen: boolean
-    toggle: boolean
     controls?: ShowControlsProp // the host panel's show_controls
     wrapper?: HTMLElement
   }
-  let { fullscreen = $bindable(), toggle, controls, wrapper }: Props = $props()
-  const shown = $derived(shows_fullscreen_toggle(toggle, normalize_show_controls(controls)))
+  let { fullscreen = $bindable(), controls, wrapper }: Props = $props()
+  const shown = $derived(shows_fullscreen_toggle(normalize_show_controls(controls)))
 </script>
 
 <!-- kept (hidden) while fullscreen so Esc still syncs the flag -->

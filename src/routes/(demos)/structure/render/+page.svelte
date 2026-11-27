@@ -33,8 +33,6 @@
   // Props an exported still never wants: controls, panes and overlays live outside the canvas
   const base_props: StructureProps = {
     show_controls: false,
-    enable_info_pane: false,
-    fullscreen_toggle: false,
     show_host_tool: false,
     site_sidebar: false, // it docks beside the canvas for sites with forces or moments
     background_opacity: 1, // a still's background_color is solid (the viewer's default is 0.1)

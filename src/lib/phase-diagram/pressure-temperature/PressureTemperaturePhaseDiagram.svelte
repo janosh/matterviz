@@ -38,6 +38,7 @@
   import type {
     AxisConfig,
     BasePlotProps,
+    CartesianPlotProps,
     DisplayConfig,
     LegendConfig,
     LegendItem,
@@ -110,7 +111,6 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     wrapper = $bindable(),
     export_filename,
     export_formats,
@@ -120,7 +120,8 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
-    Omit<BasePlotProps, `range_padding` | `hovered`> & {
+    Omit<BasePlotProps, `hovered`> &
+    Pick<CartesianPlotProps, `title`> & {
       // Pressure-temperature diagram to draw: phases, boundaries and special points with optional uncertainties.
       data?: PtPhaseDiagramData
       // Axis configs by quantity, whichever side swap_axes puts them on (label, ticks, format,
@@ -304,7 +305,7 @@
   })
 
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => ({ x: x_axis, x2: {}, y: y_axis, y2: {} }),
     auto_ranges: () => auto_ranges,
     has_x2: () => false,
@@ -722,7 +723,6 @@
   aria-label="{pt_data?.system ? `${pt_data.system} ` : ``}pressure-temperature phase diagram"
   bind:fullscreen
   bind:wrapper
-  {fullscreen_toggle}
   {show_controls}
   marginals={no_marginals}
   marginal_series={[]}

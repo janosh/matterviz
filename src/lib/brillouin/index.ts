@@ -33,8 +33,7 @@ export type BrillouinZoneOptions = Pick<
   | 'ibz_opacity'
   | 'default_k_path'
   | 'show_controls'
-  | 'fullscreen_toggle'
   | 'png_dpi'
   | 'tooltip'
-  | 'scene_props'
+  | 'scene_controls'
 >

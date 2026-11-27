@@ -51,11 +51,14 @@ export type WulffHover = { mark: string; miller: Vec3; screen_position: Point2D 
 
 // Viewer display defaults (WulffShape, WulffScene)
 export const WULFF_DEFAULTS = {
-  opacity: 1,
+  surface_opacity: 1,
   edge_color: `#222222`,
   edge_width: 0.006, // fraction of the shape's radius
-  show_axes: true,
+  show_vectors: true, // the crystal axes a, b, c
   show_legend: true,
   camera_projection: `perspective` as CameraProjection,
 }
 export type WulffDisplaySettings = typeof WULFF_DEFAULTS
+
+// Controls `show_controls` can hide by name
+export type WulffControlName = `fullscreen` | `info-pane` | `export-pane` | `controls`

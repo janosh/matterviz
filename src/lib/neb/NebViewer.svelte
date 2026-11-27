@@ -33,6 +33,7 @@
   import { SvelteMap } from 'svelte/reactivity'
   import type {
     EnergyReference,
+    NebControlName,
     PathProfile,
     ReactionCoordMode,
     ReactionPath,
@@ -42,8 +43,6 @@
   import { parse_dropped_paths, REACTION_PATH_FORMAT } from './parse'
   import type { PathSplineOptions } from './reaction-path'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
-
-  type NebControlName = `path` | `nav` | `step` | `fps` | `energy` | `export` | `fullscreen`
 
   let {
     paths,
@@ -59,7 +58,6 @@
     auto_play = false,
     show_controls,
     pane_ratio = $bindable(0.6),
-    fullscreen_toggle = true,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     error_msg = $bindable(undefined),
@@ -98,8 +96,6 @@
       show_controls?: ShowControlsProp<NebControlName>
       // Fraction of the width given to the energy plot, the structure gets the rest.
       pane_ratio?: number
-      // Show the fullscreen button in the control bar.
-      fullscreen_toggle?: boolean
       // Whether the viewer fills the screen.
       fullscreen?: boolean
       // The viewer's root element.
@@ -120,7 +116,7 @@
   const dropped_paths = new SvelteMap<string, ReactionPath>()
   let controls_height = $state(0)
   const controls_config = $derived(normalize_show_controls(show_controls, `always`))
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
+  const show_toggle = $derived(shows_fullscreen_toggle(controls_config))
 
   const merged: ReactionPathInput = $derived({
     ...(paths
@@ -365,7 +361,7 @@
           class="fullscreen-button"
         />
       {/if}
-      {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
         <ExportPane
           filename={export_filename}
           sources={export_sources}

@@ -42,7 +42,7 @@
     show_col_summaries?: boolean
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
-    children?: Snippet<[{ controls_open: boolean }]>
+    children?: Snippet
   } = $props()
 
   // Stash custom format string so toggling the checkbox preserves it
@@ -155,7 +155,7 @@
       <span>Col sums</span>
       <input type="checkbox" bind:checked={show_col_summaries} />
     </label>
-    {@render children?.({ controls_open })}
+    {@render children?.()}
   </SettingsSection>
 </ControlPane>
 

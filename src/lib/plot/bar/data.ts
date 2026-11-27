@@ -111,7 +111,7 @@ export const on_secondary_value_axis = (
 ): boolean => (orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`)
 
 type AxisLimit = [number | null, number | null]
-type RangeAxis = Pick<AxisConfig, `range` | `scale_type`>
+type RangeAxis = Pick<AxisConfig, `range` | `scale_type` | `nice`>
 
 export interface BarAutoRangeOpts<Metadata = Record<string, unknown>> {
   visible_series: readonly NumericBarSeries<Metadata>[]
@@ -159,8 +159,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
   }
   const nice_range = (
     values: number[],
-    limit: [number | null, number | null],
-    scale_type: ScaleType,
+    { range: limit = [null, null], scale_type = `linear`, nice }: RangeAxis,
     is_time = false,
   ): Vec2 =>
     nice_range_from_extent(
@@ -168,7 +167,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
       limit,
       scale_type,
       range_padding,
-      is_time,
+      { is_time, nice },
     )
 
   const get_bar_edge_range = (
@@ -197,8 +196,9 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 
   const calc_value_range = (
     series_list: readonly NumericBarSeries<Metadata>[],
-    { range: limit = [null, null], scale_type = `linear` }: RangeAxis,
+    axis: RangeAxis,
   ): Vec2 => {
+    const { range: limit = [null, null], scale_type = `linear` } = axis
     const type_name = get_scale_type_name(scale_type)
     let values = series_list.flatMap((srs) => finite_values(srs, `y`))
 
@@ -255,7 +255,9 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     if (extent.n_finite === 0 || (type_name === `log` && extent.min_positive === undefined))
       return empty_axis_range(limit, scale_type)
 
-    let computed_range = nice_range_from_extent(extent, limit, scale_type, range_padding)
+    let computed_range = nice_range_from_extent(extent, limit, scale_type, range_padding, {
+      nice: axis.nice,
+    })
 
     // Bars encode value as length from 0, so when all values share one sign an automatic
     // bound reaches the zero baseline and a pinned one is honored exactly (log has no 0)
@@ -274,12 +276,13 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 
   const calc_category_range = (
     series_list: readonly NumericBarSeries<Metadata>[],
-    { range: limit = [null, null], scale_type = `linear` }: RangeAxis,
+    axis: RangeAxis,
   ): Vec2 => {
+    const { range: limit = [null, null], scale_type = `linear` } = axis
     const is_time = is_time_scale(scale_type)
     const values = series_list.flatMap((srs) => finite_values(srs, `x`))
     if (values.length === 0) return empty_axis_range(limit, scale_type, is_time)
-    const range = nice_range(values, limit, scale_type, is_time)
+    const range = nice_range(values, axis, is_time)
     // Numeric category ranges are based on bar centers, so include each bar's
     // outer edges to keep the first and last bars inside the chart clip.
     const bar_edges = get_bar_edge_range(series_list, scale_type)

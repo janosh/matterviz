@@ -395,23 +395,29 @@ describe(`NebViewer`, () => {
     ).toBe(`7 total images`)
   })
 
-  test(`applies shared control visibility names; export_formats=[] drops the export pane`, async () => {
-    const viewer = await mount_viewer({
-      paths: direct_path,
-      export_formats: [],
-      show_controls: { mode: `always`, hidden: [`fps`, `energy`, `fullscreen`] },
-    })
-    const hidden = [
-      `.fps-section`,
-      `.image-status`,
-      `.fullscreen-button`,
-      `.neb-export-toggle`,
-    ]
-    for (const selector of hidden) {
-      expect(viewer.querySelector(selector)).toBeNull()
-    }
-    expect(viewer.querySelector(`.step-section`)).not.toBeNull()
-  })
+  test.each([
+    [{ export_formats: [] }, []],
+    [{}, [`export-pane` as const]],
+  ])(
+    `applies shared control visibility names; %j plus hidden %j drops the export pane`,
+    async (props, names) => {
+      const viewer = await mount_viewer({
+        paths: direct_path,
+        ...props,
+        show_controls: { mode: `always`, hidden: [`fps`, `energy`, `fullscreen`, ...names] },
+      })
+      const hidden = [
+        `.fps-section`,
+        `.image-status`,
+        `.fullscreen-button`,
+        `.neb-export-toggle`,
+      ]
+      for (const selector of hidden) {
+        expect(viewer.querySelector(selector)).toBeNull()
+      }
+      expect(viewer.querySelector(`.step-section`)).not.toBeNull()
+    },
+  )
 
   // A host that cannot fullscreen an element turns the toggle, its `f` shortcut and a bound
   // fullscreen flag off for every viewer at once.

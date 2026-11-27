@@ -48,15 +48,15 @@ const nice_range = (
   scale_type: ScaleType,
   padding: number,
   is_time = false,
-  zero_edge_padding = 0,
+  edge_padding = 0,
+  nice = true,
 ): Vec2 =>
   nice_range_from_extent(
     accumulate_extent(empty_extent(), values),
     limits,
     scale_type,
     padding,
-    is_time,
-    zero_edge_padding,
+    { is_time, edge_padding, nice },
   )
 
 describe(`scales`, () => {
@@ -155,6 +155,24 @@ describe(`scales`, () => {
       `rejects %j with limits %j on %s, padding %s`,
       (values, limits, scale_type, padding, error) => {
         expect(() => nice_range(values, limits, scale_type, padding)).toThrow(error)
+      },
+    )
+
+    // nice: false keeps the padded data ends (each differs from the niced range), still
+    // snapping an observed 0 and leaving explicit bounds alone
+    test.each<[string, number[], Limits, ScaleType, number, Vec2]>([
+      [`linear`, [1, 5], [null, null], `linear`, 0.1, [0.6, 5.4]],
+      [`linear zero snap`, [0, 4.7], [null, null], `linear`, 0.05, [0, 4.7 + 4.7 * 0.05]],
+      [`log`, [1, 100], [null, null], `log`, 0.05, [10 ** -0.1, 10 ** (2 + 0.1)]],
+      [`linear singleton`, [42], [null, null], `linear`, 0.1, [42 - 4.2, 42 + 4.2]],
+      [`log singleton`, [90], [null, null], `log`, 0.05, [90 / 1.1, 90 * 1.1]],
+      [`pinned lower bound`, [1, 4.3], [0, null], `linear`, 0.05, [0, 4.3]],
+    ])(
+      `nice: false keeps padded ends: %s`,
+      (_name, values, limits, scale_type, padding, expected) => {
+        const unniced = nice_range(values, limits, scale_type, padding, false, 0, false)
+        expect(unniced).toEqual(expected)
+        expect(nice_range(values, limits, scale_type, padding)).not.toEqual(expected)
       },
     )
 

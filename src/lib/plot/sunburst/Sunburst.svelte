@@ -80,12 +80,11 @@
     controls_pane_props,
     fullscreen = $bindable(false),
     controls_extra,
-    // show_controls, controls_toggle_props, fullscreen_toggle, header_controls and children
+    // show_controls, controls_toggle_props, header_controls and children
     // reach ChartShell through rest
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
-    // Cartesian-only props would otherwise leak to the wrapper div as invalid DOM attributes
-    Omit<BasePlotProps, `range_padding` | `title`> &
+    BasePlotProps &
     // data/value semantics, coloring, legend, export and node handlers shared with Treemap
     HierarchyChartProps<Metadata> & {
       shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)

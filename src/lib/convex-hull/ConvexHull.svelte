@@ -98,8 +98,6 @@
     show_controls,
     on_point_click,
     on_point_hover,
-    fullscreen_toggle = true,
-    enable_info_pane = true,
     allow_file_drop = true,
     on_file_load,
     enable_click_selection = true,
@@ -409,7 +407,6 @@
   <ViewerChrome
     {controls_config}
     bind:fullscreen
-    {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--hull-bg-fullscreen"
     on_fullscreen_change={context?.recenter_camera}
@@ -428,7 +425,7 @@
       </button>
     {/if}
 
-    {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
+    {#if phase_stats && controls_config.visible(`info-pane`)}
       <ConvexHullInfoPane
         bind:pane_open={info_pane_open}
         bind:probe_composition

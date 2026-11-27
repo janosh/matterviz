@@ -123,7 +123,6 @@ describe(`Cartesian plot titles`, () => {
         x_axis: { label: `Long formation E<sub>hull</sub> relative energy scale` },
         y_axis: { label: `Long squared x<sup>2</sup> response property scale` },
         show_controls: false,
-        fullscreen_toggle: false,
         legend: null,
         point_tween: { duration: 0 },
       },

@@ -1973,7 +1973,7 @@ test(`reveals atom color mode toggle while viewer is hovered or focused`, async 
 test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
   vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
   const state = $state({ active_pane: null as StructurePane | null })
-  await mount_settled(bind_props({ structure, enable_info_pane: true }, state))
+  await mount_settled(bind_props({ structure }, state))
   await assertHoverScopedShortcut({
     viewer: doc_query(`.structure`),
     trigger: () => press_window_key({ key: `i` }),
@@ -1988,6 +1988,16 @@ test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
   await fire(doc_query(`.structure`), keydown(`Escape`))
   expect(state.active_pane).toBeNull()
   expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
+})
+
+// hiding the info pane's control also drops its `i` shortcut
+test(`show_controls hidden info-pane disables the i shortcut`, async () => {
+  const state = $state({ active_pane: null as StructurePane | null })
+  const props = { structure, show_controls: { hidden: [`info-pane` as const] } }
+  await mount_settled(bind_props(props, state))
+  await fire(doc_query(`.structure`), keydown(`i`))
+  expect(state.active_pane).toBeNull()
+  expect(document.querySelector(`.structure-info-toggle`)).toBeNull()
 })
 
 // Each layer key flips its layer off then back on, restoring the mode it had (polyhedra's
@@ -2044,7 +2054,7 @@ test(`hover keydown path bails in edit modes so destructive keys need focus`, as
     active_pane: null as StructurePane | null,
     measure_mode: `edit-atoms` as MeasureMode,
   }
-  await mount_settled(bind_props({ structure, enable_info_pane: true }, state))
+  await mount_settled(bind_props({ structure }, state))
   expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
     `edit-atoms`,
   )

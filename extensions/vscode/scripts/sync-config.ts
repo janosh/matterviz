@@ -75,7 +75,7 @@ export const build_custom_editor_selectors = (): { filenamePattern: string }[] =
 export const build_editor_associations = (): Record<string, string> =>
   Object.fromEntries(BINARY_VIEWER_EXTENSIONS.map((ext) => [`*.${ext}`, `matterviz.viewer`]))
 
-// Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting.
+// Every leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting.
 // Exported so tests can check generated ids against the settings the code actually reads.
 export const build_vscode_settings = (
   settings_schema: unknown = SETTINGS_CONFIG,
@@ -90,8 +90,6 @@ export const build_vscode_settings = (
       }
       return
     }
-    if (schema.web_only) return
-
     const config: Record<string, unknown> = {
       type: vscode_scalar_type(schema.value),
       default: schema.value,

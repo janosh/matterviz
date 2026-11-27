@@ -314,7 +314,10 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     press(`e`)
     expect(document.querySelector(`[aria-label="Download PNG"]`)).toBeNull()
     unmount_all()
-    for (const props of [{ show_controls: { hidden: [`export`] } }, { export_formats: [] }]) {
+    for (const props of [
+      { show_controls: { hidden: [`export-pane`] } },
+      { export_formats: [] },
+    ]) {
       mount_diagram(props)
       expect(document.querySelector(`.pd-export-toggle`), JSON.stringify(props)).toBeNull()
       unmount_all()

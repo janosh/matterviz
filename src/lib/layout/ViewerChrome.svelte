@@ -13,7 +13,6 @@
     controls_config,
     filename,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     fullscreen_bg_css_var = `--fullscreen-bg`,
     on_fullscreen_change,
     wrapper,
@@ -23,7 +22,6 @@
     controls_config: ShowControlsState
     filename?: string
     fullscreen?: boolean
-    fullscreen_toggle?: boolean
     fullscreen_bg_css_var?: string
     on_fullscreen_change?: (fullscreen: boolean) => void
     wrapper?: HTMLDivElement
@@ -32,7 +30,7 @@
 
   // Styled tooltip (reads the button's title attr), forwarded as a spreadable attachment
   const tooltip_attachment = { [createAttachmentKey()]: tooltip() }
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
+  const show_toggle = $derived(shows_fullscreen_toggle(controls_config))
 </script>
 
 <section

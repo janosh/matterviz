@@ -174,7 +174,7 @@ const cartesian_plot_drive = (keys: string): DrivenProp[] => [
 const hierarchy_drive = (keys: string): DrivenProp[] => [
   ...with_plot_controls(`data value_mode sort level_lighten min_fraction max_children other_label
     max_depth show_labels label_text zoom_on_click show_breadcrumbs legend show_legend
-    value_format padding export_formats export_filename fullscreen_toggle ${keys}`),
+    value_format padding export_formats export_filename ${keys}`),
   writeback_prop(`zoom_root_id`),
 ]
 
@@ -210,7 +210,6 @@ const get_scene_props = (model: AnyModel) => ({
 const get_structure_props = (model: AnyModel) => ({
   scene_props: get_scene_props(model),
   ...pick_props(model, traj_structure_prop_keys),
-  fullscreen_toggle: false,
 })
 
 // Spectral traits carry pymatgen as_dict() documents (or matterviz-shaped ones), alone or
@@ -438,8 +437,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // show_site_labels/show_site_indices are delivered via scene_props (see scene_pick_keys),
       // not as top-level Structure props. highlighted_sites stays drive-only: the component
       // sets it from info-pane hover (high frequency), so writeback would flood the comm channel.
-      ...drive_props(`show_controls structure enable_info_pane fullscreen_toggle png_dpi
-        isosurface_settings highlighted_sites cell_type`),
+      ...drive_props(`show_controls structure png_dpi isosurface_settings highlighted_sites
+        cell_type`),
       ...traj_structure_prop_keys.map(drive_prop),
       derived_prop(
         `source`,
@@ -483,8 +482,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   trajectory: {
     static_props: no_file_drop,
     drive: [
-      ...drive_props(`show_controls layout fullscreen_toggle auto_play step_labels
-        property_labels`),
+      ...drive_props(`show_controls layout auto_play step_labels property_labels`),
       // The JSON trait (pymatgen Trajectory, { frames }, array of structures) or a binary
       // envelope (readme) becomes an in-memory run; data_url is fetched and parsed by the file
       // viewer. A malformed trait throws like a malformed spectral one, failing the mount
@@ -565,7 +563,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       series_prop,
       ...drive_props(`size_scale density overlays padding range_padding title point_labels
-        selected_point_id marginals annotation fullscreen_toggle`),
+        selected_point_id marginals annotation show_controls`),
       // x_range/y_range fold into the axes like the other cartesian plots'
       ...words(`x y`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
       // Switches between density bins and points as the user zooms (density.auto_point_mode)
@@ -713,7 +711,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   sankey: {
     drive: with_plot_controls(`data orientation node_width node_padding node_align min_fraction
       max_links iterations link_opacity link_color_mode show_node_labels value_format padding
-      legend show_legend fullscreen_toggle`),
+      legend show_legend`),
   },
   box_plot: {
     drive: cartesian_plot_drive(`show_legend orientation title box whisker median_style
@@ -725,7 +723,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: [
       series_prop,
       ...with_plot_controls(`labels grid_step show_grid show_ticks tick_format color_scale
-        padding legend show_legend fullscreen_toggle`),
+        padding legend show_legend`),
       nullable_prop(`color_bar`),
     ],
   },
@@ -733,7 +731,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     static_props: no_file_drop,
     drive: [
       ...drive_props(`show_controls entries options temperature display free_energy_mode t_range
-        n_samples gas_enabled gas_pressures fullscreen_toggle title`),
+        n_samples gas_enabled gas_pressures title`),
       // Clicked phase (index into the computed diagram's phases) and composition probe
       writeback_prop(`selected_phase`),
       writeback_prop(`pinned_composition`),
@@ -848,7 +846,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // WulffShape fields ({ lattice, miller_list, e_surf_list }, whose lattice it brings)
     drive: [
       ...imported_props(`facets`, Array.isArray, parse_surface_energies, `lattice`),
-      ...drive_props(`structure delta_mu`),
+      ...drive_props(`show_controls structure delta_mu`),
       ...writeback_props(WULFF_DEFAULTS),
       output_prop(`wulff_data`, wulff_summary),
     ],

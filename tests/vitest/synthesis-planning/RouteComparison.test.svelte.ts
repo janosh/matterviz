@@ -258,3 +258,14 @@ test.each([
   await vi.waitFor(() => doc_query(`.x-label`))
   expect(doc_query(`.x-label`).textContent).toContain(`Atom fraction of ${x_formula} in`)
 })
+
+// The slice's hull hides its info pane on top of whatever controls the caller hides
+test.each([
+  [undefined, [`.hull-export-toggle`, `.legend-controls-btn`]],
+  [{ hidden: [`export-pane` as const] }, [`.legend-controls-btn`]],
+])(`reaction slice with show_controls=%j shows only %j`, async (show_controls, shown) => {
+  mount_in_test(ReactionSlicePlot, { route: base, show_controls })
+  await vi.waitFor(() => doc_query(`.legend-controls-btn`))
+  const toggles = [`.info-btn`, `.hull-export-toggle`, `.legend-controls-btn`]
+  expect(toggles.filter((sel) => document.querySelector(sel))).toEqual(shown)
+})

@@ -129,7 +129,7 @@
             bind:atom_color_config={multi_color_config}
             scene_props={multi_scene_props}
             style="height: 100%"
-            enable_info_pane={false}
+            show_controls={{ hidden: [`info-pane`] }}
             enable_measure_mode={false}
           />
         {/snippet}

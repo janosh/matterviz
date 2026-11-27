@@ -69,11 +69,11 @@ test(`lists every marked point and closes from its own button`, () => {
 // a 70px gizmo would crowd the small popup zone; bz_props can still ask for one
 test.each([
   [{}, { gizmo: false }],
-  [{ scene_props: { gizmo: true, fov: 30 } }, { gizmo: true, fov: 30 }],
-])(`bz_props %o gives the zone scene_props %o`, (bz_props, expected) => {
+  [{ scene_controls: { gizmo: true, fov: 30 } }, { gizmo: true, fov: 30 }],
+])(`bz_props %o gives the zone scene_controls %o`, (bz_props, expected) => {
   mount(BrillouinZonePopup, { target: document.body, props: { k_lattice, points, bz_props } })
   flushSync()
-  expect(bz_spy.props?.scene_props).toEqual(expected)
+  expect(bz_spy.props?.scene_controls).toEqual(expected)
 })
 
 test(`a singular reciprocal lattice shows the error where the zone would be`, () => {

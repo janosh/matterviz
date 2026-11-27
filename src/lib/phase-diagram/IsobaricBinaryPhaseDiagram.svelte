@@ -131,7 +131,6 @@
     show_disagreement = $bindable(PHASE_DIAGRAM_DEFAULTS.show_disagreement),
     legend = {},
     map_legend,
-    fullscreen_toggle = true,
     show_controls,
     controls_open = $bindable(false),
     export_pane_open = $bindable(false),
@@ -224,10 +223,8 @@
       // them. Each keeps its target, so a click still toggles what it names; an item's
       // `visible` mirrors that target's state, and legend.on_toggle gets the drawn position.
       map_legend?: (entries: PhaseLegendEntry[]) => PhaseLegendEntry[]
-      // Show the fullscreen button in the controls.
-      fullscreen_toggle?: boolean
       // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, editor, fullscreen) appear.
-      show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
+      show_controls?: ShowControlsProp<`controls` | `export-pane` | `editor` | `fullscreen`>
       // Whether the display controls pane is open.
       controls_open?: boolean
       // Whether the export pane is open (shortcut `e`).
@@ -1328,7 +1325,6 @@
     <ViewerChrome
       {controls_config}
       bind:fullscreen
-      {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
       style="--viewer-buttons-top: var(--ctrl-btn-top, 30px); --viewer-buttons-right: var(--ctrl-btn-right, 20px)"
@@ -1359,7 +1355,7 @@
           shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
         />
       {/if}
-      {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
         <PhaseDiagramExportPane
           bind:export_pane_open
           bind:png_dpi

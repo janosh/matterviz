@@ -48,7 +48,12 @@
       description: `${order === 2 ? `2nd` : `3rd`} order BZ`,
       order,
     })),
-    { id: null, label: `Drag & Drop`, description: `Drop your structure file here`, order: 1 },
+    {
+      id: null,
+      label: `Drag & Drop`,
+      description: `Drop your structure file here`,
+      order: 1 as const,
+    },
   ]
 
   let surface_opacity = $state(0.4)

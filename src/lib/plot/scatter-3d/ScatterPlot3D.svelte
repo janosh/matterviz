@@ -97,7 +97,6 @@
     on_point_click,
     on_point_hover,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     // Binding refs
     wrapper = $bindable(),
     scene = $bindable(),
@@ -150,7 +149,7 @@
       | `width`
       | `height`
     > &
-    Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
+    Omit<BasePlotProps, `padding` | `children`> = $props()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
@@ -281,7 +280,6 @@
   bind:width
   bind:height
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
   {header_controls}

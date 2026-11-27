@@ -106,8 +106,6 @@ test(`fullscreen covers the whole explorer`, async () => {
   mock_fullscreen()
   const target = render()
   await click_when_ready(target, `.trajectory-controls .fullscreen-button`)
-  // the nested structure viewer offers no second, structure-only fullscreen
-  expect(trajectory_spy.props?.structure_props?.fullscreen_toggle).toBe(false)
   await vi.waitFor(() =>
     expect(document.fullscreenElement).toBe(query(target, `.phonon-mode-explorer`)),
   )
@@ -183,7 +181,7 @@ test(`renders a typed phonon dataset`, async () => {
   props.bz_inset_enlarged = false
   await tick()
   expect(bz_spy.props?.class).toEqual([`bz-inset`, { enlarged: false }])
-  expect(bz_spy.props?.scene_props).toEqual({ gizmo: false }) // too small for an axes gizmo
+  expect(bz_spy.props?.scene_controls).toEqual({ gizmo: false }) // too small for an axes gizmo
   props.show_bz_inset = false
   await vi.waitFor(() => expect(target.querySelector(`.bz-inset`)).toBeNull())
   await open_structure_controls(target)

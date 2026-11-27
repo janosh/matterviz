@@ -9,6 +9,7 @@ import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
 import type { Sides } from '#lib/plot/core/layout'
+import type { PixelRect } from '#lib/plot/core/interactions'
 import type { FacetLayoutContext } from '#lib/plot/core/facets'
 import type { MarginalsProp } from '#lib/plot/core/marginals'
 import type { RefLine, RefLineEvent } from '#lib/plot/core/types/reference-lines'
@@ -282,12 +283,11 @@ export interface BarHandlerProps<
   category_label?: string // original string category (undefined when numeric x)
 }
 
-export interface HistogramHandlerProps<
-  Metadata = Record<string, unknown>,
-> extends HandlerProps<Metadata> {
-  value: number
+// `x` is the bin center, `y` the (normalized) bar height
+export interface HistogramHandlerProps extends Omit<HandlerProps, `metadata`> {
+  bin_idx: number // the bin's index in the series' current binning
   count: number
-  property: string
+  label: string // the series label, `Series N` when unset
   active_y_axis: `y` | `y2`
   active_x_axis: `x` | `x2`
 }
@@ -615,6 +615,7 @@ export interface AxisConfig {
   tick_label?: TickLabelConfig
   scale_type?: ScaleType
   range?: [number | null, number | null]
+  nice?: boolean // false keeps auto range ends at the padded data instead of nice ticks (default true)
   unit?: string
   label_shift?: XyShift
   grid_style?: HTMLAttributes<SVGLineElement>
@@ -743,11 +744,8 @@ export interface PlotControlsProps
 // Components should declare x_axis, y_axis, display, etc. as $bindable() grouped configs.
 // The export props are consumed by the chart's frame/shell (export pane in the header row).
 export interface BasePlotProps extends ExportProps {
-  range_padding?: number // Factor to pad auto-detected ranges before nicing (default 0)
   // Space in px between the chart's edge and its plot area; Cartesian plots grow unset sides to fit tick labels and title
   padding?: Sides
-  // Text drawn above the plot, or a config with subtitle, alignment and font overrides
-  title?: string | PlotTitleConfig
   // State
   hovered?: boolean // True while the pointer is over the plot
   // Controls
@@ -759,13 +757,28 @@ export interface BasePlotProps extends ExportProps {
   controls_pane_props?: PaneProps
   // Fullscreen
   fullscreen?: boolean // True while the chart fills the viewport
-  fullscreen_toggle?: boolean // default: true
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]> // Rendered over the chart, receives its measured size
 }
 
-// Props the CartesianFrame charts (ScatterPlot, BarPlot, BoxPlot, Histogram) share
-export interface CartesianPlotProps extends PlotConfig {
+// A mark in a chart's Alt+drag selection: its series and its index there (scatter point, bar or
+// histogram bin; 0 for a BoxPlot box, one per series)
+export type SelectedMark = { series_idx: number; point_idx: number }
+
+// Props the CartesianFrame charts (ScatterPlot, BarPlot, BoxPlot, Histogram) share, `Item`
+// being the handler data a chart reports for each selected mark
+export interface CartesianPlotProps<Item = unknown> extends PlotConfig {
+  // Bindable: the marks the last Alt+drag rect touched, drawn selected. Settable for linked
+  // views. ScatterPlot, BarPlot and BoxPlot keep its indices across `series` changes; a
+  // Histogram's point_idx names a bin of the current binning, so a re-bin (pan/zoom, new
+  // samples) empties it
+  selection?: readonly SelectedMark[]
+  // Fires on every Alt+drag, including one that selected nothing, with the marks' handler
+  // data and the drag rect in px
+  on_select?: (event: { items: Item[]; rect: PixelRect }) => void
+  range_padding?: number // Factor to pad auto-detected ranges before nicing (default 0)
+  // Text drawn above the plot, or a config with subtitle, alignment and font overrides
+  title?: string | PlotTitleConfig
   // Bindable legend choices, keyed by each series' legend_id ?? id ?? array index. `series`
   // stays a read-only input: visibility lives here and zoom in `view`.
   hidden_series?: readonly (string | number)[]

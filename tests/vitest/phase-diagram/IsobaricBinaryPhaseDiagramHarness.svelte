@@ -19,8 +19,7 @@
   bind:hovered_region
   editor_open
   export_formats={[]}
-  fullscreen_toggle={false}
-  show_controls={{ hidden: [`controls`] }}
+  show_controls={{ hidden: [`controls`, `fullscreen`] }}
 >
   <!-- destructured sized snippet: svelte-check fails here if the wrapper div's own plain
   children type leaks back into the prop -->

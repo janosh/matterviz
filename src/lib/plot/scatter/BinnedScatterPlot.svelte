@@ -7,7 +7,11 @@
   import { value_key } from 'svelte-widgets/utils'
   import { sanitize_html } from '#lib/sanitize'
   import { series_text } from '#lib/plot/core/data-transform'
-  import { host } from '#lib/host'
+  import {
+    normalize_show_controls,
+    type ShowControlsProp,
+    shows_fullscreen_toggle,
+  } from '#lib/controls'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import { format_value } from '#lib/labels'
   import type { Point2D, Vec2 } from '#lib/math'
@@ -63,6 +67,7 @@
   import type {
     AxisConfig,
     BasePlotProps,
+    CartesianPlotProps,
     InternalPoint,
     PanConfig,
     PlotAnnotation,
@@ -117,6 +122,7 @@
     overlays: overlays_config = {},
     padding = {},
     range_padding = 0.05,
+    shared_xy_range = false,
     title,
     tooltip,
     point_data,
@@ -128,7 +134,7 @@
     wrapper = $bindable(),
     hovered = $bindable(false),
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
+    show_controls,
     pan = {},
     children,
     header_controls,
@@ -138,11 +144,13 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
     // `range_padding` defaults to 0.05 (a pad around the density bins), not ScatterPlot's 0
-    Pick<
-      BasePlotProps,
-      `padding` | `range_padding` | `title` | `hovered` | `fullscreen` | `fullscreen_toggle`
-    > &
+    Pick<BasePlotProps, `padding` | `hovered` | `fullscreen`> &
+    Pick<CartesianPlotProps, `range_padding` | `title`> &
     ExportProps & {
+      // One range for x and y, as ScatterPlot's shared_xy_range
+      shared_xy_range?: boolean
+      // Header chrome visibility; the fullscreen button is the only named control (no settings pane)
+      show_controls?: ShowControlsProp<`fullscreen`>
       // Point series with x and y arrays (typed arrays welcome), binned into a density map
       series: DensePointSeries<Metadata>[]
       // X axis label, ticks, scale type and range
@@ -244,10 +252,11 @@
   })
 
   const frame = create_cartesian_frame({
-    controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane
+    controls_row: () => shows_fullscreen_toggle(normalize_show_controls(show_controls)),
     // No default tick format: it would skip format_tick_values' duplicate avoidance
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({ ...auto_ranges, x2: unit_range, y2: unit_range }),
+    shared_xy_range: () => shared_xy_range,
     has_x2: () => false,
     has_y2: () => false,
     padding: () => padding,
@@ -883,7 +892,7 @@
   aria_label="Binned scatter plot"
   bind:fullscreen
   bind:wrapper
-  {fullscreen_toggle}
+  {show_controls}
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_move={on_pointer_move}

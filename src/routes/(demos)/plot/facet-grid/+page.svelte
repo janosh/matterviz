@@ -169,7 +169,7 @@
             ? context.data.series.map(({ y, label, color }) => ({ values: y, label, color }))
             : context.data.series}
           facet_layout={context}
-          fullscreen_toggle={false}
+          show_controls={{ hidden: [`fullscreen`] }}
           style="height: 100%; min-height: 0"
           {...plot_configs[plot_type].props}
         />

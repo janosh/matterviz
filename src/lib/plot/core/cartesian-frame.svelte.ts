@@ -37,6 +37,7 @@ import {
   normalize_y2_sync,
   type PixelRect,
   resolve_axis_ranges,
+  shared_xy_range,
   snapshot_ranges,
   sync_y2_range,
   vec2_equal,
@@ -129,6 +130,8 @@ interface CartesianFrameOptions {
   has_data?: () => PerAxis<boolean>
   // Tick counts per axis when the axis config leaves `ticks` unset
   tick_counts?: PerAxis<number>
+  // The chart's `shared_xy_range` prop: x and y show one range (see shared_xy_range)
+  shared_xy_range?: () => boolean
   // Forwarded to the pan/zoom controller so charts can track a live rect drag
   on_drag_move?: (coords: { x: number; y: number }, inside_svg: boolean) => void
   // Alt+drag rect in svg px, turned into a selection; omitted, Alt+drag zooms
@@ -151,10 +154,9 @@ export type CartesianFrame = ReturnType<typeof create_cartesian_frame>
 // Whether CartesianFrame draws its corner controls row: the settings toggle or fullscreen button
 export const has_controls_row = (
   show_controls: ShowControlsProp<`controls` | `fullscreen`> | undefined,
-  fullscreen_toggle: boolean,
 ): boolean => {
   const config = normalize_show_controls(show_controls)
-  return config.visible(`controls`) || shows_fullscreen_toggle(fullscreen_toggle, config)
+  return config.visible(`controls`) || shows_fullscreen_toggle(config)
 }
 
 export function create_cartesian_frame(opts: CartesianFrameOptions) {
@@ -318,6 +320,26 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     const y: Vec2 = auto.y[0] > auto.y[1] ? [hi, lo] : [lo, hi]
     return { auto: { ...auto, y }, has_data: { ...has_data, y: true } }
   })
+  // x and y resolve against one auto range and one set of pins under `shared_xy_range`; the
+  // range is the reset target, pan/zoom still move each axis on its own
+  const xy_auto = $derived.by(() => {
+    const { auto, has_data } = synced_auto
+    const sources = opts.range_sources?.() ?? opts.axes()
+    if (!opts.shared_xy_range?.()) return { auto, has_data, sources }
+    // a grid reconciles each axis across panels, which would undo the sharing
+    if (opts.facet_layout()) throw new Error(`shared_xy_range is not supported in facet grids`)
+    const shared = shared_xy_range(sources, auto, has_data)
+    const backed = has_data.x !== false || has_data.y !== false
+    return {
+      auto: { ...auto, x: shared.auto, y: [...shared.auto] as Vec2 },
+      has_data: { ...has_data, x: backed, y: backed },
+      sources: {
+        ...sources,
+        x: { ...sources.x, range: shared.range },
+        y: { ...sources.y, range: shared.range },
+      },
+    }
+  })
 
   // Each axis's explicit bounds as last synced: a changed one moves a zoomed view too
   const synced_bounds: PerAxis<string> = {}
@@ -325,8 +347,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // bounds (NaN breaks scales and loops the effect). Runs pre-render so new data is never
   // culled against stale ranges, which would remount markers and discard their tweens.
   const sync_ranges = () => {
-    const sources = opts.range_sources?.() ?? opts.axes()
-    const next = resolve_axis_ranges(sources, synced_auto.auto)
+    const { sources, auto, has_data } = xy_auto
+    const next = resolve_axis_ranges(sources, auto)
     if (!next) return
     // untracked so the writes below can't re-trigger this effect
     const initial = untrack(() => ranges.initial)
@@ -339,7 +361,6 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       }
     } else if (opts.range_sync === `expand`) {
       // Adopt each axis's new range unless nothing backs it (no data, no pinned bound)
-      const { has_data } = synced_auto
       for (const axis of FACET_AXES) {
         const pinned = sources[axis].range?.some((bound) => bound != null) ?? false
         const bounds = JSON.stringify(sources[axis].range ?? null)
@@ -1013,7 +1034,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     // The controls' range reset targets: x2/y2 only while they carry data
     get controls_auto_ranges() {
-      const { auto } = synced_auto
+      const { auto } = xy_auto
       return {
         ...auto,
         x2: opts.has_x2() ? auto.x2 : undefined,

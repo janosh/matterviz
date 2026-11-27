@@ -47,9 +47,8 @@
     get_relative_coords,
     is_activation_key,
     overlaps_rect,
-    type PixelRect,
   } from '#lib/plot/core/interactions'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus'
+  import { mark_keys, roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import { assign_axes } from '#lib/plot/core/axis-assignment'
   import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index'
@@ -129,7 +128,7 @@
     hovered = $bindable(false),
     on_bar_click,
     on_bar_hover,
-    selected_bars = $bindable([]),
+    selection = $bindable([]),
     on_select,
     view = $bindable(),
     // Line marker props (matching ScatterPlot)
@@ -146,7 +145,6 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     controls_extra,
@@ -158,7 +156,7 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     BasePlotProps &
-    CartesianPlotProps & {
+    CartesianPlotProps<BarHandlerProps<Metadata>> & {
       // Bar (or line) series with x categories or positions and y values
       series?: readonly BarSeries<Metadata>[]
       // `vertical` draws bars upward from the x axis, `horizontal` rightward from the y axis
@@ -181,14 +179,8 @@
       ) => void
       // Called with the hovered bar, or null when the pointer or focus leaves it
       on_bar_hover?: (
-        data:
-          | (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
-          | null,
+        data: (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      // Bindable: the bars the last Alt+drag rect touched, which the chart outlines
-      selected_bars?: { series_idx: number; bar_idx: number }[]
-      // Fires on every Alt+drag, including one that selected nothing
-      on_select?: (selection: { bars: BarHandlerProps<Metadata>[]; rect: PixelRect }) => void
       // Half-width of the T caps on series' y_error bars, in px (0 draws bare lines)
       error_bar_cap?: number
       // Line marker props (matching ScatterPlot)
@@ -201,11 +193,7 @@
       ) => void
       // Called with the hovered line series marker, or null when the pointer or focus leaves it
       on_point_hover?: (
-        data:
-          | (LineMarkerHandlerProps & {
-              event: MouseEvent | FocusEvent | KeyboardEvent
-            })
-          | null,
+        data: (LineMarkerHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
     } = $props()
 
@@ -238,7 +226,7 @@
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
     // Categorical x2 shares x's category slots, pinned range included
@@ -286,15 +274,13 @@
             : []
         }).flat()
       })
-      selected_bars = bars.map(({ series_idx, bar_idx }) => ({ series_idx, bar_idx }))
-      on_select?.({ bars, rect })
+      selection = bars.map(({ series_idx, bar_idx }) => ({ series_idx, point_idx: bar_idx }))
+      on_select?.({ items: bars, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
     clip_id_prefix: `chart-clip`,
   })
-  const selected_keys = $derived(
-    new Set(selected_bars.map((sel) => roving_key(sel.series_idx, sel.bar_idx))),
-  )
+  const selected_keys = $derived(mark_keys(selection))
 
   // One tab stop for the whole mark group instead of one per bar/point: a 230-bar
   // spacegroup plot would otherwise take 230 presses to tab past.
@@ -739,7 +725,6 @@
   }}
   aria_label="Bar chart"
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   marginals={resolved_marginals}
   {marginal_series}

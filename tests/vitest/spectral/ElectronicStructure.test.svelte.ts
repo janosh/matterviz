@@ -362,8 +362,11 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
     band_structs: phonon.band_structs,
     doses: phonon.doses,
     a2f: phonon.a2f,
-    fullscreen_toggle: false,
   })
+  // the viewer's fullscreen button takes every pane, so the phonon plots drop their own
+  for (const key of [`bands_props`, `dos_props`] as const) {
+    expect(viewers.phonon?.[key]?.show_controls).toEqual({ hidden: [`fullscreen`] })
+  }
   expect(viewers.dos?.doses).toEqual(all_data.doses) // the electronic DOS keeps its own pane
   props.units = `meV`
   flushSync()

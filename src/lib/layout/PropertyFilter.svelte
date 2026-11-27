@@ -101,7 +101,6 @@
     padding={{ t: 0, b: 12, l: 2, r: 2 }}
     bar={{ stroke_width: 0, border_radius: 1, opacity: 0.5 }}
     style="--histogram-min-height: {histogram_height}px; --histogram-svg-height: 0; --histogram-bg: transparent"
-    fullscreen_toggle={false}
     range_padding={0}
   />
   {#if log}<span class="log-label">log</span>{/if}

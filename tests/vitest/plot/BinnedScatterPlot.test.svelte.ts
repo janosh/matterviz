@@ -245,7 +245,11 @@ describe(`BinnedScatterPlot`, () => {
     await tick()
     expect(plot.classList.contains(`fullscreen`)).toBe(false)
     expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
-    await mount_plot({ ...diagonal(), ...hidden_colorbar, fullscreen_toggle: false })
+    await mount_plot({
+      ...diagonal(),
+      ...hidden_colorbar,
+      show_controls: { hidden: [`fullscreen`] },
+    })
     expect(document.querySelector(`.fullscreen-btn`)).toBeNull()
   })
 

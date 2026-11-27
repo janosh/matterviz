@@ -9,6 +9,7 @@ import {
   pan_range_by_pixels,
   resolve_axis_ranges,
   series_hover_props,
+  shared_xy_range,
   step_point_cursor,
   sync_y2_range,
   vec2_equal,
@@ -430,6 +431,64 @@ describe(`sync_y2_range`, () => {
     [[0, 100], [NaN, 50]],
   ])(`non-finite sync_y2_range(%j, %j) returns y2_base`, (coord_y_1, y2_base) => {
     expect(sync_y2_range(coord_y_1, y2_base, { mode: `synced` })).toEqual(y2_base)
+  })
+})
+
+describe(`shared_xy_range`, () => {
+  type Pins = [number | null, number | null]
+  type Case = {
+    desc: string
+    x_pin?: Pins
+    y_pin?: Pins
+    has_data?: { x?: boolean; y?: boolean }
+    range: Pins
+    auto: Vec2
+  }
+  // auto ranges x: [0, 10], y: [-5, 3]
+  // oxfmt-ignore
+  it.each<Case>([
+    { desc: `union of auto ranges`, range: [null, null], auto: [-5, 10] },
+    { desc: `x pin wins on both axes`, x_pin: [0, null], range: [0, null], auto: [-5, 10] },
+    { desc: `y pin wins on both axes`, y_pin: [null, 4], range: [null, 4], auto: [-5, 10] },
+    { desc: `agreeing pins`, x_pin: [-1, null], y_pin: [-1, 20], range: [-1, 20], auto: [-5, 10] },
+    { desc: `x without data`, has_data: { x: false }, range: [null, null], auto: [-5, 3] },
+    { desc: `y without data`, has_data: { y: false }, range: [null, null], auto: [0, 10] },
+    { desc: `neither has data`, has_data: { x: false, y: false }, range: [null, null], auto: [-5, 10] },
+  ])(`$desc`, ({ x_pin, y_pin, has_data = {}, range, auto }) => {
+    const xy_axes = { x: { range: x_pin }, y: { range: y_pin } }
+    expect(shared_xy_range(xy_axes, { x: [0, 10], y: [-5, 3] }, has_data)).toEqual({ range, auto })
+  })
+
+  it(`unions log ranges into a positive range`, () => {
+    const log_axes = { x: { scale_type: `log` as const }, y: { scale_type: `log` as const } }
+    const result = shared_xy_range(log_axes, { x: [1, 100], y: [0.05, 20] }, {})
+    expect(result).toEqual({ range: [null, null], auto: [0.05, 100] })
+  })
+
+  it(`skips a non-finite union instead of returning a bogus range`, () => {
+    const result = shared_xy_range({ x: {}, y: {} }, { x: [NaN, 1], y: [0, Infinity] }, {})
+    expect(result.auto).toEqual([NaN, NaN])
+  })
+
+  it.each<[string, Parameters<typeof shared_xy_range>[0], RegExp]>([
+    [`mixed scale types`, { x: { scale_type: `log` }, y: {} }, /got log and linear/],
+    [
+      `arcsinh vs linear`,
+      { x: {}, y: { scale_type: { type: `arcsinh`, threshold: 2 } } },
+      /linear and arcsinh/,
+    ],
+    [
+      `conflicting lower pins`,
+      { x: { range: [0, null] }, y: { range: [1, null] } },
+      /lower bounds x=0, y=1/,
+    ],
+    [
+      `conflicting upper pins`,
+      { x: { range: [null, 5] }, y: { range: [null, 6] } },
+      /upper bounds x=5, y=6/,
+    ],
+  ])(`throws on %s`, (_desc, xy_axes, message) => {
+    expect(() => shared_xy_range(xy_axes, { x: [0, 1], y: [0, 1] }, {})).toThrow(message)
   })
 })
 

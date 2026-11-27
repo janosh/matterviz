@@ -138,7 +138,6 @@
       | `style`
       | `fps_range`
       | `step_labels`
-      | `fullscreen_toggle`
       | `on_play`
       | `on_pause`
       | `on_end`
@@ -469,9 +468,8 @@ under its open panes -->
       hovered_qpoint_index={path_link.active_qpoint}
       show_vectors={false}
       show_controls={false}
-      fullscreen_toggle={false}
       allow_file_drop={false}
-      scene_props={{ gizmo: false }}
+      scene_controls={{ gizmo: false }}
       on_kpath_click={(qpoint_idx) => select_on_path(qpoint_idx, selection?.mode_idx ?? 0)}
     >
       <button
@@ -760,9 +758,6 @@ under its open panes -->
             children: structure_overlays,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
-            // the bar's fullscreen button takes the whole explorer; a second one for just the
-            // atomic-motion viewer would leave the plots behind
-            fullscreen_toggle: false,
             show_image_atoms: false,
             scene_props: {
               bonding_strategy: `explicit_only`,

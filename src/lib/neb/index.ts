@@ -62,6 +62,16 @@ export type NamedReactionPath = { key: string; path: ReactionPath }
 // configuration space; `image_index` plots against the 1-based image number.
 export type ReactionCoordMode = `arc_length` | `image_index`
 
+// Controls NebViewer's `show_controls` can hide by name
+export type NebControlName =
+  | `path`
+  | `nav`
+  | `step`
+  | `fps`
+  | `energy`
+  | `export-pane`
+  | `fullscreen`
+
 // `initial` subtracts the first image energy, making barriers directly readable.
 export type EnergyReference = `absolute` | `initial`
 

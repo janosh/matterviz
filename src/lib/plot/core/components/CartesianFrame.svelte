@@ -56,7 +56,6 @@
     // Accessible name when neither the title nor the x/y axis labels give one (`Bar chart`)
     aria_label: string
     fullscreen?: boolean
-    fullscreen_toggle?: boolean
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // The outer container, exposed so charts can re-export it to their own callers
     wrapper?: HTMLDivElement
@@ -109,7 +108,6 @@
     aria_label,
     'aria-label': aria_label_override,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     show_controls,
     wrapper = $bindable(),
     require_size = true,
@@ -221,7 +219,6 @@
       bind:fullscreen
       {wrapper}
       {css_prefix}
-      {fullscreen_toggle}
       {show_controls}
       {controls_toggle_props}
       {header_controls}

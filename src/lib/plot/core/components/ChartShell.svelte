@@ -36,7 +36,6 @@
     width = $bindable(0),
     height = $bindable(0),
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     show_controls,
     chrome_color,
     controls_toggle_props,
@@ -64,7 +63,6 @@
       width?: number
       height?: number
       fullscreen?: boolean
-      fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `fullscreen`>
       // Color for the chrome icons, from what the chart paints under the top-right corner. A
       // prop, not a CSS var in `style`: a caller's rest `style` would clobber that.
@@ -110,7 +108,6 @@
       bind:fullscreen
       {wrapper}
       {css_prefix}
-      {fullscreen_toggle}
       {show_controls}
       corner
       {chrome_color}

@@ -19,7 +19,11 @@
   // axes, one rotation link and the frame cache. A dropped file replaces the data of the panes
   // it fills (see `fill`); while a sweep is shown only sweep JSONs are taken.
   import { format_num } from 'svelte-widgets/format'
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls'
+  import {
+    hide_controls,
+    normalize_show_controls,
+    shows_fullscreen_toggle,
+  } from '#lib/controls'
   import { create_on_screen, create_prop_state } from 'svelte-widgets/effects'
   import type { ShowControlsProp } from '#lib/controls'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open'
@@ -166,7 +170,6 @@
     sync_rotation = $bindable(true),
     show_controls,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     allow_file_drop = true,
     loading = $bindable(false),
     error_msg = $bindable(),
@@ -220,8 +223,6 @@
     >
     // True while the viewer is fullscreen.
     fullscreen?: boolean
-    // Show the fullscreen button (also needs `show_controls` to show it).
-    fullscreen_toggle?: boolean
     allow_file_drop?: boolean // one drop zone for all panes: theirs are off
     // True while a dropped file is being read.
     loading?: boolean
@@ -257,8 +258,11 @@
   const on_screen = create_on_screen()
 
   const controls_config = $derived(normalize_show_controls(show_controls))
-  const pane_controls = <Prop>(prop: Prop): Prop | false =>
-    controls_config.mode === `never` ? false : prop
+  // Panes drop their own fullscreen button: the viewer's one takes them all
+  const pane_controls = <Name extends string>(prop: ShowControlsProp<Name> | undefined) =>
+    controls_config.mode === `never`
+      ? false
+      : hide_controls<Name | `fullscreen`>(prop, `fullscreen`)
 
   // === sweep ===
   // The shown series and frame. While a sweep is set its frame's data feeds every pane.
@@ -916,7 +920,7 @@
   bind:clientWidth={viewer_width}
   role="group"
   aria-label="Electronic structure viewer"
-  aria-keyshortcuts={shows_fullscreen_toggle(fullscreen_toggle, controls_config)
+  aria-keyshortcuts={shows_fullscreen_toggle(controls_config)
     ? SHORTCUTS.fullscreen.keys
     : undefined}
   {...rest}
@@ -968,7 +972,6 @@
     <ViewerChrome
       {controls_config}
       bind:fullscreen
-      {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--electronic-bg-fullscreen"
       style={top_row_style}
@@ -1051,7 +1054,6 @@
               bind:descriptor
               on_frame_select={select_frame}
               show_controls={pane_controls(trends_props.show_controls)}
-              fullscreen_toggle={false}
             />
             {#if unfilled.length > 0}
               {@const trend_frames = sweep.series.flatMap((entry) => entry.frames).length}
@@ -1142,7 +1144,6 @@
             }
             show_controls={pane_controls(structure_props.show_controls)}
             allow_file_drop={false}
-            fullscreen_toggle={false}
           />
         </div>
       {/if}
@@ -1173,7 +1174,6 @@
             }
             show_controls={pane_controls(fermi_props.show_controls)}
             allow_file_drop={false}
-            fullscreen_toggle={false}
             wigner_seitz={fermi_props.wigner_seitz ?? Boolean(side.first_band_struct)}
             selected_spins={link.selected_spins}
             previewing={link.previewing}
@@ -1213,7 +1213,6 @@
                 bind:units
                 fermi_level={sync.fermi_level}
                 show_controls={pane_controls(bands_props.show_controls)}
-                fullscreen_toggle={false}
                 padding={{
                   r: side.spectra_side ? (side.dos_left_padding ?? 20) : 5,
                   ...bands_props.padding,
@@ -1280,7 +1279,6 @@
                 bind:units
                 fermi_level={sync.fermi_level}
                 show_controls={pane_controls(dos_props.show_controls)}
-                fullscreen_toggle={false}
                 orientation={side.spectra_side ? `horizontal` : `vertical`}
                 x_axis={sync.dos_x_axis}
                 y_axis={sync.y_axes[1]}
@@ -1343,7 +1341,6 @@
             a2f_range={phonon_props.a2f_range ?? a2f_range}
             bind:a2f_extent={side.a2f_density}
             bind:units
-            fullscreen_toggle={false}
           />
         </div>
       {/if}

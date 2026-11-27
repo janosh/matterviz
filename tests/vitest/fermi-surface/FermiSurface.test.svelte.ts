@@ -60,11 +60,20 @@ vi.mock(`#lib/fermi-surface/extract-async`, async (original) => {
   }
 })
 
-// No renderer in happy-dom: the canvas stays empty, so a test may fake navigator.gpu to get
-// the overlays (colour bar) that webgpu_available() gates
+// No renderer in happy-dom: the canvas holds a stand-in scene recording its props, so a test may
+// fake navigator.gpu to get the overlays (colour bar) that webgpu_available() gates
+const scene_spy = vi.hoisted(() => ({
+  props: undefined as Record<string, unknown> | undefined,
+}))
 vi.mock(`@threlte/core`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
-  Canvas: () => ({}),
+  Canvas: (anchor: unknown, props: { children: (anchor: unknown) => void }) =>
+    props.children(anchor),
+}))
+vi.mock(`#lib/fermi-surface/FermiSurfaceScene.svelte`, () => ({
+  default: (_anchor: unknown, props: Record<string, unknown>) => {
+    scene_spy.props = props
+  },
 }))
 
 const mounted: ReturnType<typeof mount>[] = []
@@ -75,6 +84,7 @@ const mount_fermi = (props: ComponentProps<typeof FermiSurface>) => {
 
 afterEach(async () => {
   extraction.jobs = null
+  scene_spy.props = undefined
   vi.restoreAllMocks()
   vi.useRealTimers()
   for (const component of mounted.splice(0)) await unmount(component)
@@ -109,6 +119,17 @@ const typed_grid = (nested: number[][][]): BandGridData => {
     n_spins: 1,
   }
 }
+
+// hovered follows the pointer without displacing a caller's own pointer handler
+test(`hovered tracks the pointer alongside a caller's onpointerenter`, async () => {
+  const onpointerenter = vi.fn()
+  const props = $state({ hovered: false, onpointerenter })
+  mount_fermi(props)
+  flushSync()
+  doc_query(`.fermi-surface`).dispatchEvent(new PointerEvent(`pointerenter`))
+  await tick()
+  expect([props.hovered, onpointerenter.mock.calls.length]).toEqual([true, 1])
+})
 
 test(`custom drops receive raw content while loading remains visible`, async () => {
   const pending = Promise.withResolvers<undefined>()
@@ -557,6 +578,15 @@ const fake_webgpu = () => {
   Object.defineProperty(navigator, `gpu`, { value: {}, configurable: true })
   onTestFinished(() => void Reflect.deleteProperty(navigator, `gpu`))
 }
+
+// camera and lighting options reach the scene, which hands them to KSpaceCamera
+test(`scene_controls reach the Fermi surface scene`, async () => {
+  fake_webgpu()
+  const scene_controls = { fov: 23, gizmo: false }
+  mount_fermi({ band_data: typed_grid(sphere_energies(5)), scene_controls })
+  await vi.waitFor(() => expect(scene_spy.props).toBeDefined())
+  expect({ fov: scene_spy.props?.fov, gizmo: scene_spy.props?.gizmo }).toEqual(scene_controls)
+})
 // One triangle carrying the named per-vertex properties, e.g. an anisotropic e-ph run's λ_nk
 const triangle: Vec3[] = [
   [0, 0, 0],

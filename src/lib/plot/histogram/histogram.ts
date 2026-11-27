@@ -313,7 +313,8 @@ export function compute_count_range(
     scale_type,
     y_limit,
     range_padding,
-  }: { scale_type: ScaleType; y_limit: RangeLimit; range_padding: number },
+    nice,
+  }: { scale_type: ScaleType; y_limit: RangeLimit; range_padding: number; nice?: boolean },
 ): Vec2 {
   const type_name = get_scale_type_name(scale_type)
   let max_value = 0
@@ -334,6 +335,7 @@ export function compute_count_range(
     y_limit,
     scale_type,
     range_padding,
+    { nice },
   )
   // Keep singleton log bins visible; a missing lower limit falls back to the positive minimum.
   if (is_log) {

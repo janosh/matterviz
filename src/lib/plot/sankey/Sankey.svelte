@@ -71,15 +71,12 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     controls_extra,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
-    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
-    // forward them to the wrapper div as invalid DOM attributes.
-    Omit<BasePlotProps, `range_padding` | `title`> & {
+    BasePlotProps & {
       // Nodes and the links between them (source, target, value); cycles and unknown node refs show an error message
       data?: SankeyData<Metadata>
       // `horizontal` flows left to right, `vertical` top to bottom
@@ -465,7 +462,6 @@
   bind:width
   bind:height
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
   {header_controls}

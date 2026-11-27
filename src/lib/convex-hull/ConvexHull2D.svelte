@@ -279,7 +279,6 @@ fit the axes' tick labels and titles -->
   series={scatter_series}
   bind:display
   show_controls={false}
-  fullscreen_toggle={false}
   x_axis={{
     label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
     range: [0, 1],

@@ -9,12 +9,12 @@
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
-  import { to_error } from 'svelte-widgets/utils'
+  import { chain_handlers, to_error } from 'svelte-widgets/utils'
   import { css_color_to_hex } from '#lib/colors/index'
   import { normalize_show_controls, track_settings } from '#lib/controls'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, json_source } from '#lib/io/export'
-  import { ViewerChrome } from '#lib/layout/index'
+  import { ViewerChrome, type SceneViewerProps } from '#lib/layout/index'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import type { Matrix3x3 } from '#lib/math'
   import type { InfoPaneCard } from '#lib/overlays/index'
@@ -39,11 +39,12 @@
   import { mark_pin } from '#lib/tooltip/pin.svelte'
   import { Canvas } from '@threlte/core'
   import { untrack } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import { compute_wulff_shape } from './compute'
   import { wulff_model } from './export'
   import { family_colors, family_label, format_fraction, plane_label } from './format'
   import type {
+    WulffControlName,
     WulffDisplaySettings,
     WulffFacetInput,
     WulffHover,
@@ -58,31 +59,44 @@
     structure,
     delta_mu = 0,
     wulff_data = $bindable(),
-    opacity = $bindable(defaults.opacity),
+    surface_opacity = $bindable(defaults.surface_opacity),
     edge_color = $bindable(defaults.edge_color),
     edge_width = $bindable(defaults.edge_width),
-    show_axes = $bindable(defaults.show_axes),
+    show_vectors = $bindable(defaults.show_vectors),
     show_legend = $bindable(defaults.show_legend),
     camera_projection = $bindable(defaults.camera_projection),
+    show_controls,
+    fullscreen = $bindable(false),
+    on_fullscreen_change,
+    wrapper = $bindable(),
+    width = $bindable(0),
+    height = $bindable(0),
+    hovered = $bindable(false),
+    controls_open = $bindable(false),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
+    export_formats,
+    export_filename = `wulff-shape`,
+    on_export,
+    scene_controls = {},
     ...rest
-  }: Partial<WulffDisplaySettings> & {
-    // Surface energy (J/m²) per Miller family; each is expanded to its symmetry-equivalent planes
-    facets: WulffFacetInput[]
-    // Rows a, b, c in Å; expands families with the lattice holohedry (pymatgen's choice)
-    lattice?: Matrix3x3
-    // Crystal (instead of `lattice`) whose own point group, found with moyo, expands the
-    // families, so a polar crystal keeps (hkl) and (h̄k̄l̄) apart
-    structure?: Crystal
-    // eV, the chemical potential of families with a slope: γ = energy + slope·delta_mu
-    delta_mu?: number
-    // Output: the computed shape, null while there is none (no lattice, invalid input)
-    wulff_data?: WulffShapeData | null
-  } & HTMLAttributes<HTMLDivElement> = $props()
+  }: Partial<WulffDisplaySettings> &
+    SceneViewerProps<WulffControlName, { wulff_data: WulffShapeData | null }> & {
+      // Surface energy (J/m²) per Miller family; each is expanded to its symmetry-equivalent planes
+      facets: WulffFacetInput[]
+      // Rows a, b, c in Å; expands families with the lattice holohedry (pymatgen's choice)
+      lattice?: Matrix3x3
+      // Crystal (instead of `lattice`) whose own point group, found with moyo, expands the
+      // families, so a polar crystal keeps (hkl) and (h̄k̄l̄) apart
+      structure?: Crystal
+      // eV, the chemical potential of families with a slope: γ = energy + slope·delta_mu
+      delta_mu?: number
+      // Output: the computed shape, null while there is none (no lattice, invalid input)
+      wulff_data?: WulffShapeData | null
+    } = $props()
 
   const cell = $derived(structure?.lattice?.matrix ?? lattice)
-  let wrapper = $state<HTMLDivElement>()
-  let [width, height] = $state([0, 0])
-  let [controls_open, info_pane_open, export_pane_open] = $state([false, false, false])
+  const controls_config = $derived(normalize_show_controls(show_controls))
+  let [info_pane_open, export_pane_open] = $state([false, false])
 
   // The structure's point group
   const analysis = structure_symmetry(() => structure)
@@ -127,13 +141,13 @@
 
   const colors = $derived(family_colors(facets))
   const pin = mark_pin<WulffHover>()
-  let hovered = $state.raw<WulffHover | null>(null)
-  const shown_hover = $derived(pin.shown(hovered))
+  let hovered_mark = $state.raw<WulffHover | null>(null)
+  const shown_hover = $derived(pin.shown(hovered_mark))
   // another crystal's pin would name a plane of this one, at a stale screen position
   $effect(() => {
     void cell
     untrack(() => {
-      hovered = null
+      hovered_mark = null
       pin.unpin()
     })
   })
@@ -180,7 +194,7 @@
   })
 
   const display = track_settings(
-    () => ({ opacity, show_axes, show_legend, edge_color, edge_width }),
+    () => ({ surface_opacity, show_vectors, show_legend, edge_color, edge_width }),
     defaults,
   )
   const export_sources = $derived({
@@ -201,6 +215,7 @@
   ]
   const keys = viewer_keys(() => ({
     i: () => {
+      if (!controls_config.visible(`info-pane`)) return false // leaves the key to the host
       info_pane_open = !info_pane_open
     },
     r: () => reset_scene_cameras(wrapper),
@@ -220,6 +235,8 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
+  onpointerenter={chain_handlers(() => (hovered = true), rest.onpointerenter)}
+  onpointerleave={chain_handlers(() => (hovered = false), rest.onpointerleave)}
   class={[`wulff-shape`, rest.class]}
   {@attach keys}
   {@attach key_walk.attach}
@@ -232,69 +249,86 @@
     <TaskStatus overlay spinner label="Analyzing symmetry..." />
   {:else}
     {@const wulff = result.data}
-    <ViewerChrome controls_config={normalize_show_controls(undefined)} {wrapper}>
-      <ViewerPane
-        bind:open={info_pane_open}
-        pane_name="Wulff shape info"
-        class_prefix="wulff-info"
-        closed_icon={InformationOutline}
-        toggle_props={shortcut_attrs(SHORTCUTS.info_pane)}
-        shortcut_scopes={[`viewer`, `camera`]}
-      >
-        <InfoPaneCards cards={info_cards} empty_label="Wulff shape info" />
-      </ViewerPane>
-      <ExportPane
-        filename="wulff-shape"
-        bind:export_pane_open
-        sources={export_sources}
-        sections={export_sections}
-        toggle_props={{ title: export_pane_open ? `` : `Export Wulff shape` }}
-      />
-      <ControlPane
-        bind:controls_open
-        controls_name="wulff"
-        toggle_title="Wulff shape"
-        toggle_style=""
-        pane_style="--ctrl-label-w: 7.5em; --ctrl-value-w: 3.5em;"
-        toggle_props={{ title: `Wulff shape controls` }}
-      >
-        <SettingsSection
-          title="Display"
-          changed_keys={display.changed_keys}
-          on_reset={() =>
-            ({ opacity, show_axes, show_legend, edge_color, edge_width } = defaults)}
-          layout="grid"
+    <ViewerChrome
+      {controls_config}
+      bind:fullscreen
+      {wrapper}
+      fullscreen_bg_css_var="--wulff-bg-fullscreen"
+      on_fullscreen_change={(value) =>
+        on_fullscreen_change?.({ wulff_data: result.data ?? null, fullscreen: value })}
+    >
+      {#if controls_config.visible(`info-pane`)}
+        <ViewerPane
+          bind:open={info_pane_open}
+          pane_name="Wulff shape info"
+          class_prefix="wulff-info"
+          closed_icon={InformationOutline}
+          toggle_props={shortcut_attrs(SHORTCUTS.info_pane)}
+          shortcut_scopes={[`viewer`, `camera`]}
         >
-          <label>
-            <span>Opacity</span>
-            <span>{format_num(opacity, `.2f`)}</span>
-            <input type="range" min="0.1" max="1" step="0.01" bind:value={opacity} />
-          </label>
-          <label>
-            <span>Crystal axes</span>
-            <input type="checkbox" bind:checked={show_axes} />
-          </label>
-          <label>
-            <span>Legend</span>
-            <input type="checkbox" bind:checked={show_legend} />
-          </label>
-          <ColorInput
-            label="Edge color"
-            value={css_color_to_hex(edge_color, defaults.edge_color)}
-            labels={{ picker: `Edge color`, hex: `Edge color hex` }}
-            on_commit={(color) => (edge_color = color)}
-          />
-          <label>
-            <span>Edge width</span>
-            <span>{format_num(edge_width, `.3f`)}</span>
-            <input type="range" min="0" max="0.02" step="0.001" bind:value={edge_width} />
-          </label>
-        </SettingsSection>
-        <CameraSection
-          bind:camera_projection
-          default_projection={defaults.camera_projection}
+          <InfoPaneCards cards={info_cards} empty_label="Wulff shape info" />
+        </ViewerPane>
+      {/if}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
+        <ExportPane
+          filename={export_filename}
+          bind:export_pane_open
+          bind:png_dpi
+          sources={export_sources}
+          sections={export_sections}
+          {export_formats}
+          {on_export}
+          toggle_props={{ title: export_pane_open ? `` : `Export Wulff shape` }}
         />
-      </ControlPane>
+      {/if}
+      {#if controls_config.visible(`controls`)}
+        <ControlPane
+          bind:controls_open
+          controls_name="wulff"
+          toggle_title="Wulff shape"
+          toggle_style=""
+          pane_style="--ctrl-label-w: 7.5em; --ctrl-value-w: 3.5em;"
+          toggle_props={{ title: `Wulff shape controls` }}
+        >
+          <SettingsSection
+            title="Display"
+            changed_keys={display.changed_keys}
+            on_reset={() =>
+              ({ surface_opacity, show_vectors, show_legend, edge_color, edge_width } =
+                defaults)}
+            layout="grid"
+          >
+            <label>
+              <span>Opacity</span>
+              <span>{format_num(surface_opacity, `.2f`)}</span>
+              <input type="range" min="0.1" max="1" step="0.01" bind:value={surface_opacity} />
+            </label>
+            <label>
+              <span>Crystal axes</span>
+              <input type="checkbox" bind:checked={show_vectors} />
+            </label>
+            <label>
+              <span>Legend</span>
+              <input type="checkbox" bind:checked={show_legend} />
+            </label>
+            <ColorInput
+              label="Edge color"
+              value={css_color_to_hex(edge_color, defaults.edge_color)}
+              labels={{ picker: `Edge color`, hex: `Edge color hex` }}
+              on_commit={(color) => (edge_color = color)}
+            />
+            <label>
+              <span>Edge width</span>
+              <span>{format_num(edge_width, `.3f`)}</span>
+              <input type="range" min="0" max="0.02" step="0.001" bind:value={edge_width} />
+            </label>
+          </SettingsSection>
+          <CameraSection
+            bind:camera_projection
+            default_projection={defaults.camera_projection}
+          />
+        </ControlPane>
+      {/if}
     </ViewerChrome>
 
     {#if show_legend}
@@ -319,17 +353,18 @@
     {#if webgpu_available()}
       <Canvas createRenderer={create_renderer} shadows={false}>
         <WulffScene
+          {...scene_controls}
           {wulff}
           {colors}
           lattice={cell}
-          {opacity}
+          {surface_opacity}
           {edge_color}
           {edge_width}
-          {show_axes}
+          {show_vectors}
           {camera_projection}
           {width}
           {height}
-          bind:hovered
+          bind:hovered={hovered_mark}
           {pin}
         />
       </Canvas>

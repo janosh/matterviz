@@ -7,6 +7,7 @@ import type {
   DataSeries,
   DisplayConfig,
   FillRegion,
+  SelectedMark,
   StyleOverrides,
   UserContentProps,
 } from '#lib/plot/core/types'
@@ -929,7 +930,6 @@ describe(`ScatterPlot`, () => {
       padding: { t: 7, b: 11, l: 13, r: 17 },
       facet_layout,
       show_controls: false,
-      fullscreen_toggle: false,
       legend: null,
     })
     await vi.waitFor(() => expect(report_layout).toHaveBeenCalled())
@@ -1115,9 +1115,9 @@ describe(`ScatterPlot`, () => {
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-        selected_points: { series_idx: number; point_idx: number }[]
+        selection: SelectedMark[]
         marker_renderer: `canvas` | `svg`
-      }>({ tooltip_point: null, selected_points: [], marker_renderer: `canvas` })
+      }>({ tooltip_point: null, selection: [], marker_renderer: `canvas` })
       const hover_plot = await mount_sized_scatter_plot(bind_props({ series: [dense] }, state))
       const draws_before_hover = clear_rect.mock.calls.length
       state.tooltip_point = { x: dense.x[4], y: dense.y[4], series_idx: 0, point_idx: 4 }
@@ -1129,7 +1129,7 @@ describe(`ScatterPlot`, () => {
       expect(hovered_fill).toMatch(/^var\(--point-fill-color/)
       // Empty selection must stay reactive when points enter/leave the SVG overlay.
       for (const selected of [[4, 5], []]) {
-        state.selected_points = selected.map((idx) => ({ series_idx: 0, point_idx: idx }))
+        state.selection = selected.map((idx) => ({ series_idx: 0, point_idx: idx }))
         await flush_render()
         expect(arcs_since_clear).toBe(dense.x.length - selected.length)
         expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(selected.length || 1)

@@ -3,6 +3,7 @@ import type { ElementSymbol } from '#lib/element/index'
 import { element_by_symbol } from '#lib/element/data'
 import { is_elem_symbol } from '#lib/element/helpers'
 import { ELEM_SYMBOLS } from '#lib/element/types'
+import { ISOTOPE_SYMBOLS } from './formula-markup'
 
 // One element (with optional oxidation state) of a formula, in source order. Amounts are
 // already multiplied through enclosing groups and hydrate coefficients.
@@ -110,7 +111,7 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
       const read_symbol = read(element_re)?.[0] ?? fail(`Unexpected character "${char}"`)
       // deuterium and tritium are hydrogen isotopes, not elements: D2O is {H: 2, O: 1}, as in
       // pymatgen. The greedy two-letter read keeps Db, Ds, Dy, Ta, Tb, ... intact.
-      const symbol = read_symbol === `D` || read_symbol === `T` ? `H` : read_symbol
+      const symbol = ISOTOPE_SYMBOLS.has(read_symbol) ? `H` : read_symbol
       if (symbol !== `*` && !is_elem_symbol(symbol)) fail(`Invalid element symbol: ${symbol}`)
       // count and charge in either order: Fe2^3+ or Fe^3+2
       let count = read_number()

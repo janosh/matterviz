@@ -69,7 +69,7 @@ test(`a submitted probe is projected again when the open elements change`, async
   expect([alert(), product(0)]).toEqual([null, `compound 100%`])
   // the hull reprojects a submission with the info pane closed too
   await submit_probe(`LiCoO2`)
-  props.enable_info_pane = false
+  props.show_controls = { hidden: [`info-pane`] }
   props.open_elements = undefined
   flushSync()
   expect(props.probe_composition).toEqual({ Li: 1, Co: 1, O: 2 })

@@ -321,8 +321,6 @@ type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | nul
 // Energy per atom with the MP correction (as the hull uses it), null when the entry has no
 // finite energy or no atoms
 function compute_energy_per_atom(entry: PhaseData): number | null {
-  if (!(count_atoms_in_composition(entry.composition) > 0)) return null
-  if (!is_finite_number(entry.energy_per_atom) && !is_finite_number(entry.energy)) return null
   const energy_per_atom = get_energy_per_atom(entry)
   return is_finite_number(energy_per_atom) ? energy_per_atom : null
 }

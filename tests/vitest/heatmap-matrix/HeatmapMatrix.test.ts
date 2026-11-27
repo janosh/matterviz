@@ -5,7 +5,7 @@ import { VIRTUAL_CELL_THRESHOLD } from '#lib/heatmap-matrix/index'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types'
 import type { ComponentProps } from 'svelte'
-import { flushSync, mount, tick } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
@@ -841,6 +841,21 @@ describe(`milestone feature props`, () => {
     ]) {
       expect(document.querySelector(sel) !== null, sel).toBe(shown)
     }
+  })
+
+  // flat controls_* props like the charts': toggle props, pane props and extra pane content
+  test(`controls_toggle_props, controls_pane_props and controls_extra reach the pane`, async () => {
+    mount_matrix({
+      values: numbered_values,
+      controls_open: true,
+      controls_toggle_props: { class: `custom-toggle` },
+      controls_pane_props: { 'aria-label': `Matrix settings` },
+      controls_extra: createRawSnippet(() => ({ render: () => `<p class="extra">extra</p>` })),
+    })
+    await tick()
+    doc_query(`button.heatmap-matrix-controls-toggle.custom-toggle`)
+    expect(doc_query(`.heatmap-controls`).getAttribute(`aria-label`)).toBe(`Matrix settings`)
+    doc_query(`.heatmap-controls .extra`)
   })
 
   test(`symmetric summaries ignore hidden upper triangle`, () => {

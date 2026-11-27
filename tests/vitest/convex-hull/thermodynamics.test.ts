@@ -6,6 +6,7 @@ import {
   compute_quickhull_nd,
   decompose_hull_composition,
   find_lowest_energy_unary_refs,
+  get_energy_per_atom,
   get_convex_hull_stats,
   has_absolute_energy,
   get_hull_decomposition,
@@ -115,6 +116,31 @@ describe(`process_hull_entries`, () => {
   })
 })
 
+describe(`get_energy_per_atom`, () => {
+  // oxfmt-ignore
+  test.each([
+    [`energy_per_atom when present`, make_phase({ Fe: 2 }, -3.0), -3.0],
+    [`energy / atoms when energy_per_atom missing`, { composition: { Fe: 2, O: 1 }, energy: -9.0 }, -3.0],
+    [`MP total-energy correction`, { composition: { Ni: 9, O: 13 }, energy: -22 * 4.643, correction: -22 * 1.445 }, -6.088],
+    [`correction on energy_per_atom`, make_phase({ Fe: 2 }, -3.0, { correction: -1.0 }), -3.5],
+  ])(`%s`, (_desc, entry, expected) => {
+    expect(get_energy_per_atom(entry)).toBeCloseTo(expected, 10)
+  })
+
+  // each used to come out finite: 0 eV for missing energies, energy / 1e-12 for no atoms
+  // oxfmt-ignore
+  test.each([
+    [`E_form only`, { composition: { Li: 1, O: 1 }, e_form_per_atom: -1.2 }],
+    [`correction without energy`, { composition: { Li: 1 }, correction: -0.5 }],
+    [`empty composition`, { composition: {}, energy: -1.0 }],
+    [`negative atom count`, { composition: { Li: -1 }, energy: -1.0 }],
+    [`non-finite explicit EPA`, { composition: { Li: 1 }, energy: -1, energy_per_atom: Number.NaN }],
+    [`non-finite total energy`, { composition: { Li: 1 }, energy: Number.POSITIVE_INFINITY }],
+  ])(`non-finite for %s`, (_desc, entry) => {
+    expect(Number.isFinite(get_energy_per_atom(entry))).toBe(false)
+  })
+})
+
 describe(`compute_e_form_per_atom`, () => {
   const el_refs = { Fe: make_phase({ Fe: 1 }, -4.0), O: make_phase({ O: 1 }, -2.0) }
   const fe_corrected = { Fe: make_phase({ Fe: 1 }, -3.0, { correction: -1.0 }) }
@@ -124,6 +150,14 @@ describe(`compute_e_form_per_atom`, () => {
     [`corrections`, make_phase({ Fe: 2 }, -4.5, { correction: 1.0 }), fe_corrected, 0],
     [`missing reference element`, make_phase({ Fe: 1, Li: 1 }, -5.0), el_refs, null],
     [`empty composition`, make_phase({}, -5.0), el_refs, null],
+    // no absolute energy used to read as 0 eV, giving E_form = -Σ x_e E_e = 3 eV/atom
+    [`entry without energy`, { composition: { Fe: 1, O: 1 } }, el_refs, null],
+    [
+      `reference without energy`,
+      make_phase({ Fe: 1, O: 1 }, -7.0),
+      { ...el_refs, O: { composition: { O: 1 } } },
+      null,
+    ],
   ])(`%s`, (_desc, entry, refs, expected) => {
     expect(compute_e_form_per_atom(entry, refs)).toEqual(
       expected === null ? null : expect.closeTo(expected, 10),

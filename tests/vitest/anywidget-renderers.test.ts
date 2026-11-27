@@ -353,6 +353,13 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
     expect(WIDGET_MODEL_KEYS.structure).toEqual(
       expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
     )
+    for (const widget of [
+      `brillouin_zone`,
+      `fermi_surface`,
+      `wulff_shape`,
+      `binned_scatter_plot`,
+    ])
+      expect(WIDGET_MODEL_KEYS[widget], widget).toContain(`show_controls`)
     expect(WIDGET_MODEL_KEYS.scatter_plot).toEqual(
       expect.arrayContaining([
         `active_point`,
@@ -716,7 +723,7 @@ describe(`imported and output writebacks`, () => {
     ],
     [
       `wulff_shape`,
-      { opacity: 1, edge_color: `#222222`, edge_width: 0.006, show_axes: true },
+      { surface_opacity: 1, edge_color: `#222222`, edge_width: 0.006, show_vectors: true },
       { show_legend: true, camera_projection: `perspective` },
     ],
   ] as const)(`%s seeds every synced setting with its default`, (widget_type, ...parts) => {

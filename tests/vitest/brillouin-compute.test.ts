@@ -413,7 +413,7 @@ describe(`BZ order`, () => {
     [3, 4, 24, 36],
   ])(`cubic order %d: hull volume = %d·V₁`, (order, ratio, n_verts, n_edges) => {
     const k_lattice = recip_2pi(CUBIC_5)
-    const basis_z = compute_brillouin_zone(k_lattice, order as 2 | 3)
+    const basis_z = compute_brillouin_zone(k_lattice, order)
     const vol_1 = (2 * Math.PI) ** 3 / 125
     expect(Math.abs(basis_z.volume - ratio * vol_1)).toBeLessThan(1e-12 * vol_1)
     expect(basis_z.order).toBe(order)
@@ -432,7 +432,7 @@ describe(`BZ order`, () => {
   )(`%s order %d zone is centred on Γ`, (name, order) => {
     const { vertices } = compute_brillouin_zone(
       recip_2pi(REAL_LATTICES[name]),
-      order as 1 | 2 | 3,
+      order as number,
     )
     const radius = Math.max(...vertices.map((vertex) => Math.hypot(...vertex)))
     expect(Math.hypot(...polyhedron_centroid(vertices))).toBeLessThan(
@@ -440,10 +440,12 @@ describe(`BZ order`, () => {
     )
   })
 
-  test(`order >3 clamps to 3`, () => {
+  // Orders arrive from settings and JSON untyped; out-of-range ones used to clamp silently to 3
+  test.each([0, 4, 5, 1.5, Number.NaN])(`order %s throws instead of clamping`, (order) => {
     const k_lattice = recip_2pi(CUBIC_5)
-    expect(generate_bz_vertices(k_lattice, 4 as 3)).toEqual(generate_bz_vertices(k_lattice, 3))
-    expect(compute_brillouin_zone(k_lattice, 4 as 3).order).toBe(3)
+    const pattern = /order must be 1, 2 or 3/
+    expect(() => generate_bz_vertices(k_lattice, order)).toThrow(pattern)
+    expect(() => compute_brillouin_zone(k_lattice, order)).toThrow(pattern)
   })
 })
 

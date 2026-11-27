@@ -12,7 +12,7 @@
   import type { ColorSchemeName } from '#lib/colors/index'
   import { rgb } from 'd3-color'
   import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
+  import { normalize_show_controls } from '#lib/controls'
   import type { ElementSymbol } from '#lib/element/index'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -54,7 +54,7 @@
     index_volumes,
     with_isosurface_defaults,
   } from '#lib/isosurface/types'
-  import { ViewerChrome } from '#lib/layout/index'
+  import { ViewerChrome, type Viewer3DProps } from '#lib/layout/index'
   import { ToolbarMenu } from '#lib/overlays/index'
   import { DEFAULTS, type ShowBonds } from '#lib/settings'
   import type { ImageAtomCompletion } from './pbc'
@@ -94,7 +94,6 @@
   import { onDestroy, untrack } from 'svelte'
   import { tooltip as attach_tooltip, viewer_keydown } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from 'svelte-widgets/browser'
-  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
@@ -180,10 +179,10 @@
     show_controls,
     persist_settings = false,
     fullscreen = $bindable(false),
-    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
+    hovered = $bindable(false),
     color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     atom_color_field,
@@ -207,7 +206,6 @@
     trajectory_line_end_frame,
     defer_expensive_geometry = false,
 
-    enable_info_pane = true,
     analyze_symmetry = `on-demand`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     performance_mode = `quality`,
@@ -243,7 +241,7 @@
     // Inline CSS for the viewer's outer element, e.g. `height: 400px`.
     style: outer_style,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
+  }: Viewer3DProps<StructureControlName, StructureHandlerData> & {
     // A table of the sites beside the 3D view, linked to it (hover highlights, click selects).
     // `auto` docks it when the sites carry numbers worth reading (forces, magnetic moments,
     // charges, velocities) and the viewer is wide enough; its header button closes it.
@@ -288,18 +286,8 @@
     background_color?: string
     // Opacity 0-1 applied to `background_color`.
     background_opacity?: number
-    // 'always' | 'hover' | 'never' | { mode, hidden: StructureControlName[], style }
-    show_controls?: ShowControlsProp<StructureControlName>
     // Opt-in browser persistence of the controls pane settings
     persist_settings?: boolean
-    // Whether the viewer fills the screen.
-    fullscreen?: boolean
-    // Show the fullscreen button in the controls.
-    fullscreen_toggle?: boolean
-    // The viewer's root element.
-    wrapper?: HTMLDivElement
-    width?: number // output: wrapper width in CSS px
-    height?: number // output: wrapper height in CSS px
     // Element color scheme (palette) used for atoms and legend.
     color_scheme?: ColorSchemeName
     // How atoms are colored (by element, or a property, custom function or analysis result) and the color scale used.
@@ -348,8 +336,6 @@
     trajectory_line_end_frame?: number
     // Keep the last computed polyhedra instead of recomputing them, e.g. while scrubbing a trajectory.
     defer_expensive_geometry?: boolean
-    // Offer the structure info pane (keyboard shortcut `i`).
-    enable_info_pane?: boolean
     // `on-demand` (default) loads the ~0.75 MB symmetry WASM only once the viewer is touched
     // (press, focus, an open pane) or the display needs it (a conventional/primitive cell,
     // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
@@ -409,8 +395,6 @@
     site_table_props?: Partial<
       Omit<ComponentProps<typeof SiteTable>, `sites` | `selected_atoms` | `hovered_atom`>
     >
-    // Called with the structure and the new `fullscreen` state when fullscreen is toggled.
-    on_fullscreen_change?: EventHandler
     // Called with camera position, target, zoom and `camera_has_moved` when the camera is moved.
     on_camera_move?: EventHandler
     // Called with the reset camera pose when the camera is reset to fit the structure.
@@ -1043,7 +1027,6 @@
         ? `Each pane needs ${MULTI_VIEW_MIN_PANE.width}×${MULTI_VIEW_MIN_PANE.height} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
-  let hovered = $state(false)
   let focused = $state(false)
   let viewer_active = $derived(hovered || focused)
   let view_layout_menu_open = $state(false)
@@ -1318,7 +1301,7 @@
     // View toggles are plain letters everywhere; typing is already excluded by the editable
     // guard above. `f` is owned by FullscreenButton, which arbitrates it between nested
     // viewers. Chords stay the browser's and the host's.
-    if (key === `i` && plain_press && has_3d_view && enable_info_pane) {
+    if (key === `i` && plain_press && has_3d_view && controls_config.visible(`info-pane`)) {
       set_pane_open(`info`, !is_pane_open(`info`))
       shortcut_flash.show(`info`)
       return true
@@ -1558,7 +1541,6 @@
           <ViewerChrome
             {controls_config}
             bind:fullscreen
-            {fullscreen_toggle}
             wrapper={fullscreen_root}
             fullscreen_bg_css_var="--struct-bg-fullscreen"
             on_fullscreen_change={(value) =>
@@ -1622,7 +1604,7 @@
               </button>
             {/if}
 
-            {#if has_3d_view && enable_info_pane && session.mapped_base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
+            {#if has_3d_view && session.mapped_base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
               <StructureInfoPane
                 structure={session.mapped_base_structure}
                 displayed_structure={session.render_structure}

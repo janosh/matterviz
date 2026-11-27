@@ -382,7 +382,7 @@
         <Structure
           structure={struct_obj}
           style="height: 180px; width: 100%"
-          enable_info_pane={false}
+          show_controls={{ hidden: [`info-pane`] }}
           enable_measure_mode={false}
           scene_props={{ gizmo: false }}
         />

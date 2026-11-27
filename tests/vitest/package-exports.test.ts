@@ -115,7 +115,6 @@ describe(`package.json exports`, () => {
     `./structure/measure`,
     `./theme/embedded`,
     `./trajectory/parse`,
-    `./url-params`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
   })

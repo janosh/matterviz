@@ -32,7 +32,6 @@ import {
   orthonormal_2d,
   pad_domains,
   renormalize_entries,
-  safe_energy_per_atom,
   scale_to_font_range,
   section_chempot_system,
   section_measure,
@@ -1040,28 +1039,7 @@ describe(`assign_faces_to_domains`, () => {
   })
 })
 
-describe(`safe_energy_per_atom`, () => {
-  // oxfmt-ignore
-  test.each([
-    { label: `returns energy_per_atom when present`, entry: make_phase({ Fe: 2 }, -3.0), expected: -3.0 },
-    { label: `computes from energy / atoms when energy_per_atom missing`,
-      entry: { composition: { Fe: 2, O: 1 }, energy: -9.0 }, expected: -3.0 },
-    { label: `applies the MP total-energy correction like the convex hull`,
-      entry: { composition: { Ni: 9, O: 13 }, energy: -22 * 4.643, correction: -22 * 1.445 },
-      expected: -6.088 },
-  ])(`$label`, ({ entry, expected }) => {
-    expect(safe_energy_per_atom(entry)).toBeCloseTo(expected, 8)
-  })
-
-  // oxfmt-ignore
-  test.each([
-    { label: `empty composition`, entry: { composition: {}, energy: -1.0 } },
-    { label: `non-finite explicit EPA`, entry: { composition: { Li: 1 }, energy: -1, energy_per_atom: Number.NaN } },
-    { label: `non-finite total energy`, entry: { composition: { Li: 1 }, energy: Number.POSITIVE_INFINITY } },
-  ])(`returns NaN for $label (safe for $derived)`, ({ entry }) => {
-    expect(Number.isNaN(safe_energy_per_atom(entry))).toBe(true)
-  })
-
+describe(`MP corrections`, () => {
   test(`corrections shift domains: a corrected compound becomes stable`, () => {
     // Uncorrected AB (-2.5 eV/atom) sits on the A-B tie line and carves out no domain;
     // a -1 eV total correction (-0.5 eV/atom) makes it stable

@@ -106,7 +106,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
           padding: data.padding,
           x_axis: { label: `Shared x` },
           y_axis: { label: `Shared y` },
-          fullscreen_toggle: false,
+          show_controls: { hidden: [`fullscreen`] },
         }
         Object.defineProperty(props, `facet_layout`, { get: get_context })
         const component = mount(plot_case.component, { target: element, props })

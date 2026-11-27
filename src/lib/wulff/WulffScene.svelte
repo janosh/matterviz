@@ -9,7 +9,7 @@
   import ReciprocalVectors from '#lib/brillouin/ReciprocalVectors.svelte'
   import type { Matrix3x3 } from '#lib/math'
   import * as math from '#lib/math'
-  import type { ThreltePointerEvent } from '#lib/scene/index'
+  import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index'
   import {
     dispose_on_change,
     scene_interactivity,
@@ -33,24 +33,26 @@
     wulff,
     colors,
     lattice,
-    opacity = WULFF_DEFAULTS.opacity,
+    surface_opacity = WULFF_DEFAULTS.surface_opacity,
     edge_color = WULFF_DEFAULTS.edge_color,
     edge_width = WULFF_DEFAULTS.edge_width,
-    show_axes = WULFF_DEFAULTS.show_axes,
+    show_vectors = WULFF_DEFAULTS.show_vectors,
     camera_projection = WULFF_DEFAULTS.camera_projection,
     hovered = $bindable<WulffHover | null>(null),
     pin = mark_pin<WulffHover>(),
     width = 0,
     height = 0,
-  }: Partial<Omit<WulffDisplaySettings, `show_legend`>> & {
-    wulff: WulffShapeData
-    colors: string[] // per family, index-aligned with wulff.families
-    lattice?: Matrix3x3 // rows a, b, c: drawn as crystal axes while show_axes
-    hovered?: WulffHover | null
-    pin?: TooltipPin<WulffHover> // the host's, whose tooltip a click pins
-    width?: number
-    height?: number
-  } = $props()
+    ...scene_controls // camera/lighting/interaction props, handed to KSpaceCamera
+  }: SceneControlProps &
+    Partial<Omit<WulffDisplaySettings, `show_legend`>> & {
+      wulff: WulffShapeData
+      colors: string[] // per family, index-aligned with wulff.families
+      lattice?: Matrix3x3 // rows a, b, c: drawn as crystal axes while show_vectors
+      hovered?: WulffHover | null
+      pin?: TooltipPin<WulffHover> // the host's, whose tooltip a click pins
+      width?: number
+      height?: number
+    } = $props()
 
   const { set_camera_is_moving, touch_hover } = scene_interactivity({
     on_click: () => pin.toggle(hovered),
@@ -182,6 +184,7 @@
 </script>
 
 <KSpaceCamera
+  {...scene_controls}
   {camera_projection}
   size={framing.size}
   fit_extent={framing.fit_extent}
@@ -196,8 +199,8 @@
       <PolyhedronMesh
         polyhedron={{ vertices: wulff.vertices, faces: mesh.faces, edges: [] }}
         color={colors[mesh.family_idx]}
-        {opacity}
-        depth_write={opacity >= 1}
+        opacity={surface_opacity}
+        depth_write={surface_opacity >= 1}
         edge_width={0}
         hovered_face={lit_triangle(mesh)}
         {...mesh_events(mesh)}
@@ -207,7 +210,7 @@
   {#if edge_width > 0}
     <T is={edge_mesh} dispose={false} />
   {/if}
-  {#if show_axes && axes}
+  {#if show_vectors && axes}
     <!-- labels behind the shape hide -->
     <ReciprocalVectors
       k_lattice={axes}

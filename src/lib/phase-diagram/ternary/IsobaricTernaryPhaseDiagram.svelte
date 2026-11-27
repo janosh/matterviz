@@ -88,7 +88,6 @@
     on_export,
     on_phase_hover,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     wrapper = $bindable(),
     allow_file_drop = true,
     on_file_drop,
@@ -120,7 +119,7 @@
       // Partial pressure in bar per gas species (O, N, H, F); used when gas_enabled.
       gas_pressures?: Partial<Record<GasSpecies, number>>
       // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, fullscreen) appear.
-      show_controls?: ShowControlsProp<`controls` | `export` | `fullscreen`>
+      show_controls?: ShowControlsProp<`controls` | `export-pane` | `fullscreen`>
       // Whether the controls pane is open.
       controls_open?: boolean
       // Whether the export pane is open (shortcut `e`).
@@ -131,8 +130,6 @@
       on_phase_hover?: (hover: TernaryPhaseHover | null) => void
       // Whether the diagram fills the screen.
       fullscreen?: boolean
-      // Show the fullscreen button in the controls.
-      fullscreen_toggle?: boolean
       // The root element. Read-only.
       wrapper?: HTMLDivElement
       // Dropped JSON arrays of convex-hull entries replace `entries`
@@ -440,7 +437,6 @@
   <ViewerChrome
     {controls_config}
     bind:fullscreen
-    {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
   >
@@ -461,7 +457,7 @@
         shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
       />
     {/if}
-    {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+    {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
       <PhaseDiagramExportPane
         bind:export_pane_open
         bind:png_dpi

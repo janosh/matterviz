@@ -50,7 +50,7 @@ describe(`Settings`, () => {
   )
 
   // The one admissibility rule behind the persisted viewer state and the VS Code settings reader
-  const { structure: struct_cfg, trajectory: traj_cfg } = SETTINGS_CONFIG
+  const { structure: struct_cfg, trajectory: traj_cfg, brillouin: bz_cfg } = SETTINGS_CONFIG
   const scale_cfg = struct_cfg.atom_color_scale
   test.each([
     [`enum member`, struct_cfg.show_bonds, `never`, true],
@@ -60,6 +60,10 @@ describe(`Settings`, () => {
     [`non-finite number`, struct_cfg.atom_radius, NaN, false],
     [`off-grid multipleOf`, traj_cfg.fps, 7.25, false],
     [`on-grid multipleOf`, traj_cfg.fps, 7.3, true],
+    // BrillouinZone throws for orders other than 1, 2, 3
+    [`fractional bz_order`, bz_cfg.bz_order, 1.5, false],
+    [`bz_order above 3`, bz_cfg.bz_order, 4, false],
+    [`bz_order 3`, bz_cfg.bz_order, 3, true],
     [`Vec3 of numbers`, struct_cfg.rotation, [0, 1, 2], true],
     [`Vec3 with a string`, struct_cfg.rotation, [0, `bad`, 0], false],
     [`too-short tuple`, struct_cfg.rotation, [0, 1], false],
@@ -510,7 +514,7 @@ describe(`Settings`, () => {
     })
 
     // Drift shapes the evaluator must refuse rather than skip, against a synthetic Trajectory
-    // (schema: fps 10, auto_play false, layout "auto", fullscreen_toggle true, fps_range [0,300])
+    // (schema: fps 10, auto_play false, layout "auto", fps_range [0,300])
     const synthetic = (props: string, preamble = ``) =>
       `<script lang="ts">
         import { DEFAULTS } from '#lib/settings'
@@ -541,8 +545,8 @@ describe(`Settings`, () => {
       ],
       [
         `template literal`,
-        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\``,
-        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\` (schema: true)`,
+        `auto_play = \`\${DEFAULTS.trajectory.auto_play}\``,
+        `auto_play = \`\${DEFAULTS.trajectory.auto_play}\` (schema: false)`,
       ],
       [
         `empty $bindable()`,

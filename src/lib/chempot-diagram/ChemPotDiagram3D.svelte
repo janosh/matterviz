@@ -107,7 +107,7 @@
     tooltip,
   }: ChemPotDiagramProps & {
     show_controls?: ShowControlsProp<
-      `controls` | `fullscreen` | `export` | `formulas` | `slice`
+      `controls` | `fullscreen` | `export-pane` | `formulas` | `slice`
     >
   } = $props()
   let wrapper = $state<HTMLDivElement>()
@@ -1064,7 +1064,7 @@
     {wrapper}
     fullscreen_bg_css_var="--chempot-3d-bg-fullscreen"
   >
-    {#if controls_config.visible(`export`)}
+    {#if controls_config.visible(`export-pane`)}
       <ExportPane
         filename={export_basename}
         bind:export_pane_open={export_pane.get, export_pane.set}

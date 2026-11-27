@@ -1,7 +1,7 @@
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute'
 import { high_symmetry_kpath, kpath_to_k_path_data } from '#lib/brillouin/kpath'
-import type { BrillouinZoneData } from '#lib/brillouin/types'
+import type { BrillouinZoneData, BZOrder } from '#lib/brillouin/types'
 import { cross_3d, dot, type Matrix3x3, reciprocal_lattice, subtract } from '#lib/math'
 import type * as symmetry from '#lib/symmetry/analyze'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -217,6 +217,13 @@ test(`reports a singular lattice and clears the error once a structure derives a
   expect(props.error_msg).toBeUndefined()
 })
 
+// Orders outside 1-3 (a stale setting, a JSON file) used to clamp silently to 3
+test(`reports an out-of-range bz_order instead of clamping it`, async () => {
+  // e.g. a JSON file's order, which the BZOrder type can't vet
+  const { error } = await mount_until_error({ structure: cubic, bz_order: 4 as BZOrder })
+  expect(error).toMatch(/BZ computation failed: .*order must be 1, 2 or 3, got 4/)
+})
+
 // The zone the component renders, observed through its `children` snippet (the derived zone
 // is never written back to the `bz_data` prop). The snippet type is intersected with
 // HTMLAttributes' argument-less Snippet, hence the cast.
@@ -234,7 +241,11 @@ function zone_probe() {
 }
 
 // Mounts the viewer with a zone probe and waits for its first on_error report
-async function mount_until_error(init: { structure: typeof cubic; show_ibz?: boolean }) {
+async function mount_until_error(init: {
+  structure: typeof cubic
+  show_ibz?: boolean
+  bz_order?: BZOrder
+}) {
   const on_error = vi.fn()
   const { children, rendered } = zone_probe()
   const props = $state({
@@ -252,7 +263,15 @@ async function mount_until_error(init: { structure: typeof cubic; show_ibz?: boo
 // whenever bz_data already had vertices), so bz_order and structure changes were ignored
 test(`recomputes the zone when bz_order or the structure changes`, async () => {
   const { children, rendered } = zone_probe()
-  const props = $state({ structure: cubic, bz_order: 1, children })
+  const props = $state<{
+    structure: typeof cubic
+    bz_order: BZOrder
+    children: typeof children
+  }>({
+    structure: cubic,
+    bz_order: 1,
+    children,
+  })
   mount_zone(props)
   await vi.waitFor(() => expect(rendered()?.order).toBe(1))
   const first_volume = rendered()?.volume ?? 0
@@ -275,7 +294,10 @@ test(`a caller-supplied bz_data wins over the structure-derived zone and is neve
   // Getter/setter props stand in for a bound parent: the getter hands the zone over by
   // identity (a deep $state would proxy it) and any write-back would hit the setter
   const set_bz_data = vi.fn()
-  const props = $state({ bz_order: 1, supplied: true })
+  const props = $state<{ bz_order: BZOrder; supplied: boolean }>({
+    bz_order: 1,
+    supplied: true,
+  })
   mount_zone({
     structure: cubic,
     children,
@@ -398,14 +420,32 @@ test(`hovering the zone and pressing f fullscreens it`, async () => {
   expect(props.fullscreen).toBe(true)
 })
 
+// hovered follows the pointer without displacing a caller's own pointer handlers
+test(`hovered tracks the pointer alongside a caller's onpointerenter/leave`, async () => {
+  const [onpointerenter, onpointerleave] = [vi.fn(), vi.fn()]
+  const props = $state({ structure: cubic, hovered: false, onpointerenter, onpointerleave })
+  mount_zone(props)
+  await tick()
+  const zone = doc_query(`.brillouin-zone`)
+  for (const [type, handler, hovered] of [
+    [`pointerenter`, onpointerenter, true],
+    [`pointerleave`, onpointerleave, false],
+  ] as const) {
+    zone.dispatchEvent(new PointerEvent(type))
+    await tick()
+    expect([props.hovered, handler.mock.calls.length]).toEqual([hovered, 1])
+  }
+})
+
 test.each([
-  [false, false],
-  [true, false],
-  [false, true],
+  [false, false, undefined],
+  [true, false, undefined],
+  [false, true, undefined],
+  [false, false, { hidden: [`info-pane` as const] }],
 ])(
-  `i toggles the info pane unless canceled=%s or composing=%s`,
-  async (canceled, is_composing) => {
-    const state = $state({ info_pane_open: true })
+  `i toggles the info pane unless canceled=%s, composing=%s or show_controls=%j hides it`,
+  async (canceled, is_composing, show_controls) => {
+    const state = $state({ info_pane_open: true, show_controls })
     mount_zone(state)
     await tick()
     const event = new KeyboardEvent(`keydown`, {
@@ -417,7 +457,7 @@ test.each([
     if (canceled) event.preventDefault()
     doc_query(`.brillouin-zone`).dispatchEvent(event)
     await tick()
-    expect(state.info_pane_open).toBe(canceled || is_composing)
+    expect(state.info_pane_open).toBe(canceled || is_composing || Boolean(show_controls))
   },
 )
 

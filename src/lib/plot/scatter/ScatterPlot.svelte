@@ -32,6 +32,7 @@
     PointStyle,
     ScatterHandlerEvent,
     ScatterHandlerProps,
+    SelectedMark,
     SizeLegendConfig,
     SizeScaleConfig,
     StyleOverrides,
@@ -95,7 +96,7 @@
     compute_label_positions,
     LABEL_PLACEMENT_DEFAULTS,
   } from '#lib/plot/core/utils/label-placement'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus'
+  import { mark_keys, roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
@@ -121,7 +122,6 @@
     axis_transform,
     get_relative_coords,
     is_activation_key,
-    type PixelRect,
     step_point_cursor,
   } from '#lib/plot/core/interactions'
   import {
@@ -188,10 +188,11 @@
     padding = {},
     title,
     range_padding = 0,
+    shared_xy_range = false,
     current_x_value = null,
     tooltip_point = $bindable(null),
     selected_point = null,
-    selected_points = $bindable([]),
+    selection = $bindable([]),
     on_select,
     highlighted_ids = null,
     hovered = $bindable(false),
@@ -224,7 +225,6 @@
     resolved_padding = $bindable(),
     view = $bindable(),
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     annotation,
@@ -243,7 +243,12 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     Omit<BasePlotProps, `children`> &
-    CartesianPlotProps & {
+    CartesianPlotProps<InternalPoint<Metadata>> & {
+      // x and y show one range (parity plots: y = x runs corner to corner): the union of their
+      // auto ranges, with a bound pinned on either axis's `range` pinning it on both (pins on both
+      // must agree). Sets the initial and reset range; pan/zoom still move each axis on its own.
+      // Throws on differing x/y scale types and inside facet grids.
+      shared_xy_range?: boolean
       // Data series with x and y arrays plus per-series style, labels, error bars and axis assignment
       series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
@@ -258,11 +263,7 @@
       // The point currently hovered or focused, null when none
       tooltip_point?: InternalPoint<Metadata> | null
       // Point drawn with the selection treatment, e.g. the current trajectory frame
-      selected_point?: { series_idx: number; point_idx: number } | null
-      // Points inside the last Alt+drag rect, drawn like selected_point. Bindable for linked views
-      selected_points?: { series_idx: number; point_idx: number }[]
-      // Fires on every Alt+drag, including one that selected nothing
-      on_select?: (selection: { points: InternalPoint<Metadata>[]; rect: PixelRect }) => void
+      selected_point?: SelectedMark | null
       // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
       // collection. null turns it off; points without a point_id never dim.
       highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
@@ -500,8 +501,11 @@
       axis.range ?? [null, null],
       axis.scale_type ?? `linear`,
       range_padding,
-      time_scale,
-      edge_range_padding(edge_px, axis_px),
+      {
+        is_time: time_scale,
+        edge_padding: edge_range_padding(edge_px, axis_px),
+        nice: axis.nice,
+      },
     )
 
   // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
@@ -516,9 +520,10 @@
     }
   })
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
     auto_ranges: () => intrinsic_ranges,
+    shared_xy_range: () => shared_xy_range,
     // Keep the view on an axis whose series are all hidden instead of jumping
     range_sync: `expand`,
     has_data: () => ({
@@ -561,8 +566,8 @@
             picked.push(point)
         }
       }
-      selected_points = picked.map(({ series_idx, point_idx }) => ({ series_idx, point_idx }))
-      on_select?.({ points: picked, rect })
+      selection = picked.map(({ series_idx, point_idx }) => ({ series_idx, point_idx }))
+      on_select?.({ items: picked, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
     // Live tooltip while rect-dragging, cleared when the cursor leaves the svg
@@ -1673,10 +1678,7 @@
   let handler_props = $derived(tip_point ? construct_handler_props(tip_point) : null)
   const canvas_points_clickable = $derived(use_canvas_markers && points_interactive)
 
-  // Set, as the membership test runs per rendered marker and a rect drag selects thousands
-  let selected_keys = $derived(
-    new Set(selected_points.map((sel) => roving_key(sel.series_idx, sel.point_idx))),
-  )
+  const selected_keys = $derived(mark_keys(selection))
 
   // One path per series (in the series' color), so dense error bars don't undo canvas markers
   let error_bar_paths = $derived.by(() =>
@@ -1880,7 +1882,6 @@
   aria_label="Scatter plot"
   bind:fullscreen
   bind:wrapper
-  {fullscreen_toggle}
   {show_controls}
   marginals={resolved_marginals}
   {marginal_series}

@@ -66,7 +66,6 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
 export interface BoxHandlerProps<
   Metadata = Record<string, unknown>,
 > extends HandlerProps<Metadata> {
-  box_idx: number
   stats: BoxStats
   color: string
   category_label?: string

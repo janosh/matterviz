@@ -12,6 +12,7 @@ import {
   get_scale_type_name,
   is_y2_sync_mode,
 } from '#lib/plot/core/types'
+import { union_ranges } from '#lib/plot/core/shared-axes'
 
 // Combine two optional handlers into one that runs the component's own handler first, then
 // the caller's observer, with the same arguments (either may be undefined)
@@ -290,6 +291,35 @@ export function resolve_axis_range(
       ? auto_span || 86_400_000
       : Math.max(auto_span, Math.abs(bound) * 0.1) || 1
   return lower_fixed ? [lower, inverse(bound + span)] : [inverse(bound - span), upper]
+}
+
+// One range for both x and y (`shared_xy_range`), so a y = x line runs corner to corner. Each
+// bound is the one either axis pins explicitly (pins on both must agree), else the union of the
+// auto ranges backed by data (of both while neither is). Throws on mixed scale types, whose
+// shared range would draw y = x as a curve.
+export function shared_xy_range(
+  axes: { x: AxisRangeOverride; y: AxisRangeOverride },
+  auto: { x: readonly number[]; y: readonly number[] },
+  has_data: { x?: boolean; y?: boolean },
+): { range: [number | null, number | null]; auto: Vec2 } {
+  const [x_type, y_type] = [axes.x.scale_type, axes.y.scale_type].map(get_scale_type_name)
+  if (x_type !== y_type) {
+    throw new Error(
+      `shared_xy_range needs one scale type on x and y, got ${x_type} and ${y_type}`,
+    )
+  }
+  const pin = (bound_idx: 0 | 1): number | null => {
+    const [x_pin, y_pin] = [axes.x.range?.[bound_idx], axes.y.range?.[bound_idx]]
+    if (x_pin != null && y_pin != null && x_pin !== y_pin) {
+      const side = bound_idx ? `upper` : `lower`
+      throw new Error(`shared_xy_range got conflicting ${side} bounds x=${x_pin}, y=${y_pin}`)
+    }
+    return x_pin ?? y_pin ?? null
+  }
+  const backed = [has_data.x !== false && auto.x, has_data.y !== false && auto.y]
+  const sources = backed.some(Boolean) ? backed : [auto.x, auto.y]
+  // A non-finite union skips the range sync like any non-finite auto range
+  return { range: [pin(0), pin(1)], auto: union_ranges(sources) ?? [NaN, NaN] }
 }
 
 // Merge each axis's explicit range over its auto range per bound. Returns null for any

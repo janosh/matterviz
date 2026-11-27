@@ -227,7 +227,6 @@
   display={{ x_grid: false, y_grid: false, x_zero_line: false, y_zero_line: false }}
   styles={{ show_points: false, show_lines: true }}
   show_controls={false}
-  fullscreen_toggle={false}
   {show_legend}
   legend={{
     draggable: false,

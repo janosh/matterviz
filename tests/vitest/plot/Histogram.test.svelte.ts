@@ -316,11 +316,15 @@ describe(`Histogram`, () => {
     const second_series = { values: [2, 4, 4, 6, 9], label: `B`, color: `blue` }
     const hidden_series: (string | number)[] = []
     const state = { series: [first_series, second_series], hidden_series }
-    // on_series_toggle observes the toggle after the chart's own hidden-ID update
-    const on_series_toggle = vi.fn(() => expect(state.hidden_series).toEqual([1]))
-    await mount_histogram(
-      bind_props({ bins: 4, mode: `overlay`, show_legend: true, on_series_toggle }, state),
-    )
+    // the legend toggle reports through on_hidden_series_change alone, like the other charts
+    const on_hidden_series_change = vi.fn()
+    const props = {
+      bins: 4,
+      mode: `overlay` as const,
+      show_legend: true,
+      on_hidden_series_change,
+    }
+    await mount_histogram(bind_props(props, state))
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     expect(legend_items).toHaveLength(2)
     expect(new Set(attrs_of(`fill`, `g.histogram-series path`))).toEqual(
@@ -331,8 +335,7 @@ describe(`Histogram`, () => {
     expect(state.series[0]).toBe(first_series)
     expect(state.series[1]).toBe(second_series)
     expect(state.hidden_series).toEqual([1])
-    expect(on_series_toggle).toHaveBeenCalledExactlyOnceWith(1)
-    expect(on_series_toggle).toHaveReturned()
+    expect(on_hidden_series_change).toHaveBeenCalledExactlyOnceWith([1])
   })
 
   // One flip at a time against an ascending reference: bin edges stay ascending, so on a
@@ -522,8 +525,8 @@ describe(`Histogram`, () => {
     await fire(first_bar, new MouseEvent(`mousemove`, { bubbles: true }))
     // Same payload as the tooltip snippet (HistogramHandlerProps) plus the DOM event, matching BarPlot
     const event = expect.any(MouseEvent)
-    const hit = { value: 1, count: 2.5, property: `A`, series_idx: 0, event }
-    const hover_hit = { ...hit, label: `A`, active_x_axis: `x` }
+    const hit = { x: 1, count: 2.5, label: `A`, series_idx: 0, bin_idx: 0, event }
+    const hover_hit = { ...hit, active_x_axis: `x` }
     expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining(hover_hit))
     const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
     for (const text of [`Count: 2.5`, `Probability: 0.5`, `A`])
@@ -570,7 +573,7 @@ describe(`Histogram`, () => {
       bar.getAttribute(`aria-label`)?.includes(`bin 8:`),
     )
     await fire(middle_bar, new MouseEvent(`mousemove`, { bubbles: true }))
-    expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining({ value: 0 }))
+    expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining({ x: 0 }))
     expect(document.querySelector(`.plot-tooltip`)?.textContent).toMatch(/E: 0\s*Count: 1/)
   })
 
@@ -621,9 +624,7 @@ describe(`Histogram`, () => {
     const series = [series_of([2, 5, 20, 200])]
     await mount_histogram({ series, bins: 3, x_axis, on_bar_hover })
     await fire(doc_query(`g.histogram-series path[role="button"]`), mouse(`mousemove`))
-    const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
-    expect(value).toBeCloseTo(Math.sqrt(10), 12)
-    expect(x).toBe(value)
+    expect(on_bar_hover.mock.lastCall?.[0].x).toBeCloseTo(Math.sqrt(10), 12)
   })
 
   test(`controls pane toggles the legend and reset restores the default`, async () => {

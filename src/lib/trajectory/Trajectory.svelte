@@ -16,8 +16,11 @@
     Orientation,
   } from '#lib/plot/index'
   import { create_delayed_flag } from 'svelte-widgets/effects'
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls'
-  import type { ShowControlsProp } from '#lib/controls'
+  import {
+    hide_controls,
+    normalize_show_controls,
+    shows_fullscreen_toggle,
+  } from '#lib/controls'
   import type { ElementSymbol } from '#lib/element/index'
   import FileInput from 'svelte-widgets/FileInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -46,7 +49,7 @@
   import type { Vec2, Vec3 } from '#lib/math'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton } from '#lib/layout/index'
+  import { FullscreenButton, type Viewer3DProps } from '#lib/layout/index'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation'
   import { SHORTCUTS } from '#lib/shortcuts'
   import { shortcut_title } from 'svelte-widgets/shortcuts'
@@ -100,7 +103,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { getAbortSignal, tick as flush_updates, untrack } from 'svelte'
   import { tooltip, viewer_keydown } from 'svelte-widgets/attachments'
-  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type {
     ParseProgress,
@@ -221,11 +223,12 @@
     step_labels = DEFAULTS.trajectory.step_labels,
     plot_skimming = true,
     show_controls,
-    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
     fullscreen = $bindable(false),
     fullscreen_target,
     hovered = $bindable(false),
     wrapper = $bindable(),
+    width = $bindable(0),
+    height = $bindable(0),
     trajectory_controls,
     extra_controls,
     active_pane = $bindable(null),
@@ -240,7 +243,7 @@
     on_fullscreen_change,
     on_controller,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Viewer3DProps<TrajectoryControlName, TrajHandlerData> & {
     // Caller-supplied runs are borrowed (dispose them yourself); runs opened from source or
     // drops are owned and disposed here. Build one with trajectory_from_frames() or open_trajectory().
     trajectory?: TrajectoryRun
@@ -313,19 +316,9 @@
     step_labels?: number | number[]
     // Clicking the plot moves the playhead
     plot_skimming?: boolean
-    // 'always' | 'hover' | 'never' | { mode, hidden: TrajectoryControlName[], style }
-    show_controls?: ShowControlsProp<TrajectoryControlName>
-    // Show the fullscreen button in the controls.
-    fullscreen_toggle?: boolean
-    // Whether the viewer fills the screen.
-    fullscreen?: boolean
     // element the fullscreen button and `f` key fullscreen, e.g. a host component wrapping this
     // viewer with its own panes (default: this viewer)
     fullscreen_target?: HTMLElement
-    // Pointer is over the viewer (drives hover-scoped shortcuts)
-    hovered?: boolean
-    // The viewer's root element.
-    wrapper?: HTMLDivElement
     // Replaces the default playback controls. Receives the run, current frame, frame count and a step setter.
     trajectory_controls?: Snippet<[ControlsProps]>
     // Extra actions beside the default playback controls.
@@ -350,8 +343,6 @@
     on_frame_rate_change?: EventHandler
     // Called when the user picks a display mode from the view-mode menu.
     on_display_mode_change?: EventHandler
-    // Called when fullscreen is toggled.
-    on_fullscreen_change?: EventHandler
     // Scripted playback and movies (see TrajectoryViewerController); null on unmount.
     // Keep a display mode that shows the structure while driving it.
     on_controller?: (controller: TrajectoryViewerController | null) => void
@@ -911,20 +902,14 @@
   let inspector_tab = $derived<ComponentProps<typeof TrajectoryDataInspector>[`active_tab`]>(
     info_requested ? `info` : `global`,
   )
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
+  const show_toggle = $derived(shows_fullscreen_toggle(controls_config))
   // Hiding the viewer's controls hides those of the structure and plot inside it too
   const nested_controls = <Prop>(prop: Prop): Prop | false =>
     controls_config.mode === `never` ? false : prop
   // The data inspector lists the sites, so the structure's own site table stays off and so
-  // does its reopen button
-  let structure_controls = $derived.by(
-    (): ComponentProps<typeof Structure>[`show_controls`] => {
-      const prop = nested_controls(structure_props.show_controls)
-      if (prop === false) return false
-      const config: Exclude<typeof prop, boolean | string | undefined> =
-        typeof prop === `object` ? prop : { mode: prop === true ? `always` : prop }
-      return { ...config, hidden: [...(config.hidden ?? []), `site-table`] }
-    },
+  // does its reopen button. Its fullscreen button would duplicate the trajectory's own.
+  const structure_controls = $derived(
+    hide_controls(nested_controls(structure_props.show_controls), `site-table`, `fullscreen`),
   )
   let controls_height = $state(0)
   let content_size = $state({ width: 0, height: 0 })
@@ -1405,6 +1390,8 @@
     scatter_controls_open ||
     active_pane !== null}
   bind:this={wrapper}
+  bind:clientWidth={width}
+  bind:clientHeight={height}
   style:--traj-pane-max-height={content_size.height > 0
     ? `${content_size.height}px`
     : undefined}
@@ -1821,7 +1808,8 @@
               hidden={!show_toggle}
               wrapper={fullscreen_target ?? wrapper}
               bg_css_var="--traj-bg-fullscreen"
-              on_change={() => on_fullscreen_change?.(event_data())}
+              on_change={(value) =>
+                on_fullscreen_change?.({ ...event_data(), fullscreen: value })}
               class="fullscreen-button"
             />
           {/if}

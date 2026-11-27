@@ -4,7 +4,7 @@ import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index'
 
 // Viewer settings BrillouinZone forwards to BrillouinZoneControls (bound) and
 // BrillouinZoneScene (read-only); defaults live in DEFAULTS.brillouin
-export type BrillouinZoneSettings = Omit<DefaultSettings[`brillouin`], `fullscreen_toggle`>
+export type BrillouinZoneSettings = DefaultSettings[`brillouin`]
 
 // A symmetry point BrillouinZonePopup marks: label plus its fractional and Cartesian
 // (2π-included) k-coords
@@ -60,6 +60,18 @@ export type ConvexHullData = Pick<BZMeshData, `vertices` | `faces`> & {
   edges: Vec2[] // pairs of vertex indices
 }
 
-// "1st", "2nd", "3rd" zone labels (BZ orders are 1-3 in practice)
+// Controls `show_controls` can hide by name
+export type BZControlName =
+  | `filename`
+  | `fullscreen`
+  | `info-pane`
+  | `export-pane`
+  | `controls`
+
+// Zone orders the viewer computes
+export const BZ_ORDERS = [1, 2, 3] as const
+export type BZOrder = (typeof BZ_ORDERS)[number]
+
+// "1st", "2nd", "3rd" zone labels
 export const ordinal_label = (order: number): string =>
   `${order}${[`th`, `st`, `nd`, `rd`][order] ?? `th`}`

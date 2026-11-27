@@ -29,7 +29,7 @@
     k_path?: KPathData
     width?: number
     height?: number
-    bz_props?: Omit<BrillouinZoneOptions, `show_controls` | `fullscreen_toggle`>
+    bz_props?: Omit<BrillouinZoneOptions, `show_controls`>
   } = $props()
 </script>
 
@@ -43,9 +43,8 @@
       {k_path}
       highlighted_k_points={points.map(({ position }) => position)}
       show_controls={false}
-      fullscreen_toggle={false}
       allow_file_drop={false}
-      scene_props={{ gizmo: false, ...bz_props.scene_props }}
+      scene_controls={{ gizmo: false, ...bz_props.scene_controls }}
       style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0; {bz_props.style ??
         ``}"
     >

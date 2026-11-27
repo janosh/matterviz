@@ -576,7 +576,7 @@ describe(`BoxPlot`, () => {
     // type-7 median: mean of the two middle order statistics
     expect(on_box_click).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        box_idx: 0,
+        series_idx: 0,
         category_label: `Box A`,
         stats: expect.objectContaining({ median: 3.5 }),
       }),

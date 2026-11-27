@@ -1,9 +1,9 @@
 import {
+  compact_formula,
   format_formula_html,
   format_formula_svg,
   format_label_html,
   format_label_svg,
-  formula_text_tokens,
   get_formula_label_segments,
   is_compound,
   tokenize_formula_markup,
@@ -48,23 +48,14 @@ describe(`get_formula_label_segments`, () => {
 
 // === Formula markup (is_compound / tokenize / HTML / SVG) ===
 
-// subscripts as _n: which words of a file label get formula markup
-describe(`formula_text_tokens`, () => {
-  test.each([
-    [`BaTiO3 cubic perovskite`, `BaTiO_3 cubic perovskite`],
-    [`Li2O_relax.traj`, `Li_2O_relax.traj`],
-    [`CONTCAR2`, `CONTCAR2`], // T is no element
-    [`mp-1234`, `mp-1234`],
-    [`no formula here`, `no formula here`],
-    // space-group symbols read like formulas but sit against a slash
-    [`I4/mmm`, `I4/mmm`],
-    [`LiCoO2 C2/m`, `LiCoO_2 C2/m`],
-  ])(`%s → %s`, (label, expected) => {
-    const marked = formula_text_tokens(label).map(
-      ({ text, sub, sup }) => text ?? (sub !== undefined ? `_${sub}` : `^${sup}`),
-    )
-    expect(marked.join(``)).toBe(expected)
-  })
+test.each([
+  [`Ac6 U2`, `Ac6U2`],
+  [`Li3 Fe2 (P O4)3`, `Li3Fe2(PO4)3`],
+  [`Fe\t2\nO\r3`, `Fe2O3`],
+  [`   `, ``],
+  [``, ``],
+])(`compact_formula(%j) → %j`, (formula, expected) => {
+  expect(compact_formula(formula)).toBe(expected)
 })
 
 describe(`is_compound`, () => {
@@ -108,6 +99,7 @@ describe(`tokenize_formula_markup`, () => {
     // Greek letters and multi-phase labels pass through whole
     [`α`, [text(`α`)]],
     [`α + β`, [text(`α + β`)]],
+    [`La2NiO4 + NiO`, [text(`La2NiO4 + NiO`)]], // label formatters split on ` + ` first
     [``, []],
   ])(`%s`, (formula, expected) => {
     expect(tokenize_formula_markup(formula)).toEqual(expected)

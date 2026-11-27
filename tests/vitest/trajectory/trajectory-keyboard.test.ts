@@ -102,7 +102,9 @@ describe(`Trajectory keyboard shortcuts`, () => {
   })
 
   test(`only suppresses defaults for available viewer shortcuts`, async () => {
-    const viewer = await mount_trajectory(undefined, { fullscreen_toggle: false })
+    const viewer = await mount_trajectory(undefined, {
+      show_controls: { hidden: [`fullscreen`] },
+    })
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
 

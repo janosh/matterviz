@@ -104,7 +104,13 @@ describe(`FullscreenButton`, () => {
   test.each([`cartesian`, `chart`] as const)(
     `%s keeps an active fullscreen controller when chrome hides, then removes it on exit`,
     async (kind) => {
-      const state = $state({ fullscreen: false, show_controls: true, fullscreen_toggle: true })
+      const state = $state<{
+        fullscreen: boolean
+        show_controls: ShowControlsProp<`fullscreen`>
+      }>({
+        fullscreen: false,
+        show_controls: true,
+      })
       const on_mount = (component: ReturnType<typeof mount>) => void mounted.push(component)
       const sankey_data = {
         nodes: [{ label: `A` }, { label: `B` }],
@@ -122,12 +128,12 @@ describe(`FullscreenButton`, () => {
               on_mount,
             })
       const button = () => plot.querySelector<HTMLButtonElement>(`.fullscreen-btn`)
-      for (const key of [`show_controls`, `fullscreen_toggle`] as const) {
-        state[key] = true
+      for (const hidden of [false, { hidden: [`fullscreen` as const] }]) {
+        state.show_controls = true
         flushSync()
         button()?.click()
         await vi.waitFor(() => expect(document.fullscreenElement).toBe(plot))
-        state[key] = false
+        state.show_controls = hidden
         flushSync()
         expect(button()?.hidden).toBe(true)
         await document.exitFullscreen()
@@ -135,7 +141,6 @@ describe(`FullscreenButton`, () => {
         expect(state.fullscreen).toBe(false)
         expect(plot.classList.contains(`fullscreen`)).toBe(false)
         expect(button()).toBeNull()
-        state[key] = true
       }
       // An external request still works while chrome starts hidden.
       state.show_controls = false
@@ -183,19 +188,17 @@ describe(`FullscreenButton`, () => {
 // The two wrappers every viewer and multi-panel component use around FullscreenButton. Each
 // mounts with a bound `fullscreen` and returns its on-change spy, if it takes one.
 type MountChrome = (
-  toggle: boolean,
   show_controls: ShowControlsProp,
   state: { fullscreen: boolean },
 ) => Mock<(fullscreen: boolean) => void> | null
 describe.each([
   [
     `ViewerChrome`,
-    (toggle, show_controls, state) => {
+    (show_controls, state) => {
       const on_fullscreen_change = vi.fn<(fullscreen: boolean) => void>()
       const controls_config = normalize_show_controls(show_controls)
       const props = {
         controls_config,
-        fullscreen_toggle: toggle,
         on_fullscreen_change,
         wrapper: create_wrapper(),
       }
@@ -205,25 +208,24 @@ describe.each([
   ],
   [
     `PanelsFullscreenButton`,
-    (toggle, controls, state) => {
-      const props = { toggle, controls, wrapper: create_wrapper() }
+    (controls, state) => {
+      const props = { controls, wrapper: create_wrapper() }
       mount_in_test(PanelsFullscreenButton, bind_props(props, state))
       return null
     },
   ],
 ] satisfies [string, MountChrome][])(`%s fullscreen toggle`, (_name, mount_chrome) => {
   test.each([
-    [true, `hover`, false, `shown`],
-    [true, { hidden: [`fullscreen`] }, false, `absent`],
-    [false, `always`, false, `absent`],
+    [`hover`, false, `shown`],
+    [{ hidden: [`fullscreen`] }, false, `absent`],
     // hidden chrome keeps the active controller mounted so Esc still syncs the flag
-    [false, `always`, true, `hidden`],
-    [true, `never`, true, `hidden`],
-  ] satisfies [boolean, ShowControlsProp, boolean, `shown` | `hidden` | `absent`][])(
-    `toggle=%s show_controls=%j fullscreen=%s: button %s`,
-    async (toggle, show_controls, fullscreen, expected) => {
+    [{ hidden: [`fullscreen`] }, true, `hidden`],
+    [`never`, true, `hidden`],
+  ] satisfies [ShowControlsProp, boolean, `shown` | `hidden` | `absent`][])(
+    `show_controls=%j fullscreen=%s: button %s`,
+    async (show_controls, fullscreen, expected) => {
       const state = $state({ fullscreen })
-      const on_change = mount_chrome(toggle, show_controls, state)
+      const on_change = mount_chrome(show_controls, state)
       flushSync()
       const button = document.querySelector<HTMLButtonElement>(`button.fullscreen-btn`)
       expect(!button ? `absent` : button.hidden ? `hidden` : `shown`).toBe(expected)

@@ -290,10 +290,6 @@
       "types": "./dist/utils.d.ts",
       "default": "./dist/utils.js"
     },
-    "./url-params": {
-      "types": "./dist/url-params.d.ts",
-      "default": "./dist/url-params.js"
-    },
     "./vacf": {
       "types": "./dist/vacf/index.d.ts",
       "default": "./dist/vacf/index.js"

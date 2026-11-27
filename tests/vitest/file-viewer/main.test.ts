@@ -329,18 +329,15 @@ test.each([``, `\uFEFF`])(`hull JSON named *convex* renders (prefix %j)`, async 
   ).resolves.toMatchObject({ type: `convex_hull`, data: hull_entries, filename })
 })
 
-// A fractional (or NaN) order built a bogus zone, and one outside 1-3 matched no option of the
-// order <select>: only 1, 2 or 3 reach BrillouinZone
+// Invalid orders used to fall back to the host's silently; now BrillouinZone reports them
 test.each([
   [2, 2],
-  [1.5, 3],
-  [Number.NaN, 3],
-  [0, 3],
-  [4, 3],
-  [-1, 3],
+  [4, 4],
+  [1.5, 1.5],
+  [undefined, 3],
 ])(`mount_viewer forwards bz_order %s as %s over the host's`, (bz_order, expected) => {
   const data = { k_lattice: IDENTITY_MATRIX3, bz_order }
-  const brillouin = { ...DEFAULTS.brillouin, bz_order: 3, surface_color: `#123456` }
+  const brillouin = { ...DEFAULTS.brillouin, bz_order: 3 as const, surface_color: `#123456` }
   mount_viewer(make_container(), `brillouin_zone`, data, {
     defaults: { ...DEFAULTS, brillouin },
   })
@@ -498,8 +495,6 @@ test.each([
   const mount_props = last_mount_props()
   expect(mount_props[prop_name]).toBe(data)
   expect(mount_props.allow_file_drop).toBe(allow_file_drop)
-  // the viewer's own toggle stays, gated by host.fullscreen
-  expect(mount_props).not.toHaveProperty(`fullscreen_toggle`)
   expect(host.wheel_zoom).toBe(`always`) // a viewer filling the tab has no page to scroll
 })
 
@@ -570,8 +565,6 @@ describe(`create_display trajectory display options`, () => {
     ]) {
       expect(mount_props).not.toHaveProperty(key)
     }
-    // the settings default, gated by host.fullscreen
-    expect(mount_props.fullscreen_toggle).toBe(true)
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
     ;(mount_props.on_step_change as (data: unknown) => void)({ step_idx: 7, frame_count: 20 })
     expect(on_step_change).toHaveBeenCalledWith(7, 20)

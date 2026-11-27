@@ -17,7 +17,7 @@
   import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index'
   import { sanitize_html } from '#lib/sanitize'
   import { quantile_unordered, type Vec2 } from '#lib/math'
-  import type { AxisConfig, ColorScale } from '#lib/plot/core/types'
+  import type { AxisConfig, BasePlotProps, ColorScale } from '#lib/plot/core/types'
   import { get_scale_type_name } from '#lib/plot/core/types'
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -98,7 +98,9 @@
     show_values = $bindable(false),
     show_controls,
     controls_open = $bindable(false),
-    controls_props = {},
+    controls_toggle_props,
+    controls_pane_props,
+    controls_extra,
     x_axis = {},
     y_axis = {},
     tooltip,
@@ -106,7 +108,8 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> &
-    ExportProps & {
+    ExportProps &
+    Pick<BasePlotProps, `controls_toggle_props` | `controls_pane_props`> & {
       // Column items in input order (display order is set by x_order). Index into each values row.
       x_items: AxisItem[]
       // Row items in input order (display order is set by y_order). Index into values.
@@ -189,11 +192,8 @@
       show_controls?: ShowControlsProp<`controls`>
       // Whether the controls pane is open.
       controls_open?: boolean
-      // Props forwarded to the controls pane: pane_props, toggle_props and extra children.
-      controls_props?: Pick<
-        ComponentProps<typeof HeatmapMatrixControls>,
-        `pane_props` | `toggle_props` | `children`
-      >
+      // Snippet rendered at the end of the controls pane
+      controls_extra?: Snippet
       // Axis config (label used as axis title)
       x_axis?: AxisConfig
       // Row axis config; its label is used as the axis title.
@@ -863,7 +863,9 @@
   style:padding-left={y_axis.label ? `1.8em` : undefined}
 >
   <HeatmapMatrixControls
-    {...controls_props}
+    toggle_props={controls_toggle_props}
+    pane_props={controls_pane_props}
+    children={controls_extra}
     bind:controls_open
     bind:color_scale
     bind:domain_mode
