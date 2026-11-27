@@ -1,7 +1,7 @@
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import type { NumericFrame, FrameChannels } from '../frame'
-import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
-import type { Matrix3x3 } from '#lib/math.js'
+import { EV_PER_A3_TO_GPA } from '#lib/constants'
+import type { Matrix3x3 } from '#lib/math'
 import type { ReadAtoms } from '../atom-batches'
 import { to_error } from 'svelte-widgets/utils'
 import type {
@@ -12,7 +12,7 @@ import type {
   TrajectoryRun,
   TrajectoryRunSignal,
   TrajectorySignal,
-} from '#lib/trajectory/index.js'
+} from '#lib/trajectory/index'
 
 export type WarnFn = (message: string, error?: unknown) => void
 

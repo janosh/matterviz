@@ -1,7 +1,7 @@
-import type { FileInfo } from '#lib/io/index.js'
-import type { BinaryPhaseDiagram, PhaseObservation } from '#lib/phase-diagram/index.js'
-import { normalize_system_name } from '#site/phase-diagrams/tdb-parse.js'
-import { glob_basename, site_file_info } from '#site/imports.js'
+import type { FileInfo } from '#lib/io/index'
+import type { BinaryPhaseDiagram, PhaseObservation } from '#lib/phase-diagram/index'
+import { normalize_system_name } from '#site/phase-diagrams/tdb-parse'
+import { glob_basename, site_file_info } from '#site/imports'
 import observations from './phase-diagrams/binary/observations.json'
 
 const diagram_modules = import.meta.glob<BinaryPhaseDiagram>(
@@ -26,11 +26,10 @@ const binary_phase_diagram_files: FileInfo[] = Object.keys(binary_diagrams).map(
   url: `builtin:${name}`, // Special marker for built-in diagrams
   type: `json`,
   category: `Binary`,
-  category_icon: `📊`,
 }))
 
 const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) =>
-  site_file_info(path, { type: `tdb`, category: `TDB`, category_icon: `📄` }),
+  site_file_info(path, { type: `tdb`, category: `TDB` }),
 )
 
 export const all_phase_diagram_files: FileInfo[] = [

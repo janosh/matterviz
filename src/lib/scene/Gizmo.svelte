@@ -3,7 +3,7 @@
   // camera to that axis. Replaces @threlte/extras' Gizmo, whose GLSL ShaderMaterials can't
   // compile on WebGPU. It draws into a corner viewport of the existing canvas after the main
   // render, so it costs no extra canvas and stays out of PNG exports (scene+camera only).
-  import type { Vec3 } from '#lib/math.js'
+  import type { Vec3 } from '#lib/math'
   import { useParent, useTask, useThrelte } from '@threlte/core'
   import { getAbortSignal, untrack } from 'svelte'
   import * as THREE from 'three/webgpu'

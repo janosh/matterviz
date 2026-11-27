@@ -1,4 +1,4 @@
-import { FERMI_COLOR_PROPERTY } from '#lib/constants.js'
+import { FERMI_COLOR_PROPERTY } from '#lib/constants'
 import type { ColorProperty, SpinChannel } from './types'
 
 // Band colors (ColorBrewer Set1 palette for categorical data)

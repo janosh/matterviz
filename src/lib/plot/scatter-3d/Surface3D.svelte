@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { Vec2 } from '#lib/math.js'
+  import type { Vec2 } from '#lib/math'
   import {
     normalize_to_scene,
     SCENE_SIZE,
     surface_vertices,
-  } from '#lib/plot/scatter-3d/scene-coords.js'
-  import type { Surface3DConfig } from '#lib/plot/core/types.js'
-  import { depth_prepass_props, dispose_on_change } from '#lib/scene/index.js'
+  } from '#lib/plot/scatter-3d/scene-coords'
+  import type { Surface3DConfig } from '#lib/plot/core/types'
+  import { depth_prepass_props, dispose_on_change } from '#lib/scene/index'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
 

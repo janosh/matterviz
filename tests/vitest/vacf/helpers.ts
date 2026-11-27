@@ -1,7 +1,7 @@
 // Shared fixtures for VACF/VDOS tests: analytic trajectory builders and error metrics.
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import type { VacfInput } from '#lib/vacf/index.js'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import type { VacfInput } from '#lib/vacf/index'
 import { build_positions, type BuildPositionsOptions } from '../msd/helpers'
 import { flatten_xyz_frames, make_rng } from '../numeric-helpers'
 import { make_frame } from '../test-fixtures'

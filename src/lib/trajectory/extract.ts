@@ -1,6 +1,6 @@
 // Data extraction functions for trajectory analysis and plotting
-import { is_finite_number } from '#lib/utils.js'
-import { get_density } from '#lib/structure/density.js'
+import { is_finite_number } from '#lib/utils'
+import { get_density } from '#lib/structure/density'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryMetadata } from './index'
 
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const

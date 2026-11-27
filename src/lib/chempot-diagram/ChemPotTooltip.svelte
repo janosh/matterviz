@@ -3,8 +3,8 @@
   // Placed with PlotTooltip inside the diagram container at `pointer`, container-relative (see
   // container_pointer in controls-state.svelte.ts): hover_info's, held still while pinned.
   import { format_num } from 'svelte-widgets/format'
-  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup'
+  import { PlotTooltip } from '#lib/plot/index'
   import { domain_formula_text } from './controls-state.svelte'
   import type { ChemPotHoverInfo, ChemPotTooltipProp } from './types'
 

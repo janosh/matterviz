@@ -3,12 +3,12 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { clamp } from 'svelte-widgets/utils'
-  import { plot_color } from '#lib/colors/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
-  import { error_getter } from '#lib/plot/core/error-bars.js'
-  import { format_value_or_num } from '#lib/labels.js'
+  import { plot_color } from '#lib/colors/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export'
+  import { error_getter } from '#lib/plot/core/error-bars'
+  import { format_value_or_num } from '#lib/labels'
   import type {
     BarHandlerProps,
     BarMode,
@@ -23,63 +23,61 @@
     Orientation,
     PlotConfig,
     SizeScaleConfig,
-  } from '#lib/plot/index.js'
-  import { BarPlotControls, ScatterPoint } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
+  import { BarPlotControls, ScatterPoint } from '#lib/plot/index'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils'
   import {
     create_cartesian_frame,
     create_pan_anchor,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import { FACET_AXES, type FacetAxis } from '#lib/plot/core/facets.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
+  import { FACET_AXES, type FacetAxis } from '#lib/plot/core/facets'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
+  } from '#lib/plot/core/utils/series-visibility'
   import {
     get_relative_coords,
     is_activation_key,
     overlaps_rect,
-    type PixelRect,
-  } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  } from '#lib/plot/core/interactions'
+  import { mark_keys, roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
-  import { assign_axes } from '#lib/plot/core/axis-assignment.js'
-  import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index.js'
-  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  import { assign_axes } from '#lib/plot/core/axis-assignment'
+  import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index'
   import {
     collect_scale_ranges,
     create_axis_scales,
     resolve_color_scale,
     to_color_scale_config,
     create_size_scale,
-  } from '#lib/plot/core/scales.js'
-  import { get_scale_type_name, has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/scales'
+  import { get_scale_type_name, has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types'
   import {
     build_legend_items,
     shown_point_style,
     series_text,
-  } from '#lib/plot/core/data-transform.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { clamp01, is_finite_number } from '#lib/utils.js'
-  import type { Vec2 } from '#lib/math.js'
-  import { measure_text_width } from '#lib/plot/core/tick-layout.js'
-  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
+  } from '#lib/plot/core/data-transform'
+  import { DEFAULTS } from '#lib/settings'
+  import { clamp01, is_finite_number } from '#lib/utils'
+  import type { Vec2 } from '#lib/math'
+  import { measure_text_width } from '#lib/plot/core/tick-layout'
+  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { create_category_display } from '#lib/plot/core/display.svelte.js'
-  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
+  import { create_category_display } from '#lib/plot/core/display.svelte'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { bar_path } from '#lib/plot/core/svg.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
+  import { bar_path } from '#lib/plot/core/svg'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import {
     bar_width_at,
@@ -130,7 +128,7 @@
     hovered = $bindable(false),
     on_bar_click,
     on_bar_hover,
-    selected_bars = $bindable([]),
+    selection = $bindable([]),
     on_select,
     view = $bindable(),
     // Line marker props (matching ScatterPlot)
@@ -147,7 +145,6 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     controls_extra,
@@ -159,7 +156,7 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     BasePlotProps &
-    CartesianPlotProps & {
+    CartesianPlotProps<BarHandlerProps<Metadata>> & {
       // Bar (or line) series with x categories or positions and y values
       series?: readonly BarSeries<Metadata>[]
       // `vertical` draws bars upward from the x axis, `horizontal` rightward from the y axis
@@ -182,14 +179,8 @@
       ) => void
       // Called with the hovered bar, or null when the pointer or focus leaves it
       on_bar_hover?: (
-        data:
-          | (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
-          | null,
+        data: (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      // Bindable: the bars the last Alt+drag rect touched, which the chart outlines
-      selected_bars?: { series_idx: number; bar_idx: number }[]
-      // Fires on every Alt+drag, including one that selected nothing
-      on_select?: (selection: { bars: BarHandlerProps<Metadata>[]; rect: PixelRect }) => void
       // Half-width of the T caps on series' y_error bars, in px (0 draws bare lines)
       error_bar_cap?: number
       // Line marker props (matching ScatterPlot)
@@ -202,13 +193,10 @@
       ) => void
       // Called with the hovered line series marker, or null when the pointer or focus leaves it
       on_point_hover?: (
-        data:
-          | (LineMarkerHandlerProps & {
-              event: MouseEvent | FocusEvent | KeyboardEvent
-            })
-          | null,
+        data: (LineMarkerHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
     } = $props()
+  const uid = $props.id()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
@@ -239,7 +227,7 @@
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
     // Categorical x2 shares x's category slots, pinned range included
@@ -287,15 +275,13 @@
             : []
         }).flat()
       })
-      selected_bars = bars.map(({ series_idx, bar_idx }) => ({ series_idx, bar_idx }))
-      on_select?.({ bars, rect })
+      selection = bars.map(({ series_idx, bar_idx }) => ({ series_idx, point_idx: bar_idx }))
+      on_select?.({ items: bars, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    clip_id_prefix: `chart-clip`,
+    clip_path_id: `chart-clip-${uid}`,
   })
-  const selected_keys = $derived(
-    new Set(selected_bars.map((sel) => roving_key(sel.series_idx, sel.bar_idx))),
-  )
+  const selected_keys = $derived(mark_keys(selection))
 
   // One tab stop for the whole mark group instead of one per bar/point: a 230-bar
   // spacegroup plot would otherwise take 230 presses to tab past.
@@ -349,7 +335,7 @@
 
   // Per-series hatch/texture tiles resolved against the bar color (null: plain fill); ids
   // are scoped to this instance so several bar plots on a page never share <pattern>s
-  const pattern_uid = unique_id(`bar`)
+  const pattern_uid = `bar-${uid}`
   let series_patterns = $derived(
     internal_series.map((srs) =>
       srs.pattern && srs.render_mode !== `line`
@@ -740,7 +726,6 @@
   }}
   aria_label="Bar chart"
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   marginals={resolved_marginals}
   {marginal_series}

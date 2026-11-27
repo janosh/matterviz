@@ -3,10 +3,10 @@ import {
   compute_scalar_range,
   set_vertex_colors,
   type VertexColorOptions,
-} from '#lib/isosurface/coloring.js'
-import type { Vec2 } from '#lib/math.js'
-import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
-import type { HitFace } from '#lib/scene/props.svelte.js'
+} from '#lib/isosurface/coloring'
+import type { Vec2 } from '#lib/math'
+import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte'
+import type { HitFace } from '#lib/scene/props.svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import type { BandGridData, FermiIsosurface, FermiSurfaceData, SpinChannel } from './types'
 import { vertex_count } from './types'

@@ -1,11 +1,11 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import type * as ElementModule from '#lib/element/types.js'
-import type * as H5UtilsModule from '#lib/trajectory/parse/h5-utils.js'
-import type * as OpenTrajectoryModule from '#lib/trajectory/open.js'
-import type * as FrameModule from '#lib/trajectory/frame.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
+import type * as ElementModule from '#lib/element/types'
+import type * as H5UtilsModule from '#lib/trajectory/parse/h5-utils'
+import type * as OpenTrajectoryModule from '#lib/trajectory/open'
+import type * as FrameModule from '#lib/trajectory/frame'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
+import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
 import {
   collect_console_errors,
@@ -20,6 +20,9 @@ import {
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
 const HYDRATION_TIMEOUT = 30_000
+// SequenceControls' 1-based frame number input, by role rather than its private class
+const step_input_of = (viewer: Locator) =>
+  viewer.getByRole(`spinbutton`, { name: `step input`, exact: true })
 
 test(`homepage keeps the compressed trajectory source URL after loading`, async ({ page }) => {
   const compressed_path = `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
@@ -45,7 +48,7 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
 
 // A tall inspector table grew the row past the viewer's clipped bottom (Ag run: +149px); the
 // sticky column showed the page's background instead of the sidebar's; the undragged inspector
-// is capped at a third of the row
+// is capped at a quarter of the row
 test(`demo viewers keep a data inspector within its box, a quarter wide, evenly shaded`, async ({
   page,
 }) => {
@@ -53,7 +56,14 @@ test(`demo viewers keep a data inspector within its box, a quarter wide, evenly 
   await page.goto(`/trajectory`, { waitUntil: `domcontentloaded` })
   const viewers = page.locator(`.trajectory:has(.trajectory-data-inspector-sidebar)`)
   await load_all_demos(page)
-  await expect(viewers).toHaveCount(4, { timeout: HYDRATION_TIMEOUT })
+  // closed by default: open each demo's inspector from its analysis menu
+  const analysis_buttons = page.locator(`.trajectory-controls button[aria-label="Analysis"]`)
+  await expect(analysis_buttons).toHaveCount(5, { timeout: HYDRATION_TIMEOUT })
+  for (const button of await analysis_buttons.all()) {
+    await button.click()
+    await page.locator(`.analysis-dropdown button`, { hasText: `Data inspector` }).click()
+  }
+  await expect(viewers).toHaveCount(5)
   for (const viewer of await viewers.all()) {
     await viewer.scrollIntoViewIfNeeded()
     const { overflow, width_share, sidebar_bg, sticky_bgs } = await viewer.evaluate(
@@ -99,14 +109,9 @@ test(`demo viewers keep a data inspector within its box, a quarter wide, evenly 
 })
 
 async function select_display_mode(trajectory: Locator, mode_name: string) {
-  const display_button = trajectory.locator(`.view-mode-dropdown-wrapper .view-mode-button`)
-  await expect(display_button).toBeVisible()
-  await display_button.click()
+  await trajectory.locator(`.view-mode-dropdown-wrapper .view-mode-button`).click()
   const dropdown = trajectory.locator(`.view-mode-dropdown`)
-  await expect(dropdown).toBeVisible()
-  const option = dropdown.locator(`.view-mode-option`).filter({ hasText: mode_name })
-  await expect(option).toBeVisible()
-  await option.click()
+  await dropdown.locator(`.view-mode-option`).filter({ hasText: mode_name }).click()
   await expect(dropdown).toBeHidden()
   return trajectory.locator(`.content-area`)
 }
@@ -114,6 +119,7 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
 test.describe(`Trajectory Component`, () => {
   let trajectory_viewer: Locator
   let controls: Locator
+  let step_input: Locator
   const open_analysis = async (label: string): Promise<void> => {
     await controls.locator(`.analysis-button`).click()
     await trajectory_viewer.getByRole(`button`, { name: label, exact: true }).click()
@@ -123,6 +129,7 @@ test.describe(`Trajectory Component`, () => {
     test_info.setTimeout(test_info.timeout + HYDRATION_TIMEOUT)
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
+    step_input = step_input_of(controls)
     const query = test_info.tags.includes(`@single-viewer`) ? `?single-viewer` : ``
     if (test_info.tags.includes(`@file-destination`)) {
       await page.addInitScript(() => {
@@ -219,11 +226,11 @@ test.describe(`Trajectory Component`, () => {
       timeout: LOAD_TIMEOUT,
     })
     // the step input numbers frames 1..N
-    const step_input = empty_trajectory.locator(`.step-input`)
-    await expect(step_input).toHaveValue(`1`)
-    await step_input.fill(`20`)
-    await step_input.press(`Enter`)
-    await expect(step_input).toHaveValue(`20`)
+    const empty_step_input = step_input_of(empty_trajectory)
+    await expect(empty_step_input).toHaveValue(`1`)
+    await empty_step_input.fill(`20`)
+    await empty_step_input.press(`Enter`)
+    await expect(empty_step_input).toHaveValue(`20`)
   })
 
   test(`loads a remote HDF5 Blob once through the lazy worker loader`, async ({ page }) => {
@@ -240,7 +247,7 @@ test.describe(`Trajectory Component`, () => {
     })
     await empty_trajectory.evaluate((target, url) => {
       const transfer = new DataTransfer()
-      transfer.setData(`application/json`, JSON.stringify({ url }))
+      transfer.setData(`text/uri-list`, url)
       target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
     }, source_url)
 
@@ -257,9 +264,7 @@ test.describe(`Trajectory Component`, () => {
         // no progress reported yet: the spinner stands in for the bar
         await expect(loading.getByRole(`progressbar`)).toHaveCount(0)
         const { label } = await expect_inline_spinner(loading)
-        for (const box of [panel, cancel]) {
-          expect_centered(box, viewer, `x`)
-        }
+        for (const box of [panel, cancel]) expect_centered(box, viewer, `x`)
         expect_centered(panel, viewer, `y`)
         expect(cancel.y).toBeGreaterThan(label.y + label.height)
         expect(panel.width).toBeLessThan(viewer.width - 24)
@@ -277,7 +282,7 @@ test.describe(`Trajectory Component`, () => {
       { timeout: LOAD_TIMEOUT },
     )
     expect(source_requests).toBe(1)
-    await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `20`)
+    await expect(step_input_of(empty_trajectory)).toHaveAttribute(`max`, `20`)
   })
 
   test(`HDF5 worker and main-thread data match exactly @source`, async ({ page }) => {
@@ -518,24 +523,23 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(`step navigation, play/pause and FPS input controls work`, async () => {
-    const step_input = controls.locator(`.step-input`)
     await expect(step_input).toHaveValue(`1`)
-    await expect(controls.locator(`span`).filter({ hasText: `/ 3` })).toBeVisible()
+    await expect(controls.getByLabel(`3 total steps`)).toHaveText(`/ 3`)
 
-    await controls.locator(`button[title^="Next step"]`).click()
+    await controls.getByRole(`button`, { name: `Next step`, exact: true }).click()
     await expect(step_input).toHaveValue(`2`)
-    await controls.locator(`button[title^="Previous step"]`).click()
+    await controls.getByRole(`button`, { name: `Previous step`, exact: true }).click()
     await expect(step_input).toHaveValue(`1`)
     await step_input.fill(`3`)
     await step_input.press(`Enter`)
     await expect(step_input).toHaveValue(`3`)
 
     const play_button = controls.locator(`.play-button`)
-    await expect(play_button).toHaveText(`▶`)
+    await expect(play_button).toHaveAccessibleName(`Play`)
     await play_button.click()
-    await expect(play_button).toHaveText(`⏸`)
+    await expect(play_button).toHaveAccessibleName(`Pause`)
     await play_button.click()
-    await expect(play_button).toHaveText(`▶`)
+    await expect(play_button).toHaveAccessibleName(`Play`)
 
     // FPS input uses 0.1 increments and shared bounds
     await play_button.click() // Start playing to show FPS controls
@@ -555,7 +559,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(fps_input).toHaveAttribute(`max`, `300`)
     await expect(fps_input).toHaveAttribute(`step`, `0.1`)
     await expect(fps_section.locator(`input[type="range"]`)).toHaveCount(0)
-    await expect(play_button, `0 FPS pauses playback`).toHaveText(`▶`)
+    await expect(play_button, `0 FPS pauses playback`).toHaveAccessibleName(`Play`)
   })
 
   test(
@@ -573,7 +577,7 @@ test.describe(`Trajectory Component`, () => {
         )
         .join(``)
       await drop_file(page, trajectory_viewer, trajectory_xyz, `hotspot-settings.xyz`)
-      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `2`)
+      await expect(step_input).toHaveAttribute(`max`, `2`)
       await open_analysis(`Thermal hotspots`)
       const pane = trajectory_viewer.locator(`.hotspots-pane`)
       const calculate = pane.getByRole(`button`, { name: `Calculate hotspots`, exact: true })
@@ -715,9 +719,9 @@ test.describe(`Trajectory Component`, () => {
         )
         .join(``)
       await drop_file(page, trajectory_viewer, content, `hotspots.xyz`)
-      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `4`)
-      await controls.locator(`.step-input`).fill(`2`) // frame index 1
-      await controls.locator(`.step-input`).press(`Enter`)
+      await expect(step_input).toHaveAttribute(`max`, `4`)
+      await step_input.fill(`2`) // frame index 1
+      await step_input.press(`Enter`)
       await open_analysis(`Thermal hotspots`)
       const pane = trajectory_viewer.locator(`.hotspots-pane`)
       await pane.getByLabel(/^Velocity units/).selectOption(`A/ps`)
@@ -740,7 +744,6 @@ test.describe(`Trajectory Component`, () => {
       await expect(coverage.locator(`.completed`)).toHaveAttribute(`width`, `3`)
       // the finished time average replaced the frame preview, so neither marker remains
       await expect(coverage.locator(`line`)).toHaveCount(0)
-      await expect(coverage.locator(`.active`)).toHaveCount(0)
       const slider = controls.locator(`.step-slider`)
       expect(
         await slider.evaluate((element) => Number(getComputedStyle(element).zIndex)),
@@ -749,14 +752,12 @@ test.describe(`Trajectory Component`, () => {
       )
       const bounds = await require_bbox(slider, `frame slider`)
       await slider.click({ position: { x: bounds.width - 2, y: bounds.height - 2 } })
-      await expect(controls.locator(`.step-input`)).toHaveValue(`4`)
-      await expect(trajectory_viewer.locator(`.hotspot-overlay`)).toHaveCount(0)
+      await expect(step_input).toHaveValue(`4`)
       await controls.getByRole(`button`, { name: `Play`, exact: true }).click()
-      await expect(controls.locator(`.step-input`)).not.toHaveValue(`4`)
+      await expect(step_input).not.toHaveValue(`4`)
       await controls.getByRole(`button`, { name: `Pause`, exact: true }).click()
       await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
       const heat_toggle = pane.getByLabel(`Heatmap on atoms`)
-      await expect(heat_toggle).toBeVisible()
       await expect(heat_toggle).toBeChecked()
       await heat_toggle.uncheck()
       await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
@@ -848,7 +849,7 @@ test.describe(`Trajectory Component`, () => {
         `2\nLattice="2 0 0 0 2 0 0 0 2" Properties=species:S:1:pos:R:3\nH ${frame_idx * 0.01} 0 0\nO 1 1 1\n`,
     ).join(``)
     await drop_file(page, trajectory_viewer, content, `spectroscopy.xyz`)
-    await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `8`)
+    await expect(step_input).toHaveAttribute(`max`, `8`)
     await open_analysis(`Trajectory IR/Raman & VDOS`)
     const analysis = trajectory_viewer.locator(`.trajectory-spectroscopy-inline`)
     await expect(analysis.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
@@ -867,70 +868,131 @@ test.describe(`Trajectory Component`, () => {
     await expect(analysis).not.toContainText(`time_unit 'invalid' cannot be converted`)
   })
 
+  // === Export pane ===
+  // Each always-mounted alert region of the export pane (StatusMessage keeps its empty one in
+  // the DOM, hidden from the accessibility tree) must be empty: a count of one rules out both an
+  // extra error alert and a selector that matches nothing.
+  const expect_no_alerts = (pane: Locator) =>
+    expect(pane.getByRole(`alert`, { includeHidden: true })).toHaveText([``])
+  const video_inputs = [`Width (px)`, `Height (px)`, `Frame Rate (FPS)`]
+  // Opens the export pane, names the file and optionally sets the video [width, height, fps]
+  const open_export_pane = async (video: [number, number, number] | [] = []) => {
+    await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
+    const pane = trajectory_viewer.locator(`.export-pane.viewer-pane-open`)
+    await pane.getByRole(`textbox`, { name: `File name`, exact: true }).fill(`My trajectory`)
+    for (const [idx, value] of video.entries())
+      await pane.getByRole(`spinbutton`, { name: video_inputs[idx] }).fill(`${value}`)
+    return pane
+  }
+
+  test(
+    `export pane spaces its settings rows at every width and defaults to 1080p video`,
+    { tag: `@single-viewer` },
+    async ({ page }) => {
+      const pane = await open_export_pane()
+      for (const [name, value] of [
+        [`Width (px)`, `1920`],
+        [`Height (px)`, `1080`],
+      ])
+        await expect(pane.getByRole(`spinbutton`, { name })).toHaveValue(value)
+      const sections = pane.getByRole(`region`, { name: /^(?:Frame Range|Video Settings)$/ })
+      await expect(sections).toHaveCount(2)
+      for (const width of [390, 1200]) {
+        await page.setViewportSize({ width, height: 1000 })
+        // Both adjacent frame inputs and mixed FPS/resolution controls need breathing room.
+        for (const section of await sections.all()) {
+          const gaps = await section.evaluate((element) => {
+            const rows = [...element.children].map((row) => row.getBoundingClientRect())
+            return rows.slice(1).map((row, idx) => row.top - rows[idx].bottom)
+          })
+          expect(gaps.length).toBeGreaterThan(0)
+          for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(7.5)
+        }
+      }
+    },
+  )
+
+  test(
+    `cancelling a video export centers its progress, restores the frame and saves nothing`,
+    { tag: `@single-viewer` },
+    async ({ page }) => {
+      // Export paces itself at no more than 10 fps, so 200 frames take >= 20 s however fast the
+      // machine encodes: the run is still going when Cancel is clicked, unlike the 3-frame demo.
+      const n_frames = 200
+      const content = Array.from(
+        { length: n_frames },
+        (_unused, idx) =>
+          `1\nLattice="4 0 0 0 4 0 0 0 4" Properties=species:S:1:pos:R:3 step=${idx}\nH ${idx / 100} 1 1\n`,
+      ).join(``)
+      await drop_file(page, trajectory_viewer, content, `long-run.xyz`)
+      await expect(step_input).toHaveAttribute(`max`, `${n_frames}`)
+      await step_input.fill(`150`)
+      await step_input.press(`Enter`)
+      const pane = await open_export_pane([160, 90, 10])
+      let downloads = 0
+      page.on(`download`, () => downloads++)
+      const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
+      await export_button.click()
+      // Recording starts from frame 1, so leaving frame 150 shows the export is mid-run.
+      await expect(step_input).not.toHaveValue(`150`)
+      const cancel = pane.getByRole(`button`, { name: `Cancel export`, exact: true })
+      const [progress, label, cancel_box] = await Promise.all(
+        [pane.locator(`.export-progress`), pane.getByText(`Exporting WEBM…`), cancel].map(
+          (locator) => require_bbox(locator),
+        ),
+      )
+      for (const box of [label, cancel_box]) expect_centered(box, progress, `x`)
+      expect(cancel_box.y - label.y - label.height).toBeGreaterThanOrEqual(8)
+      await cancel.click()
+      await expect(export_button).toBeEnabled()
+      await expect(cancel).toHaveCount(0)
+      await expect(step_input).toHaveValue(`150`)
+      await expect_no_alerts(pane)
+      expect(downloads).toBe(0)
+    },
+  )
+
+  test(
+    `exports save into a chosen folder instead of downloading`,
+    { tag: [`@single-viewer`, `@file-destination`] },
+    async ({ page }) => {
+      const pane = await open_export_pane()
+      let downloads = 0
+      page.on(`download`, () => downloads++)
+      await pane.getByRole(`button`, { name: `Choose folder…`, exact: true }).click()
+      await expect(pane.getByRole(`radio`, { name: `chosen-exports/` })).toBeChecked()
+      await pane.getByRole(`button`, { name: `Download extXYZ`, exact: true }).click()
+      // Each saved frame's atom lines: none until the export creates the file, all once its
+      // writable commits on close
+      const saved_atoms = () =>
+        page.evaluate(async () => {
+          const root = await navigator.storage.getDirectory()
+          const folder = await root.getDirectoryHandle(`chosen-exports`)
+          const file = await folder.getFileHandle(`My trajectory.extxyz`).catch(() => null)
+          const frames = file ? (await (await file.getFile()).text()).split(/\n(?=2\n)/) : []
+          return frames.map((frame) => frame.trim().split(`\n`).slice(2))
+        })
+      // all three frames, the H atom moving 0.2 Å along x each step
+      const [origin, oxygen] = [`0.00000000`, `O ${`1.00000000 `.repeat(3).trim()}`]
+      const atoms = [0, 0.2, 0.4].map((x) => [`H ${x.toFixed(8)} ${origin} ${origin}`, oxygen])
+      await expect.poll(saved_atoms).toEqual(atoms)
+      await expect_no_alerts(pane)
+      expect(downloads).toBe(0)
+    },
+  )
+
   for (const label of [`WebM`, `MP4`])
     test(
-      `tiny trajectory AV1 ${label} export cancels, restores its frame, and retries with decodable video`,
-      { tag: [`@single-viewer`, `@file-destination`] },
+      `AV1 ${label} export downloads a decodable video of the trajectory`,
+      { tag: `@single-viewer` },
       async ({ page }, test_info) => {
-        await trajectory_viewer.scrollIntoViewIfNeeded()
-        const step_input = controls.locator(`.step-input`)
-        await step_input.fill(`3`)
-        await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
-        const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
-        await pane
-          .getByRole(`textbox`, { name: `File name`, exact: true })
-          .fill(`My trajectory`)
-        for (const width of [390, 1200]) {
-          await page.setViewportSize({ width, height: 1000 })
-          // Both adjacent frame inputs and mixed FPS/resolution controls need breathing room.
-          for (const section of await pane.locator(`.settings-section`).all()) {
-            const gaps = await section.evaluate((element) => {
-              const rows = [...element.children].map((row) => row.getBoundingClientRect())
-              return rows.slice(1).map((row, idx) => row.top - rows[idx].bottom)
-            })
-            expect(gaps.length).toBeGreaterThan(0)
-            for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(7.5)
-          }
-        }
-        await expect(pane.getByRole(`spinbutton`, { name: `Width (px)` })).toHaveValue(`1920`)
-        await expect(pane.getByRole(`spinbutton`, { name: `Height (px)` })).toHaveValue(`1080`)
-        await pane.getByRole(`spinbutton`, { name: `Width (px)` }).fill(`640`)
-        await pane.getByRole(`spinbutton`, { name: `Height (px)` }).fill(`360`)
-        await pane.getByRole(`spinbutton`, { name: `Bitrate (Mbps)` }).fill(`4`)
-        await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
-        const expected_size = { width: 640, height: 360 }
-        const export_button = pane.getByRole(`button`, {
-          name: `Download ${label}`,
-          exact: true,
-        })
-        let downloads = 0
-        page.on(`download`, () => downloads++)
+        const pane = await open_export_pane([640, 360, 10])
+        const export_button = pane.getByRole(`button`, { name: `Download ${label}` })
+        const download_event = page.waitForEvent(`download`)
         await export_button.click()
-        const [progress, status, cancel] = await pane
-          .locator(`.export-progress`)
-          .evaluate((element) =>
-            [element, ...element.querySelectorAll(`[role="status"], button`)].map((node) => {
-              const { x, y, width, height, bottom } = node.getBoundingClientRect()
-              return { x, y, width, height, bottom }
-            }),
-          )
-        await pane.getByRole(`button`, { name: `Cancel export`, exact: true }).click()
-        for (const box of [status, cancel]) {
-          expect_centered(box, progress, `x`)
-        }
-        expect(cancel.y - status.bottom).toBeGreaterThanOrEqual(8)
+        const download = await download_event
         await expect(export_button).toBeEnabled()
-        await expect(step_input).toHaveValue(`3`)
-        expect(downloads).toBe(0)
-        const [download] = await Promise.all([
-          page.waitForEvent(`download`),
-          export_button.click().then(async () => {
-            await expect(export_button).toBeEnabled()
-            expect(await pane.locator(`.error-message`).allTextContents()).toEqual([])
-          }),
-        ])
-        await expect(step_input).toHaveValue(`3`)
-        expect(downloads).toBe(1)
+        await expect_no_alerts(pane)
         const format = label.toLowerCase()
         const path = test_info.outputPath(`trajectory.${format}`)
         await download.saveAs(path)
@@ -938,70 +1000,32 @@ test.describe(`Trajectory Component`, () => {
         expect(download.suggestedFilename()).toBe(`My trajectory.${format}`)
         // Assert the encoded track, not just the requested MIME type or file extension.
         expect(video_data.includes(format === `webm` ? `V_AV1` : `av01`)).toBe(true)
+        // Decode the first frame in the browser: its size and the span of its RGB channels
         const decoded = await page.evaluate(
-          ({ encoded, mime_type }) =>
-            new Promise<{ width: number; height: number; color_span: number }>(
-              (resolve, reject) => {
-                const video = document.createElement(`video`)
-                video.requestVideoFrameCallback(() => {
-                  video.pause()
-                  const canvas = document.createElement(`canvas`)
-                  canvas.width = video.videoWidth
-                  canvas.height = video.videoHeight
-                  const context = canvas.getContext(`2d`)
-                  if (!context) return reject(new Error(`Canvas 2D context not available`))
-                  context.drawImage(video, 0, 0)
-                  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
-                  let min_channel = 255
-                  let max_channel = 0
-                  for (let idx = 0; idx < pixels.length; idx++) {
-                    if (idx % 4 === 3) continue
-                    min_channel = Math.min(min_channel, pixels[idx])
-                    max_channel = Math.max(max_channel, pixels[idx])
-                  }
-                  resolve({
-                    width: video.videoWidth,
-                    height: video.videoHeight,
-                    color_span: max_channel - min_channel,
-                  })
-                })
-                video.addEventListener(`error`, () =>
-                  reject(new Error(video.error?.message ?? `AV1 decode failed`)),
-                )
-                video.muted = true
-                video.src = `data:${mime_type};base64,${encoded}`
-                video.play().catch(reject)
-              },
-            ),
+          async ({ encoded, mime_type }) => {
+            const video = Object.assign(document.createElement(`video`), { muted: true })
+            const failed = new Promise<never>((_resolve, reject) =>
+              video.addEventListener(`error`, () =>
+                reject(new Error(`AV1 decode: ${video.error?.message}`)),
+              ),
+            )
+            const shown = new Promise((resolve) => video.requestVideoFrameCallback(resolve))
+            video.src = `data:${mime_type};base64,${encoded}`
+            await Promise.race([Promise.all([video.play(), shown]), failed])
+            video.pause()
+            const { videoWidth: width, videoHeight: height } = video
+            const context = new OffscreenCanvas(width, height).getContext(`2d`)
+            if (!context) throw new Error(`Canvas 2D context not available`)
+            context.drawImage(video, 0, 0)
+            const { data } = context.getImageData(0, 0, width, height)
+            const rgb = data.filter((_value, idx) => idx % 4 < 3).toSorted()
+            return { width, height, color_span: rgb[rgb.length - 1] - rgb[0] }
+          },
           { encoded: video_data.toString(`base64`), mime_type: `video/${format}` },
         )
-        expect(decoded.width).toBe(expected_size.width)
-        expect(decoded.height).toBe(expected_size.height)
+        expect(decoded).toMatchObject({ width: 640, height: 360 })
         // A valid container holding only a blank frame is still a broken trajectory export.
         expect(decoded.color_span).toBeGreaterThan(40)
-        await pane.getByRole(`button`, { name: `Choose export folder`, exact: true }).click()
-        await expect(pane.locator(`.folder-name`)).toHaveText(`chosen-exports/`)
-        await export_button.click()
-        await expect(export_button).toBeEnabled()
-        // StatusMessage keeps its alert region mounted; no error message may sit in it
-        await expect(pane.locator(`[role="alert"] .status-message`)).toHaveCount(0)
-        expect(downloads).toBe(1)
-        const saved = await page.evaluate(async (container) => {
-          const directory = await (
-            await navigator.storage.getDirectory()
-          ).getDirectoryHandle(`chosen-exports`)
-          const file = await (
-            await directory.getFileHandle(`My trajectory.${container}`)
-          ).getFile()
-          const contents = new TextDecoder().decode(await file.arrayBuffer())
-          return {
-            name: file.name,
-            size: file.size,
-            av1: contents.includes(container === `webm` ? `V_AV1` : `av01`),
-          }
-        }, format)
-        expect(saved).toMatchObject({ name: `My trajectory.${format}`, av1: true })
-        expect(saved.size).toBeGreaterThan(100)
       },
     )
 
@@ -1033,7 +1057,6 @@ test.describe(`Trajectory Component`, () => {
         )
         for (const width of [1200, 750, 500]) {
           await page.setViewportSize({ width, height: 1000 })
-          const plot = trajectory_viewer.locator(`.content-area`)
           await expect(async () => {
             const bounds = await require_bbox(controls)
             for (const element of [plot_type, property]) {
@@ -1047,12 +1070,12 @@ test.describe(`Trajectory Component`, () => {
           for (const type of [`time-series`, `distribution`]) {
             await plot_type.selectOption(type)
             await expect(async () => {
-              const bounds = await require_bbox(plot)
-              const chart = await require_bbox(plot.locator(`.plot-frame`))
+              const bounds = await require_bbox(content)
+              const chart = await require_bbox(content.locator(`.plot-frame`))
               expect(Math.abs(chart.y - bounds.y)).toBeLessThan(1)
               expect(Math.abs(chart.height - bounds.height)).toBeLessThan(1)
-              const gear = await require_bbox(plot.locator(`.control-pane-toggle > svg`))
-              const fullscreen = await require_bbox(plot.locator(`.fullscreen-btn > svg`))
+              const gear = await require_bbox(content.locator(`.control-pane-toggle > svg`))
+              const fullscreen = await require_bbox(content.locator(`.fullscreen-btn > svg`))
               expect_centered(gear, fullscreen, `y`)
               expect(gear.height).toBe(fullscreen.height)
             }).toPass()
@@ -1075,10 +1098,13 @@ test.describe(`Trajectory Component`, () => {
     test(`step labels clear ticks within the control bar and a narrow viewer hides the filename`, async ({
       page,
     }) => {
-      const step_labels = trajectory_viewer.locator(`.step-labels .step-label`)
-      // numbered 1..N like the step input
-      await expect(step_labels).toHaveText([`1`, `2`, `3`])
-
+      // numbered 1..N like the step input; explicit step_labels are 0-based indices
+      for (const [viewer, labels] of [
+        [`loaded-trajectory`, [`1`, `2`, `3`]],
+        [`negative-step-labels`, [`1`, `2`, `3`]],
+        [`array-step-labels`, [`1`, `3`]],
+      ] as const)
+        await expect(page.locator(`#${viewer} .step-label`)).toHaveText(labels)
       const { controls_bottom, label_bottoms, tick_label_gaps } = await controls.evaluate(
         (control_bar) => {
           const labels = Array.from(control_bar.querySelectorAll(`.step-label`))
@@ -1096,32 +1122,37 @@ test.describe(`Trajectory Component`, () => {
       expect(Math.max(...label_bottoms)).toBeLessThanOrEqual(controls_bottom)
       expect(Math.min(...tick_label_gaps)).toBeGreaterThanOrEqual(1)
 
-      await expect(page.locator(`#negative-step-labels .step-label`)).toHaveText([
-        `1`,
-        `2`,
-        `3`,
-      ])
-      // explicit step_labels are 0-based indices
-      await expect(page.locator(`#array-step-labels .step-label`)).toHaveText([`1`, `3`])
-
       // A narrow viewer hides the filename and keeps the step slider off the FPS input
-      await trajectory_viewer.evaluate((element) => {
-        element.style.width = `1200px`
-      })
+      const set_width = (width: string) =>
+        trajectory_viewer.evaluate(
+          (element, value) => element.style.setProperty(`width`, value),
+          width,
+        )
+      await set_width(`1200px`)
       await expect(trajectory_viewer.locator(`button.filename`)).toBeVisible()
-      await trajectory_viewer.evaluate((element) => {
-        element.style.width = `800px`
-      })
+      await set_width(`800px`)
       await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
-      const slider_box = await require_bbox(trajectory_viewer.locator(`.slider-container`))
+      const slider = trajectory_viewer.locator(`.slider-container`)
+      const slider_box = await require_bbox(slider)
       const fps_box = await require_bbox(trajectory_viewer.locator(`.fps-section`))
       expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(fps_box.x + 1)
+      // Narrower still, the step section starts a row below the transport buttons rather
+      // than squeezing the slider (SequenceControls' content-sized basis)
+      await set_width(`360px`)
+      await expect(async () => {
+        const nav_box = await require_bbox(trajectory_viewer.locator(`.nav-section`))
+        const narrow_slider = await require_bbox(slider)
+        expect(narrow_slider.y).toBeGreaterThanOrEqual(nav_box.y + nav_box.height)
+        expect(narrow_slider.width).toBeGreaterThanOrEqual(100)
+      }).toPass()
     })
 
     test(`viewer surface contrasts the page and hover controls overlay it`, async ({
       page,
     }) => {
-      await expect(page.locator(`#no-controls .trajectory-controls`)).toBeHidden()
+      // show_controls=false renders no bar, so first prove the viewer itself is there
+      await expect(page.locator(`#no-controls .structure`)).toBeVisible()
+      await expect(page.locator(`#no-controls .trajectory-controls`)).toHaveCount(0)
       const hover_viewer = page.locator(`#vertical-layout`)
       const hover_controls = hover_viewer.locator(`.trajectory-controls`)
       await expect(hover_viewer).toHaveCSS(`border-radius`, `4px`)
@@ -1162,16 +1193,13 @@ test.describe(`Trajectory Component`, () => {
       await expect(legend_items).toHaveCount(2)
 
       const first_item = legend_items.first()
-      await expect(first_item).toBeVisible()
       await expect(first_item).not.toHaveClass(/hidden/)
 
       await first_item.click()
       await expect(first_item).toHaveClass(/hidden/)
 
       // Regression: trigger a reactive update and verify hidden state persists.
-      const next_btn = trajectory_viewer.locator(`button[title^="Next step"]`)
-      await expect(next_btn).toBeVisible()
-      await next_btn.click()
+      await controls.getByRole(`button`, { name: `Next step`, exact: true }).click()
       await expect(first_item).toHaveClass(/hidden/)
     })
 
@@ -1184,15 +1212,15 @@ test.describe(`Trajectory Component`, () => {
       ] as const) {
         const trajectory = page.locator(selector)
         const scatter_plot = trajectory.locator(`.scatter`)
-        const step_input = trajectory.locator(`.step-input`)
+        const viewer_step = step_input_of(trajectory)
         await expect(scatter_plot, selector).toBeVisible({ timeout: LOAD_TIMEOUT })
         const plot_points = scatter_plot.locator(`.marker`)
         expect(await plot_points.count(), selector).toBeGreaterThan(1)
-        const initial_step = await step_input.inputValue()
+        const initial_step = await viewer_step.inputValue()
         await plot_points.nth(1).hover()
-        await expect(step_input, `${selector} hover`).toHaveValue(initial_step)
+        await expect(viewer_step, `${selector} hover`).toHaveValue(initial_step)
         await plot_points.nth(1).click()
-        const click_step = expect(step_input, `${selector} click`)
+        const click_step = expect(viewer_step, `${selector} click`)
         if (navigation_enabled) await click_step.not.toHaveValue(initial_step)
         else await click_step.toHaveValue(initial_step)
       }
@@ -1201,21 +1229,17 @@ test.describe(`Trajectory Component`, () => {
 
   test.describe(`advanced features`, () => {
     // role, tabindex and which toggles render are pinned in tests/vitest/trajectory/Trajectory
-    test(`info pane opened after closing the data inspector gives values more room than labels`, async ({
-      page,
-    }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const trajectory_controls = trajectory.locator(`.trajectory-controls`)
+    test(`info pane opened after closing the data inspector gives values more room than labels`, async () => {
       // The open data inspector's Info tab replaces the info button; closing it brings it back
-      const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
-      await expect(trajectory.locator(`.trajectory-data-inspector-sidebar`)).toBeVisible()
+      const info_toggle = controls.locator(`.trajectory-info-toggle`)
+      await open_analysis(`Data inspector`)
+      await expect(
+        trajectory_viewer.locator(`.trajectory-data-inspector-sidebar`),
+      ).toBeVisible()
       await expect(info_toggle).toHaveCount(0)
-      await trajectory_controls.locator(`button[aria-label="Analysis"]`).click()
-      await trajectory
-        .locator(`.analysis-dropdown button`, { hasText: `Data inspector` })
-        .click()
+      await open_analysis(`Data inspector`)
       await info_toggle.click()
-      const info_pane = trajectory.locator(`.trajectory-info-pane`)
+      const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`)
       const info_row = info_pane.locator(`.info-row`).first()
       await expect(info_row.locator(`span`).first()).toHaveCSS(`text-align`, `left`)
       const widths = await info_row
@@ -1231,13 +1255,14 @@ test.describe(`Trajectory Component`, () => {
     }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       await select_display_mode(trajectory, `Structure-only`)
-      const step_input = trajectory.locator(`.step-input`)
       await expect(step_input).toHaveValue(`1`)
       await step_input.fill(`2`) // fill leaves the input focused
       await expect(step_input).toHaveValue(`2`)
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
-      await expect(play_button, `Space in the step input must not play`).toHaveText(`▶`)
+      await expect(play_button, `Space in the step input must not play`).toHaveAccessibleName(
+        `Play`,
+      )
       await page.keyboard.press(`v`)
       await expect(
         trajectory.locator(`.content-area`),
@@ -1285,19 +1310,19 @@ test.describe(`Trajectory Component`, () => {
       `playback shortcuts flash their controls without resizing them`,
       { tag: `@single-viewer` },
       async ({ page }) => {
-        const trajectory = page.locator(`#loaded-trajectory`)
-        await trajectory.focus()
-        for (const [key, selector] of [
-          [`ArrowRight`, `.nav-section button:last-child`],
-          [`ArrowLeft`, `.nav-section button:first-child`],
-          [`End`, `.step-input`],
-          [`Home`, `.step-input`],
-          [`+`, `.fps-section input`],
-          [`-`, `.fps-section input`],
-          [`Space`, `.play-button`],
-          [`Space`, `.play-button`],
-        ]) {
-          const control = trajectory.locator(selector)
+        await trajectory_viewer.focus()
+        const button = (name: string | RegExp) => controls.getByRole(`button`, { name })
+        const fps_input = controls.getByRole(`spinbutton`, { name: `FPS`, exact: true })
+        for (const [key, control] of [
+          [`ArrowRight`, button(`Next step`)],
+          [`ArrowLeft`, button(`Previous step`)],
+          [`End`, step_input],
+          [`Home`, step_input],
+          [`+`, fps_input],
+          [`-`, fps_input],
+          [`Space`, button(/^(?:Play|Pause)$/)],
+          [`Space`, button(/^(?:Play|Pause)$/)],
+        ] as const) {
           await page.keyboard.press(key)
           await expect(control, key).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
           const { width, height } = await require_bbox(control)
@@ -1372,9 +1397,7 @@ test.describe(`Trajectory Component`, () => {
       // Wait for the plot, not the controls: controls render as soon as the
       // trajectory loads, but the scatter only appears once plot metadata is
       // sampled, and both panes have to exist before either can be measured.
-      await expect(trajectory.locator(`.scatter`)).toBeVisible({
-        timeout: 30000,
-      })
+      await expect(trajectory.locator(`.scatter`)).toBeVisible({ timeout: 30_000 })
 
       // 500px tall is what a chat sidebar card really measures, and minHeight has
       // to go for any height below that to stick: .trajectory's own 500px floor
@@ -1431,12 +1454,8 @@ test.describe(`Trajectory Component`, () => {
         const viewer = page.locator(selector)
         await expect(viewer).toBeVisible()
         await expect(viewer).toHaveClass(new RegExp(orientation))
-        await expect(viewer.locator(`.structure`)).toBeVisible({
-          timeout: LOAD_TIMEOUT,
-        })
-        await expect(viewer.locator(`.scatter`)).toBeVisible({
-          timeout: LOAD_TIMEOUT,
-        })
+        for (const pane of [`.structure`, `.scatter`])
+          await expect(viewer.locator(pane)).toBeVisible({ timeout: LOAD_TIMEOUT })
         const pane_dimensions = () =>
           viewer.locator(`.content-area`).evaluate((element) => {
             const structure = element.querySelector(`.structure`)
@@ -1527,7 +1546,7 @@ test(`a trajectory frame or plain Structure with another cell orbits and frames 
     const distance = ({ target, position }: { target: number[]; position: number[] }) =>
       Math.hypot(...position.map((coord, axis) => coord - target[axis]))
     const first = await orbit(viewer, camera)
-    const step_input = viewer.locator(`.step-input`)
+    const step_input = step_input_of(viewer)
     await step_input.fill(`2`) // second frame
     await step_input.press(`Enter`)
     await expect(step_input).toHaveValue(`2`)

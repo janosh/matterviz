@@ -8,13 +8,13 @@ import {
   normalize_show_controls,
   shows_fullscreen_toggle,
   type ShowControlsProp,
-} from '#lib/controls.js'
-import { same_values, type Vec2 } from '#lib/math.js'
+} from '#lib/controls'
+import { same_values, type Vec2 } from '#lib/math'
 import type {
   DecorationItem,
   DecorationSolution,
   LegendCellSizes,
-} from '#lib/plot/core/decorations/index.js'
+} from '#lib/plot/core/decorations/index'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
@@ -25,9 +25,9 @@ import {
   solve_decorations,
   legend_cell_sizes,
   legend_wrap_size,
-} from '#lib/plot/core/decorations/index.js'
-import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte.js'
-import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets.js'
+} from '#lib/plot/core/decorations/index'
+import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte'
+import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets'
 import {
   axis_ranges_equal,
   axis_transform,
@@ -37,33 +37,34 @@ import {
   normalize_y2_sync,
   type PixelRect,
   resolve_axis_ranges,
+  shared_xy_range,
   snapshot_ranges,
   sync_y2_range,
   vec2_equal,
-} from '#lib/plot/core/interactions.js'
-import type { Rect, Sides } from '#lib/plot/core/layout.js'
+} from '#lib/plot/core/interactions'
+import type { Rect, Sides } from '#lib/plot/core/layout'
 import {
   compute_auto_padding,
   DEFAULT_PLOT_PADDING,
   filter_padding,
   sides_equal,
-} from '#lib/plot/core/layout.js'
-import type { ResolvedMarginals } from '#lib/plot/core/marginals.js'
-import { reserve_marginal_pad } from '#lib/plot/core/marginals.js'
-import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
-import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
-import type { PlotTitleProp } from '#lib/plot/core/plot-title.js'
-import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-title.js'
-import { index_ref_lines, solve_reference_annotations } from '#lib/plot/core/reference-line.js'
+} from '#lib/plot/core/layout'
+import type { ResolvedMarginals } from '#lib/plot/core/marginals'
+import { reserve_marginal_pad } from '#lib/plot/core/marginals'
+import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte'
+import type { PlotTitleProp } from '#lib/plot/core/plot-title'
+import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-title'
+import { index_ref_lines, solve_reference_annotations } from '#lib/plot/core/reference-line'
 import {
   create_axis_scales,
   derived_tick_type,
   generate_log_minor_ticks,
   generate_ticks,
   log_floor_scale,
-} from '#lib/plot/core/scales.js'
-import type { FontSpec } from '#lib/plot/core/text-metrics.js'
-import { measured_axis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
+} from '#lib/plot/core/scales'
+import type { FontSpec } from '#lib/plot/core/text-metrics'
+import { measured_axis, resolve_tick_layout } from '#lib/plot/core/tick-layout'
 import type {
   AxisConfig,
   AxisRanges,
@@ -73,9 +74,8 @@ import type {
   RefLineEvent,
   AxisDerive,
   ScaleType,
-} from '#lib/plot/core/types.js'
-import { get_scale_type_name } from '#lib/plot/core/types.js'
-import { unique_id } from '#lib/plot/core/utils.js'
+} from '#lib/plot/core/types'
+import { get_scale_type_name } from '#lib/plot/core/types'
 import { untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 
@@ -130,6 +130,8 @@ interface CartesianFrameOptions {
   has_data?: () => PerAxis<boolean>
   // Tick counts per axis when the axis config leaves `ticks` unset
   tick_counts?: PerAxis<number>
+  // The chart's `shared_xy_range` prop: x and y show one range (see shared_xy_range)
+  shared_xy_range?: () => boolean
   // Forwarded to the pan/zoom controller so charts can track a live rect drag
   on_drag_move?: (coords: { x: number; y: number }, inside_svg: boolean) => void
   // Alt+drag rect in svg px, turned into a selection; omitted, Alt+drag zooms
@@ -143,8 +145,8 @@ interface CartesianFrameOptions {
   tick_override?: (axis: FacetAxis) => number[] | undefined
   // Axis configs used only to measure tick labels (e.g. category names, not slot indices)
   measured_axes?: () => PerAxis<AxisConfig>
-  // Prefix of the generated clip-path id
-  clip_id_prefix?: string
+  // Unique clip-path id, from the component's $props.id()
+  clip_path_id: string
 }
 
 export type CartesianFrame = ReturnType<typeof create_cartesian_frame>
@@ -152,10 +154,9 @@ export type CartesianFrame = ReturnType<typeof create_cartesian_frame>
 // Whether CartesianFrame draws its corner controls row: the settings toggle or fullscreen button
 export const has_controls_row = (
   show_controls: ShowControlsProp<`controls` | `fullscreen`> | undefined,
-  fullscreen_toggle: boolean,
 ): boolean => {
   const config = normalize_show_controls(show_controls)
-  return config.visible(`controls`) || shows_fullscreen_toggle(fullscreen_toggle, config)
+  return config.visible(`controls`) || shows_fullscreen_toggle(config)
 }
 
 export function create_cartesian_frame(opts: CartesianFrameOptions) {
@@ -175,7 +176,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const legend_collapsed_groups = $derived(
     opts.legend()?.collapsed_groups ?? own_collapsed_groups,
   )
-  const clip_path_id = unique_id(opts.clip_id_prefix ?? `plot-clip`)
+  const { clip_path_id } = opts
 
   // `initial` is the reset target, `current` the live view gestures edit. They must never
   // share a Vec2 or an in-place edit would rewrite the reset target (hence snapshot_ranges).
@@ -319,6 +320,26 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     const y: Vec2 = auto.y[0] > auto.y[1] ? [hi, lo] : [lo, hi]
     return { auto: { ...auto, y }, has_data: { ...has_data, y: true } }
   })
+  // x and y resolve against one auto range and one set of pins under `shared_xy_range`; the
+  // range is the reset target, pan/zoom still move each axis on its own
+  const xy_auto = $derived.by(() => {
+    const { auto, has_data } = synced_auto
+    const sources = opts.range_sources?.() ?? opts.axes()
+    if (!opts.shared_xy_range?.()) return { auto, has_data, sources }
+    // a grid reconciles each axis across panels, which would undo the sharing
+    if (opts.facet_layout()) throw new Error(`shared_xy_range is not supported in facet grids`)
+    const shared = shared_xy_range(sources, auto, has_data)
+    const backed = has_data.x !== false || has_data.y !== false
+    return {
+      auto: { ...auto, x: shared.auto, y: [...shared.auto] as Vec2 },
+      has_data: { ...has_data, x: backed, y: backed },
+      sources: {
+        ...sources,
+        x: { ...sources.x, range: shared.range },
+        y: { ...sources.y, range: shared.range },
+      },
+    }
+  })
 
   // Each axis's explicit bounds as last synced: a changed one moves a zoomed view too
   const synced_bounds: PerAxis<string> = {}
@@ -326,8 +347,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // bounds (NaN breaks scales and loops the effect). Runs pre-render so new data is never
   // culled against stale ranges, which would remount markers and discard their tweens.
   const sync_ranges = () => {
-    const sources = opts.range_sources?.() ?? opts.axes()
-    const next = resolve_axis_ranges(sources, synced_auto.auto)
+    const { sources, auto, has_data } = xy_auto
+    const next = resolve_axis_ranges(sources, auto)
     if (!next) return
     // untracked so the writes below can't re-trigger this effect
     const initial = untrack(() => ranges.initial)
@@ -340,7 +361,6 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       }
     } else if (opts.range_sync === `expand`) {
       // Adopt each axis's new range unless nothing backs it (no data, no pinned bound)
-      const { has_data } = synced_auto
       for (const axis of FACET_AXES) {
         const pinned = sources[axis].range?.some((bound) => bound != null) ?? false
         const bounds = JSON.stringify(sources[axis].range ?? null)
@@ -1014,7 +1034,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     // The controls' range reset targets: x2/y2 only while they carry data
     get controls_auto_ranges() {
-      const { auto } = synced_auto
+      const { auto } = xy_auto
       return {
         ...auto,
         x2: opts.has_x2() ? auto.x2 : undefined,

@@ -1,5 +1,5 @@
-import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics.js'
-import { resolve_color_scale } from '#lib/plot/core/scales.js'
+import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics'
+import { resolve_color_scale } from '#lib/plot/core/scales'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -14,9 +14,9 @@ import {
   node_label_str,
   node_label_variants,
   toggle_muted,
-} from '#lib/plot/core/utils/hierarchy-chart.js'
-import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
-import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
+} from '#lib/plot/core/utils/hierarchy-chart'
+import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout'
 import { describe, expect, test } from 'vite-plus/test'
 
 // oxfmt-ignore

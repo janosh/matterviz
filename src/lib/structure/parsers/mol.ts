@@ -1,8 +1,8 @@
 // MDL MOL / SDF (structure-data file) V2000 and V3000 connection tables. Both carry
 // Cartesian coordinates without a unit cell and an authoritative bond block.
-import type { BondOrder, Molecule, Site } from '#lib/structure/index.js'
-import { make_site } from '#lib/structure/site.js'
-import { parse_warn } from '#lib/trajectory/parse/shared.js'
+import type { BondOrder, Molecule, Site } from '#lib/structure/index'
+import { make_site } from '#lib/structure/site'
+import { parse_warn } from '#lib/trajectory/parse/shared'
 import {
   element_from_candidates,
   is_num_token,

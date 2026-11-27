@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Sunburst } from '#lib/plot/index.js'
-  import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
+  import { Sunburst } from '#lib/plot/index'
+  import type { PositionedArc, SunburstNode } from '#lib/plot/index'
   import TestSection from '../TestSection.svelte'
 
   const data: SunburstNode[] = [

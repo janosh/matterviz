@@ -1,5 +1,5 @@
-import type { GizmoOptions } from '#lib/scene/index.js'
-import { gizmo_rect, responsive_gizmo_size } from '#lib/scene/gizmo.js'
+import type { GizmoOptions } from '#lib/scene/index'
+import { gizmo_rect, responsive_gizmo_size } from '#lib/scene/gizmo'
 import Gizmo from '#lib/scene/Gizmo.svelte'
 import { createSchedulerContext, currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'

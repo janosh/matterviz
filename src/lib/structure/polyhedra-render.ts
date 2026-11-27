@@ -1,8 +1,8 @@
 // Three.js render buffers for coordination polyhedra and fat line segments. Kept apart from
 // polyhedra.ts, whose detection runs three-free wherever structures are parsed or imaged.
-import { display_idx } from '#lib/labels.js'
-import { grow_capacity } from '#lib/math.js'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
+import { display_idx } from '#lib/labels'
+import { grow_capacity } from '#lib/math'
+import { css_to_linear_rgb } from '#lib/scene/colors'
 import type { InterleavedBuffer, InterleavedBufferAttribute } from 'three/webgpu'
 import {
   Box3,

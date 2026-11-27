@@ -1,13 +1,13 @@
 // moyo bridge: the one place a structure is handed to moyo's analyze_cell (the WASM build, or
 // a host backend running moyo natively), plus thin wrappers over its space-group database.
-import { display_idx } from '#lib/labels.js'
-import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
-import * as math from '#lib/math.js'
-import { DEFAULTS } from '#lib/settings.js'
-import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
-import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { make_site, species_key } from '#lib/structure/site.js'
+import { display_idx } from '#lib/labels'
+import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers'
+import * as math from '#lib/math'
+import { DEFAULTS } from '#lib/settings'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index'
+import { merge_split_partial_sites } from '#lib/structure/partial-occupancy'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
+import { make_site, species_key } from '#lib/structure/site'
 import { can_create_worker, create_worker_client } from 'svelte-widgets/worker-client'
 import { is_identity } from './symmetry-elements'
 import type {

@@ -1,10 +1,10 @@
 import {
   create_hull_selection,
   HOVER_PREVIEW_DELAY_MS,
-} from '#lib/convex-hull/canvas-interactions.svelte.js'
-import { create_hull_data_pipeline } from '#lib/convex-hull/hull-state.svelte.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { MAGNETIC_ORDERING_CATEGORY, type ConvexHullEntry } from '#lib/convex-hull/types.js'
+} from '#lib/convex-hull/canvas-interactions.svelte'
+import { create_hull_data_pipeline } from '#lib/convex-hull/hull-state.svelte'
+import type { AnyStructure } from '#lib/structure/index'
+import { MAGNETIC_ORDERING_CATEGORY, type ConvexHullEntry } from '#lib/convex-hull/types'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { make_phase } from '../test-fixtures'

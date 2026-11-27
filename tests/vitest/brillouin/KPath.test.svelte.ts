@@ -1,7 +1,7 @@
 // KPath against the recording Threlte stub (no WebGPU renderer)
 import KPath from '#lib/brillouin/KPath.svelte'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import { TouchTaps } from '#lib/scene/interactivity.js'
+import type { Vec2, Vec3 } from '#lib/math'
+import { TouchTaps } from '#lib/scene/interactivity'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   Color,

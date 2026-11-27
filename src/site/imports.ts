@@ -1,4 +1,4 @@
-import type { FileInfo } from '#lib/io/types.js'
+import type { FileInfo } from '#lib/io/types'
 
 // Vite dev yields requested default exports directly, while the Rolldown production
 // build can retain the module namespace around eager import.meta.glob values.

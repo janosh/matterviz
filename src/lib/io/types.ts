@@ -1,5 +1,5 @@
-import type { TrajectorySource } from '#lib/trajectory/index.js'
-import type { FileExportContext } from './file-export.svelte'
+import type { TrajectorySource } from '#lib/trajectory/index'
+import type { FileExportContext } from 'svelte-widgets/browser'
 
 export interface FileInfo {
   name: string
@@ -7,7 +7,6 @@ export interface FileInfo {
   label?: string // human-readable display name (falls back to name)
   type?: string
   category?: string
-  category_icon?: string
 }
 
 // Stable source identity for content whose logical filename may change after decompression.
@@ -53,6 +52,9 @@ export interface ExportItem {
   disabled?: boolean
   // Visible, accessible explanation for disabled download/copy buttons.
   disabled_reason?: string
+  // Disables only the download button while the pane's destination is Save As, with this
+  // reason (formats writing several files, which one Save As dialog can't name)
+  save_as_reason?: string
   // Click handler for the ⬇ download button (omit to hide the button)
   on_download?: (context: ExportPaneContext) => unknown
   // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return

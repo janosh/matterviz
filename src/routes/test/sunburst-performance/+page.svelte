@@ -4,7 +4,7 @@
   // fixture. Mount time is published in the DOM; hover/zoom frame timings are measured by
   // the spec itself via requestAnimationFrame.
   import { Sunburst, type SunburstNode } from '#lib'
-  import { mulberry32 } from '#lib/math.js'
+  import { mulberry32 } from '#lib/math'
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'

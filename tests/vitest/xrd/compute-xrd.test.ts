@@ -1,15 +1,12 @@
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { RadiationType } from '#lib/scattering/index.js'
-import { electron_form_factor, xray_form_factor } from '#lib/scattering/index.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
-import { apply_symmetry_operations } from '#lib/symmetry/wyckoff.js'
-import {
-  structure_xrd_pattern,
-  xrd_symmetry_rotations,
-} from '#lib/xrd/async-compute.svelte.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { RadiationType } from '#lib/scattering/index'
+import { electron_form_factor, xray_form_factor } from '#lib/scattering/index'
+import type { Crystal } from '#lib/structure/index'
+import { parse_structure_file } from '#lib/structure/parse'
+import { apply_symmetry_operations } from '#lib/symmetry/wyckoff'
+import { structure_xrd_pattern, xrd_symmetry_rotations } from '#lib/xrd/async-compute.svelte'
 import {
   compute_xrd_pattern,
   electron_wavelength,
@@ -18,8 +15,8 @@ import {
   structure_factors_squared,
   WAVELENGTHS,
   xray_source_lines,
-} from '#lib/xrd/compute-xrd.js'
-import type { HklObj, RecipPoint, XrdOptions, XrdPattern } from '#lib/xrd/index.js'
+} from '#lib/xrd/compute-xrd'
+import type { HklObj, RecipPoint, XrdOptions, XrdPattern } from '#lib/xrd/index'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import file_system from 'node:fs'
 import path from 'node:path'

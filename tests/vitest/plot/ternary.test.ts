@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import {
   inside_triangle,
   ternary_fractions,
@@ -7,7 +7,7 @@ import {
   ternary_to_xy,
   TRIANGLE_HEIGHT,
   xy_to_ternary,
-} from '#lib/plot/ternary/ternary.js'
+} from '#lib/plot/ternary/ternary'
 import { describe, expect, test } from 'vite-plus/test'
 
 // Rounded to 12 places (+ 0 folds -0 into 0) so whole arrays compare with toEqual

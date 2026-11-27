@@ -1,8 +1,8 @@
 <script lang="ts">
   // Marks where a 2D cross-section cuts a 3D view: the plane clipped to the cell (e.g.
   // slice_cell_polygon()) as a translucent fill with a closed outline
-  import type { Vec3 } from '#lib/math.js'
-  import { dispose_on_change, positions_geometry } from '#lib/scene/geometry.svelte.js'
+  import type { Vec3 } from '#lib/math'
+  import { dispose_on_change, positions_geometry } from '#lib/scene/geometry.svelte'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
 

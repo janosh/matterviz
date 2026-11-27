@@ -3,7 +3,7 @@
 // zooms, and a click, drag or keyboard focus activates the viewer until the pointer leaves,
 // Esc or a click elsewhere. Fullscreen viewers always zoom. Not double-click: it already
 // resets the camera (Structure, ChemPotDiagram3D) or copies an entry (convex hulls).
-import { host } from '#lib/host.js'
+import { host } from '#lib/host'
 import { getContext, mount, setContext, unmount } from 'svelte'
 import WheelZoomHint from './WheelZoomHint.svelte'
 

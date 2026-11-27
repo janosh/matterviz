@@ -2,27 +2,24 @@
 // triangle at sampled temperatures, exact transition temperatures by bisection of hull topology
 // changes, the balanced reactions behind each transition, and O(n) sections at any T in between.
 import { format_num } from 'svelte-widgets/format'
-import {
-  format_composition_formula,
-  sort_by_electronegativity,
-} from '#lib/composition/format.js'
-import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
-import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
+import { format_composition_formula, sort_by_electronegativity } from '#lib/composition/format'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce'
+import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords'
 import {
   gas_phase_entry,
   is_elemental_gas,
   is_gas_composition,
   relevant_gases,
-} from '#lib/convex-hull/gas-thermodynamics.js'
-import { is_unary_entry } from '#lib/convex-hull/helpers.js'
+} from '#lib/convex-hull/gas-thermodynamics'
+import { is_unary_entry } from '#lib/convex-hull/helpers'
 import {
   compute_lower_hull_nd,
   find_lowest_energy_unary_refs,
   get_energy_per_atom,
   normalize_hull_composition_keys,
-} from '#lib/convex-hull/thermodynamics.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/index.js'
+} from '#lib/convex-hull/thermodynamics'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type { ElementSymbol } from '#lib/element/index'
 import {
   array_min,
   euclidean_dist,
@@ -31,8 +28,8 @@ import {
   sorted_numbers,
   type Vec2,
   type Vec3,
-} from '#lib/math.js'
-import { inside_triangle, ternary_to_xy, xy_to_ternary } from '#lib/plot/ternary/ternary.js'
+} from '#lib/math'
+import { inside_triangle, ternary_to_xy, xy_to_ternary } from '#lib/plot/ternary/ternary'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,

@@ -3,8 +3,8 @@
   // Takes the raw per-mark list (holes allowed) and dedupes by id, so marks sharing a
   // pattern+color share one tile. Marks reference tiles via ResolvedPattern.url; see
   // #lib/plot/core/patterns for how tiles are derived.
-  import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
-  import { unique_patterns } from '#lib/plot/core/patterns.js'
+  import type { ResolvedPattern } from '#lib/plot/core/patterns'
+  import { unique_patterns } from '#lib/plot/core/patterns'
 
   let { patterns }: { patterns: Iterable<ResolvedPattern | null | undefined> } = $props()
 

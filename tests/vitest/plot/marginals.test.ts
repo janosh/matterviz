@@ -1,6 +1,6 @@
 import { createRawSnippet } from 'svelte'
-import { create_scale } from '#lib/plot/core/scales.js'
-import type { Vec2 } from '#lib/math.js'
+import { create_scale } from '#lib/plot/core/scales'
+import type { Vec2 } from '#lib/math'
 import {
   add_sides,
   compute_marginal_curve,
@@ -13,14 +13,14 @@ import {
   marginal_value_scale,
   normalize_marginals,
   reserve_marginal_pad,
-} from '#lib/plot/core/marginals.js'
+} from '#lib/plot/core/marginals'
 import type {
   MarginalSide,
   MarginalCurve,
   MarginalRenderContext,
   MarginalSeriesCurve,
   ResolvedMarginalConfig,
-} from '#lib/plot/core/marginals.js'
+} from '#lib/plot/core/marginals'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 

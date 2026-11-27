@@ -1,13 +1,13 @@
 <script lang="ts">
   import { InformationOutline } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
-  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import { ViewerPane } from '#lib/overlays/index.js'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
+  import { ViewerPane } from '#lib/overlays/index'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
-  import type { CompositionType } from '#lib/composition/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { ShortcutScope } from '#lib/shortcuts'
+  import type { CompositionType } from '#lib/composition/index'
+  import type { ElementSymbol } from '#lib/element/index'
   import { type OpenElements, type ProbeSubmission, probe_from_text } from './model'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import {

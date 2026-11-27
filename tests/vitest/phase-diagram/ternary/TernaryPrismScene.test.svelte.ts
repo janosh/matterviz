@@ -3,16 +3,16 @@
 // also shows the composition tooltip a hover there would, and lights up its tie triangle.
 // From the focused viewer root, the keyboard walks the rods.
 import { clamp } from 'svelte-widgets/utils'
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import {
   compute_section,
   compute_ternary_phase_diagram,
   prepare_diagram,
   prism_position,
-} from '#lib/phase-diagram/ternary/compute.js'
+} from '#lib/phase-diagram/ternary/compute'
 import TernaryPrismScene from '#lib/phase-diagram/ternary/TernaryPrismScene.svelte'
-import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
-import { brighten_hex } from '#lib/scene/index.js'
+import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types'
+import { brighten_hex } from '#lib/scene/index'
 import { flushSync, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vite-plus/test'

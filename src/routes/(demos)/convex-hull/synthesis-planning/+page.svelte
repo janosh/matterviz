@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { PhaseData } from '#lib/convex-hull/index.js'
+  import type { PhaseData } from '#lib/convex-hull/index'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { SynthesisPlanner } from '#lib/synthesis-planning/index.js'
-  import type { SynthesisConditions } from '#lib/synthesis-planning/index.js'
+  import { SynthesisPlanner } from '#lib/synthesis-planning/index'
+  import type { SynthesisConditions } from '#lib/synthesis-planning/index'
   import { to_error } from 'svelte-widgets/utils'
-  import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
-  import { latest_load, url_selection } from '#site/state.svelte.js'
+  import { synthesis_demo_systems } from '#site/synthesis-planning/index'
+  import { latest_load, url_selection } from '#site/state.svelte'
 
   const labels = Object.fromEntries(synthesis_demo_systems.map(({ id, label }) => [id, label]))
   const selected_id = url_selection(`system`, Object.keys(labels))

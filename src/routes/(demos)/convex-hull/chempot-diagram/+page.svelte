@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/index.js'
-  import { ChemPotDiagram, ChemPotDiagram3D } from '#lib/chempot-diagram/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import type { PhaseData } from '#lib/convex-hull/index.js'
-  import { filter_by_elements, quaternary_loader } from '#site/convex-hull/index.js'
-  import { create_temp_ternary_entries_li_fe_o } from '#site/convex-hull/demo-temperature.js'
+  import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/index'
+  import { ChemPotDiagram, ChemPotDiagram3D } from '#lib/chempot-diagram/index'
+  import type { ElementSymbol } from '#lib/element/index'
+  import type { PhaseData } from '#lib/convex-hull/index'
+  import { filter_by_elements, quaternary_loader } from '#site/convex-hull/index'
+  import { create_temp_ternary_entries_li_fe_o } from '#site/convex-hull/demo-temperature'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
 
   // Each compressed fixture remains a separate lazy chunk.
   const chempot_files = import.meta.glob<{ default: PhaseData[] }>(
@@ -37,12 +37,12 @@
 )}
   <!-- one region name per diagram: the elements shown, and whether it is a slice -->
   {@const shown = config.elements?.join(`-`) ?? dataset}
-  <LazyDemo
+  <LazyMount
     label="{shown}{config.slice_chempots ? ` slice` : ``} chemical potential diagram"
     height="{height}px"
   >
     {#await datasets[dataset]()}
-      <Spinner text="Loading {dataset} data…" />
+      <Spinner text="Loading {dataset} data…" data-lazy-placeholder />
     {:then { default: entries }}
       {@const selected_entries = subset ? filter_by_elements(entries, subset) : entries}
       {#if selected_entries.length}
@@ -53,7 +53,7 @@
     {:catch error}
       <p role="alert">Failed to load {dataset}: {String(error)}</p>
     {/await}
-  </LazyDemo>
+  </LazyMount>
 {/snippet}
 
 <h1 id="chemical-potential-diagram">Chemical Potential Diagram</h1>
@@ -97,7 +97,7 @@
       This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page. Drag
       the temperature slider to recompute stability domains from free energies.
     </p>
-    <LazyDemo label="Temperature-dependent chemical potentials">
+    <LazyMount label="Temperature-dependent chemical potentials">
       <ChemPotDiagram3D
         entries={temp_ternary_entries}
         config={{ elements: [`Li`, `Fe`, `O`] }}
@@ -105,7 +105,7 @@
         width={550}
         height={500}
       />
-    </LazyDemo>
+    </LazyMount>
   </section>
 </div>
 

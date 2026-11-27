@@ -3,8 +3,8 @@ import { decode_canvas_png, IS_CI, require_bbox, test_without_errors as test } f
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
-import type * as IoExport from '#lib/io/export.js'
-import type * as AtomModule from '#lib/structure/atom-instances.js'
+import type * as IoExport from '#lib/io/export'
+import type * as AtomModule from '#lib/structure/atom-instances'
 import { write_torchsim_si_frames } from '../fixtures/torchsim-h5'
 
 // The page builds a seeded synthetic run from ?frames=&atoms= (see
@@ -238,27 +238,23 @@ test.describe(`Trajectory performance`, () => {
       expect(Math.abs(structure.height - plot.height)).toBeLessThan(1)
       expect(structure.y + structure.height).toBeLessThanOrEqual(plot.y + 1)
       await page.setViewportSize({ width: 1400, height: 1000 })
-      await viewer.locator(`.step-input`).fill(`2`) // second frame
-      await viewer.locator(`.step-input`).press(`Enter`)
+      const step_input = viewer.getByRole(`spinbutton`, { name: `step input`, exact: true })
+      await step_input.fill(`2`) // second frame
+      await step_input.press(`Enter`)
       await expect.poll(atom_count).toBe(n_atoms)
+      // Hopping between the export and camera-flight panes keeps the heatmap scene mounted
+      const export_pane = viewer.locator(`.export-pane.viewer-pane-open`)
       await viewer.locator(`.trajectory-export-toggle`).click()
-      await expect(viewer.locator(`.export-pane.pane-open`)).toBeVisible()
-      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
-      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
-      await viewer
-        .locator(`.export-pane.pane-open`)
-        .getByRole(`button`, { name: `Plan camera flight` })
-        .click()
-      await expect(viewer.locator(`.trajectory-flight-pane`)).toBeVisible()
-      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
-      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
-      await viewer
-        .locator(`.trajectory-flight-pane`)
-        .getByRole(`button`, { name: `Export options →` })
-        .click()
-      await expect(viewer.locator(`.export-pane.pane-open`)).toBeVisible()
-      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
-      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
+      for (const [shown, next] of [
+        [export_pane, `Plan camera flight`],
+        [viewer.locator(`.trajectory-flight-pane.viewer-pane-open`), `Export options →`],
+        [export_pane, null],
+      ] as const) {
+        await expect(shown).toBeVisible()
+        await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+        await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
+        if (next) await shown.getByRole(`button`, { name: next }).click()
+      }
       await page.keyboard.press(`Escape`)
       await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
       await open_hotspots()
@@ -290,15 +286,16 @@ test.describe(`Trajectory performance`, () => {
     // Read the start step right before the clock starts so earlier waits can't inflate the fps
     const start_step = (await read_metrics(page)).current_step_idx
     const frames_to_measure = 10
-    const start_time = Date.now()
+    const start_time = performance.now()
     await expect
       .poll(async () => (await read_metrics(page)).current_step_idx, { timeout: 60_000 })
       .toBeGreaterThanOrEqual(start_step + frames_to_measure)
-    const elapsed_ms = Date.now() - start_time
-    await page.locator(`.play-button`).click() // pause before reading memory
+    const elapsed_ms = performance.now() - start_time
+    // pause before reading memory
+    await page.getByRole(`button`, { name: `Pause`, exact: true }).click()
     const actual_fps = (frames_to_measure / elapsed_ms) * 1000
     console.info(
-      `${frames_to_measure} frames in ${elapsed_ms} ms (${actual_fps.toFixed(2)} fps)`,
+      `${frames_to_measure} frames in ${elapsed_ms.toFixed(0)} ms (${actual_fps.toFixed(2)} fps)`,
     )
     // Software WebGPU renders a 64-atom scene at a few fps; anything under 0.5 is a regression
     expect(actual_fps, `playback fps`).toBeGreaterThan(0.5)

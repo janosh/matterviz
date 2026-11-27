@@ -2,12 +2,12 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import { html_to_text } from 'svelte-widgets/utils'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
-  import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { csv_source } from '#lib/plot/core/utils/chart-export'
+  import { parse_axis_label, format_value_or_num } from '#lib/labels'
+  import { array_max, type Point2D, type Vec2 } from '#lib/math'
   import type {
     AxisConfig,
     BandwidthOption,
@@ -21,11 +21,11 @@
     ViolinKind,
     ViolinSide,
     WhiskerMode,
-  } from '#lib/plot/index.js'
-  import { BoxPlotControls } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
+  import { BoxPlotControls } from '#lib/plot/index'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
-  import type { Rect } from '#lib/plot/core/layout.js'
+  import type { Rect } from '#lib/plot/core/layout'
   import {
     CANVAS_MARKER_THRESHOLD,
     canvas_safe_color,
@@ -33,40 +33,39 @@
     create_marker_canvas,
     type MarkerStyle,
     push_marker,
-  } from '#lib/plot/core/canvas-markers.svelte.js'
+  } from '#lib/plot/core/canvas-markers.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
-  import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
-  import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index'
+  import { plot_color, resolve_computed_color } from '#lib/colors/index'
+  import { resolve_color_token } from 'svelte-widgets/theme-core'
+  import { build_legend_items } from '#lib/plot/core/data-transform'
   import {
     box_point_offsets,
     compute_box_whiskers,
     summarize_box_samples,
-  } from '#lib/plot/box/box-plot.js'
-  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde.js'
+  } from '#lib/plot/box/box-plot'
+  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde'
   import {
     create_cartesian_frame,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
-  import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout.js'
-  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
+  } from '#lib/plot/core/utils/series-visibility'
+  import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout'
+  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils'
   import {
     axis_transform,
     is_activation_key,
     overlaps_rect,
-    type PixelRect,
     pointer_pos,
-  } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  } from '#lib/plot/core/interactions'
+  import { mark_keys, roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
@@ -74,17 +73,16 @@
     edge_range_padding,
     empty_extent,
     nice_range_from_extent,
-  } from '#lib/plot/core/scales.js'
-  import { get_scale_type_name } from '#lib/plot/core/types.js'
-  import { create_category_display } from '#lib/plot/core/display.svelte.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/core/scales'
+  import { get_scale_type_name } from '#lib/plot/core/types'
+  import { create_category_display } from '#lib/plot/core/display.svelte'
+  import { DEFAULTS } from '#lib/settings'
   import type { Snippet } from 'svelte'
-  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { violin_path } from '#lib/plot/core/svg.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
+  import { violin_path } from '#lib/plot/core/svg'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
 
   // Box style props
@@ -144,7 +142,7 @@
     hovered = $bindable(false),
     on_box_click,
     on_box_hover,
-    selected_boxes = $bindable([]),
+    selection = $bindable([]),
     on_select,
     view = $bindable(),
     ref_lines = [],
@@ -155,7 +153,6 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     controls_extra,
@@ -167,7 +164,7 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     BasePlotProps &
-    CartesianPlotProps & {
+    CartesianPlotProps<BoxHandlerProps<Metadata>> & {
       // One box or violin per series, each summarizing the raw samples in its `y`
       series?: readonly BoxPlotSeries<Metadata>[]
       // `vertical` puts categories on x and values on y; `horizontal` swaps them
@@ -222,15 +219,10 @@
       ) => void
       // Called with the hovered box, or null when the pointer or focus leaves it
       on_box_hover?: (
-        data:
-          | (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
-          | null,
+        data: (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      // Bindable: the boxes the last Alt+drag rect touched, which the chart outlines
-      selected_boxes?: { box_idx: number }[]
-      // Fires on every Alt+drag, including one that selected nothing
-      on_select?: (selection: { boxes: BoxHandlerProps<Metadata>[]; rect: PixelRect }) => void
     } = $props()
+  const uid = $props.id()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
@@ -259,7 +251,7 @@
     vertical ? (is_secondary(srs) ? `y2` : `y`) : is_secondary(srs) ? `x2` : `x`
 
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
     has_x2: () => show_x2,
@@ -294,19 +286,20 @@
         const [x_span, y_span] = vertical ? [cat_span, val_span] : [val_span, cat_span]
         return overlaps_rect(rect, x_span, y_span) ? [get_box_data(box_item)] : []
       })
-      selected_boxes = boxes.map(({ box_idx }) => ({ box_idx }))
-      on_select?.({ boxes, rect })
+      selection = boxes.map(({ series_idx }) => ({ series_idx, point_idx: 0 }))
+      on_select?.({ items: boxes, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    clip_id_prefix: `box-clip`,
+    clip_path_id: `box-clip-${uid}`,
   })
+  const selected_keys = $derived(mark_keys(selection))
 
   // === Box stats + slot model ===
   const box_color = (idx: number): string => series[idx]?.color ?? plot_color(idx)
   // Unlabeled boxes are numbered from 1 alike in slot ticks, legend, aria-labels and export
   const default_box_label = (idx: number): string => `Box ${idx + 1}`
   // Per-series hatch/texture tiles over the box/violin fill (null: plain), ids per instance
-  const pattern_uid = unique_id(`box`)
+  const pattern_uid = `box-${uid}`
   let series_patterns = $derived(
     series.map((srs, idx) =>
       srs.pattern ? resolve_pattern(srs.pattern, box_color(idx), pattern_uid) : null,
@@ -604,9 +597,8 @@
         axis.range ?? [null, null],
         scale_type,
         range_padding,
-        false,
         // outliers or samples on the auto range ends (0 included) draw whole, as scatter markers do
-        edge_padding,
+        { edge_padding, nice: axis.nice },
       )
     }
     const value_primary = calc_value_range(primary_boxes, plot_axes[vertical ? `y` : `x`])
@@ -733,7 +725,6 @@
       category_label: slot_list[box_item.slot],
       metadata: box_item.series.metadata,
       series_idx: box_item.idx,
-      box_idx: box_item.idx,
       active_x_axis,
       active_y_axis,
       x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
@@ -810,7 +801,6 @@
   }}
   aria_label="Box plot"
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   marginals={resolved_marginals}
   {marginal_series}
@@ -911,7 +901,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <g
             class="box-series"
-            class:selected-mark={selected_boxes.some((sel) => sel.box_idx === box_item.idx)}
+            class:selected-mark={selected_keys.has(roving_key(box_item.idx, 0))}
             data-box-idx={box_item.idx}
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}

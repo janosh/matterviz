@@ -1,7 +1,7 @@
-import { type Matrix3x3, mulberry32, type Vec3 } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { compute_structure_diff } from '#lib/structure-diff/compute.js'
-import { trajectory_diffs } from '#lib/structure-diff/trajectory.js'
+import { type Matrix3x3, mulberry32, type Vec3 } from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
+import { compute_structure_diff } from '#lib/structure-diff/compute'
+import { trajectory_diffs } from '#lib/structure-diff/trajectory'
 import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix, make_crystal, make_position_stream } from '../test-fixtures'
 

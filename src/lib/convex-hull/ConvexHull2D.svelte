@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { array_extent, type Vec2 } from '#lib/math.js'
+  import { array_extent, type Vec2 } from '#lib/math'
   import type {
     AxisConfig,
     PointStyle,
     ScatterHandlerEvent,
     ScatterHandlerProps,
     UserContentProps,
-  } from '#lib/plot/index.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/index'
+  import { ScatterPlot } from '#lib/plot/index'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
   import { marker_d3_name, point_radius } from './canvas-draw'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import {
@@ -279,7 +279,6 @@ fit the axes' tick labels and titles -->
   series={scatter_series}
   bind:display
   show_controls={false}
-  fullscreen_toggle={false}
   x_axis={{
     label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
     range: [0, 1],

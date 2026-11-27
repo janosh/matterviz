@@ -34,13 +34,11 @@ test.describe(`BandsAndDos Component Tests`, () => {
     page,
   }) => {
     const container = page.locator(`[data-testid="bands-and-dos-default"]`)
-    expect(await container.evaluate((element) => getComputedStyle(element).display)).toBe(
-      `grid`,
-    )
+    await expect(container).toHaveCSS(`display`, `grid`)
     await expect(container.locator(`.scatter`)).toHaveCount(2)
     const [bands_plot, dos_plot] = default_plots(page)
     for (const plot of [bands_plot, dos_plot]) {
-      expect(await plot.locator(`path[fill="none"]`).count()).toBeGreaterThan(0)
+      await expect(plot.locator(`path[fill="none"]`).first()).toBeVisible()
       await expect(plot.locator(`g.x-axis`)).toBeVisible()
       await expect(plot.locator(`g.y-axis`)).toBeVisible()
     }

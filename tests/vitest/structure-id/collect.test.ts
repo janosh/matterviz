@@ -1,15 +1,15 @@
-import { encode_frame } from '#lib/trajectory/frame.js'
-import type { Vec3 } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
-import * as async_compute from '#lib/structure-id/async-compute.svelte.js'
+import { encode_frame } from '#lib/trajectory/frame'
+import type { Vec3 } from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id'
+import * as async_compute from '#lib/structure-id/async-compute.svelte'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
-} from '#lib/structure-id/collect.js'
-import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { sweep_frame_plan, sweep_frames, window_sweep_size } from '#lib/trajectory/analysis.js'
+} from '#lib/structure-id/collect'
+import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { sweep_frame_plan, sweep_frames, window_sweep_size } from '#lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { make_fcc, with_vacancy } from './lattices'
 

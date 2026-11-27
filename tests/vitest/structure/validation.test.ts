@@ -4,7 +4,7 @@ import {
   is_crystal,
   is_periodic,
   lattice_unavailable_reason,
-} from '#lib/structure/validation.js'
+} from '#lib/structure/validation'
 import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix } from '../test-fixtures'
 

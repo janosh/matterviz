@@ -2,7 +2,7 @@
 // {@html sanitize_html(title)} path; the allowed tags are pinned in tests/vitest/sanitize.test.ts.
 
 import { expect, type Page, test } from '@playwright/test'
-import { dom_click } from './utils'
+import { open_controls_pane } from './utils'
 
 // Dimension configs: selector for diagram container
 const DIMS = {
@@ -63,9 +63,7 @@ test.describe(`ConvexHull HTML Title Rendering`, () => {
         expect(width).toBe(font_size)
       }
 
-      await dom_click(diagram.locator(`.legend-controls-btn`))
-      const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
-      await expect(controls).toBeVisible()
+      const controls = await open_controls_pane(diagram)
       await expect(controls.locator(`h4 sub`)).toHaveText(`a`)
       await expect(controls.locator(`h4 sup`)).toHaveText(`+`)
     })

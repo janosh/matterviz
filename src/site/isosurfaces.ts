@@ -1,5 +1,5 @@
-import type { FileInfo } from '#lib/io/index.js'
-import { site_file_info } from '#site/imports.js'
+import type { FileInfo } from '#lib/io/index'
+import { site_file_info } from '#site/imports'
 
 // The static symlink serves these fixtures at /isosurfaces/<name>.
 const volumetric_file_modules = import.meta.glob(`#site/isosurfaces/*.gz`, {

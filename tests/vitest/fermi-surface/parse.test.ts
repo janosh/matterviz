@@ -5,10 +5,10 @@ import {
   normalize_fermi_surface,
   parse_fermi_file,
   with_energy_unit,
-} from '#lib/fermi-surface/parse.js'
-import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
-import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
-import { fermi_surface_files } from '#site/fermi-surfaces.js'
+} from '#lib/fermi-surface/parse'
+import { is_fermi_surface_data } from '#lib/fermi-surface/types'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types'
+import { fermi_surface_files } from '#site/fermi-surfaces'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   IDENTITY_MATRIX3,

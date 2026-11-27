@@ -1,9 +1,9 @@
 // Fill-region and error-band types for 2D plots (shaded areas between boundaries).
 // Re-exported via #lib/plot/core/types.
 
-import type { ErrorValues } from '#lib/plot/core/error-bars.js'
-import type { FillPattern } from '#lib/plot/core/patterns.js'
-import type { NumericColumn } from '#lib/plot/core/types.js'
+import type { ErrorValues } from '#lib/plot/core/error-bars'
+import type { FillPattern } from '#lib/plot/core/patterns'
+import type { NumericColumn } from '#lib/plot/core/types'
 
 // FillBoundary - references to data sources for fill regions
 // Can reference series by index, by id, or specify constant/axis/function/data values

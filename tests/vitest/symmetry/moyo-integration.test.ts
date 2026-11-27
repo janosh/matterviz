@@ -1,8 +1,8 @@
 // Integration tests for moyo-wasm symmetry analysis using the real WASM binary
 
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import type { Crystal } from '#lib'
-import type { SymmetryDataset } from '#lib/symmetry/index.js'
+import type { SymmetryDataset } from '#lib/symmetry/index'
 import type { MoyoCell } from '@spglib/moyo-wasm'
 import {
   analyze_structure_symmetry,
@@ -10,19 +10,19 @@ import {
   spacegroup_settings,
   spacegroup_wyckoff_positions,
   transform_cell,
-} from '#lib/symmetry/analyze.js'
+} from '#lib/symmetry/analyze'
 import {
   apply_symmetry_operations,
   enrich_wyckoff_rows,
   map_wyckoff_to_all_atoms,
   wyckoff_positions_from_moyo,
-} from '#lib/symmetry/wyckoff.js'
+} from '#lib/symmetry/wyckoff'
 import {
   SPACEGROUP_SYMBOL_TO_NUM,
   spacegroup_to_crystal_sys,
   spacegroup_to_lattice_system,
-} from '#lib/symmetry/spacegroups.js'
-import { structure_map } from '#site/structures.js'
+} from '#lib/symmetry/spacegroups'
+import { structure_map } from '#site/structures'
 import {
   analyze_cell,
   hall_symbol_entries_from_number,

@@ -1,14 +1,14 @@
 // Isosurface geometry extraction shared by the worker and the main-thread fallback, plus
 // the create_worker_client wiring (happy-dom has no Worker, so a stub is installed before
 // the client module is imported to exercise the real postMessage plumbing)
-import type { compute_geometries_async as ComputeGeometriesAsync } from '#lib/isosurface/async-geometry.svelte.js'
-import type { GeometryInput } from '#lib/isosurface/geometry.js'
+import type { compute_geometries_async as ComputeGeometriesAsync } from '#lib/isosurface/async-geometry.svelte'
+import type { GeometryInput } from '#lib/isosurface/geometry'
 import {
   compute_isosurface_geometries,
   geometry_result_transferables,
   MAX_SORTED_LOBES,
   split_lobes,
-} from '#lib/isosurface/geometry.js'
+} from '#lib/isosurface/geometry'
 import {
   create_volume_sampler,
   type DisplayRange,
@@ -16,18 +16,18 @@ import {
   prepare_geometry_grid,
   resolve_volume_window,
   UNIT_CELL_RANGE,
-} from '#lib/isosurface/sampling.js'
-import { cubic_surface_volume } from '#lib/isosurface/spline.js'
+} from '#lib/isosurface/sampling'
+import { cubic_surface_volume } from '#lib/isosurface/spline'
 import {
   make_volume as make_flat_volume,
   MAX_CUBIC_GRID_POINTS,
   MAX_GRID_POINTS,
   type VolumetricData,
-} from '#lib/isosurface/types.js'
-import { cross_3d, dot, IDENTITY_3X3, type Matrix3x3, subtract, type Vec3 } from '#lib/math.js'
+} from '#lib/isosurface/types'
+import { cross_3d, dot, IDENTITY_3X3, type Matrix3x3, subtract, type Vec3 } from '#lib/math'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { install_stub_worker } from '../setup'
-import { draw_range_views } from '#lib/scene/geometry.svelte.js'
+import { draw_range_views } from '#lib/scene/geometry.svelte'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
 
@@ -537,7 +537,7 @@ const stub = install_stub_worker<{ id: number; input: GeometryInput }>(({ input 
 let compute_geometries_async: typeof ComputeGeometriesAsync
 
 beforeAll(async () => {
-  ;({ compute_geometries_async } = await import(`#lib/isosurface/async-geometry.svelte.js`))
+  ;({ compute_geometries_async } = await import(`#lib/isosurface/async-geometry.svelte`))
 })
 afterEach(stub.reset)
 

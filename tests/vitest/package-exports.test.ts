@@ -5,8 +5,8 @@ import type {
   DecorationSide,
   FreeAnnotationDecorationItem,
   PlotTitleLineKind,
-} from '#lib/plot/index.js'
-import { resolve_plot_title } from '#lib/plot/index.js'
+} from '#lib/plot/index'
+import { resolve_plot_title } from '#lib/plot/index'
 import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
 import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
 import type { Component, Snippet } from 'svelte'
@@ -115,7 +115,6 @@ describe(`package.json exports`, () => {
     `./structure/measure`,
     `./theme/embedded`,
     `./trajectory/parse`,
-    `./url-params`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
   })

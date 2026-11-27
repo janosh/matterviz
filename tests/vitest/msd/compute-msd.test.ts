@@ -1,8 +1,8 @@
-import { element_by_symbol } from '#lib/element/data.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { compute_msd, fit_einstein_diffusion, fit_msd_curves } from '#lib/msd/compute-msd.js'
-import { compute_msd_async } from '#lib/msd/async-compute.svelte.js'
-import type { Pbc } from '#lib/structure/index.js'
+import { element_by_symbol } from '#lib/element/data'
+import type { ElementSymbol } from '#lib/element/index'
+import { compute_msd, fit_einstein_diffusion, fit_msd_curves } from '#lib/msd/compute-msd'
+import { compute_msd_async } from '#lib/msd/async-compute.svelte'
+import type { Pbc } from '#lib/structure/index'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { cubic_matrix } from '../test-fixtures'
 import {

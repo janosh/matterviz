@@ -1,9 +1,9 @@
-import { host_prepare_transfers, type HostPrepareInput } from '#lib/file-viewer/host-bridge.js'
-import { frame_from_wire, frame_to_wire } from '#lib/file-viewer/host-protocol.js'
-import { select_frame_channels } from '#lib/trajectory/frame.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
-import type { PrepareReply, PrepareRequest } from '#lib/trajectory/prepare-pool.js'
-import { FramePreparer } from '#lib/trajectory/prepare.js'
+import { host_prepare_transfers, type HostPrepareInput } from '#lib/file-viewer/host-bridge'
+import { frame_from_wire, frame_to_wire } from '#lib/file-viewer/host-protocol'
+import { select_frame_channels } from '#lib/trajectory/frame'
+import { open_trajectory } from '#lib/trajectory/open'
+import type { PrepareReply, PrepareRequest } from '#lib/trajectory/prepare-pool'
+import { FramePreparer } from '#lib/trajectory/prepare'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { read_binary_test_file } from '../test-fixtures'
 
@@ -21,7 +21,7 @@ test(`decodes host replies (or frame 0) in the worker and prepares them`, async 
     vi.unstubAllGlobals()
   })
   vi.resetModules()
-  await import(`#lib/file-viewer/host-prepare-worker.js`)
+  await import(`#lib/file-viewer/host-prepare-worker`)
   const run = await open_trajectory(read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`), {
     filename: `relax.traj`,
     index_above_bytes: 0,

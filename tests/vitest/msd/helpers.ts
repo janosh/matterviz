@@ -1,8 +1,8 @@
 // Shared fixtures for MSD tests: flat-position builders and a deterministic RNG.
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { Pbc } from '#lib/structure/index.js'
-import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { Pbc } from '#lib/structure/index'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index'
 import { make_position_stream } from '../test-fixtures'
 
 export { make_rng, max_rel_error } from '../numeric-helpers'

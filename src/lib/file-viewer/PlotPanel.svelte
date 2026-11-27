@@ -3,10 +3,10 @@
   import { clamp } from 'svelte-widgets/utils'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
-  import { BarPlot, Histogram, ScatterPlot } from '#lib/plot/index.js'
+  import { BarPlot, Histogram, ScatterPlot } from '#lib/plot/index'
   import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
-  import type { Column } from '#lib/table/index.js'
-  import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
+  import type { Column } from '#lib/table/index'
+  import { TABLE_EXPORT_FORMATS } from '#lib/table/index'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import {
     build_bar_series,

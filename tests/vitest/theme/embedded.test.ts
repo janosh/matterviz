@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
-import type * as colors from '#lib/colors/index.js'
-import { detect_parent_theme, watch_theme } from '#lib/theme/embedded.js'
+import type * as colors from '#lib/colors/index'
+import { detect_parent_theme, watch_theme } from '#lib/theme/embedded'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // Isolate watcher behavior from palette data and theme registration side effects, keeping
 // the real color parsers so an unparsable host colour fails as it would in a browser
-vi.mock(`#lib/colors/index.js`, async (import_original) => {
+vi.mock(`#lib/colors/index`, async (import_original) => {
   const { is_concrete_color, perceived_brightness } = await import_original<typeof colors>()
   return { is_concrete_color, perceived_brightness }
 })

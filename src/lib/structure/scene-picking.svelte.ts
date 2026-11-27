@@ -1,11 +1,11 @@
 // Picking for StructureScene: hover and selection state plus the pure rules the pointer
 // handlers apply. The scene owns the bindable props (hovered_idx, selected_sites, ...) and
 // wires raycast hits to these; nothing here touches the canvas.
-import type { HoverHandlers, TapEvent } from '#lib/scene/index.js'
-import * as math from '#lib/math.js'
-import type { Vec3 } from '#lib/math.js'
-import type { BondEditMode, BondPair, MeasureMode, Site } from '#lib/structure/index.js'
-import { toggle_item } from '#lib/utils.js'
+import type { HoverHandlers, TapEvent } from '#lib/scene/index'
+import * as math from '#lib/math'
+import type { Vec3 } from '#lib/math'
+import type { BondEditMode, BondPair, MeasureMode, Site } from '#lib/structure/index'
+import { toggle_item } from '#lib/utils'
 import { Vector3, type Mesh, type Object3D } from 'three/webgpu'
 import * as measure from './measure'
 

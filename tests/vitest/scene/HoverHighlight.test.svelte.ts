@@ -1,5 +1,5 @@
-import { brighten_hex, highlight_edge_color } from '#lib/scene/colors.js'
-import { boundary_edges, positions_geometry } from '#lib/scene/geometry.svelte.js'
+import { brighten_hex, highlight_edge_color } from '#lib/scene/colors'
+import { boundary_edges, positions_geometry } from '#lib/scene/geometry.svelte'
 import HoverHighlight from '#lib/scene/HoverHighlight.svelte'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'

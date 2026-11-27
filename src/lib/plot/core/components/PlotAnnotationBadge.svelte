@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { PlacedDecoration } from '#lib/plot/core/placed-decoration.svelte.js'
-  import type { PlotAnnotation } from '#lib/plot/core/types.js'
+  import type { PlacedDecoration } from '#lib/plot/core/placed-decoration.svelte'
+  import type { PlotAnnotation } from '#lib/plot/core/types'
 
   // Solver-placed wrapper around a plot's free annotation (text or snippet)
   let {

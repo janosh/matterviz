@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { SankeyData } from '#lib/plot/index.js'
-  import { Sankey } from '#lib/plot/index.js'
+  import type { SankeyData } from '#lib/plot/index'
+  import { Sankey } from '#lib/plot/index'
   import TestSection from '../TestSection.svelte'
   import TestStatus from '../TestStatus.svelte'
 

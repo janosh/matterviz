@@ -1,12 +1,12 @@
-import { AtomInstances } from '#lib/structure/atom-instances.js'
-import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
-import { BondMesh } from '#lib/structure/bond-mesh.js'
-import { prepare_bond_placements } from '#lib/structure/bond-rendering.js'
+import { AtomInstances } from '#lib/structure/atom-instances'
+import { ArrowMesh } from '#lib/structure/arrow-mesh'
+import { BondMesh } from '#lib/structure/bond-mesh'
+import { prepare_bond_placements } from '#lib/structure/bond-rendering'
 import {
   convert_instanced_meshes_to_regular,
   export_scene_as,
   generate_mtl_content,
-} from '#lib/scene/export.js'
+} from '#lib/scene/export'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import type {
   Material,
@@ -99,13 +99,29 @@ describe(`export_scene_as`, () => {
     vi.unstubAllGlobals()
   })
 
-  it(`rejects unsupported formats before touching any exporter`, async () => {
-    await expect(export_scene_as(scene, `xyz` as `stl`, `test`)).rejects.toThrow(
-      `Unsupported scene export format: xyz`,
-    )
-    for (const spy of [stl_spy, obj_spy, gltf_spy]) expect(spy).not.toHaveBeenCalled()
-    expect(downloads).toHaveLength(0)
-  })
+  // OBJ with Save As fails before its first dialog: the second (.mtl) one would lack the
+  // click's user activation, leaving an orphaned .obj. OBJ to a folder already holding the
+  // .mtl fails before the .obj is written.
+  it.each([
+    [`xyz` as `stl`, `downloads`, `Unsupported scene export format: xyz`, 0],
+    [`obj`, `save-as`, `OBJ writes two files (.obj and .mtl)`, 0],
+    [`obj`, {} as FileSystemDirectoryHandle, `test.mtl already exists`, 2],
+  ] as const)(
+    `rejects %s to %o before writing`,
+    async (format, destination, message, n_opened) => {
+      const write = vi.fn()
+      const open = vi.fn(async (filename: string) => {
+        if (filename.endsWith(`.mtl`)) throw new Error(`${filename} already exists`)
+        return write
+      })
+      await expect(
+        export_scene_as(scene, format, `test`, { destination, open }),
+      ).rejects.toThrow(message)
+      expect(open).toHaveBeenCalledTimes(n_opened)
+      expect(write).not.toHaveBeenCalled()
+      for (const spy of [stl_spy, obj_spy, gltf_spy]) expect(spy).not.toHaveBeenCalled()
+    },
+  )
 
   const blob_types = { stl: `application/octet-stream`, glb: `model/gltf-binary` }
   it.each([

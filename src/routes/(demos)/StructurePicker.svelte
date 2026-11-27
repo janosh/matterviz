@@ -1,7 +1,7 @@
 <script module lang="ts">
   import type { Crystal } from '#lib'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { structure_map } from '#site/structures.js'
+  import { get_electro_neg_formula } from '#lib/composition/index'
+  import { structure_map } from '#site/structures'
 
   // Electronegativity-ordered HTML formula of a demo structure, empty when the id is
   // unknown or the structure has no parseable composition (a formula is decoration here,
@@ -28,9 +28,9 @@
 </script>
 
 <script lang="ts">
-  import { add_alpha, plot_color } from '#lib/colors/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { structures } from '#site/structures.js'
+  import { add_alpha, plot_color } from '#lib/colors/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { structures } from '#site/structures'
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props extends HTMLAttributes<HTMLElement> {

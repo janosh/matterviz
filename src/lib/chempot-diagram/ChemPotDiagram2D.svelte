@@ -1,19 +1,19 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { array_extent, convex_hull_2d, type Vec2 } from '#lib/math.js'
+  import { array_extent, convex_hull_2d, type Vec2 } from '#lib/math'
   import { untrack } from 'svelte'
   import { is_editable_event_target } from 'svelte-widgets/shortcuts'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import { json_source } from '#lib/io/export.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
-  import type { AxisConfig, DataSeries, UserContentProps } from '#lib/plot/core/types.js'
+  import { json_source } from '#lib/io/export'
+  import { ScatterPlot } from '#lib/plot/index'
+  import type { AxisConfig, DataSeries, UserContentProps } from '#lib/plot/core/types'
   import ChemPotControls from './ChemPotControls.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import {
     container_pointer,
     create_chempot_state,

@@ -1,8 +1,8 @@
 // Render records for the instanced atom meshes: which atoms draw, with what radius and color,
 // split into the visual classes that each get their own mesh. Kept out of StructureScene so
 // the per-frame reuse path (coordinate-only trajectory frames) is testable without a canvas.
-import { same_position, type Matrix3x3, type Vec3 } from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
+import { same_position, type Matrix3x3, type Vec3 } from '#lib/math'
+import type { AnyStructure, Site } from '#lib/structure/index'
 import type { AtomColorField } from './atom-color-field'
 import type { AtomPropertyColors } from './atom-properties'
 import { update_atom_coordinates, update_ordered_atom_positions } from './atom-instances'

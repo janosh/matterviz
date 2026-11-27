@@ -3,7 +3,7 @@
 // (CircleLegend nests them), which stays legible at the default 2-10 px marker radii. Value
 // picking and layout are pure so the geometry is testable; SizeLegend.svelte only draws it.
 
-import { type FontSpec, measure_text_line } from '#lib/plot/core/text-metrics.js'
+import { type FontSpec, measure_text_line } from '#lib/plot/core/text-metrics'
 
 export type SizeScaleFn = ((value: number) => number) & {
   domain: () => readonly number[]

@@ -1,4 +1,4 @@
-import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import type { FontSpec } from '#lib/plot/core/text-metrics'
 import {
   clear_text_metrics_cache,
   DEFAULT_FONT_SPEC,
@@ -10,7 +10,7 @@ import {
   resolve_font_size_css,
   resolve_font_spec,
   wrap_text_paragraph,
-} from '#lib/plot/core/text-metrics.js'
+} from '#lib/plot/core/text-metrics'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mock_canvas_context } from '../setup'
 

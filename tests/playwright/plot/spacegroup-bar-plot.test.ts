@@ -28,7 +28,6 @@ const has_percentages = (annotations: Locator) =>
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/plot/spacegroup-bar-plot`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`.bar-plot`, { timeout: 15000 })
   })
 
   test(`renders bars over the full spectrum with crystal system regions and no chrome`, async ({

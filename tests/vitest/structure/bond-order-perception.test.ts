@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   compose_perceived_bonds,
   perceive_bond_orders,
-} from '#lib/structure/bond-order-perception.js'
-import type { BondPair, Site, StructureBond } from '#lib/structure/index.js'
-import type { PerceivedBond } from '#lib/structure/bond-order-perception.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import { euclidean_dist } from '#lib/math.js'
+} from '#lib/structure/bond-order-perception'
+import type { BondPair, Site, StructureBond } from '#lib/structure/index'
+import type { PerceivedBond } from '#lib/structure/bond-order-perception'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Vec2, Vec3 } from '#lib/math'
+import { euclidean_dist } from '#lib/math'
 import { make_rng } from '../numeric-helpers'
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())

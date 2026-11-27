@@ -1,5 +1,5 @@
-import type { Vec2 } from '#lib/math.js'
-import type { Pt } from '#lib/plot/core/fill-utils.js'
+import type { Vec2 } from '#lib/math'
+import type { Pt } from '#lib/plot/core/fill-utils'
 import {
   compute_fill_segments,
   convert_error_band_to_fill_region,
@@ -9,7 +9,7 @@ import {
   resolve_boundary_points,
   resolve_fill_binding,
   resolve_series_ref,
-} from '#lib/plot/core/fill-utils.js'
+} from '#lib/plot/core/fill-utils'
 import type {
   DataSeries,
   ErrorBand,
@@ -18,7 +18,7 @@ import type {
   FillGradient,
   FillRegion,
   LineCurve,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vite-plus/test'
 

@@ -5,16 +5,16 @@ import {
   compute_bond_angle_distribution,
   compute_bond_angles,
   resolve_angle_bins,
-} from '#lib/bond-angles/compute-bond-angles.js'
-import * as calc_module from '#lib/bond-angles/compute-bond-angles.js'
+} from '#lib/bond-angles/compute-bond-angles'
+import * as calc_module from '#lib/bond-angles/compute-bond-angles'
 import BondAnglePlot from '#lib/bond-angles/BondAnglePlot.svelte'
-import { to_angle_bar_series } from '#lib/bond-angles/series.js'
-import type { BondAngleOptions, BondAngleSplitMode } from '#lib/bond-angles/index.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import type { Vec3 } from '#lib/math.js'
-import type { Crystal, Molecule } from '#lib/structure/index.js'
-import { compute_coordination_nums } from '#lib/coordination/compute-coordination.js'
-import { structure_map } from '#site/structures.js'
+import { to_angle_bar_series } from '#lib/bond-angles/series'
+import type { BondAngleOptions, BondAngleSplitMode } from '#lib/bond-angles/index'
+import { element_by_symbol } from '#lib/element/data'
+import type { Vec3 } from '#lib/math'
+import type { Crystal, Molecule } from '#lib/structure/index'
+import { compute_coordination_nums } from '#lib/coordination/compute-coordination'
+import { structure_map } from '#site/structures'
 import { tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, create_drop_event, expect_plot_controls, mount_sized } from '../setup'
@@ -571,7 +571,9 @@ describe(`BondAnglePlot`, () => {
     )
     await tick()
     expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
-    expect(container?.querySelector(`svg`)).toBeNull()
+    // no plot: the only svg left is StatusMessage's dismiss icon
+    const svgs = [...(container?.querySelectorAll(`svg`) ?? [])]
+    expect(svgs.filter((svg) => !svg.closest(`button`))).toEqual([])
   })
 
   // neighbor_query throws on a non-finite position; an unguarded compute derived would take

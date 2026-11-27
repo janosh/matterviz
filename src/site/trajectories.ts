@@ -1,5 +1,5 @@
-import type { FileInfo } from '#lib/io/index.js'
-import { site_file_info } from '#site/imports.js'
+import type { FileInfo } from '#lib/io/index'
+import { site_file_info } from '#site/imports'
 
 // FilePicker type for a trajectory fixture: format name rather than the bare extension, so
 // `.xyz`/`.extxyz` and `.h5`/`.hdf5` each collapse into one filter chip

@@ -1,7 +1,7 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // compute_vacf via a persistent Web Worker (main-thread fallback without Worker); see
 // create_worker_client for `.cancel` / `.mount` semantics
-import { plain_position_stream } from '#lib/trajectory/async-result.svelte.js'
+import { plain_position_stream } from '#lib/trajectory/async-result.svelte'
 import { create_worker_client } from 'svelte-widgets/worker-client'
 import { compute_vacf } from './compute-vacf'
 import type { VacfInput, VacfOptions, VacfResult } from './index'

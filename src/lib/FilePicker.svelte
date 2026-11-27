@@ -1,13 +1,14 @@
 <script lang="ts">
-  import { contrast_text_color, css_var_names, resolve_backdrop } from '#lib/colors/index.js'
-  import { watch_theme_changes } from '#lib/theme/index.js'
-  import type { FileInfo, FileTypePaint } from '#lib/io/index.js'
+  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index'
+  import { css_var_names, watch_theme_changes } from 'svelte-widgets/theme-core'
+  import FormulaText from '#lib/composition/FormulaText.svelte'
+  import type { FileInfo, FileTypePaint } from '#lib/io/index'
   import {
     DEFAULT_FILE_TYPE_PAINTS,
     ext_of,
     FALLBACK_FILE_TYPE_PAINT,
     strip_compression_extensions,
-  } from '#lib/io/index.js'
+  } from '#lib/io/index'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -65,8 +66,7 @@
   // ext_of returns an extensionless name (POSCAR, INCAR, ...) whole, so it is its own type
   const get_base_file_type = (file: FileInfo): string =>
     file.type?.toLowerCase() || ext_of(strip_compression_extensions(file.name)) || `file`
-  const get_category_id = (file: FileInfo): string =>
-    file.category ? `${file.category_icon ?? ``} ${file.category}`.trim() : `(uncategorized)`
+  const get_category_id = (file: FileInfo): string => file.category ?? `(uncategorized)`
 
   let filtered_files = $derived.by(() => {
     if (!effective_filter) return files
@@ -91,6 +91,25 @@
     return offered.includes(active_filter.value) ? active_filter : null
   })
 
+  // Pressing on a chip's name selects text instead of starting a file drag: a draggable element
+  // can't be text-selected, so every chip pauses dragging until the pointer lifts (a selection
+  // may run across chips). The badge and padding still drag the file.
+  const allow_text_select = ({ target }: PointerEvent) => {
+    if (!(target instanceof Element && target.closest(`.file-name`))) return
+    const picker = target.closest(`.file-picker`)
+    const chips = [...(picker?.querySelectorAll<HTMLElement>(`.file-item`) ?? [])]
+    for (const chip of chips) chip.draggable = false
+    // a touch scroll cancels the press instead of lifting it
+    const restore = () => chips.forEach((chip) => (chip.draggable = true))
+    for (const type of [`pointerup`, `pointercancel`])
+      addEventListener(type, restore, { once: true })
+  }
+  // a click that ends a text selection inside the chip doesn't load the file
+  const selecting_text_in = (node: Node): boolean => {
+    const selection = getSelection()
+    return Boolean(selection && !selection.isCollapsed && node.contains(selection.anchorNode))
+  }
+
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
     const url = file.url || file.name
     const payload = {
@@ -101,6 +120,8 @@
     }
     event.dataTransfer?.setData(`application/json`, JSON.stringify(payload))
     event.dataTransfer?.setData(`text/plain`, url)
+    // what drop zones (svelte-widgets' file_drop on_urls) read as a link drop
+    event.dataTransfer?.setData(`text/uri-list`, url)
     on_drag_start?.(file, event)
   }
 </script>
@@ -161,7 +182,10 @@
       style:background-color={paint.item}
       draggable="true"
       ondragstart={handle_drag_start(file)}
-      onclick={(event) => on_click?.(file, event)}
+      onpointerdown={allow_text_select}
+      onclick={(event) => {
+        if (!selecting_text_in(event.currentTarget)) on_click?.(file, event)
+      }}
       onkeydown={(event) => {
         if (event.key !== `Enter` && event.key !== ` `) return
         event.preventDefault()
@@ -174,7 +198,8 @@
         ? `Click to load or drag this ${base_type.toUpperCase()} file`
         : `Drag this ${base_type.toUpperCase()} file`}
     >
-      {#if file.label}
+      <!-- the same type badge on every chip is noise, so it shows only beside other types -->
+      {#if file.label && format_filters.length > 0}
         <span
           class="file-type-badge"
           style:background-color={paint.badge}
@@ -182,8 +207,7 @@
         >
       {/if}
       <div class="file-name">
-        {file.category && file.category_icon ? `${file.category_icon} ` : ``}{file.label ??
-          file.name}
+        <FormulaText text={file.label ?? file.name} />
       </div>
     </div>
   {/each}
@@ -220,9 +244,11 @@
   .legend-item {
     font: inherit;
     color: inherit;
-    background: transparent;
+    /* a light shade marks the filters as buttons before hover */
+    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.07));
     cursor: pointer;
-    padding: 0.2em 0.4em;
+    padding: 0.1em 0.5em;
+    line-height: 1.2;
     border-radius: 3px;
     transition: all 0.2s ease;
     border: 1px solid transparent;
@@ -295,6 +321,10 @@
     line-height: 1.4;
   }
   .file-name {
+    cursor: text;
+    /* browsers make draggable elements' text unselectable */
+    -webkit-user-select: text;
+    user-select: text;
     font-size: 0.85em;
     line-height: 1.1;
     white-space: pre-line;

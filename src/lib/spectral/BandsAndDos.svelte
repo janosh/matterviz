@@ -2,15 +2,16 @@
   // Band structure and DOS on one shared frequency/energy axis. Given a `structure`, a
   // Brillouin zone joins them, drawing the first band structure's k-path linked to the bands:
   // hovering either marks the other.
+  import { hide_controls, type ShowControlsProp } from '#lib/controls'
   import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
   import type { BandsOptions, DosOptions } from './index'
-  import type { BrillouinZoneOptions } from '#lib/brillouin/index.js'
-  import { BrillouinZone } from '#lib/brillouin/index.js'
-  import { reciprocal_lattice } from '#lib/math.js'
-  import type { Vec2 } from '#lib/math.js'
-  import type { InternalPoint } from '#lib/plot/index.js'
-  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { BrillouinZoneOptions } from '#lib/brillouin/index'
+  import { BrillouinZone } from '#lib/brillouin/index'
+  import { reciprocal_lattice } from '#lib/math'
+  import type { Vec2 } from '#lib/math'
+  import type { InternalPoint } from '#lib/plot/index'
+  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout'
+  import type { Crystal } from '#lib/structure/index'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
@@ -47,7 +48,7 @@
     shared_y_axis = true,
     sync_y_zoom = true,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
+    show_controls,
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
@@ -79,7 +80,8 @@
     // Zoom or pan of the frequency axis in one panel is mirrored in the other (side by side only).
     sync_y_zoom?: boolean
     fullscreen?: boolean // all panels fullscreen together (one button, top-right plot's header)
-    fullscreen_toggle?: boolean // also hidden by the top-right plot's show_controls
+    // The one fullscreen button's visibility, whichever panel's header holds it
+    show_controls?: ShowControlsProp<`fullscreen`>
     // Content rendered inside the wrapper, receiving the hovered frequency, band point and q-point index.
     children?: Snippet<[HoveredData]>
   } = $props()
@@ -132,12 +134,7 @@
 
 <!-- the top-right plot's: the DOS side by side, else the bands -->
 {#snippet fullscreen_button(host: boolean)}
-  {#if host}<PanelsFullscreenButton
-      bind:fullscreen
-      toggle={fullscreen_toggle}
-      controls={(side_by_side ? dos_props : bands_props).show_controls}
-      {wrapper}
-    />{/if}
+  {#if host}<PanelsFullscreenButton bind:fullscreen controls={show_controls} {wrapper} />{/if}
 {/snippet}
 
 <div
@@ -175,7 +172,7 @@
       link.hover_band(event)
       bands_props.on_point_hover?.(event)
     }}
-    fullscreen_toggle={false}
+    show_controls={hide_controls(bands_props.show_controls, `fullscreen`)}
   >
     {#snippet header_controls(dims)}
       {@render bands_props.header_controls?.(dims)}
@@ -193,7 +190,7 @@
       hovered_qpoint_index={link.active_qpoint}
       highlighted_qpoint_range={link.highlighted_qpoint_range}
       on_kpath_hover={link.hover_path}
-      fullscreen_toggle={false}
+      show_controls={hide_controls(bz_props.show_controls, `fullscreen`)}
     />
   {/if}
 
@@ -221,7 +218,7 @@
       ...dos_props.padding,
       ...sync.shared_padding,
     }}
-    fullscreen_toggle={false}
+    show_controls={hide_controls(dos_props.show_controls, `fullscreen`)}
   >
     {#snippet header_controls(dims)}
       {@render dos_props.header_controls?.(dims)}

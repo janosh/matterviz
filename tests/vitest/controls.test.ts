@@ -1,10 +1,11 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vite-plus/test'
-import { host } from '#lib/host.js'
+import { host } from '#lib/host'
 import {
   normalize_show_controls,
+  hide_controls,
   shows_fullscreen_toggle,
   track_settings,
-} from '#lib/controls.js'
+} from '#lib/controls'
 
 describe(`normalize_show_controls`, () => {
   it.each([
@@ -150,7 +151,7 @@ it.each([
   Object.defineProperty(document, `fullscreenEnabled`, { value: enabled, configurable: true })
   vi.resetModules()
   try {
-    const { host: fresh_host } = await import(`#lib/host.js`)
+    const { host: fresh_host } = await import(`#lib/host`)
     expect(fresh_host.fullscreen).toBe(expected)
   } finally {
     Reflect.deleteProperty(document, `fullscreenEnabled`)
@@ -158,24 +159,36 @@ it.each([
   }
 })
 
-// The toggle shows only when asked for, visible under show_controls and possible in the host
+// The toggle shows only when visible under show_controls and possible in the host
 it.each([
-  [true, `always`, true, true],
-  [false, `always`, true, false],
-  [true, { hidden: [`fullscreen`] }, true, false],
-  [true, `never`, true, false],
-  [true, `always`, false, false],
+  [`always`, true, true],
+  [{ hidden: [`fullscreen`] }, true, false],
+  [`never`, true, false],
+  [`always`, false, false],
 ] as const)(
-  `shows_fullscreen_toggle(%s, %j) with host.fullscreen=%s is %s`,
-  (toggle, show_controls, host_fullscreen, expected) => {
+  `shows_fullscreen_toggle(%j) with host.fullscreen=%s is %s`,
+  (show_controls, host_fullscreen, expected) => {
     const orig_fullscreen = host.fullscreen
     host.fullscreen = host_fullscreen
     try {
-      expect(shows_fullscreen_toggle(toggle, normalize_show_controls(show_controls))).toBe(
-        expected,
-      )
+      expect(shows_fullscreen_toggle(normalize_show_controls(show_controls))).toBe(expected)
     } finally {
       host.fullscreen = orig_fullscreen
     }
   },
 )
+
+// Adds names to hidden once, keeping mode and style; false stays false
+it.each([
+  [undefined, { hidden: [`fullscreen`] }],
+  [true, { mode: `always`, hidden: [`fullscreen`] }],
+  [`hover`, { mode: `hover`, hidden: [`fullscreen`] }],
+  [
+    { style: `top: 0`, hidden: [`controls`] },
+    { style: `top: 0`, hidden: [`controls`, `fullscreen`] },
+  ],
+  [{ hidden: [`fullscreen`] }, { hidden: [`fullscreen`] }],
+  [false, false],
+] as const)(`hide_controls(%j, 'fullscreen') is %j`, (prop, expected) => {
+  expect(hide_controls(prop, `fullscreen`)).toStrictEqual(expected)
+})

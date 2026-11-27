@@ -3,9 +3,9 @@
 // of Isosurface's error path: Structure registers a handler in context, Isosurface (a few
 // layers down) picks it up without pass-through props, and the message lands in a
 // dismissible warning notice.
-import { get_isosurface_error_handler } from '#lib/isosurface/context.js'
+import { get_isosurface_error_handler } from '#lib/isosurface/context'
 import Structure from '#lib/structure/Structure.svelte'
-import { structures } from '#site/structures.js'
+import { structures } from '#site/structures'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'

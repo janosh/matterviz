@@ -1,5 +1,5 @@
-import { EV_TO_KJ_PER_MOL } from '#lib/constants.js'
-import { point_in_polygon, polygon_signed_area, type Vec2 } from '#lib/math.js'
+import { EV_TO_KJ_PER_MOL } from '#lib/constants'
+import { point_in_polygon, polygon_signed_area, type Vec2 } from '#lib/math'
 import {
   clip_to_half_plane,
   compute_pourbaix_diagram,
@@ -13,9 +13,9 @@ import {
   pourbaix_plane,
   stable_plane_at,
   water_lines,
-} from '#lib/pourbaix/compute.js'
-import type { PourbaixConfig, PourbaixEntry } from '#lib/pourbaix/types.js'
-import { pourbaix_systems, water_energy } from '#site/pourbaix.js'
+} from '#lib/pourbaix/compute'
+import type { PourbaixConfig, PourbaixEntry } from '#lib/pourbaix/types'
+import { pourbaix_systems, water_energy } from '#site/pourbaix'
 import { expect, test } from 'vite-plus/test'
 
 const [Fe, Cu, Zn] = [`Fe–H2O`, `Cu–H2O`, `Zn–H2O`].map(

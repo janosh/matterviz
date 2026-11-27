@@ -1,6 +1,6 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal, StructureBond } from '#lib/structure/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal, StructureBond } from '#lib/structure/index'
 import {
   diagonal_scaling,
   generate_lattice_points,
@@ -10,7 +10,7 @@ import {
   parse_supercell_scaling,
   supercell_grid_edges,
   supercell_translations,
-} from '#lib/structure/supercell.js'
+} from '#lib/structure/supercell'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 import { max_abs_error } from '../numeric-helpers'

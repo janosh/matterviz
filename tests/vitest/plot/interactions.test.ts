@@ -1,5 +1,5 @@
-import type { Vec2 } from '#lib/math.js'
-import { LOG_EPS } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
+import { LOG_EPS } from '#lib/math'
 import {
   axis_ranges_equal,
   expand_range_if_needed,
@@ -9,14 +9,15 @@ import {
   pan_range_by_pixels,
   resolve_axis_ranges,
   series_hover_props,
+  shared_xy_range,
   step_point_cursor,
   sync_y2_range,
   vec2_equal,
   zoom_range_by_factor,
-} from '#lib/plot/core/interactions.js'
-import { create_scale } from '#lib/plot/core/scales.js'
-import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
-import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/interactions'
+import { create_scale } from '#lib/plot/core/scales'
+import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types'
 import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 
 const axes = [`x`, `x2`, `y`, `y2`] as const
@@ -430,6 +431,48 @@ describe(`sync_y2_range`, () => {
     [[0, 100], [NaN, 50]],
   ])(`non-finite sync_y2_range(%j, %j) returns y2_base`, (coord_y_1, y2_base) => {
     expect(sync_y2_range(coord_y_1, y2_base, { mode: `synced` })).toEqual(y2_base)
+  })
+})
+
+describe(`shared_xy_range`, () => {
+  type Pins = [number | null, number | null]
+  type Case = {
+    desc: string
+    x_pin?: Pins
+    y_pin?: Pins
+    has_data?: { x?: boolean; y?: boolean }
+    log?: boolean
+    data?: { x: Vec2; y: Vec2 }
+    range: Pins
+    auto: Vec2
+  }
+  // auto ranges default to x: [0, 10], y: [-5, 3]
+  // oxfmt-ignore
+  it.each<Case>([
+    { desc: `union of auto ranges`, range: [null, null], auto: [-5, 10] },
+    { desc: `x pin wins on both axes`, x_pin: [0, null], range: [0, null], auto: [-5, 10] },
+    { desc: `y pin wins on both axes`, y_pin: [null, 4], range: [null, 4], auto: [-5, 10] },
+    { desc: `agreeing pins`, x_pin: [-1, null], y_pin: [-1, 20], range: [-1, 20], auto: [-5, 10] },
+    { desc: `x without data`, has_data: { x: false }, range: [null, null], auto: [-5, 3] },
+    { desc: `y without data`, has_data: { y: false }, range: [null, null], auto: [0, 10] },
+    { desc: `neither has data`, has_data: { x: false, y: false }, range: [null, null], auto: [-5, 10] },
+    { desc: `log ranges union positive`, log: true, data: { x: [1, 100], y: [0.05, 20] }, range: [null, null], auto: [0.05, 100] },
+    // a non-finite union skips the sync instead of returning a bogus range
+    { desc: `non-finite union`, data: { x: [NaN, 1], y: [0, Infinity] }, range: [null, null], auto: [NaN, NaN] },
+  ])(`$desc`, ({ x_pin, y_pin, has_data = {}, log, data = { x: [0, 10], y: [-5, 3] }, range, auto }) => {
+    const scale_type = log ? (`log` as const) : undefined
+    const xy_axes = { x: { range: x_pin, scale_type }, y: { range: y_pin, scale_type } }
+    expect(shared_xy_range(xy_axes, data, has_data)).toEqual({ range, auto })
+  })
+
+  // oxfmt-ignore
+  it.each<[string, Parameters<typeof shared_xy_range>[0], RegExp]>([
+    [`mixed scale types`, { x: { scale_type: `log` }, y: {} }, /got log and linear/],
+    [`arcsinh vs linear`, { x: {}, y: { scale_type: { type: `arcsinh`, threshold: 2 } } }, /linear and arcsinh/],
+    [`conflicting lower pins`, { x: { range: [0, null] }, y: { range: [1, null] } }, /lower bounds x=0, y=1/],
+    [`conflicting upper pins`, { x: { range: [null, 5] }, y: { range: [null, 6] } }, /upper bounds x=5, y=6/],
+  ])(`throws on %s`, (_desc, xy_axes, message) => {
+    expect(() => shared_xy_range(xy_axes, { x: [0, 1], y: [0, 1] }, {})).toThrow(message)
   })
 })
 

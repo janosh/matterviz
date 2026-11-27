@@ -1,5 +1,5 @@
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 import { assertHoverScopedShortcut, bind_props, doc_query, press_window_key } from '../setup'
@@ -102,7 +102,9 @@ describe(`Trajectory keyboard shortcuts`, () => {
   })
 
   test(`only suppresses defaults for available viewer shortcuts`, async () => {
-    const viewer = await mount_trajectory(undefined, { fullscreen_toggle: false })
+    const viewer = await mount_trajectory(undefined, {
+      show_controls: { hidden: [`fullscreen`] },
+    })
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
 

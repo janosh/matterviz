@@ -1,11 +1,11 @@
-import type { Vec3 } from '#lib/math.js'
-import type { StructureIdResult } from '#lib/structure-id/compute-structure-id.js'
-import type { StructureIdSweep } from '#lib/structure-id/collect.js'
+import type { Vec3 } from '#lib/math'
+import type { StructureIdResult } from '#lib/structure-id/compute-structure-id'
+import type { StructureIdSweep } from '#lib/structure-id/collect'
 import {
   cna_type_source_atoms,
   scene_site_indices,
   site_source_atoms,
-} from '#lib/trajectory/linked-sites.js'
+} from '#lib/trajectory/linked-sites'
 import { expect, test } from 'vite-plus/test'
 import { make_molecule } from '../test-fixtures'
 

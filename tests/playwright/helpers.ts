@@ -914,7 +914,7 @@ export async function expect_combined_fullscreen(
   page.off(`console`, on_console)
 }
 
-// Bring each still-unloaded LazyDemo into view in turn, then end at the bottom for any other
+// Bring each still-unloaded LazyMount into view in turn, then end at the bottom for any other
 // lazy content. A fixed-step scroll can pass a demo while a busy main thread delays its
 // IntersectionObserver callback, leaving that demo unloaded for good once the scroll moves on.
 export const load_all_demos = (page: Page) =>
@@ -922,7 +922,7 @@ export const load_all_demos = (page: Page) =>
     .poll(
       () =>
         page.evaluate(() => {
-          const pending = document.querySelector(`.lazy-demo > .placeholder`)
+          const pending = document.querySelector(`.lazy-mount > .placeholder`)
           if (pending) {
             pending.scrollIntoView({ block: `center` })
             return false

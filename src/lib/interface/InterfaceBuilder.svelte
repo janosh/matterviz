@@ -6,10 +6,10 @@
   import KeyValueList from 'svelte-widgets/KeyValueList.svelte'
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import type { Vec2 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
-  import { ScatterPlot } from '#lib/plot/index.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { Vec2 } from '#lib/math'
+  import * as math from '#lib/math'
+  import { ScatterPlot } from '#lib/plot/index'
+  import type { Crystal } from '#lib/structure/index'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import type { HTMLAttributes } from 'svelte/elements'
   import { match_lattices, surface_frame } from './lattice-match'
@@ -343,7 +343,7 @@
   }
   .error {
     color: var(--error-color, tomato);
-    font-family: monospace;
+    font-family: var(--font-mono);
     white-space: pre-wrap;
   }
   .empty {

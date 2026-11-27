@@ -1,8 +1,8 @@
 <script lang="ts">
   // Ranked routes as a sortable heatmap table; clicking a row selects the route
   import type { RowData } from 'svelte-widgets/table'
-  import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
-  import type { Column } from '#lib/table/index.js'
+  import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index'
+  import type { Column } from '#lib/table/index'
   import { format_equation_html } from './format'
   import { describe_downhill_windows } from './thermo'
   import type { SynthesisRoute } from './types'
@@ -131,25 +131,6 @@
   .route-table {
     overflow-x: auto;
     max-width: 100%;
-  }
-  /* Outline on <tr> gets hidden by the sticky first cells, so frame the row cell by cell */
-  .route-table :global(tr.selected td) {
-    --frame: var(--accent-color, #4a9eff);
-    box-shadow:
-      inset 0 2px 0 var(--frame),
-      inset 0 -2px 0 var(--frame);
-  }
-  .route-table :global(tr.selected td:first-child) {
-    box-shadow:
-      inset 2px 0 0 var(--frame),
-      inset 0 2px 0 var(--frame),
-      inset 0 -2px 0 var(--frame);
-  }
-  .route-table :global(tr.selected td:last-child) {
-    box-shadow:
-      inset -2px 0 0 var(--frame),
-      inset 0 2px 0 var(--frame),
-      inset 0 -2px 0 var(--frame);
   }
   .route-table :global(tr) {
     cursor: pointer;

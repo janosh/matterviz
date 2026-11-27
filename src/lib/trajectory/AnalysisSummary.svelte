@@ -2,9 +2,9 @@
   // Summary table plus provenance note under an analysis plot (MSD, VACF, RDF): one place
   // for the column headers, the compact styling, the faint note line
   // and downloads of the curves and their analysis metadata
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
-  import { columns_to_csv } from '#lib/trajectory/analysis.js'
+  import ExportDestination from 'svelte-widgets/ExportDestination.svelte'
+  import { FileExportState } from 'svelte-widgets/browser'
+  import { columns_to_csv } from '#lib/trajectory/analysis'
   import type { Snippet } from 'svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Download } from 'svelte-widgets/icons'
@@ -57,15 +57,18 @@
       title="Download {item.label}"
       disabled={export_state.disabled}
       onclick={() =>
-        export_state.run(({ filename, save }) => {
+        export_state.run(async ({ filename, open }) => {
           const suffix = item.filename.startsWith(`${default_name}.`)
             ? item.filename.slice(default_name.length)
             : `-${item.filename}`
-          const [text, mime] =
-            `columns` in item
-              ? [columns_to_csv(item.columns()), `text/csv`]
-              : [JSON.stringify(item.json(), null, 2), `application/json`]
-          return save(text, `${filename}${suffix}`, mime)
+          const is_csv = `columns` in item
+          const write = await open(
+            `${filename}${suffix}`,
+            is_csv ? `text/csv` : `application/json`,
+          )
+          await write(
+            is_csv ? columns_to_csv(item.columns()) : JSON.stringify(item.json(), null, 2),
+          )
         })}
     >
       <Icon icon={Download} />

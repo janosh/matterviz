@@ -1,21 +1,22 @@
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import { svg_to_string } from '#lib/io/export.js'
-import type { Vec2 } from '#lib/math.js'
+import { export_figure } from 'svelte-widgets/figure-export'
+import type { Vec2 } from '#lib/math'
 import type {
   AxisConfig,
   AxisRanges,
   DataSeries,
   DisplayConfig,
   FillRegion,
+  SelectedMark,
   StyleOverrides,
   UserContentProps,
-} from '#lib/plot/core/types.js'
-import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
-import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
-import { level_densities } from '#lib/plot/core/density-contours.js'
-import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
-import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-import * as scales from '#lib/plot/core/scales.js'
+} from '#lib/plot/core/types'
+import type { FacetLayoutContext } from '#lib/plot/core/facets'
+import { place_tooltip } from '#lib/plot/core/decorations/tooltip'
+import { level_densities } from '#lib/plot/core/density-contours'
+import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout'
+import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte'
+import * as scales from '#lib/plot/core/scales'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { rgb } from 'd3-color'
@@ -52,13 +53,13 @@ import {
 } from '../setup'
 
 // Pass-through spy so tests can inspect what the tooltip was told to dodge
-vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/decorations/tooltip`, async (import_original) => {
   const original = await import_original<{ place_tooltip: typeof place_tooltip }>()
   return { ...original, place_tooltip: vi.fn(original.place_tooltip) }
 })
 
 // Pass-through spy counting the series-wide density level computations
-vi.mock(`#lib/plot/core/density-contours.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/density-contours`, async (import_original) => {
   const original = await import_original<{ level_densities: typeof level_densities }>()
   return { ...original, level_densities: vi.fn(original.level_densities) }
 })
@@ -378,7 +379,10 @@ describe(`ScatterPlot`, () => {
     vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(rect)
     const svg = plot_svg(plot)
     const live_markup = svg.outerHTML
-    const doc = new DOMParser().parseFromString(svg_to_string(svg), `image/svg+xml`)
+    const doc = new DOMParser().parseFromString(
+      await (await export_figure(svg, { format: `svg` })).text(),
+      `image/svg+xml`,
+    )
     const texts = [...doc.querySelectorAll(`text`)].map((el) => el.textContent)
     expect(texts).toEqual(expect.arrayContaining([`AlphaSeries`, `BetaSeries`, `CbarTitle`]))
     // legend marker glyphs come along, and the color bar's gradient becomes an SVG gradient
@@ -926,7 +930,6 @@ describe(`ScatterPlot`, () => {
       padding: { t: 7, b: 11, l: 13, r: 17 },
       facet_layout,
       show_controls: false,
-      fullscreen_toggle: false,
       legend: null,
     })
     await vi.waitFor(() => expect(report_layout).toHaveBeenCalled())
@@ -1091,14 +1094,16 @@ describe(`ScatterPlot`, () => {
       ])
       expect(canvas.style.width).toBe(`400px`)
       // export repaints the markers on a fresh canvas at 2x via the registered painter
-      vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockReturnValue(
-        `data:image/png;base64,cGxvdA==`,
-      )
+      vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockImplementation(function (
+        this: HTMLCanvasElement,
+      ) {
+        return `data:image/png;base64,${btoa(`${this.width}x${this.height}`)}`
+      })
       const exported = new DOMParser().parseFromString(
-        svg_to_string(plot_svg(overlaid)),
+        await (await export_figure(plot_svg(overlaid), { format: `svg` })).text(),
         `image/svg+xml`,
       )
-      const image = query(exported, `image[href="data:image/png;base64,cGxvdA=="]`)
+      const image = query(exported, `image[href="data:image/png;base64,${btoa(`800x600`)}"]`)
       expect(
         query(exported, `g[clip-path] path`).compareDocumentPosition(image) &
           Node.DOCUMENT_POSITION_FOLLOWING,
@@ -1110,9 +1115,9 @@ describe(`ScatterPlot`, () => {
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-        selected_points: { series_idx: number; point_idx: number }[]
+        selection: SelectedMark[]
         marker_renderer: `canvas` | `svg`
-      }>({ tooltip_point: null, selected_points: [], marker_renderer: `canvas` })
+      }>({ tooltip_point: null, selection: [], marker_renderer: `canvas` })
       const hover_plot = await mount_sized_scatter_plot(bind_props({ series: [dense] }, state))
       const draws_before_hover = clear_rect.mock.calls.length
       state.tooltip_point = { x: dense.x[4], y: dense.y[4], series_idx: 0, point_idx: 4 }
@@ -1124,7 +1129,7 @@ describe(`ScatterPlot`, () => {
       expect(hovered_fill).toMatch(/^var\(--point-fill-color/)
       // Empty selection must stay reactive when points enter/leave the SVG overlay.
       for (const selected of [[4, 5], []]) {
-        state.selected_points = selected.map((idx) => ({ series_idx: 0, point_idx: idx }))
+        state.selection = selected.map((idx) => ({ series_idx: 0, point_idx: idx }))
         await flush_render()
         expect(arcs_since_clear).toBe(dense.x.length - selected.length)
         expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(selected.length || 1)
@@ -1544,6 +1549,37 @@ describe(`ScatterPlot`, () => {
         expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
       }
       expect(color_scan).not.toHaveBeenCalled()
+    },
+  )
+
+  // A dense line past the morph budget snaps, so it decimates to at most 6 vertices per column:
+  // a device pixel, or half its stroke if thinner. A dashed one keeps them all (its dashes run
+  // along every vertex)
+  test.each([
+    [1, undefined, 0.5], // stroke widths default to 1 for decimation
+    [2, undefined, 0.5],
+    [1, 4, 1],
+    [3, 4, 1 / 3],
+  ])(
+    `decimates dense lines at devicePixelRatio %s, width %s to %s px columns`,
+    async (pixel_ratio, width, column_px) => {
+      vi.stubGlobal(`devicePixelRatio`, pixel_ratio)
+      const x = Array.from({ length: 20_000 }, (_, idx) => idx)
+      const y = x.map((idx) => Math.sin(idx * 0.7)) // zig-zags within every column
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { x, y, markers: `line`, line_style: { width } },
+          { x, y, markers: `line`, line_style: { width, dash: `4 2` } },
+        ],
+      })
+      const paths = plot.querySelectorAll(`g[data-series-id] > path[fill="none"]`)
+      const [solid, dashed] = [...paths].map(
+        (path) => path.getAttribute(`d`)?.match(/C/g)?.length,
+      )
+      const columns = clip_rect(plot).width / column_px
+      expect(solid).toBeGreaterThan(5 * columns)
+      expect(solid).toBeLessThan(6 * (columns + 20 / column_px)) // + the crop margin
+      expect(dashed).toBe(x.length - 1)
     },
   )
 

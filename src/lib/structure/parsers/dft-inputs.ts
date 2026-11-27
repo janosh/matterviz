@@ -1,11 +1,11 @@
 // Plain-text DFT inputs that list a cell and atoms in Cartesian or fractional coordinates:
 // FHI-aims `geometry.in` and Quantum ESPRESSO `pw.x` input files.
-import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import * as math from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { make_site } from '#lib/structure/site.js'
+import { BOHR_TO_ANGSTROM } from '#lib/constants'
+import type { ElementSymbol } from '#lib/element/index'
+import * as math from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
+import { make_site } from '#lib/structure/site'
 import {
   element_from_candidates,
   leading_letters,

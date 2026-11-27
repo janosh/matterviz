@@ -1,10 +1,10 @@
 <script lang="ts">
   // Export pane shared by the phase diagram viewers: the figure through the `image_sources`
   // its viewer renders with (SVG or canvas), the diagram itself as JSON
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
+  import type { PaneToggleProps } from '#lib/overlays/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import type { ExportProps, ExportSources } from '#lib/io/export.js'
+  import type { ExportProps, ExportSources } from '#lib/io/export'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -26,7 +26,7 @@
       data?: unknown
       // Appended to the filename, e.g. phase-diagram-Al-Cu
       components?: readonly string[]
-      // The live figure's serializers, see svg_sources and canvas_sources
+      // The live figure's serializers, see figure_sources and canvas_sources
       image_sources?: ExportSources
       filename?: string
       png_dpi?: number

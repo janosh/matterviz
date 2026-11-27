@@ -6,15 +6,15 @@
     BarHandlerProps,
     BarSeries,
     UserContentProps,
-  } from '#lib/plot/index.js'
-  import { format_value } from '#lib/labels.js'
-  import type { Vec2 } from '#lib/math.js'
-  import { BarPlot } from '#lib/plot/index.js'
-  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
-  import { observe_size } from '#lib/plot/core/utils.js'
-  import type { CrystalSystem } from '#lib/symmetry/index.js'
-  import * as symmetry from '#lib/symmetry/index.js'
-  import * as spg from '#lib/symmetry/spacegroups.js'
+  } from '#lib/plot/index'
+  import { format_value } from '#lib/labels'
+  import type { Vec2 } from '#lib/math'
+  import { BarPlot } from '#lib/plot/index'
+  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout'
+  import { observe_size } from '#lib/plot/core/utils'
+  import type { CrystalSystem } from '#lib/symmetry/index'
+  import * as symmetry from '#lib/symmetry/index'
+  import * as spg from '#lib/symmetry/spacegroups'
 
   const MAX_SPACEGROUP = 230
   const TICK_LABEL_HEIGHT_PX = 14 // 12px rotated tick label plus breathing room

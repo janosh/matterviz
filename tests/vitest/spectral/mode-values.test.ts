@@ -1,13 +1,13 @@
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { branch_segment_keys, branch_x, plotted_branches } from '#lib/spectral/helpers.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import { branch_segment_keys, branch_x, plotted_branches } from '#lib/spectral/helpers'
 import {
   mode_value_markers,
   MODE_MARKER_BINS,
   thin_mode_markers,
   normalize_mode_values,
   project_qpoints_onto_path,
-} from '#lib/spectral/mode-values.js'
-import type { BaseBandStructure } from '#lib/spectral/types.js'
+} from '#lib/spectral/mode-values'
+import type { BaseBandStructure } from '#lib/spectral/types'
 import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 

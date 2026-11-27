@@ -1,6 +1,6 @@
 import BrillouinZoneControls from '#lib/brillouin/BrillouinZoneControls.svelte'
 import { mount, tick } from 'svelte'
-import { DEFAULTS } from '#lib/settings.js'
+import { DEFAULTS } from '#lib/settings'
 import { doc_query, reset_section, set_input } from '../setup'
 import { expect, test } from 'vite-plus/test'
 

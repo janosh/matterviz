@@ -1,8 +1,8 @@
 import PdfPlot from '#lib/rdf/PdfPlot.svelte'
 import RdfPlot from '#lib/rdf/RdfPlot.svelte'
-import type { RdfPattern } from '#lib/rdf/index.js'
-import type { RadiationType } from '#lib/scattering/index.js'
-import { structure_map } from '#site/structures.js'
+import type { RdfPattern } from '#lib/rdf/index'
+import type { RadiationType } from '#lib/scattering/index'
+import { structure_map } from '#site/structures'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -10,17 +10,17 @@ import { describe, expect, test, vi } from 'vite-plus/test'
 import { create_drop_event, mount_sized, query, resize_element, set_input } from '../setup'
 import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
-import type * as calc_rdf from '#lib/rdf/compute-rdf.js'
+import type * as calc_rdf from '#lib/rdf/compute-rdf'
 import {
   compute_all_pair_rdfs,
   compute_rdfs,
   rdf_bin_site_index,
   rdf_bin_sites,
-} from '#lib/rdf/compute-rdf.js'
-import * as plot_module from '#lib/plot/index.js'
+} from '#lib/rdf/compute-rdf'
+import * as plot_module from '#lib/plot/index'
 
 // Spy on the neighbour search so the radiation buttons can be shown not to re-run it
-vi.mock(`#lib/rdf/compute-rdf.js`, async (import_original) => {
+vi.mock(`#lib/rdf/compute-rdf`, async (import_original) => {
   const actual = await import_original<typeof calc_rdf>()
   return {
     ...actual,
@@ -122,7 +122,7 @@ describe(`RdfPlot`, () => {
   ] as const)(`empty state %#`, async (props, message, accepts_drag) => {
     const plot = await mount_sized_rdf_plot(props)
     expect(plot.textContent).toContain(message)
-    plot.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    plot.dispatchEvent(create_drop_event([], { type: `dragenter` }))
     await tick()
     expect(plot.classList.contains(`dragover`)).toBe(accepts_drag)
   })

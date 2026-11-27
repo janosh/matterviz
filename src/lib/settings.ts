@@ -1,8 +1,9 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-import { is_plain_object } from 'svelte-widgets/utils'
-import type { ColorSchemeName } from '#lib/constants.js'
+import { is_plain_object, plain_copy } from 'svelte-widgets/utils'
+import type { ColorSchemeName } from '#lib/constants'
+import { BZ_ORDERS, type BZOrder } from '#lib/brillouin/types'
 import {
   DEFAULT_FPS_RANGE,
   ELEMENT_COLOR_SCHEME_NAMES,
@@ -10,25 +11,24 @@ import {
   FPS_STEP,
   INDEX_ABOVE_BYTES,
   POLYHEDRA_DEFAULTS,
-} from '#lib/constants.js'
-import type { HullFaceColorMode } from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import { capitalize, symbol_names } from '#lib/labels.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import type { GizmoOptions } from '#lib/scene/gizmo.js'
-import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
-import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
-import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import { JSON_KINDS, plain_copy } from '#lib/utils.js'
-import { is_color_scale } from '#lib/colors/scale-names.js'
+} from '#lib/constants'
+import type { HullFaceColorMode } from '#lib/convex-hull/types'
+import type { ElementSymbol } from '#lib/element/types'
+import { capitalize, symbol_names } from '#lib/labels'
+import type { Vec2, Vec3 } from '#lib/math'
+import type { GizmoOptions } from '#lib/scene/gizmo'
+import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra'
+import type { ImageAtomCompletion } from '#lib/structure/pbc'
+import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility'
+import type { ColorScale } from '#lib/plot/core/types'
+import { JSON_KINDS } from '#lib/utils'
+import { is_color_scale } from '#lib/colors/scale-names'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
 type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
-// One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
-// when the schema is synced into the VS Code extension's contributed configuration. A leaf
-// whose `value` is a plain object is a free-form map (JSON-schema `object`); `additionalProperties`
-// names its value type (string unless set).
+// One leaf of the settings schema, synced into the VS Code extension's contributed
+// configuration. A leaf whose `value` is a plain object is a free-form map (JSON-schema
+// `object`); `additionalProperties` names its value type (string unless set).
 export interface SettingType<T = unknown> extends NumberBounds {
   value: T
   description: string
@@ -37,7 +37,6 @@ export interface SettingType<T = unknown> extends NumberBounds {
   maxItems?: number
   items?: NumberBounds
   additionalProperties?: { type: `string` | `number` | `boolean` | `object` }
-  web_only?: true
   // A value shape richer than the default's: a color scale is a scheme name or a config object
   kind?: `color_scale`
 }
@@ -93,11 +92,6 @@ const bounded_setting = (
 ): SettingType<number> => ({ value, description, minimum, maximum })
 const opacity_setting = (value: number, description: string): SettingType<number> =>
   bounded_setting(value, description, 0, 1)
-const fullscreen_toggle_setting = (): SettingType<boolean> => ({
-  value: true,
-  description: `Show fullscreen toggle button (where the page may fullscreen an element)`,
-  web_only: true,
-})
 
 export type SurfaceFinish = 'satin' | 'translucent_shell' | 'chalk' | 'unlit'
 
@@ -140,7 +134,9 @@ type DefinedSettingValue<Definition> = Definition extends {
   ? Value
   : Definition extends { value: infer Value }
     ? Value extends number
-      ? number
+      ? number extends Value
+        ? number
+        : Value // a literal union such as BZOrder
       : Value extends boolean
         ? boolean
         : Value
@@ -439,18 +435,19 @@ export const SETTINGS_CONFIG = define_settings({
       value: false,
       description: `Hide the central atom of each rendered polyhedron`,
     },
-    polyhedra_min_neighbors: {
-      value: POLYHEDRA_DEFAULTS.min_neighbors,
-      description: `Minimum number of bonded neighbors (coordination number) to form a polyhedron`,
-      minimum: 4, // hulls of <4 points are degenerate and render nothing
-      maximum: 12,
-    },
-    polyhedra_max_neighbors: {
-      value: POLYHEDRA_DEFAULTS.max_neighbors,
-      description: `Maximum number of bonded neighbors for a polyhedron (skips e.g. CN-12 cuboctahedra around large A-site cations)`,
-      minimum: 4,
-      maximum: 16,
-    },
+    // minimum 4: hulls of <4 points are degenerate and render nothing
+    polyhedra_min_neighbors: bounded_setting(
+      POLYHEDRA_DEFAULTS.min_neighbors,
+      `Minimum number of bonded neighbors (coordination number) to form a polyhedron`,
+      4,
+      12,
+    ),
+    polyhedra_max_neighbors: bounded_setting(
+      POLYHEDRA_DEFAULTS.max_neighbors,
+      `Maximum number of bonded neighbors for a polyhedron (skips e.g. CN-12 cuboctahedra around large A-site cations)`,
+      4,
+      16,
+    ),
     polyhedra_excluded_elements: {
       value: [] as readonly string[],
       description: `Elements excluded from acting as polyhedra centers`,
@@ -695,7 +692,6 @@ export const SETTINGS_CONFIG = define_settings({
     cell_edge_color: { value: `#808080`, description: `Color of cell edges` },
     cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
     cell_edge_width: bounded_setting(1.5, `Width of cell edge lines`, 0.5, 5.0),
-    fullscreen_toggle: fullscreen_toggle_setting(),
   },
 
   // Isosurface (volumetric data) settings
@@ -714,7 +710,13 @@ export const SETTINGS_CONFIG = define_settings({
 
   // Brillouin zone viewer settings
   brillouin: {
-    bz_order: bounded_setting(1, `Brillouin zone order to render (1 = first BZ)`, 1, 5),
+    bz_order: typed_setting<BZOrder>({
+      value: 1,
+      description: `Brillouin zone order to render (1 = first BZ)`,
+      minimum: BZ_ORDERS[0],
+      maximum: BZ_ORDERS.at(-1),
+      multipleOf: 1,
+    }),
     surface_color: { value: `#4488ff`, description: `Brillouin zone face color` },
     surface_opacity: opacity_setting(0.3, `Opacity of Brillouin zone faces`),
     edge_color: { value: `#000000`, description: `Brillouin zone edge color` },
@@ -739,7 +741,6 @@ export const SETTINGS_CONFIG = define_settings({
     show_ibz: { value: false, description: `Display the irreducible Brillouin zone` },
     ibz_color: { value: `#ff8844`, description: `Irreducible Brillouin zone face color` },
     ibz_opacity: opacity_setting(0.5, `Opacity of irreducible Brillouin zone faces`),
-    fullscreen_toggle: fullscreen_toggle_setting(),
   },
 
   // Fermi surface viewer settings
@@ -794,7 +795,6 @@ export const SETTINGS_CONFIG = define_settings({
       `perspective`,
       `Camera projection mode for the Fermi surface scene`,
     ),
-    fullscreen_toggle: fullscreen_toggle_setting(),
   },
 
   // Trajectory viewer settings
@@ -838,7 +838,6 @@ export const SETTINGS_CONFIG = define_settings({
       enum: { 'time-series': `Time series`, distribution: `Distribution` },
     },
     show_controls: { value: true, description: `Show playback controls` },
-    fullscreen_toggle: fullscreen_toggle_setting(),
     step_labels: bounded_setting(5, `Number of frame labels to display`, 0, 20),
     layout: {
       value: `auto` as const,
@@ -1307,7 +1306,6 @@ export const build_structure_props_from_settings = (defaults: DefaultSettings) =
     show_image_atoms: structure.show_image_atoms,
     image_atom_completion: structure.image_atom_completion,
     keep_molecules_whole: structure.keep_molecules_whole,
-    show_trajectory_lines: structure.show_trajectory_lines,
     symmetry_settings: { ...defaults.symmetry },
   }
 }

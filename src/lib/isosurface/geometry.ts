@@ -2,9 +2,9 @@
 // marching cubes for every requested isovalue on each volume's grid, prepared by the caller
 // (prepare_geometry_grid) so a worker receives a grid within its extraction budget. A finite grid
 // is the window itself; a periodic one is the unit cell, tiled over the window and clipped.
-import { compute_vertex_normals, marching_cubes } from '#lib/marching-cubes.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_frac_to_cart, det_3x3, dot, grow_buffer, inverse_3x3 } from '#lib/math.js'
+import { compute_vertex_normals, marching_cubes } from '#lib/marching-cubes'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { create_frac_to_cart, det_3x3, dot, grow_buffer, inverse_3x3 } from '#lib/math'
 import { type ScalarGrid3D, scalar_grid_strides } from './grid'
 import { resample_periodic, type SurfaceClip } from './sampling'
 import { MAX_GRID_POINTS } from './types'

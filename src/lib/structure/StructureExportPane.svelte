@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
+  import { FileExportState, type FileExportContext } from 'svelte-widgets/browser'
 
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import type { ExportSection } from '#lib/io/index.js'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
+  import type { ExportSection } from '#lib/io/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { export_canvas_as_png, observe_canvas_presence } from '#lib/io/export.js'
-  import { export_scene_as } from '#lib/scene/index.js'
+  import { export_canvas_as_png } from '#lib/io/export'
+  import { DEFAULT_PNG_DPI, observe_canvas_presence } from 'svelte-widgets/figure-export'
+  import { export_scene_as, OBJ_SAVE_AS_REASON } from '#lib/scene/index'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
-  import type { AnyStructure } from '#lib/structure/index.js'
-  import type { SymmetryDataset } from '#lib/symmetry/analyze.js'
-  import * as exports from '#lib/structure/export.js'
+  import type { AnyStructure } from '#lib/structure/index'
+  import type { SymmetryDataset } from '#lib/symmetry/analyze'
+  import * as exports from '#lib/structure/export'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera as CameraIcon } from 'svelte-widgets/icons'
@@ -102,10 +102,12 @@
               {
                 label: `Export prediction`,
                 hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
-                on_download: ({ filename, save }: FileExportContext) => {
+                on_download: async ({ filename, open }: FileExportContext) => {
                   const content = prediction_text()
                   if (content)
-                    return save(content, `${filename}-prediction.json`, `application/json`)
+                    await (
+                      await open(`${filename}-prediction.json`, `application/json`)
+                    )(content)
                 },
                 copy_text: prediction_text,
               },
@@ -123,8 +125,12 @@
             hint,
             disabled: Boolean(disabled_reason),
             disabled_reason,
-            on_download: ({ filename, save }: FileExportContext) =>
-              structure && save(to_str(structure, sym_data), `${filename}.${ext}`, mime),
+            on_download: async ({ filename, open }: FileExportContext) => {
+              if (structure)
+                await (
+                  await open(`${filename}.${ext}`, mime)
+                )(to_str(structure, sym_data))
+            },
             copy_text: () => (structure ? to_str(structure, sym_data) : null),
           }
         },
@@ -138,10 +144,10 @@
           disabled: !has_canvas,
           disabled_reason: has_canvas ? undefined : `Waiting for the 3D view to render`,
           show_dpi: true,
-          on_download: ({ filename, save }: FileExportContext) => {
+          on_download: (context: FileExportContext) => {
             const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
             if (!canvas) throw new Error(`Canvas element not found for PNG export`)
-            return export_canvas_as_png(canvas, filename, png_dpi, save)
+            return export_canvas_as_png(canvas, context.filename, png_dpi, context)
           },
         },
       ],
@@ -153,10 +159,11 @@
             items: model_3d_formats.map(({ label, format, hint }) => ({
               label,
               hint,
+              save_as_reason: format === `obj` ? OBJ_SAVE_AS_REASON : undefined,
               disabled: !scene,
               disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
-              on_download: ({ filename, save }: FileExportContext) =>
-                scene && export_scene_as(scene, format, filename, save),
+              on_download: (context: FileExportContext) =>
+                scene && export_scene_as(scene, format, context.filename, context),
             })),
           },
         ]

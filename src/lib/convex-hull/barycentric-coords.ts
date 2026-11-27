@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '#lib/element/index.js'
+import type { ElementSymbol } from '#lib/element/index'
 
 // Corners of the composition simplex each diagram plots into: a unit segment for binaries,
 // an equilateral triangle for ternaries, a regular tetrahedron for quaternaries.

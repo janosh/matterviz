@@ -4,13 +4,13 @@
 // Sunburst.svelte wires them to reactive state and the DOM.
 
 import { clamp } from 'svelte-widgets/utils'
-import { to_degrees } from '#lib/math.js'
-import { clamp01 } from '#lib/utils.js'
+import { to_degrees } from '#lib/math'
+import { clamp01 } from '#lib/utils'
 import type {
   PositionedArc,
   SunburstLabelRotation,
   SunburstShape,
-} from '#lib/plot/core/utils/hierarchy-layout.js'
+} from '#lib/plot/core/utils/hierarchy-layout'
 
 const TWO_PI = 2 * Math.PI
 // Fallback line height: 1.1x the 11px --sunburst-font-size default

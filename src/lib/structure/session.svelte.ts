@@ -4,25 +4,21 @@
 // bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
 // exposes and StructureViewport binds the scene to it.
 import { format_num } from 'svelte-widgets/format'
-import { plain_copy, same_while_equal } from '#lib/utils.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { coerce_elem_symbol } from '#lib/element/helpers.js'
-import { plural } from '#lib/labels.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { coerce_elem_symbol } from '#lib/element/helpers'
+import { plural } from '#lib/labels'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import {
   add,
   create_cart_to_frac,
   create_frac_to_cart,
   IDENTITY_3X3,
   subtract,
-} from '#lib/math.js'
-import type { CellType, SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
-import {
-  map_wyckoff_to_all_atoms,
-  wyckoff_positions_from_moyo,
-} from '#lib/symmetry/wyckoff.js'
-import { transform_cell } from '#lib/symmetry/analyze.js'
-import { to_error } from 'svelte-widgets/utils'
+} from '#lib/math'
+import type { CellType, SymmetryDataset, WyckoffPos } from '#lib/symmetry/index'
+import { map_wyckoff_to_all_atoms, wyckoff_positions_from_moyo } from '#lib/symmetry/wyckoff'
+import { transform_cell } from '#lib/symmetry/analyze'
+import { plain_copy, same_while_equal, to_error } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'

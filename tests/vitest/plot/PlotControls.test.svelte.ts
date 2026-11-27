@@ -1,9 +1,9 @@
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import BarPlotControls from '#lib/plot/bar/BarPlotControls.svelte'
 import BoxPlotControls from '#lib/plot/box/BoxPlotControls.svelte'
 import PlotControls from '#lib/plot/core/components/PlotControls.svelte'
 import HistogramControls from '#lib/plot/histogram/HistogramControls.svelte'
-import type { HistogramNormalize } from '#lib/plot/histogram/histogram.js'
+import type { HistogramNormalize } from '#lib/plot/histogram/histogram'
 import SankeyControls from '#lib/plot/sankey/SankeyControls.svelte'
 import ScatterPlotControls from '#lib/plot/scatter/ScatterPlotControls.svelte'
 import SunburstControls from '#lib/plot/core/components/HierarchyControls.svelte'
@@ -17,10 +17,10 @@ import type {
   ViolinKind,
   ViolinSide,
   WhiskerMode,
-} from '#lib/plot/index.js'
-import type { TicksOption } from '#lib/plot/core/scales.js'
-import { resolve_axis_range } from '#lib/plot/core/interactions.js'
-import { DEFAULTS } from '#lib/settings.js'
+} from '#lib/plot/index'
+import type { TicksOption } from '#lib/plot/core/scales'
+import { resolve_axis_range } from '#lib/plot/core/interactions'
+import { DEFAULTS } from '#lib/settings'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {

@@ -8,11 +8,11 @@
   // clipping planes; the section geometry is memoized on the (interval-constant) topology.
   import { clamp } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
-  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import { is_drag } from '#lib/plot/core/interactions.js'
-  import type { ThreltePointerEvent } from '#lib/scene/index.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup'
+  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import { is_drag } from '#lib/plot/core/interactions'
+  import type { ThreltePointerEvent } from '#lib/scene/index'
   import {
     bind_renderer,
     build_orbit_props,
@@ -24,11 +24,11 @@
     SceneCamera,
     SceneLabel,
     SceneLights,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import { T } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import * as extras from '@threlte/extras'
-  import { xy_to_ternary } from '#lib/plot/ternary/ternary.js'
+  import { xy_to_ternary } from '#lib/plot/ternary/ternary'
   import { ticks as d3_ticks } from 'd3-array'
   import {
     BufferGeometry,

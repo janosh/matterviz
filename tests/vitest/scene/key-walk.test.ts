@@ -1,6 +1,6 @@
 // KeyWalk, the keyboard hover every 3D scene shares, and KeyWalkRoot, which feeds it the keys
 // of its focused viewer root
-import { KeyWalk, KeyWalkRoot, type KeyWalkOptions } from '#lib/scene/key-walk.svelte.js'
+import { KeyWalk, KeyWalkRoot, type KeyWalkOptions } from '#lib/scene/key-walk.svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 // A walk over `targets` logging the pointer handlers it replays

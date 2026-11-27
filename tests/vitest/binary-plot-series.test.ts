@@ -1,4 +1,4 @@
-import { BINARY_FORMAT, series_from_binary } from '#lib/io/binary-arrays.js'
+import { BINARY_FORMAT, series_from_binary } from '#lib/io/binary-arrays'
 import { describe, expect, test } from 'vite-plus/test'
 
 // One array entry as pymatviz sends it: the raw bytes arrive as a DataView

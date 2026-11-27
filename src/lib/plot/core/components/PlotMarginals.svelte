@@ -1,9 +1,9 @@
 <script lang="ts">
   // Marginal-distribution strips on any side of a 2D plot. Must be a direct child of the host
   // <svg> (outside the plot clip group); each strip self-clips. Math in core/marginals.ts.
-  import { sanitize_html } from '#lib/sanitize.js'
-  import type { Vec2 } from '#lib/math.js'
-  import type { Rect, Sides } from '#lib/plot/core/layout.js'
+  import { sanitize_html } from '#lib/sanitize'
+  import type { Vec2 } from '#lib/math'
+  import type { Rect, Sides } from '#lib/plot/core/layout'
   import type {
     MarginalAxes,
     MarginalAxisBinding,
@@ -16,7 +16,7 @@
     ResolvedMarginalConfig,
     ResolvedMarginals,
     ScaleFn,
-  } from '#lib/plot/core/marginals.js'
+  } from '#lib/plot/core/marginals'
   import {
     MARGINAL_SIDES,
     compute_marginal_curve,
@@ -27,12 +27,12 @@
     marginal_strip_rect,
     marginal_value_format,
     marginal_value_scale,
-  } from '#lib/plot/core/marginals.js'
-  import { create_scale } from '#lib/plot/core/scales.js'
-  import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
+  } from '#lib/plot/core/marginals'
+  import { create_scale } from '#lib/plot/core/scales'
+  import { line_curve_factory } from '#lib/plot/core/fill-utils'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { TooltipValue } from '#lib/tooltip/index.js'
-  import { format_value } from '#lib/labels.js'
+  import { TooltipValue } from '#lib/tooltip/index'
+  import { format_value } from '#lib/labels'
   import { ticks as d3_ticks } from 'd3-array'
   import { curveMonotoneX, curveMonotoneY, line } from 'd3-shape'
   import { portal } from 'svelte-widgets/attachments'

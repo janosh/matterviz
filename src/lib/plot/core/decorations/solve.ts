@@ -1,5 +1,5 @@
-import { compute_element_placement, type Rect } from '#lib/plot/core/layout.js'
-import { first_duplicate } from '#lib/utils.js'
+import { compute_element_placement, type Rect } from '#lib/plot/core/layout'
+import { first_duplicate } from '#lib/utils'
 import { project_obstacles } from './obstacles'
 import {
   type EvictableKind,

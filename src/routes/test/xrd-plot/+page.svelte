@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { PatternEntry, XrdPattern } from '#lib/xrd/index.js'
-  import { XrdPlot } from '#lib/xrd/index.js'
+  import type { PatternEntry, XrdPattern } from '#lib/xrd/index'
+  import { XrdPlot } from '#lib/xrd/index'
   import TestSection from '../TestSection.svelte'
 
   // Deterministic synthetic XRD-like patterns (angles in degrees, intensities arbitrary)
@@ -56,4 +56,8 @@
 
 <TestSection id="multi-pattern" title="Multiple series with legend">
   <XrdPlot patterns={multi_entries} annotate_peaks={0.5} hkl_format="full" {...shared_props} />
+</TestSection>
+
+<TestSection id="always-controls" title="Controls always shown">
+  <XrdPlot patterns={single_entries} show_controls="always" {...shared_props} />
 </TestSection>

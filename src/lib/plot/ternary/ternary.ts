@@ -2,9 +2,9 @@
 // coordinates and back, the grid of constant-fraction lines with their tick anchors, and the
 // pixel fit of the unit triangle into a plot area. Corners match the convex hull and
 // isothermal sections (TRIANGLE_VERTICES): first component right, second top, third left.
-import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
-import type { LineStyle, Markers, PointStyle } from '#lib/plot/core/types.js'
+import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords'
+import type { Vec2, Vec3 } from '#lib/math'
+import type { LineStyle, Markers, PointStyle } from '#lib/plot/core/types'
 
 export const TRIANGLE_HEIGHT = TRIANGLE_VERTICES[1][1]
 

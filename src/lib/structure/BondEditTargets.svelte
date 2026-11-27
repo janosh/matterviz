@@ -4,10 +4,10 @@
   // reporting the hit's index as instanceId (Threlte tracks hover by it). A Threlte mesh each
   // took 9 s to enter edit mode on a 5k-atom cell. A press near a bond end picks that end's
   // atom; in delete mode a press removes the bond.
-  import type { Vec3 } from '#lib/math.js'
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { HoverHandlers } from '#lib/scene/index.js'
-  import type { BondEditMode, BondPair, Site } from '#lib/structure/index.js'
+  import type { Vec3 } from '#lib/math'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { HoverHandlers } from '#lib/scene/index'
+  import type { BondEditMode, BondPair, Site } from '#lib/structure/index'
   import { T } from '@threlte/core'
   import {
     CylinderGeometry,

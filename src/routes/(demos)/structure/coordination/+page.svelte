@@ -1,13 +1,13 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { Crystal } from '#lib'
-  import { SETTINGS_CONFIG } from '#lib/settings.js'
-  import type { CoordinationSplitMode } from '#lib/coordination/index.js'
-  import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index.js'
-  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
-  import { type AtomColorConfig, type AnyStructure, Structure } from '#lib/structure/index.js'
-  import type { BondingStrategy } from '#lib/structure/bonding.js'
-  import { structure_map } from '#site/structures.js'
+  import { SETTINGS_CONFIG } from '#lib/settings'
+  import type { CoordinationSplitMode } from '#lib/coordination/index'
+  import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index'
+  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input'
+  import { type AtomColorConfig, type AnyStructure, Structure } from '#lib/structure/index'
+  import type { BondingStrategy } from '#lib/structure/bonding'
+  import { structure_map } from '#site/structures'
   import EnumSelect from '../../EnumSelect.svelte'
   import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
   import StructureTiles from '../../StructureTiles.svelte'
@@ -79,7 +79,7 @@
 
   <section class="demo-2col">
     {#if single_struct}
-      <LazyDemo label="Single Structure">
+      <LazyMount label="Single Structure">
         <CoordinationBarPlot
           structures={single_struct}
           strategy={single_strategy}
@@ -88,7 +88,7 @@
           on_sites_hover={(highlights) =>
             (single_highlight = highlights?.[0]?.site_indices ?? [])}
         />
-      </LazyDemo>
+      </LazyMount>
       <Structure
         structure={single_struct}
         bind:highlighted_sites={single_highlight}
@@ -112,7 +112,7 @@
 
   <StructurePicker bind:selected={selected_ids} />
 
-  <LazyDemo label="Multiple Structures Overlay" height="400px">
+  <LazyMount label="Multiple Structures Overlay" height="400px">
     <section class="multi-structure-layout" style="height: 400px">
       <CoordinationBarPlot
         structures={selected_structures}
@@ -129,13 +129,13 @@
             bind:atom_color_config={multi_color_config}
             scene_props={multi_scene_props}
             style="height: 100%"
-            enable_info_pane={false}
+            show_controls={{ hidden: [`info-pane`] }}
             enable_measure_mode={false}
           />
         {/snippet}
       </StructureTiles>
     </section>
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <style>

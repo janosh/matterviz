@@ -4,7 +4,7 @@ import type {
   FacetPanelContext,
   FacetSharedBandContext,
   FacetSharedBandSizes,
-} from '#lib/plot/core/facets.js'
+} from '#lib/plot/core/facets'
 import { createRawSnippet, mount, tick, unmount, type Snippet } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, test } from 'vite-plus/test'

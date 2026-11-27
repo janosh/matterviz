@@ -1,7 +1,7 @@
 <script lang="ts">
   import Dos from '#lib/spectral/Dos.svelte'
-  import type { PhononDos } from '#lib/spectral/types.js'
-  import { mock_dos } from '#site/spectral-mocks.js'
+  import type { PhononDos } from '#lib/spectral/types'
+  import { mock_dos } from '#site/spectral-mocks'
   import TestSection from '../TestSection.svelte'
 
   const dos2: PhononDos = {

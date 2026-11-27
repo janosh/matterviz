@@ -1,20 +1,17 @@
-import { plot_color } from '#lib/colors/index.js'
+import { plot_color } from '#lib/colors/index'
 import {
   convert_pressure,
   parse_pt_data,
   pressure_log_floor,
   pt_data_extent,
   pt_phase_colors,
-} from '#lib/phase-diagram/pressure-temperature/data.js'
+} from '#lib/phase-diagram/pressure-temperature/data'
 import type {
   PtBoundary,
   PtPhaseDiagramData,
-} from '#lib/phase-diagram/pressure-temperature/types.js'
-import { named_phase_color } from '#lib/phase-diagram/utils.js'
-import {
-  iron_pt_diagram,
-  water_pt_diagram,
-} from '#site/phase-diagrams/pressure-temperature.js'
+} from '#lib/phase-diagram/pressure-temperature/types'
+import { named_phase_color } from '#lib/phase-diagram/utils'
+import { iron_pt_diagram, water_pt_diagram } from '#site/phase-diagrams/pressure-temperature'
 import { describe, expect, test } from 'vite-plus/test'
 
 // Two phases split by one line, valid as given; cases below break one field at a time

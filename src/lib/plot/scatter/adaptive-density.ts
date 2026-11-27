@@ -1,14 +1,10 @@
 import { clamp } from 'svelte-widgets/utils'
-import { zero_if_negligible } from '#lib/labels.js'
-import { partition_point, type Point2D, type Vec2 } from '#lib/math.js'
-import {
-  axis_transform,
-  range_bounds,
-  validate_log_range,
-} from '#lib/plot/core/interactions.js'
-import type { Rect } from '#lib/plot/core/layout.js'
-import type { ColorScale, ScaleType } from '#lib/plot/core/types.js'
-import { assert_series_lengths, get_scale_type_name } from '#lib/plot/core/types.js'
+import { zero_if_negligible } from '#lib/labels'
+import { partition_point, type Point2D, type Vec2 } from '#lib/math'
+import { axis_transform, range_bounds, validate_log_range } from '#lib/plot/core/interactions'
+import type { Rect } from '#lib/plot/core/layout'
+import type { ColorScale, ScaleType } from '#lib/plot/core/types'
+import { assert_series_lengths, get_scale_type_name } from '#lib/plot/core/types'
 
 export type NumericArray = ArrayLike<number>
 

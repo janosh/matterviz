@@ -2,7 +2,7 @@
   import type {
     ColorBarDecorationProps,
     PlacedDecoration,
-  } from '#lib/plot/core/placed-decoration.svelte.js'
+  } from '#lib/plot/core/placed-decoration.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

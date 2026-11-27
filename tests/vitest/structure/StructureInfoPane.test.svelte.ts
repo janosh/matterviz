@@ -1,10 +1,10 @@
 import StructureInfoPane from '#lib/structure/StructureInfoPane.svelte'
 import type { AnyStructure } from '#lib'
-import * as rdf from '#lib/rdf/compute-rdf.js'
-import * as coordination from '#lib/coordination/compute-coordination.js'
-import * as angles from '#lib/bond-angles/compute-bond-angles.js'
-import type { Vec3 } from '#lib/math.js'
-import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
+import * as rdf from '#lib/rdf/compute-rdf'
+import * as coordination from '#lib/coordination/compute-coordination'
+import * as angles from '#lib/bond-angles/compute-bond-angles'
+import type { Vec3 } from '#lib/math'
+import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -12,7 +12,7 @@ import { bind_props, doc_query, set_input } from '../setup'
 import { get_dummy_structure, make_wyckoff_dataset } from '../test-fixtures'
 
 // The RDF worker client binds its compute on import, before a spy could replace it
-vi.mock(`#lib/rdf/compute-rdf.js`, async (import_original) => {
+vi.mock(`#lib/rdf/compute-rdf`, async (import_original) => {
   const actual = await import_original<typeof rdf>()
   return { ...actual, compute_rdfs: vi.fn(actual.compute_rdfs) }
 })

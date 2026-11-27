@@ -1,12 +1,12 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { ChemicalElement, ElementSymbol } from '#lib'
   import { element_data, PeriodicTable } from '#lib'
-  import { array_max, array_min, type Vec2 } from '#lib/math.js'
-  import { TableInset } from '#lib/periodic-table/index.js'
-  import { ColorBar } from '#lib/plot/index.js'
+  import { array_max, array_min, type Vec2 } from '#lib/math'
+  import { TableInset } from '#lib/periodic-table/index'
+  import { ColorBar } from '#lib/plot/index'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
-  import { open_element_page } from '#site/state.svelte.js'
+  import { open_element_page } from '#site/state.svelte'
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value.
   // Unknown values are NaN, which the table draws as a missing (gray) segment rather than
@@ -112,7 +112,7 @@
 
 <h1 id="periodic-table">Periodic Table</h1>
 
-<LazyDemo
+<LazyMount
   label="Periodic table"
   load={() => import('#site/PeriodicTableDemo.svelte')}
   props={{}}
@@ -127,7 +127,7 @@
   <strong>bottom-left = covalent radius</strong>,
   <strong>bottom-right = |electron affinity|</strong>.
 </p>
-<LazyDemo label="4-fold Split" height="400px">
+<LazyMount label="4-fold Split" height="400px">
   <PeriodicTable
     tile_props={{ show_name: false, show_number: false }}
     heatmap_values={four_fold_data}
@@ -152,7 +152,7 @@
       </TableInset>
     {/snippet}
   </PeriodicTable>
-</LazyDemo>
+</LazyMount>
 
 <h2 id="missing-color-demo">Missing Color Demo</h2>
 <p>
@@ -164,7 +164,7 @@
   through the color scale. Only absent / <code>null</code> entries count as missing.
 </p>
 
-<LazyDemo label="Missing Color Demo">
+<LazyMount label="Missing Color Demo">
   <PeriodicTable
     tile_props={{ show_name: window_width > 800 }}
     heatmap_values={missing_heatmap_values}
@@ -201,7 +201,7 @@
       </TableInset>
     {/snippet}
   </PeriodicTable>
-</LazyDemo>
+</LazyMount>
 
 <h2 id="active-elements-border-styling">Active Elements Border Styling</h2>
 <p>
@@ -210,7 +210,7 @@
   >.
 </p>
 
-<LazyDemo label="Active Elements Border Styling">
+<LazyMount label="Active Elements Border Styling">
   <PeriodicTable
     tile_props={{ show_name: window_width > 800 }}
     {active_elements}
@@ -240,7 +240,7 @@
       </TableInset>
     {/snippet}
   </PeriodicTable>
-</LazyDemo>
+</LazyMount>
 
 <h2 id="auto-scaling-color-bar">Auto-Scaling Color Bar</h2>
 <p>
@@ -252,7 +252,7 @@
 <!-- the color bar names each table, so no heading above it -->
 <div class="table-grid bleed-1400">
   {#each auto_color_bar_tables as [title, property, color_scale] (title)}
-    <LazyDemo label="{title} with auto color bar" height="220px">
+    <LazyMount label="{title} with auto color bar" height="220px">
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false, show_symbol: false }}
         heatmap_values={heatmap(property)}
@@ -261,7 +261,7 @@
         gap="1px"
         style="--ptable-inner-transition-offset: 0.3"
       />
-    </LazyDemo>
+    </LazyMount>
   {/each}
 </div>
 
@@ -274,27 +274,27 @@
 </p>
 
 <div style="display: grid; gap: 3em">
-  <LazyDemo label="Electronegativity sample histograms" height="500px">
+  <LazyMount label="Electronegativity sample histograms" height="500px">
     <PeriodicTable
       tile_plots={hist_tile_plots}
       tile_plot_config={{ bins: 16, color_scale: `interpolateViridis` }}
       color_bar={{ title: `Electronegativity (Pauling)` }}
     />
-  </LazyDemo>
-  <LazyDemo label="Log ionization energies" height="500px">
+  </LazyMount>
+  <LazyMount label="Log ionization energies" height="500px">
     <PeriodicTable
       tile_plots={line_tile_plots}
       tile_plot_config={{ mode: `line`, color_scale: `interpolateWarm` }}
       color_bar={{ title: `Ionization energy (log₁₀ kJ/mol)` }}
     />
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <h2 id="2-2-grid-layout">2×2 Grid Layout</h2>
 
 <div class="table-grid two-by-two bleed-1400">
   {#each grid_tables as [title, property, color_scale] (title)}
-    <LazyDemo label="{title} in 2×2 grid" height="220px">
+    <LazyMount label="{title} in 2×2 grid" height="220px">
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false }}
         heatmap_values={heatmap(property)}
@@ -307,7 +307,7 @@
           </TableInset>
         {/snippet}
       </PeriodicTable>
-    </LazyDemo>
+    </LazyMount>
   {/each}
 </div>
 

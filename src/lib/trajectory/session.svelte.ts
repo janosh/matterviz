@@ -2,17 +2,17 @@
 // loading, scrub (rAF-coalesced) vs commit (settled) stepping, prefetch, playback (through
 // the shared sequence player) and the imperative controller hosts use. No DOM, so it is
 // unit-testable on its own; Trajectory.svelte only renders what it exposes.
-import { cache_prepared_bonds } from '#lib/structure/bonding.js'
-import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
-import { BondFrame } from '#lib/structure/bond-rendering.js'
-import { numeric_sites } from '#lib/structure/site.js'
+import { cache_prepared_bonds } from '#lib/structure/bonding'
+import { cache_prepared_polyhedra } from '#lib/structure/polyhedra'
+import { BondFrame } from '#lib/structure/bond-rendering'
+import { numeric_sites } from '#lib/structure/site'
 import type { DisplayFrame, FramePreparation } from './prepare'
 import { display_cache_budget, display_frame_bytes } from './prepare'
 import type { NumericFrame, FrameChannels } from './frame'
 import { encode_frame, FrameView, materialize_frame } from './frame'
 import { create_sequence_player } from 'svelte-widgets/sequence-player'
 import type { SequencePlayerInputs } from 'svelte-widgets/sequence-player'
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import { clamp, to_error, value_key } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'

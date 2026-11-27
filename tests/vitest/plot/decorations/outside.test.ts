@@ -2,20 +2,20 @@ import type {
   DecorationItem,
   DecorationScene,
   DecorationSize,
-} from '#lib/plot/core/decorations/index.js'
+} from '#lib/plot/core/decorations/index'
 import {
   build_obstacles_norm,
   bar_obstacles,
   clip_segment_to_unit_square,
   legend_cell_sizes,
   legend_wrap_size,
-} from '#lib/plot/core/decorations/obstacles.js'
+} from '#lib/plot/core/decorations/obstacles'
 import {
   get_outside_placement,
   place_outside_decorations,
-} from '#lib/plot/core/decorations/outside.js'
-import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
-import type { Vec2 } from '#lib/math.js'
+} from '#lib/plot/core/decorations/outside'
+import { solve_decorations } from '#lib/plot/core/decorations/solve'
+import type { Vec2 } from '#lib/math'
 import { dense_unit_grid, index_read_counter } from '../../setup'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 

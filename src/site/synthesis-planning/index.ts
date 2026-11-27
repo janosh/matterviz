@@ -1,10 +1,10 @@
 // Demo systems for /convex-hull/synthesis-planning: carbonate-containing Alexandria
 // quaternaries fetched by src/scripts/fetch_alexandria_ternaries.py plus the ternary hulls of
 // the phase-diagram demo.
-import type { PhaseData } from '#lib/convex-hull/index.js'
-import type { SynthesisConditions } from '#lib/synthesis-planning/index.js'
-import { hull_system_name, quaternary_loader } from '#site/convex-hull/index.js'
-import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
+import type { PhaseData } from '#lib/convex-hull/index'
+import type { SynthesisConditions } from '#lib/synthesis-planning/index'
+import { hull_system_name, quaternary_loader } from '#site/convex-hull/index'
+import { ternary_system_files } from '#site/phase-diagrams/ternary/index'
 
 export interface SynthesisDemoSystem {
   id: string

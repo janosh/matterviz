@@ -7,6 +7,7 @@
 - Element properties in `src/lib/element/data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
 - Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
 - Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.
+- Thanks to [@henriquemiranda](https://github.com/henriquemiranda) and their [phononwebsite](https://henriquemiranda.github.io/phononwebsite/) [[code](https://github.com/henriquemiranda/phononwebsite)], which inspired the [Phonon Mode Explorer](/spectral/phonon-mode-explorer): click a point on the phonon bands to animate that mode's atomic displacements in a 3D supercell.
 - Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for a lot of great suggestions, UX ideas, helping me learn [`threlte`](https://threlte.xyz) and contributing to the bond rendering components.
 
 This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:

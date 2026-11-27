@@ -3,12 +3,12 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
-  import { css_color_to_hex } from '#lib/colors/index.js'
-  import { track_settings } from '#lib/controls.js'
-  import { ControlPane } from '#lib/overlays/index.js'
+  import { css_color_to_hex } from '#lib/colors/index'
+  import { track_settings } from '#lib/controls'
+  import { ControlPane } from '#lib/overlays/index'
   import CameraSection from '#lib/scene/CameraSection.svelte'
-  import { DEFAULTS } from '#lib/settings.js'
-  import type { BrillouinZoneSettings } from './types'
+  import { DEFAULTS } from '#lib/settings'
+  import { BZ_ORDERS, ordinal_label, type BrillouinZoneSettings } from './types'
 
   const defaults = DEFAULTS.brillouin
 
@@ -53,9 +53,9 @@
       <label>
         <span>Order</span>
         <select bind:value={bz_order}>
-          <option value={1}>1st BZ</option>
-          <option value={2}>2nd BZ</option>
-          <option value={3}>3rd BZ</option>
+          {#each BZ_ORDERS as order (order)}
+            <option value={order}>{ordinal_label(order)} BZ</option>
+          {/each}
         </select>
       </label>
       <label>

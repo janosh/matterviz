@@ -3,7 +3,7 @@
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { SETTINGS_CONFIG } from '#lib/settings.js'
+  import { SETTINGS_CONFIG } from '#lib/settings'
   import type { SymmetryDataset, SymmetrySettings } from './analyze'
   import {
     count_symmetry_op_kinds,
@@ -264,7 +264,7 @@
   }
   .settings-explorer summary {
     cursor: pointer;
-    color: var(--text-muted, #666);
+    color: var(--text-color-muted, #666);
   }
   .settings-explorer table {
     margin-top: 1ex;

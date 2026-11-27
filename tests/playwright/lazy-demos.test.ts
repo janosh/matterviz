@@ -14,13 +14,13 @@ for (const [path, selector] of [
     const examples = page.locator(`.code-example`)
     await expect(examples.first().locator(selector).first()).toBeVisible()
     const last = examples.last()
-    await expect(last.locator(`.lazy-demo > .placeholder`)).toHaveCount(1)
+    await expect(last.locator(`.lazy-mount > .placeholder`)).toHaveCount(1)
     await expect(last.locator(`pre code`)).not.toBeEmpty()
     await last.scrollIntoViewIfNeeded()
     await expect(last.locator(selector).first()).toBeVisible()
     await page.evaluate(() => window.scrollTo(0, 0))
     await expect(last.locator(selector).first()).toBeAttached()
-    await expect(last.locator(`.lazy-demo > .placeholder`)).toHaveCount(0)
+    await expect(last.locator(`.lazy-mount > .placeholder`)).toHaveCount(0)
   })
 }
 

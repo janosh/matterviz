@@ -3,10 +3,10 @@
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
-  import { track_settings } from '#lib/controls.js'
-  import { ControlPane } from '#lib/overlays/index.js'
-  import { css_color_to_hex } from '#lib/colors/index.js'
-  import type { AxisConfig } from '#lib/plot/index.js'
+  import { track_settings } from '#lib/controls'
+  import { ControlPane } from '#lib/overlays/index'
+  import { css_color_to_hex } from '#lib/colors/index'
+  import type { AxisConfig } from '#lib/plot/index'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { BinaryPhaseDiagram, CompUnit, PhaseDiagramConfig, TempUnit } from './types'
@@ -157,7 +157,7 @@
   toggle_title="Phase diagram"
   {...rest}
 >
-  <h4 style="margin: 0 0 8pt 0">{title}</h4>
+  <h4 style="margin: 0 0 2pt">{title}</h4>
 
   {@render children?.({ controls_open })}
 
@@ -395,10 +395,8 @@
     --ctrl-label-w: 8.5em;
     --ctrl-value-w: 5.5em;
   }
-  :global(.phase-diagram-controls-pane h4) {
-    margin: 6pt 0 2pt !important;
-  }
-  :global(.phase-diagram-controls-pane h4:first-of-type) {
-    margin-top: 0 !important;
+  /* section titles: specific enough to beat SettingsSection's own margin without !important */
+  :global(.phase-diagram-controls-pane .settings-section-heading h4) {
+    margin: 0 0 2pt;
   }
 </style>

@@ -1,16 +1,16 @@
 // Surface-energy import (MP and pymatgen JSON), the demo's ?facets= codec and STL/GLB export
-import { model_export_items } from '#lib/scene/export.js'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import { model_export_items } from '#lib/scene/export'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import {
   compute_wulff_shape,
   EV_PER_A2_TO_J_PER_M2,
   parse_surface_energies,
   type WulffFacetInput,
   wulff_model,
-} from '#lib/wulff/index.js'
-import { family_label } from '#lib/wulff/format.js'
-import { decode_facets, encode_facets, oxide_example, wulff_examples } from '#site/wulff.js'
+} from '#lib/wulff/index'
+import { family_label } from '#lib/wulff/format'
+import { decode_facets, encode_facets, oxide_example, wulff_examples } from '#site/wulff'
 import { describe, expect, test } from 'vite-plus/test'
 
 const [ir, ti] = wulff_examples
@@ -146,18 +146,23 @@ describe(`STL and GLB export`, () => {
       shape.families.map(() => `red`),
     )
     const saved = new Map<string, ArrayBuffer>()
-    const save = (data: unknown, filename: string) =>
+    const open = async (filename: string) => async (data: unknown) =>
       void saved.set(filename, data as ArrayBuffer)
     // the export pane's items: none saves while there's no model
     expect(
-      model_export_items(() => undefined, [`stl`])[0].on_download({ filename: `x`, save }),
+      model_export_items(() => undefined, [`stl`])[0].on_download({
+        filename: `x`,
+        destination: `downloads`,
+        open,
+      }),
     ).toBeUndefined()
     const items = model_export_items(() => model, [`stl`, `glb`])
     expect(items.map(({ label, hint }) => [label, hint])).toEqual([
       [`STL`, `3D printing`],
       [`GLB`, `web/AR`],
     ])
-    for (const { on_download } of items) await on_download({ filename: `shape`, save })
+    for (const { on_download } of items)
+      await on_download({ filename: `shape`, destination: `downloads`, open })
     expect(saved.size).toBe(2)
     const glb = new Uint8Array(saved.get(`shape.glb`) ?? new ArrayBuffer(0))
     expect(String.fromCharCode(...glb.subarray(0, 4))).toBe(`glTF`)

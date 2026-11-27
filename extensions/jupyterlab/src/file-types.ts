@@ -8,7 +8,7 @@ import {
   BINARY_VIEWER_EXTENSIONS,
   TEXT_VIEWER_EXTENSIONS,
   VASP_VIEWER_STEMS,
-} from '#lib/constants.js'
+} from '#lib/constants'
 
 // Everything the browser can decode from a UTF-8 string. `.data` is dropped from the shared
 // list: these types are `defaultFor`, and an extension that generic would make MatterViz the

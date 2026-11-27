@@ -5,11 +5,11 @@
     POURBAIX_DEFAULTS,
     PourbaixControls,
     PourbaixDiagram,
-  } from '#lib/pourbaix/index.js'
+  } from '#lib/pourbaix/index'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { as_text, file_drop_zone } from '#lib/io/index.js'
-  import { pourbaix_systems } from '#site/pourbaix.js'
-  import { set_url_param, url_selection } from '#site/state.svelte.js'
+  import { as_text, file_drop_zone } from '#lib/io/index'
+  import { pourbaix_systems } from '#site/pourbaix'
+  import { set_url_param, url_selection } from '#site/state.svelte'
   import { format_num } from 'svelte-widgets/format'
 
   const system = url_selection(`system`, Object.keys(pourbaix_systems))

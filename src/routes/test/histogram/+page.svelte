@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { HistogramSeries, ScaleType } from '#lib/plot/index.js'
-  import { Histogram } from '#lib/plot/index.js'
+  import type { HistogramSeries, ScaleType } from '#lib/plot/index'
+  import { Histogram } from '#lib/plot/index'
   import {
     generate_exponential,
     generate_log_normal,
     generate_normal,
     generate_power_law,
     generate_uniform,
-  } from '#site/histogram-data.js'
+  } from '#site/histogram-data'
   import TestControls from '../TestControls.svelte'
   import TestSection from '../TestSection.svelte'
 

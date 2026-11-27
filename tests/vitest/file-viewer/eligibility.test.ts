@@ -2,13 +2,13 @@ import {
   BINARY_VIEWER_EXTENSIONS,
   TEXT_VIEWER_EXTENSIONS,
   VASP_VIEWER_STEMS,
-} from '#lib/constants.js'
+} from '#lib/constants'
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
-} from '#lib/file-viewer/eligibility.js'
+} from '#lib/file-viewer/eligibility'
 import { expect, test } from 'vite-plus/test'
 
 // Empty and non-string inputs neither predicate accepts

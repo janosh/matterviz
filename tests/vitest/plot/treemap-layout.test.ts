@@ -1,20 +1,20 @@
-import type { SunburstLayoutOptions, SunburstSort, TreemapNode } from '#lib/plot/index.js'
+import type { SunburstLayoutOptions, SunburstSort, TreemapNode } from '#lib/plot/index'
 import {
   align_tiling,
   header_strip,
   lerp_rects,
   tile_rects,
   treemap_hover_veil,
-} from '#lib/plot/treemap/treemap.js'
-import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
-import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
-import { DEFAULTS } from '#lib/settings.js'
+} from '#lib/plot/treemap/treemap'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout'
+import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics'
+import { DEFAULTS } from '#lib/settings'
 import {
   corner_label_lines,
   measure_treemap_label_block,
   normalize_treemap_label_lines,
   place_treemap_label,
-} from '#lib/plot/treemap/labels.js'
+} from '#lib/plot/treemap/labels'
 import { describe, expect, test } from 'vite-plus/test'
 import { tree } from './hierarchy-fixtures'
 

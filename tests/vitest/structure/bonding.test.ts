@@ -1,23 +1,23 @@
 import type { BondOrder, BondPair, ElementSymbol } from '#lib'
-import type { Vec3 } from '#lib/math.js'
-import type { AnyStructure, Crystal, StructureBond } from '#lib/structure/index.js'
-import type { BondEditState } from '#lib/structure/bonding.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import * as bonding from '#lib/structure/bonding.js'
-import * as neighbor_list from '#lib/structure/neighbor-list.js'
-import { BondFrame, bond_neighbor_summary, pack_bonds } from '#lib/structure/bond-rendering.js'
-import { numeric_sites } from '#lib/structure/site.js'
+import type { Vec3 } from '#lib/math'
+import type { AnyStructure, Crystal, StructureBond } from '#lib/structure/index'
+import type { BondEditState } from '#lib/structure/bonding'
+import { element_by_symbol } from '#lib/element/data'
+import * as bonding from '#lib/structure/bonding'
+import * as neighbor_list from '#lib/structure/neighbor-list'
+import { BondFrame, bond_neighbor_summary, pack_bonds } from '#lib/structure/bond-rendering'
+import { numeric_sites } from '#lib/structure/site'
 import {
   create_numeric_md_frame,
   FrameView,
   materialize_frame,
   wrap_frame_coordinates,
-} from '#lib/trajectory/frame.js'
-import { compute_coordination_nums } from '#lib/coordination/compute-coordination.js'
-import * as math from '#lib/math.js'
-import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
-import { make_supercell } from '#lib/structure/supercell.js'
-import { test_molecules } from '#site/molecules.js'
+} from '#lib/trajectory/frame'
+import { compute_coordination_nums } from '#lib/coordination/compute-coordination'
+import * as math from '#lib/math'
+import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc'
+import { make_supercell } from '#lib/structure/supercell'
+import { test_molecules } from '#site/molecules'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import {

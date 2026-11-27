@@ -1,8 +1,8 @@
 <script lang="ts">
   // One tile per picked structure (styled in demo.css), tinted with its plot series color
   import type { Crystal } from '#lib'
-  import { add_alpha, plot_color } from '#lib/colors/index.js'
-  import { structure_map } from '#site/structures.js'
+  import { add_alpha, plot_color } from '#lib/colors/index'
+  import { structure_map } from '#site/structures'
   import type { Snippet } from 'svelte'
 
   let { struct_ids, tile }: { struct_ids: string[]; tile: Snippet<[Crystal]> } = $props()

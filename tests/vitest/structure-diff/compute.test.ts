@@ -1,5 +1,5 @@
-import { cross_3d, dot, type Matrix3x3, mulberry32, type Vec3 } from '#lib/math.js'
-import type { AnyStructure, Crystal, Species } from '#lib/structure/index.js'
+import { cross_3d, dot, type Matrix3x3, mulberry32, type Vec3 } from '#lib/math'
+import type { AnyStructure, Crystal, Species } from '#lib/structure/index'
 import {
   compute_structure_diff,
   MAX_NEAREST_GROUP,
@@ -8,7 +8,7 @@ import {
   type LatticeKey,
   type SiteMatching,
   solve_assignment,
-} from '#lib/structure-diff/compute.js'
+} from '#lib/structure-diff/compute'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 

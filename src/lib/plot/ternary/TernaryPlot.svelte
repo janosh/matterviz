@@ -2,20 +2,20 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { plot_color } from '#lib/colors/index.js'
-  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
+  import { sanitize_html } from '#lib/sanitize'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { plot_color } from '#lib/colors/index'
+  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords'
   import ViewerError from '#lib/layout/ViewerError.svelte'
-  import { format_value, format_value_or_num } from '#lib/labels.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
-  import { ColorBar, PlotTooltip } from '#lib/plot/index.js'
+  import { format_value, format_value_or_num } from '#lib/labels'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index'
+  import { ColorBar, PlotTooltip } from '#lib/plot/index'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import { build_legend_items, series_text } from '#lib/plot/core/data-transform.js'
-  import { has_marker } from '#lib/plot/core/types.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
+  import { build_legend_items, series_text } from '#lib/plot/core/data-transform'
+  import { has_marker } from '#lib/plot/core/types'
   import {
     CANVAS_MARKER_THRESHOLD,
     canvas_safe_color,
@@ -23,45 +23,45 @@
     create_marker_canvas,
     type MarkerBatch,
     push_marker,
-  } from '#lib/plot/core/canvas-markers.svelte.js'
+  } from '#lib/plot/core/canvas-markers.svelte'
   import {
     build_spatial_index,
     query_nearest,
     type SpatialIndex,
-  } from '#lib/plot/core/spatial-index.js'
+  } from '#lib/plot/core/spatial-index'
   import {
     closest_data_idx,
     focus_left,
     is_activation_key,
     pointer_pos,
     step_point_cursor,
-  } from '#lib/plot/core/interactions.js'
-  import { filter_padding } from '#lib/plot/core/layout.js'
-  import type { Sides } from '#lib/plot/core/layout.js'
-  import { observe_size } from '#lib/plot/core/utils.js'
-  import { csv_source, export_filename } from '#lib/plot/core/utils/chart-export.js'
-  import { svg_sources } from '#lib/io/export.js'
-  import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  } from '#lib/plot/core/interactions'
+  import { filter_padding } from '#lib/plot/core/layout'
+  import type { Sides } from '#lib/plot/core/layout'
+  import { observe_size } from '#lib/plot/core/utils'
+  import { csv_source, export_filename } from '#lib/plot/core/utils/chart-export'
+  import { figure_sources } from '#lib/io/export'
+  import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
+  } from '#lib/plot/core/utils/series-visibility'
   import ScatterPoint from '#lib/plot/scatter/ScatterPoint.svelte'
-  import { finite_or_null } from '#lib/plot/scatter/scatter-data.js'
-  import type { TernaryPointProps, TernarySeries } from '#lib/plot/ternary/ternary.js'
+  import { finite_or_null } from '#lib/plot/scatter/scatter-data'
+  import type { TernaryPointProps, TernarySeries } from '#lib/plot/ternary/ternary'
   import {
     ternary_fractions,
     ternary_grid_lines,
     ternary_layout,
     ternary_to_xy,
-  } from '#lib/plot/ternary/ternary.js'
+  } from '#lib/plot/ternary/ternary'
   import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { to_error } from 'svelte-widgets/utils'
-  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -93,15 +93,12 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     controls_extra,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
-    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
-    // forward them to the wrapper div as invalid DOM attributes.
-    Omit<BasePlotProps, `range_padding` | `title`> & {
+    BasePlotProps & {
       // Bindable legend choices, keyed by each series' legend_id ?? id ?? array index
       hidden_series?: readonly (string | number)[]
       // Compositions to plot as points or lines, each series a list of amount triples
@@ -493,7 +490,7 @@
   ] as const
 
   const export_sources = {
-    ...svg_sources(() => svg_element),
+    ...figure_sources(() => svg_element),
     csv: csv_source(() => ({
       header: [`series`, ...labels, `color_value`],
       rows: visible_points.map((point) => [
@@ -513,7 +510,6 @@
   bind:width
   bind:height
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
   {header_controls}

@@ -1,10 +1,6 @@
 import FermiSurfaceControls from '#lib/fermi-surface/FermiSurfaceControls.svelte'
-import type {
-  BandGridData,
-  ColorProperty,
-  FermiSurfaceData,
-} from '#lib/fermi-surface/types.js'
-import { to_color_scale_config } from '#lib/plot/core/scales.js'
+import type { BandGridData, ColorProperty, FermiSurfaceData } from '#lib/fermi-surface/types'
+import { to_color_scale_config } from '#lib/plot/core/scales'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test } from 'vite-plus/test'
 import {

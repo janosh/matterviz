@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Database, Globe, Link } from 'svelte-widgets/icons'
   import {
@@ -10,13 +10,13 @@
     fetch_optimade_providers,
     fetch_optimade_structure,
     fetch_suggested_structures,
-  } from '#lib/api/optimade.js'
-  import type { OptimadeProvider, OptimadeStructure } from '#lib/api/optimade.js'
-  import { Composition, get_electro_neg_formula } from '#lib/composition/index.js'
-  import { Structure } from '#lib/structure/index.js'
-  import type { AnyStructure } from '#lib/structure/index.js'
-  import { optimade_to_structure } from '#lib/structure/parse.js'
-  import { latest_load } from '#site/state.svelte.js'
+  } from '#lib/api/optimade'
+  import type { OptimadeProvider, OptimadeStructure } from '#lib/api/optimade'
+  import { Composition, get_electro_neg_formula } from '#lib/composition/index'
+  import { Structure } from '#lib/structure/index'
+  import type { AnyStructure } from '#lib/structure/index'
+  import { optimade_to_structure } from '#lib/structure/parse'
+  import { latest_load } from '#site/state.svelte'
   import { onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -220,7 +220,7 @@
               struct.attributes.chemical_formula_descriptive ?? ``,
             )}
             <button onclick={() => navigate_to_structure(struct.id)}>
-              <span style="font-family: monospace">{struct.id}</span>
+              <span style="font-family: var(--font-mono)">{struct.id}</span>
               {#if formula}
                 <span style="font-weight: lighter">{@html sanitize_html(formula)}</span>
               {/if}

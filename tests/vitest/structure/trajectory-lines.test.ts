@@ -1,15 +1,15 @@
-import { default_element_colors, get_d3_interpolator } from '#lib/colors/index.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_cart_to_frac } from '#lib/math.js'
-import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
-import { get_pbc_image_sites } from '#lib/structure/pbc.js'
-import { make_supercell } from '#lib/structure/supercell.js'
+import { default_element_colors, get_d3_interpolator } from '#lib/colors/index'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { create_cart_to_frac } from '#lib/math'
+import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors'
+import { get_pbc_image_sites } from '#lib/structure/pbc'
+import { make_supercell } from '#lib/structure/supercell'
 import type {
   TrajectoryLineColorMode,
   TrajectoryLinesStats,
   TrajectoryTrailFrame,
-} from '#lib/structure/trajectory-lines.js'
+} from '#lib/structure/trajectory-lines'
 import {
   TIME_RAMP_SIZE,
   TrajectoryTrail,
@@ -17,11 +17,11 @@ import {
   trail_color_texels,
   trail_segments,
   trajectory_trail_anchors,
-} from '#lib/structure/trajectory-lines.js'
-import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
-import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { NumericSites } from '#lib/structure/site.js'
+} from '#lib/structure/trajectory-lines'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index'
+import { unwrapped_positions_of } from '#lib/trajectory/positions'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame'
+import { NumericSites } from '#lib/structure/site'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { image_options, make_crystal, make_position_stream } from '../test-fixtures'
 
@@ -262,9 +262,10 @@ describe(`periodic boundary handling`, () => {
     expect(drawn.max_segment_length).toBeCloseTo(1, 5)
     // The unwrapped path keeps going past the cell rather than folding back
     expect(drawn.segments.at(-1)?.to[0]).toBeCloseTo(14, 4)
-    // Unwrapping is computed once per stream, into a buffer distinct from the wrapped source
+    // Unwrapping is computed once per sweep, into a buffer distinct from the wrapped source,
+    // and shared by every consumer's object around that sweep (MSD, VACF, trails)
     const { coords } = unwrapped_positions_of(stream)
-    expect(unwrapped_positions_of(stream).coords).toBe(coords)
+    expect(unwrapped_positions_of({ ...stream }).coords).toBe(coords)
     expect(coords).not.toBe(stream.positions)
   })
 

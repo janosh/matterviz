@@ -1,23 +1,21 @@
-import type { FileDropOptions } from '#lib/io/file-drop.js'
+import type { FileDropOptions } from '#lib/io/file-drop'
 import {
   create_file_drop_handler,
-  drag_over_handlers,
   file_drop_zone,
   raw_file_drop_zone,
-} from '#lib/io/file-drop.js'
-import type * as DecompressModule from '#lib/io/decompress.js'
-import { decompress_file } from '#lib/io/decompress.js'
-import type { FileLoadCallback, TrajectoryFileLoadCallback } from '#lib/io/types.js'
-import { dropped_file_url, load_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
-import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+} from '#lib/io/file-drop'
+import type * as DecompressModule from '#lib/io/decompress'
+import { decompress_file } from '#lib/io/decompress'
+import type { FileLoadCallback, TrajectoryFileLoadCallback } from '#lib/io/types'
+import { load_from_url, load_trajectory_from_url } from '#lib/io/url-drop'
+import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 // decompress_trajectory_file stays real so the keep_blob mode is exercised end to end
-vi.mock(`#lib/io/decompress.js`, async (import_original) => ({
+vi.mock(`#lib/io/decompress`, async (import_original) => ({
   ...(await import_original<typeof DecompressModule>()),
   decompress_file: vi.fn(),
 }))
-vi.mock(`#lib/io/url-drop.js`, () => ({
-  dropped_file_url: vi.fn(),
+vi.mock(`#lib/io/url-drop`, () => ({
   load_from_url: vi.fn(),
   load_trajectory_from_url: vi.fn(),
 }))
@@ -25,12 +23,20 @@ vi.mock(`#lib/io/url-drop.js`, () => ({
 // The default (text/ArrayBuffer) branch of the FileDropOptions union
 type TextDropOptions = Extract<FileDropOptions, { on_drop: FileLoadCallback }>
 
-// empty items means no directories, so files_from_data_transfer uses the flat list
-const make_event = (files: File[] = [], items: unknown[] = []) =>
-  ({
-    preventDefault: vi.fn(),
-    dataTransfer: { files, items, getData: vi.fn() },
-  }) as unknown as DragEvent
+// A drag event carrying files (empty items: no entry API, so the flat list is used), or a
+// FilePicker-style link drag when `url` is given
+const drag = (
+  type: string,
+  files: File[] = [],
+  { items = [] as unknown[], url = `` } = {},
+) => {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent
+  const types = url ? [`text/uri-list`] : [`Files`]
+  const getData = (format: string) => (format === `text/uri-list` ? url : ``)
+  Object.defineProperty(event, `dataTransfer`, { value: { types, files, items, getData } })
+  return event
+}
+const URL_SRC = `https://example.com/f.cif`
 // a local drop also carries the File itself, for size and webkitRelativePath; a URL drop
 // has no File to carry
 // what decompress_file resolves to
@@ -54,31 +60,15 @@ describe(`create_file_drop_handler`, () => {
     on_drop = vi.fn<FileLoadCallback>()
     on_error = vi.fn<NonNullable<FileDropOptions[`on_error`]>>()
     set_loading = vi.fn<NonNullable<FileDropOptions[`set_loading`]>>()
-    vi.mocked(dropped_file_url).mockReturnValue(undefined)
   })
 
-  const run = async (
-    opts: Partial<TextDropOptions> = {},
-    files: File[] = [],
-    items: unknown[] = [],
-  ) => {
-    const event = make_event(files, items)
-    const defaults: TextDropOptions = { allow: () => true, on_drop, on_error, set_loading }
-    await create_file_drop_handler({ ...defaults, ...opts } as TextDropOptions)(event)
-    return event
+  const run = (opts: Partial<TextDropOptions> = {}, sources: (File | string)[] = []) => {
+    const defaults: TextDropOptions = { on_drop, on_error, set_loading }
+    return create_file_drop_handler({ ...defaults, ...opts } as TextDropOptions)(sources)
   }
 
-  test(`blocks drop when allow returns false`, async () => {
-    const event = await run({ allow: () => false })
-    expect(event.preventDefault).toHaveBeenCalled()
-    expect(on_drop).not.toHaveBeenCalled()
-    expect(load_from_url).not.toHaveBeenCalled()
-    expect(set_loading).not.toHaveBeenCalled()
-  })
-
-  test(`empty drop: prevents default, toggles loading, loads and reports nothing`, async () => {
-    const event = await run()
-    expect(event.preventDefault).toHaveBeenCalled()
+  test(`empty batch toggles loading, loads and reports nothing`, async () => {
+    await run()
     expect(set_loading).toHaveBeenNthCalledWith(1, true)
     expect(set_loading).toHaveBeenLastCalledWith(false)
     expect(decompress_file).not.toHaveBeenCalled()
@@ -87,14 +77,13 @@ describe(`create_file_drop_handler`, () => {
   })
 
   test(`processes a URL and files sequentially when both are present`, async () => {
-    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
     vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
       await callback(`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`))
     })
     const file = new File([`local`], `test.txt`)
     vi.mocked(decompress_file).mockResolvedValue(loaded(`local`, file.name))
 
-    await run({}, [file])
+    await run({}, [URL_SRC, file])
 
     expect(load_from_url).toHaveBeenCalledWith(
       `https://example.com/f.cif`,
@@ -118,10 +107,9 @@ describe(`create_file_drop_handler`, () => {
   ])(
     `a failed URL drop with %j still loads the files and reports %s`,
     async (files, error) => {
-      vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
       vi.mocked(load_from_url).mockRejectedValue(new Error(`404`))
       vi.mocked(decompress_file).mockResolvedValue(loaded(`data`, `b.cube`))
-      await run({}, files)
+      await run({}, [URL_SRC, ...files])
       expect(vi.mocked(on_drop).mock.calls).toEqual(
         files.length ? [[`data`, `b.cube`, source_meta(`b.cube.gz`)]] : [],
       )
@@ -133,36 +121,16 @@ describe(`create_file_drop_handler`, () => {
   test.each([``, new ArrayBuffer(0)])(
     `an empty URL payload %j is reported`,
     async (content) => {
-      vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
       vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
         await callback(content, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`))
       })
-      await run({}, [])
+      await run({}, [URL_SRC])
       expect(on_drop).not.toHaveBeenCalled()
       expect(on_error).toHaveBeenCalledExactlyOnceWith(
         `Failed to load from URL: file is empty`,
       )
     },
   )
-
-  // DataTransfer.files reports a dropped folder as one zero-byte File named after it, so
-  // the handler goes through the entry API instead. Expansion itself is svelte-widgets'
-  // to test; this only pins that we route through it.
-  test(`expands a dropped folder rather than loading the folder itself`, async () => {
-    const inner = new File([`a`], `a.cif`)
-    vi.mocked(decompress_file).mockResolvedValue(loaded(`data`, inner.name))
-    // splice drains it, which is how readEntries signals the end: an empty second batch
-    const batch = [{ isFile: true, file: (valid: (arg: File) => void) => valid(inner) }]
-    const entry = {
-      isDirectory: true,
-      createReader: () => ({
-        readEntries: (resolve: (arg: unknown[]) => void) => resolve(batch.splice(0)),
-      }),
-    }
-    await run({}, [new File([], `structures`)], [{ webkitGetAsEntry: () => entry }])
-
-    expect(on_drop).toHaveBeenCalledWith(`data`, `a.cif`, source_meta(`a.cif`))
-  })
 
   test.each([
     {
@@ -210,15 +178,14 @@ describe(`create_file_drop_handler`, () => {
   test.each([-1, 1.5, NaN, Infinity])(
     `rejects invalid max_files=%s when creating the handler`,
     (max_files) => {
-      expect(() =>
-        create_file_drop_handler({ allow: () => true, on_drop, max_files }),
-      ).toThrow(`max_files must be a non-negative integer`)
+      expect(() => create_file_drop_handler({ on_drop, max_files })).toThrow(
+        `max_files must be a non-negative integer`,
+      )
     },
   )
 
   // a drop whose every file fails has no batch
   test(`on_batch gets each drop's loaded files once, failures reported after it`, async () => {
-    vi.mocked(dropped_file_url).mockReturnValueOnce(`https://example.com/u.cif`)
     vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
       await callback(`remote`, `u.cif`, source_meta(`u.cif`, `https://example.com/u.cif`))
     })
@@ -228,12 +195,12 @@ describe(`create_file_drop_handler`, () => {
       .mockRejectedValueOnce(new Error(`bad`))
     const calls: unknown[] = []
     const handler = create_file_drop_handler({
-      allow: () => true,
       on_error: (msg) => calls.push(msg),
       on_batch: (files) => void calls.push(files),
     })
-    await handler(make_event([`a`, `b`].map((name) => new File([name], `${name}.cube`))))
-    await handler(make_event([new File([`d`], `d.cube`)]))
+    const [file_a, file_b] = [`a`, `b`].map((name) => new File([name], `${name}.cube`))
+    await handler([`https://example.com/u.cif`, file_a, file_b])
+    await handler([new File([`d`], `d.cube`)])
     expect(calls).toEqual([
       [
         {
@@ -286,67 +253,9 @@ describe(`create_file_drop_handler`, () => {
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })
 
-  test(`overlapping drops are processed sequentially, not interleaved`, async () => {
-    const order: string[] = []
-    vi.mocked(decompress_file).mockImplementation((file: File) =>
-      Promise.resolve(loaded(`data`, file.name)),
-    )
-    const slow_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
-      order.push(`start ${filename}`)
-      await Promise.resolve() // yield so an interleaved drop could sneak in
-      order.push(`end ${filename}`)
-    })
-    const handler = create_file_drop_handler({ allow: () => true, on_drop: slow_drop })
-    // Fire the second drop while the first batch is still processing
-    const first = handler(make_event([new File([`x`], `a.cube`)]))
-    const second = handler(make_event([new File([`y`], `b.cube`)]))
-    await Promise.all([first, second])
-    expect(order).toEqual([`start a.cube`, `end a.cube`, `start b.cube`, `end b.cube`])
-  })
-
-  test.each([`set_loading`, `on_error`] as const)(
-    `recovers the queue when %s throws`,
-    async (failure_source) => {
-      let fail_loading = failure_source === `set_loading`
-      const flaky_set_loading = (loading: boolean) => {
-        if (loading && fail_loading) {
-          fail_loading = false
-          throw new Error(`loading callback failed`)
-        }
-      }
-      const throwing_error = () => {
-        throw new Error(`error callback failed`)
-      }
-      vi.mocked(decompress_file).mockResolvedValue(loaded(`second`, `second.cube`))
-      if (failure_source === `on_error`)
-        vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`corrupt`))
-      const queue_drop = vi.fn<FileLoadCallback>()
-      const handler = create_file_drop_handler({
-        allow: () => true,
-        on_drop: queue_drop,
-        on_error: failure_source === `on_error` ? throwing_error : undefined,
-        set_loading: failure_source === `set_loading` ? flaky_set_loading : undefined,
-      })
-
-      const first_file = new File([`first`], `first.cube`)
-      const second_file = new File([`second`], `second.cube`)
-      await Promise.all([
-        handler(make_event([first_file])),
-        handler(make_event([second_file])),
-      ])
-
-      expect(queue_drop).toHaveBeenCalledExactlyOnceWith(
-        `second`,
-        `second.cube`,
-        source_meta(`second.cube`),
-      )
-    },
-  )
-
   // Trajectory viewers keep HDF5 and text payloads Blob-backed: h5wasm reads HDF5 lazily
   // instead of materialising the whole file, and text decodes in the parse worker
   test(`keep_blob hands .h5 and text drops over as Blobs, URLs to the trajectory loader`, async () => {
-    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/run.h5`)
     const trajectory_drop = vi.fn<TrajectoryFileLoadCallback>()
     const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
     const h5_file = new File(
@@ -355,12 +264,11 @@ describe(`create_file_drop_handler`, () => {
     )
     const xyz_text = `2\nstep=0\nH 0 0 0\nH 0 0 0.74\n`
     const handler = create_file_drop_handler({
-      allow: () => true,
       keep_blob: true,
       on_drop: trajectory_drop,
       on_error,
     })
-    await handler(make_event([h5_file, new File([xyz_text], `h2.xyz`)]))
+    await handler([`https://example.com/run.h5`, h5_file, new File([xyz_text], `h2.xyz`)])
 
     expect(load_trajectory_from_url).toHaveBeenCalledWith(
       `https://example.com/run.h5`,
@@ -383,86 +291,149 @@ describe(`create_file_drop_handler`, () => {
 // Overlapping drops must serialize here too: the raw zone hands sources straight to
 // open_material, whose commit mutates viewer state the same way the reading zone's does.
 test(`raw_file_drop_zone queues overlapping drops`, async () => {
-  // this test sits outside the describe that clears mocks, so pin the URL probe
-  vi.mocked(dropped_file_url).mockReturnValue(undefined)
   const order: string[] = []
   const on_drop = vi.fn(async (source: string | File) => {
     const name = typeof source === `string` ? source : source.name
     order.push(`start ${name}`)
-    await Promise.resolve()
+    await Promise.resolve() // yield so an interleaved drop could sneak in
     order.push(`end ${name}`)
   })
   const node = document.createElement(`div`)
   const detach = raw_file_drop_zone({ allow: () => true, on_drop })(node) as () => void
-  for (const name of [`a.cif`, `b.cif`]) {
-    const dataTransfer = { files: [new File([name], name)], items: [], getData: vi.fn() }
-    node.dispatchEvent(Object.assign(new Event(`drop`), { dataTransfer }))
-  }
+  // back to back, so the second lands while the first is still being read: neither is lost
+  for (const name of [`a.cif`, `b.cif`])
+    node.dispatchEvent(drag(`drop`, [new File([name], name)]))
   await vi.waitFor(() => expect(order).toHaveLength(4))
   expect(order).toEqual([`start a.cif`, `end a.cif`, `start b.cif`, `end b.cif`])
   detach()
 })
 
-test.each([
-  { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },
-  { desc: `clears dragover when disallowed`, allow: () => false, expected: [false] },
-  { desc: `defaults to allowed when no guard given`, allow: undefined, expected: [true] },
-])(`drag_over_handlers ondragover $desc`, ({ allow, expected }) => {
-  const set_dragover = vi.fn()
-  const handlers = drag_over_handlers({ allow, set_dragover })
-  const event = make_event()
-  handlers.ondragover(event)
-  expect(event.preventDefault).toHaveBeenCalledOnce() // always, even when not allowed
-  expect(set_dragover.mock.calls.map(([over]) => over)).toEqual(expected)
-})
-
-test(`file_drop_zone toggles the dragover class, clears it on drop, and detaches cleanly`, async () => {
-  vi.mocked(dropped_file_url).mockReturnValue(undefined)
+test(`file_drop_zone hover state: no child-to-child flicker, allow is live, cleared on drop and detach`, async () => {
+  vi.clearAllMocks()
   vi.mocked(decompress_file).mockResolvedValue(loaded(`ok`, `f.cif`))
   const node = document.createElement(`div`)
-  const on_drop = vi.fn()
-  const on_dragover = vi.fn()
-  const set_loading = vi.fn()
+  const [child_a, child_b] = [document.createElement(`span`), document.createElement(`span`)]
+  node.append(child_a, child_b)
+  const [on_drop, on_dragover, set_loading] = [vi.fn(), vi.fn(), vi.fn()]
   let allowed = true
   const detach = file_drop_zone({ allow: () => allowed, on_drop, on_dragover, set_loading })(
     node,
   )
+  const has_class = () => node.classList.contains(`dragover`)
 
-  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-  expect(node.classList.contains(`dragover`)).toBe(true)
-  node.dispatchEvent(new Event(`dragleave`))
-  expect(node.classList.contains(`dragover`)).toBe(false)
+  // moving between children fires the new child's dragenter before the old one's dragleave
+  child_a.dispatchEvent(drag(`dragenter`))
+  child_b.dispatchEvent(drag(`dragenter`))
+  child_a.dispatchEvent(drag(`dragleave`))
+  expect(has_class()).toBe(true)
+  child_b.dispatchEvent(drag(`dragleave`))
+  expect(has_class()).toBe(false)
   allowed = false
-  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-  expect(node.classList.contains(`dragover`)).toBe(false)
+  node.dispatchEvent(drag(`dragenter`))
+  expect(has_class()).toBe(false)
+  const blocked = drag(`drop`, [new File([`x`], `x.cif`)])
+  node.dispatchEvent(blocked)
+  // left to an enclosing zone (a Trajectory around its drop-disabled Structure); on its own
+  // the browser never fires it, since dragover reported dropEffect none
+  expect(blocked.defaultPrevented).toBe(false)
+  expect(on_drop).not.toHaveBeenCalled()
   allowed = true
-  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-  expect(on_dragover.mock.calls.map(([over]) => over)).toEqual([true, false, false, true])
 
   // a drop clears the hover state immediately (no dragleave follows) and reaches on_drop
-  const drop_event = new Event(`drop`, { cancelable: true }) as DragEvent
-  Object.defineProperty(drop_event, `dataTransfer`, {
-    value: { files: [new File([`ok`], `f.cif`)], items: [], getData: vi.fn() },
-  })
+  node.dispatchEvent(drag(`dragenter`))
+  const drop_event = drag(`drop`, [new File([`ok`], `f.cif`)])
   node.dispatchEvent(drop_event)
   expect(drop_event.defaultPrevented).toBe(true)
-  expect(node.classList.contains(`dragover`)).toBe(false)
+  expect(has_class()).toBe(false)
   await vi.waitFor(() =>
     expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`)),
   )
   expect(set_loading.mock.calls.map(([loading]) => loading)).toEqual([true, false])
+  expect(on_dragover.mock.calls.map(([over]) => over)).toEqual([true, false, true, false])
 
   // an inner drop target that stops propagation (a pane reordering its own items) still
   // clears the class, which would otherwise stick and keep its border shifting the layout
-  const inner = document.createElement(`span`)
-  node.append(inner)
-  inner.addEventListener(`drop`, (event) => event.stopPropagation())
-  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-  inner.dispatchEvent(new Event(`drop`, { bubbles: true, cancelable: true }))
-  expect(node.classList.contains(`dragover`)).toBe(false)
+  child_a.addEventListener(`drop`, (event) => event.stopPropagation())
+  node.dispatchEvent(drag(`dragenter`))
+  child_a.dispatchEvent(drag(`drop`, [new File([`x`], `x.cif`)]))
+  expect(has_class()).toBe(false)
   expect(on_drop).toHaveBeenCalledOnce()
 
   detach?.()
-  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-  expect(node.classList.contains(`dragover`)).toBe(false)
+  node.dispatchEvent(drag(`dragenter`))
+  expect(has_class()).toBe(false)
 })
+
+// DataTransfer.files reports a dropped folder as one zero-byte File named after it, so the
+// zone goes through the entry API instead (svelte-widgets tests the expansion itself), and a
+// FilePicker chip's link drag fetches its URL
+test(`file_drop_zone expands dropped folders and fetches FilePicker link drops`, async () => {
+  vi.clearAllMocks()
+  const inner = new File([`a`], `a.cif`)
+  vi.mocked(decompress_file).mockResolvedValue(loaded(`data`, inner.name))
+  vi.mocked(load_from_url).mockImplementation(async (url, callback) => {
+    await callback(`remote`, `f.cif`, source_meta(`f.cif`, url))
+  })
+  // splice drains it, which is how readEntries signals the end: an empty second batch
+  const batch = [{ isFile: true, file: (valid: (arg: File) => void) => valid(inner) }]
+  const entry = {
+    isDirectory: true,
+    createReader: () => ({
+      readEntries: (resolve: (arg: unknown[]) => void) => resolve(batch.splice(0)),
+    }),
+  }
+  const on_drop = vi.fn()
+  const node = document.createElement(`div`)
+  const detach = file_drop_zone({ allow: () => true, on_drop })(node)
+  const items = [{ kind: `file`, webkitGetAsEntry: () => entry }]
+  node.dispatchEvent(drag(`drop`, [new File([], `structures`)], { items }))
+  await vi.waitFor(() => expect(on_drop).toHaveBeenCalledOnce())
+  node.dispatchEvent(drag(`drop`, [], { url: URL_SRC }))
+  await vi.waitFor(() => expect(on_drop).toHaveBeenCalledTimes(2))
+  expect(on_drop.mock.calls).toEqual([
+    [`data`, `a.cif`, source_meta(`a.cif`)],
+    [`remote`, `f.cif`, source_meta(`f.cif`, URL_SRC)],
+  ])
+  detach?.()
+})
+
+test.each([`set_loading`, `on_error`] as const)(
+  `file_drop_zone keeps loading later drops after %s throws`,
+  async (failure_source) => {
+    vi.clearAllMocks()
+    const report_error = vi.fn()
+    vi.stubGlobal(`reportError`, report_error)
+    onTestFinished(() => void vi.unstubAllGlobals())
+    let fail_loading = failure_source === `set_loading`
+    const set_loading = (loading: boolean) => {
+      if (loading && fail_loading) {
+        fail_loading = false
+        throw new Error(`loading callback failed`)
+      }
+    }
+    const throwing_error = () => {
+      throw new Error(`error callback failed`)
+    }
+    vi.mocked(decompress_file).mockResolvedValue(loaded(`second`, `second.cube`))
+    if (failure_source === `on_error`)
+      vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`corrupt`))
+    const on_drop = vi.fn<FileLoadCallback>()
+    const node = document.createElement(`div`)
+    const detach = file_drop_zone({
+      allow: () => true,
+      on_drop,
+      on_error: failure_source === `on_error` ? throwing_error : undefined,
+      set_loading: failure_source === `set_loading` ? set_loading : undefined,
+    })(node)
+    const second_file = new File([`second`], `second.cube`)
+    node.dispatchEvent(drag(`drop`, [new File([`first`], `first.cube`)]))
+    node.dispatchEvent(drag(`drop`, [second_file]))
+    await vi.waitFor(() =>
+      expect(on_drop).toHaveBeenCalledExactlyOnceWith(`second`, `second.cube`, {
+        source_filename: `second.cube`,
+        file: second_file,
+      }),
+    )
+    detach?.()
+  },
+)

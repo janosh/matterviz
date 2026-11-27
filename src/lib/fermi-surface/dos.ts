@@ -1,5 +1,5 @@
-import { scalar_grid_strides } from '#lib/isosurface/grid.js'
-import type { ElectronicDos } from '#lib/spectral/types.js'
+import { scalar_grid_strides } from '#lib/isosurface/grid'
+import type { ElectronicDos } from '#lib/spectral/types'
 import type { BandGridData } from './types'
 
 // Gaussians are summed out to this many sigma (the tail beyond holds 6e-7 of the weight)

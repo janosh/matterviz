@@ -1,23 +1,16 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { Crystal } from '#lib'
-  import type { FileInfo } from '#lib/io/index.js'
+  import type { FileInfo } from '#lib/io/index'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import { plot_color, PLOT_COLORS } from '#lib/colors/index.js'
-  import { file_type_paint } from '#lib/io/index.js'
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import type { LatticePlane } from '#lib/structure/index.js'
-  import { Structure } from '#lib/structure/index.js'
-  import { memo_by_identity } from '#lib/utils.js'
-  import type {
-    RadiationKey,
-    SaedSpot,
-    XrdOptions,
-    XrdPattern,
-    XrdPeak,
-  } from '#lib/xrd/index.js'
+  import { plot_color, PLOT_COLORS } from '#lib/colors/index'
+  import { file_type_paint } from '#lib/io/index'
+  import type { Matrix3x3, Vec3 } from '#lib/math'
+  import type { LatticePlane } from '#lib/structure/index'
+  import { Structure } from '#lib/structure/index'
+  import type { RadiationKey, SaedSpot, XrdOptions, XrdPattern, XrdPeak } from '#lib/xrd/index'
   import {
     compute_saed_pattern_async,
     compute_xrd_pattern_async,
@@ -28,11 +21,11 @@
     SaedPattern,
     xrd_symmetry_rotations,
     XrdPlot,
-  } from '#lib/xrd/index.js'
+  } from '#lib/xrd/index'
   import { SvelteMap } from 'svelte/reactivity'
-  import { structure_map, structures } from '#site/structures.js'
-  import { to_error } from 'svelte-widgets/utils'
-  import { fixture_ext, site_file_info } from '#site/imports.js'
+  import { structure_map, structures } from '#site/structures'
+  import { memo_by_identity, to_error } from 'svelte-widgets/utils'
+  import { fixture_ext, site_file_info } from '#site/imports'
   import StructurePicker, { formula_for } from '../../StructurePicker.svelte'
   import StructureTiles from '../../StructureTiles.svelte'
 
@@ -44,9 +37,9 @@
 
   // Extension -> how FilePicker groups, labels and tints that format; one table so category
   // and swatch color cannot drift apart. Unlisted extensions fall back to plain ASCII.
-  type XrdFormat = { category: string; icon: string; color: string }
-  const ascii = { category: `Powder XRD`, icon: `📊` }
-  const gsas = { category: `GSAS/Rietveld`, icon: `🔬`, color: `rgba(255, 215, 0, 0.8)` }
+  type XrdFormat = { category: string; color: string }
+  const ascii = { category: `Powder XRD` }
+  const gsas = { category: `GSAS/Rietveld`, color: `rgba(255, 215, 0, 0.8)` }
   const xrd_formats: Record<string, XrdFormat> = {
     xy: { ...ascii, color: `rgba(50, 205, 50, 0.8)` },
     xye: { ...ascii, color: `rgba(34, 139, 34, 0.8)` }, // darker green: XY with errors
@@ -58,11 +51,11 @@
     gsa: gsas,
     gda: gsas,
     fxye: gsas,
-    xrdml: { category: `PANalytical`, icon: `🇳🇱`, color: `rgba(70, 130, 180, 0.8)` },
-    brml: { category: `Bruker HRXRD`, icon: `🔬`, color: `rgba(255, 140, 0, 0.8)` },
-    raw: { category: `Bruker Binary`, icon: `📦`, color: `rgba(255, 99, 71, 0.8)` },
-    ras: { category: `Rigaku`, icon: `🇯🇵`, color: `rgba(138, 43, 226, 0.8)` },
-    uxd: { category: `Siemens`, icon: `🇩🇪`, color: `rgba(220, 20, 60, 0.8)` },
+    xrdml: { category: `PANalytical`, color: `rgba(70, 130, 180, 0.8)` },
+    brml: { category: `Bruker HRXRD`, color: `rgba(255, 140, 0, 0.8)` },
+    raw: { category: `Bruker Binary`, color: `rgba(255, 99, 71, 0.8)` },
+    ras: { category: `Rigaku`, color: `rgba(138, 43, 226, 0.8)` },
+    uxd: { category: `Siemens`, color: `rgba(220, 20, 60, 0.8)` },
   }
   const xrd_file_paints = Object.fromEntries(
     Object.entries(xrd_formats).map(([ext, { color }]) => [ext, file_type_paint(color)]),
@@ -71,8 +64,8 @@
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map((path) => {
     const ext = fixture_ext(path)
-    const { category, icon } = xrd_formats[ext] ?? ascii
-    return site_file_info(path, { type: ext, category, category_icon: icon })
+    const { category } = xrd_formats[ext] ?? ascii
+    return site_file_info(path, { type: ext, category })
   })
 
   // Point-group rotations group each peak's hkls into symmetry-equivalent families: analyzed
@@ -259,7 +252,7 @@
     </small>
   </div>
   <section class="demo-2col">
-    <LazyDemo label="xrd" height="600px">
+    <LazyMount label="xrd" height="600px">
       <XrdPlot
         patterns={computed.pattern
           ? [{ label: `${compute_id} ${formula_for(compute_id)}`, pattern: computed.pattern }]
@@ -271,7 +264,7 @@
         bind:selected_peak
       />
       {#if computed.error}<p>Compute error: {computed.error}</p>{/if}
-    </LazyDemo>
+    </LazyMount>
     {#if computed_struct}
       <Structure
         structure={computed_struct}
@@ -303,7 +296,7 @@
     <label><input type="checkbox" bind:checked={show_neutron} /> Neutron</label>
     <label><input type="checkbox" bind:checked={show_electron} /> Electron</label>
   </div>
-  <LazyDemo label="X-ray vs neutron vs electron" height="420px">
+  <LazyMount label="X-ray vs neutron vs electron" height="420px">
     {#each radiation_overlay.errors as message (message)}
       <p class="error">{message}</p>
     {/each}
@@ -313,7 +306,7 @@
       hkl_format="compact"
       style="height: 420px"
     />
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="electron-diffraction-saed">Electron diffraction (SAED)</h2>
   <p>
@@ -340,7 +333,7 @@
       <button onclick={() => (zone_axis = [...preset])}>[{preset.join(``)}]</button>
     {/each}
   </div>
-  <LazyDemo label="Electron diffraction" height="520px">
+  <LazyMount label="Electron diffraction" height="520px">
     {#if saed.error}
       <p class="error">SAED error: {saed.error}</p>
     {:else if saed.pattern}
@@ -373,11 +366,11 @@
         stand edge-on to the beam for zero-order (ZOLZ) spots; click to pin.
       </p>
     {/if}
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="overlay-multiple-structures">Overlay multiple structures</h2>
   <StructurePicker bind:selected={selected_ids} />
-  <LazyDemo label="Overlay multiple structures" height="400px" class="demo-2col">
+  <LazyMount label="Overlay multiple structures" height="400px" class="demo-2col">
     <XrdPlot
       patterns={selected_patterns}
       annotate_peaks={3}
@@ -389,13 +382,13 @@
         <Structure
           structure={struct_obj}
           style="height: 180px; width: 100%"
-          enable_info_pane={false}
+          show_controls={{ hidden: [`info-pane`] }}
           enable_measure_mode={false}
           scene_props={{ gizmo: false }}
         />
       {/snippet}
     </StructureTiles>
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="xrd-file-drop-demo">XRD File Drop Demo</h2>
   <p>
@@ -415,9 +408,9 @@
       file_type_paints={xrd_file_paints}
       show_category_filters
     />
-    <LazyDemo label="XRD File Drop Demo">
+    <LazyMount label="XRD File Drop Demo">
       <XrdPlot patterns={[]} annotate_peaks={5} hkl_format="compact" style="height: 500px" />
-    </LazyDemo>
+    </LazyMount>
   </section>
 </div>
 

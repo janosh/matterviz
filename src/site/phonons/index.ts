@@ -1,9 +1,9 @@
 // Extract phonon band structures and DOS from full phonon objects, eagerly for every fixture.
 // Demos showing one material at a time load per file from fixtures.ts instead.
 
-import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
-import type { PhononData } from '#site/phonons/fixtures.js'
-import { normalize_phonon_fixture, phonon_fixture_key } from '#site/phonons/fixtures.js'
+import type { PhononBandStructure, PhononDos } from '#lib/spectral/index'
+import type { PhononData } from '#site/phonons/fixtures'
+import { normalize_phonon_fixture, phonon_fixture_key } from '#site/phonons/fixtures'
 
 // Import all phonon data files (uncompressed for dev, gzipped in git)
 const raw_imports = import.meta.glob<PhononData>([`./*.json`, `./*.json.gz`], {

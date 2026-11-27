@@ -49,7 +49,7 @@
   background: var(--surface-bg, #f5f5f5);
   border-radius: 6px;
   font-size: 0.8em;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .demo-stats-bar span {
   white-space: nowrap;
@@ -83,8 +83,8 @@
   grid-template-columns: 1fr 1fr;
   gap: 1em;
 }
-/* A LazyDemo carrying the grid class spans its placeholder or loader across both columns */
-.demo-2col > :is(.placeholder, [role='status']) {
+/* A LazyMount carrying the grid class spans its placeholder or loader across both columns */
+.demo-2col > [data-lazy-placeholder] {
   grid-column: 1 / -1;
 }
 @media (max-width: 1024px) {

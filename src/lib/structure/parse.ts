@@ -1,25 +1,22 @@
-import { display_idx, plural } from '#lib/labels.js'
+import { display_idx, plural } from '#lib/labels'
 import { numeric_sites } from './site'
-import type { OptimadeStructure } from '#lib/api/optimade.js'
-import { AIMS_GEOMETRY_REGEX, VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { ELEM_SYMBOLS } from '#lib/element/types.js'
-import { coerce_elem_symbol, is_elem_symbol, species_symbol } from '#lib/element/helpers.js'
-import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { is_pbc, type Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { AnyStructure, Crystal, Site, Species } from '#lib/structure/index.js'
-import { shift_bonds_for_moved_sites } from '#lib/structure/bonding.js'
-import {
-  is_lammps_data_content,
-  is_lammps_dump_content,
-} from '#lib/structure/format-detect.js'
+import type { OptimadeStructure } from '#lib/api/optimade'
+import { AIMS_GEOMETRY_REGEX, VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants'
+import type { ElementSymbol } from '#lib/element/index'
+import { ELEM_SYMBOLS } from '#lib/element/types'
+import { coerce_elem_symbol, is_elem_symbol, species_symbol } from '#lib/element/helpers'
+import { strip_compression_extensions } from '#lib/io/decompress'
+import { is_pbc, type Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { AnyStructure, Crystal, Site, Species } from '#lib/structure/index'
+import { shift_bonds_for_moved_sites } from '#lib/structure/bonding'
+import { is_lammps_data_content, is_lammps_dump_content } from '#lib/structure/format-detect'
 import { is_aims_content, is_qe_content, parse_aims, parse_qe } from './parsers/dft-inputs'
-import { parse_lammps_data, parse_lammps_dump } from '#lib/structure/parsers/lammps.js'
-import { is_mmcif_content, parse_mmcif } from '#lib/structure/parsers/mmcif.js'
-import { parse_mol } from '#lib/structure/parsers/mol.js'
-import { mol2_has_lattice, parse_mol2 } from '#lib/structure/parsers/mol2.js'
-import { parse_pdb, pdb_has_lattice } from '#lib/structure/parsers/pdb.js'
+import { parse_lammps_data, parse_lammps_dump } from '#lib/structure/parsers/lammps'
+import { is_mmcif_content, parse_mmcif } from '#lib/structure/parsers/mmcif'
+import { parse_mol } from '#lib/structure/parsers/mol'
+import { mol2_has_lattice, parse_mol2 } from '#lib/structure/parsers/mol2'
+import { parse_pdb, pdb_has_lattice } from '#lib/structure/parsers/pdb'
 import {
   assert_cell_lengths,
   capitalize_symbol,
@@ -46,24 +43,24 @@ import {
   split_cif_tokens,
   split_cif_values,
   vec3_from_values,
-} from '#lib/structure/parsers/shared.js'
+} from '#lib/structure/parsers/shared'
 import {
   apply_axis_scale,
   lines_cursor,
   parse_vasp_header,
-} from '#lib/structure/parsers/vasp-header.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { make_site } from '#lib/structure/site.js'
-import { ADP_COMPONENTS, ADP_KEY } from '#lib/structure/thermal-ellipsoids.js'
-import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
-import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
+} from '#lib/structure/parsers/vasp-header'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
+import { make_site } from '#lib/structure/site'
+import { ADP_COMPONENTS, ADP_KEY } from '#lib/structure/thermal-ellipsoids'
+import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers'
+import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared'
 // One extXYZ implementation for both the single-structure and trajectory readers
-import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
-import { parse_leading_num, is_finite_number } from '#lib/utils.js'
+import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz'
+import { parse_leading_num, is_finite_number } from '#lib/utils'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
 import { load as yaml_load } from 'js-yaml'
 
-export { is_structure_file } from '#lib/structure/format-detect.js'
+export { is_structure_file } from '#lib/structure/format-detect'
 
 // Format parsers throw local errors (the dispatcher adds filename context); recoverable issues
 // such as skipped atoms go to parse_warn, collected by the file viewer

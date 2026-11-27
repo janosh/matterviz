@@ -1,8 +1,8 @@
 <script lang="ts" generics="T, SnippetArg = T">
   // A snippet `tooltip` replaces the default content, a config object adds prefix/suffix
   // around it, otherwise just the default renders (callers skip the whole tooltip on false)
-  import { sanitize_html } from '#lib/sanitize.js'
-  import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
+  import { sanitize_html } from '#lib/sanitize'
+  import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index'
   import type { Snippet } from 'svelte'
 
   let {

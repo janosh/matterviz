@@ -3,7 +3,7 @@
   // of the Wulff shape, and a row to add a family or remove one. Bind `facets` to a WulffShape's.
   // With `default_facets`, a reset icon in the header restores them once `facets` differ. With
   // `delta_mu_range`, a Δμ slider above sets `delta_mu` and the γ inputs set γ at Δμ = 0.
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { format_num } from 'svelte-widgets/format'

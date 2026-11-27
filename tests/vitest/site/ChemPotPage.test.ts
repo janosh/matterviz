@@ -1,7 +1,7 @@
 import Page from '#root/src/routes/(demos)/convex-hull/chempot-diagram/+page.svelte'
 import HullPage from '#root/src/routes/(demos)/convex-hull/+page.svelte'
-import type { PhaseData } from '#lib/convex-hull/index.js'
-import * as fixtures from '#site/convex-hull/index.js'
+import type { PhaseData } from '#lib/convex-hull/index'
+import * as fixtures from '#site/convex-hull/index'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { expect, test, vi } from 'vite-plus/test'
 import { trigger_intersection } from '../environment'
@@ -42,7 +42,7 @@ test.each([`empty`, `failed`])(`chemical potential data load: %s`, async (outcom
   const component = mount(Page, { target: document.body })
   try {
     flushSync()
-    const regions = [...document.querySelectorAll(`.lazy-demo`)]
+    const regions = [...document.querySelectorAll(`.lazy-mount`)]
     // every diagram's region was named "Chemical potential diagram"
     const names = new Set(regions.map((region) => region.getAttribute(`aria-label`)))
     expect(names.size).toBe(regions.length)

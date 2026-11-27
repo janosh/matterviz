@@ -1,14 +1,14 @@
 // Orbit link (scene/orbit-link): orbiting one member turns the others to its view direction,
 // each keeping its own orbit target and distance, and its gestures read as theirs
-import { camera_flight_registry } from '#lib/scene/camera-flight.js'
-import { lock_fly_to } from '#lib/scene/fly-to.js'
+import { camera_flight_registry } from '#lib/scene/camera-flight'
+import { lock_fly_to } from '#lib/scene/fly-to'
 import {
   create_orbit_link,
   join_orbit_link,
   link_orbits,
   scope_orbit_link,
-} from '#lib/scene/orbit-link.svelte.js'
-import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '#lib/scene/props.svelte.js'
+} from '#lib/scene/orbit-link.svelte'
+import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '#lib/scene/props.svelte'
 import SceneCamera from '#lib/scene/SceneCamera.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'

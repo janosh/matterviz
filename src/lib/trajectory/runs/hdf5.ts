@@ -1,5 +1,6 @@
 // Run over an open h5wasm file (TorchSim / Reference MD layouts). The parser hands over a
 // LazyTrajectorySource whose `dispose` closes the handle; this wraps it in the run contract.
+import { with_stream_progress } from '../parse/h5-utils'
 import type { LazyTrajectorySource } from '../parse/shared'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
@@ -24,12 +25,13 @@ export const hdf5_run = (
     signals,
     metadata,
     warnings,
-    // Sync hyperslab reads: there is no frame loop to report progress from, so the one
-    // stage announces itself and the result follows
+    // Sync hyperslab reads, in 8 MB slices that each report progress (in a worker, its
+    // messages reach the page while the reads run)
     collect_positions: async ({ on_progress, signal, ...options }) => {
       signal?.throwIfAborted()
-      on_progress?.({ current: 0, total: 100, stage: `Reading HDF5 datasets` })
-      return source.collect_positions(options)
+      const report = (current: number) =>
+        on_progress?.({ current, total: 100, stage: `Reading HDF5 datasets` })
+      return with_stream_progress(report, () => source.collect_positions(options))
     },
     release: source.dispose,
   })

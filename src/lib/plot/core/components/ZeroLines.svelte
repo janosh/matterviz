@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import type { FacetAxis } from '#lib/plot/core/facets.js'
-  import { get_scale_type_name, is_time_scale } from '#lib/plot/core/types.js'
-  import { plot_area_line } from '#lib/plot/core/layout.js'
+  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte'
+  import type { FacetAxis } from '#lib/plot/core/facets'
+  import { get_scale_type_name, is_time_scale } from '#lib/plot/core/types'
+  import { plot_area_line } from '#lib/plot/core/layout'
 
   let {
     frame,

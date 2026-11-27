@@ -1,10 +1,9 @@
 // Element data structure plus physicality checks that properties follow periodic trends
-import type { ElementSymbol } from '#lib/element/index.js'
-import { element_data } from '#lib/element/index.js'
-import { element_by_symbol, element_for_mass } from '#lib/element/data.js'
-import { element_groups } from '#lib/element/groups.js'
-import { get_electro_neg_formula } from '#lib/composition/format.js'
-import { element_from_lammps_type } from '#lib/element/helpers.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { element_data } from '#lib/element/index'
+import { element_by_symbol, element_for_mass } from '#lib/element/data'
+import { get_electro_neg_formula } from '#lib/composition/format'
+import { element_from_lammps_type } from '#lib/element/helpers'
 import { expect, test } from 'vite-plus/test'
 import { CATEGORY_COUNTS as expected_counts } from '../test-fixtures'
 
@@ -60,20 +59,6 @@ test(`category counts`, () => {
     counts[category] = (counts[category] ?? 0) + 1
   }
   expect(counts).toEqual(expected_counts)
-})
-
-const n_nonmetals =
-  expected_counts[`diatomic nonmetal`] + expected_counts[`polyatomic nonmetal`]
-test.each([
-  [`all`, 118, `Og`],
-  [`transition`, expected_counts[`transition metal`], `Fe`],
-  [`nonmetal`, n_nonmetals, `C`],
-  [`halogen`, 6, `Ts`],
-] as const)(`element group %s holds %i elements including %s`, (key, count, member) => {
-  const group = element_groups.find(({ value }) => value === key)
-  const members = element_data.filter((element) => group?.includes(element))
-  expect(members).toHaveLength(count)
-  expect(members.map(({ symbol }) => symbol)).toContain(member)
 })
 
 type TrendProp = `atomic_radius` | `covalent_radius` | `electronegativity` | `first_ionization`

@@ -1,6 +1,6 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { track_settings } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls'
   import type {
     ScatterPlotOptions,
     BarPlotOptions,
@@ -8,26 +8,26 @@
     BarSeries,
     DataSeries,
     ScatterHandlerProps,
-  } from '#lib/plot/index.js'
-  import { add_alpha, plot_color } from '#lib/colors/index.js'
+  } from '#lib/plot/index'
+  import { add_alpha, plot_color } from '#lib/colors/index'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { untrack } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
   import * as file_io from '../io'
-  import { format_value } from '#lib/labels.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { format_value } from '#lib/labels'
+  import { sanitize_html } from '#lib/sanitize'
   import { to_error } from 'svelte-widgets/utils'
-  import { array_extent, array_max, type Vec2 } from '#lib/math.js'
-  import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
-  import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
+  import { array_extent, array_max, type Vec2 } from '#lib/math'
+  import { BarPlot, ScatterPlot } from '#lib/plot/index'
+  import { structure_drop_zone } from '#lib/plot/core/structure-input'
   import {
     compute_xrd_pattern_async,
     structure_xrd_pattern,
-  } from '#lib/xrd/async-compute.svelte.js'
+  } from '#lib/xrd/async-compute.svelte'
   import { is_xrd_data_file, parse_xrd_file } from './parse'
-  import type { RadiationType } from '#lib/scattering/index.js'
+  import type { RadiationType } from '#lib/scattering/index'
   import type { BroadeningParams } from './broadening'
   import type { XrdWavelength } from './compute-xrd'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
@@ -564,16 +564,6 @@
     gap: 1rem;
     width: 100%;
     height: 100%;
-  }
-  /* Hide controls toggle by default, show on hover */
-  .xrd-plot-container :global(.pane-toggle) {
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-  .xrd-plot-container:hover :global(.pane-toggle),
-  .xrd-plot-container :global(.pane-toggle:focus-visible),
-  .xrd-plot-container :global(.pane-toggle[aria-expanded='true']) {
-    opacity: 1;
   }
   .toggle {
     display: flex;

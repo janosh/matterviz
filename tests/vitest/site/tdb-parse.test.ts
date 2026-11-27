@@ -5,7 +5,7 @@ import {
   normalize_system_name,
   parse_tdb,
   summarize_models,
-} from '#site/phase-diagrams/tdb-parse.js'
+} from '#site/phase-diagrams/tdb-parse'
 import { describe, expect, test } from 'vite-plus/test'
 
 export const SAMPLE_TDB_CONTENT = `

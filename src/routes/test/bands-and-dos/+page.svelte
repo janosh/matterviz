@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { normalize_dos } from '#lib/spectral/index.js'
+  import { normalize_dos } from '#lib/spectral/index'
   import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-  import type { PhononDos } from '#lib/spectral/types.js'
-  import { electronic_bands } from '#site/electronic/bands/index.js'
-  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
-  import { custom_overlay_style, mock_band_structure, mock_dos } from '#site/spectral-mocks.js'
+  import type { PhononDos } from '#lib/spectral/types'
+  import { electronic_bands } from '#site/electronic/bands/index'
+  import { dos_spin_polarization } from '#site/electronic/dos/index'
+  import { custom_overlay_style, mock_band_structure, mock_dos } from '#site/spectral-mocks'
   import TestControls from '../TestControls.svelte'
   import TestSection from '../TestSection.svelte'
 

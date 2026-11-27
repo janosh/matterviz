@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { theme_state } from '#lib/state.svelte.js'
+  import { theme_state } from '#lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ThemeMode } from './index'
   import { apply_theme_to_dom, save_theme_preference, THEME_OPTIONS } from './index'
@@ -40,8 +40,6 @@
     color: var(--text-color);
     border-radius: var(--theme-control-border-radius, var(--border-radius, 3pt));
     padding: var(--theme-control-padding, 1pt 2pt);
-    /* a finger-sized target; the fixed corner otherwise lands on viewer toolbars on phones */
-    min-height: 2em;
     backdrop-filter: blur(10px);
     transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -52,6 +50,13 @@
   }
   .theme-control:focus {
     outline: 0.5px solid var(--accent-color);
+  }
+  /* a finger-sized target on touch screens, where the fixed corner otherwise lands on viewer
+     toolbars */
+  @media (pointer: coarse) {
+    .theme-control {
+      min-height: 2em;
+    }
   }
   @media (max-width: 600px) {
     .theme-control {

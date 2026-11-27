@@ -1,14 +1,14 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_lattice_converters, min_image_displacement } from '#lib/math.js'
-import type { Crystal, Pbc } from '#lib/structure/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { create_lattice_converters, min_image_displacement } from '#lib/math'
+import type { Crystal, Pbc } from '#lib/structure/index'
 import {
   apply_structure_id,
   compute_structure_id,
   CENTROSYMMETRY_PROPERTY,
   cna_type_name,
   CNA_TYPE_PROPERTY,
-} from '#lib/structure-id/compute-structure-id.js'
-import { CNA_TYPES } from '#lib/structure-id/compute-cna.js'
+} from '#lib/structure-id/compute-structure-id'
+import { CNA_TYPES } from '#lib/structure-id/compute-cna'
 import { describe, expect, test } from 'vite-plus/test'
 import {
   BCC_LATTICE_CONST,

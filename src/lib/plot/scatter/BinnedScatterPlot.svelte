@@ -5,12 +5,16 @@
   // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
   // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
   import { value_key } from 'svelte-widgets/utils'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { series_text } from '#lib/plot/core/data-transform.js'
-  import { host } from '#lib/host.js'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { format_value } from '#lib/labels.js'
-  import type { Point2D, Vec2 } from '#lib/math.js'
+  import { sanitize_html } from '#lib/sanitize'
+  import { series_text } from '#lib/plot/core/data-transform'
+  import {
+    normalize_show_controls,
+    type ShowControlsProp,
+    shows_fullscreen_toggle,
+  } from '#lib/controls'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { format_value } from '#lib/labels'
+  import type { Point2D, Vec2 } from '#lib/math'
   import { create_pulse_animation } from 'svelte-widgets/effects'
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
   import PlotAnnotationBadge from '#lib/plot/core/components/PlotAnnotationBadge.svelte'
@@ -18,27 +22,27 @@
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte'
   import {
     create_annotation_decoration,
     create_colorbar_decoration,
-  } from '#lib/plot/core/placed-decoration.svelte.js'
-  import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte.js'
-  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
+  } from '#lib/plot/core/placed-decoration.svelte'
+  import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte'
+  import type { FacetLayoutContext } from '#lib/plot/core/facets'
   import {
     axis_transform,
     get_relative_coords,
     orient_range,
     range_bounds,
-  } from '#lib/plot/core/interactions.js'
-  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
-  import { plot_color } from '#lib/colors/index.js'
-  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  } from '#lib/plot/core/interactions'
+  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index'
+  import { plot_color } from '#lib/colors/index'
+  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals'
   import {
     add_sides,
     normalize_marginals,
     reserve_marginal_pad,
-  } from '#lib/plot/core/marginals.js'
+  } from '#lib/plot/core/marginals'
   import {
     bin_points,
     density_bin_at_point,
@@ -49,37 +53,39 @@
     series_x_order,
     should_render_points,
     visible_points,
-  } from '#lib/plot/scatter/adaptive-density.js'
+  } from '#lib/plot/scatter/adaptive-density'
   import type {
     DensityBin,
     DenseInternalPoint,
     DensePointSeries,
-  } from '#lib/plot/scatter/adaptive-density.js'
+  } from '#lib/plot/scatter/adaptive-density'
   import {
     collect_size_range,
     resolve_color_scale,
     create_size_scale,
-  } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/core/scales'
   import type {
     AxisConfig,
     BasePlotProps,
+    CartesianPlotProps,
     InternalPoint,
     PanConfig,
     PlotAnnotation,
     ScatterHandlerProps,
-  } from '#lib/plot/core/types.js'
-  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
-  import type { Obstacle } from '#lib/plot/core/decorations/index.js'
-  import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import type { ExportProps } from '#lib/io/export.js'
+  } from '#lib/plot/core/types'
+  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types'
+  import type { Obstacle } from '#lib/plot/core/decorations/index'
+  import { attach_canvas, prepare_canvas } from '#lib/plot/core/utils'
+  import { set_export_painter } from 'svelte-widgets/figure-export'
+  import { csv_source } from '#lib/plot/core/utils/chart-export'
+  import type { ExportProps } from '#lib/io/export'
   import {
     compute_label_positions,
     estimate_label_size,
     LABEL_PLACEMENT_DEFAULTS,
     label_leader_segment,
-  } from '#lib/plot/core/utils/label-placement.js'
-  import type { LabelSize } from '#lib/plot/core/utils/label-placement.js'
+  } from '#lib/plot/core/utils/label-placement'
+  import type { LabelSize } from '#lib/plot/core/utils/label-placement'
   import type { Snippet } from 'svelte'
   import { tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -91,8 +97,8 @@
     BinnedPointLabelsConfig,
     BinnedPointPayload,
     BinnedSizeScaleConfig,
-  } from '#lib/plot/scatter/binned-scatter-types.js'
-  import { DEFAULT_BINNED_SIZE_SCALE } from '#lib/plot/scatter/binned-scatter-types.js'
+  } from '#lib/plot/scatter/binned-scatter-types'
+  import { DEFAULT_BINNED_SIZE_SCALE } from '#lib/plot/scatter/binned-scatter-types'
 
   type RenderMode = `density` | `points`
   type DensePointEvent = {
@@ -116,6 +122,7 @@
     overlays: overlays_config = {},
     padding = {},
     range_padding = 0.05,
+    shared_xy_range = false,
     title,
     tooltip,
     point_data,
@@ -127,7 +134,7 @@
     wrapper = $bindable(),
     hovered = $bindable(false),
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
+    show_controls,
     pan = {},
     children,
     header_controls,
@@ -137,11 +144,13 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
     // `range_padding` defaults to 0.05 (a pad around the density bins), not ScatterPlot's 0
-    Pick<
-      BasePlotProps,
-      `padding` | `range_padding` | `title` | `hovered` | `fullscreen` | `fullscreen_toggle`
-    > &
+    Pick<BasePlotProps, `padding` | `hovered` | `fullscreen`> &
+    Pick<CartesianPlotProps, `range_padding` | `title`> &
     ExportProps & {
+      // One range for x and y, as ScatterPlot's shared_xy_range
+      shared_xy_range?: boolean
+      // Header chrome visibility; the fullscreen button is the only named control (no settings pane)
+      show_controls?: ShowControlsProp<`fullscreen`>
       // Point series with x and y arrays (typed arrays welcome), binned into a density map
       series: DensePointSeries<Metadata>[]
       // X axis label, ticks, scale type and range
@@ -185,6 +194,7 @@
       // Layout context a FacetGrid passes to a child plot so panels share padding and axis ranges
       facet_layout?: FacetLayoutContext
     } = $props()
+  const uid = $props.id()
 
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let label_measure_root = $state<HTMLDivElement>()
@@ -243,10 +253,11 @@
   })
 
   const frame = create_cartesian_frame({
-    controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane
+    controls_row: () => shows_fullscreen_toggle(normalize_show_controls(show_controls)),
     // No default tick format: it would skip format_tick_values' duplicate avoidance
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({ ...auto_ranges, x2: unit_range, y2: unit_range }),
+    shared_xy_range: () => shared_xy_range,
     has_x2: () => false,
     has_y2: () => false,
     padding: () => padding,
@@ -262,7 +273,7 @@
     pan: () => pan,
     facet_layout: () => facet_layout,
     tick_counts: { x: 7, y: 5 },
-    clip_id_prefix: `binned-scatter-plot-area`,
+    clip_path_id: `binned-scatter-plot-area-${uid}`,
   })
   const width = $derived(frame.width)
   const height = $derived(frame.height)
@@ -628,7 +639,8 @@
   }
 
   // Density bins clip to the plot area; range-filtered points keep whole glyphs at the edges.
-  // Registered per canvas as its export painter, so exports redraw at the export pixel ratio
+  // Registered per canvas as its export painter, so exports redraw at the export pixel ratio;
+  // returns the registration's cleanup for the effect that paints
   const paint = (
     node: HTMLCanvasElement | undefined,
     draw: (ctx: CanvasRenderingContext2D) => void,
@@ -649,8 +661,8 @@
       draw(ctx)
       ctx.restore()
     }
-    if (node) canvas_painters.set(node, paint_at)
     paint_at(node)
+    return node ? set_export_painter(node, paint_at) : undefined
   }
 
   // Canvases live in <foreignObject>s so they sit in SVG paint order (under the axes)
@@ -881,7 +893,7 @@
   aria_label="Binned scatter plot"
   bind:fullscreen
   bind:wrapper
-  {fullscreen_toggle}
+  {show_controls}
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_move={on_pointer_move}

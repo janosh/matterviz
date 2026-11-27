@@ -26,18 +26,14 @@
 // `{ "format": ..., "paths": { "vacancy": { "images": [...] }, "interstitial": [...] } }`.
 // A `paths` entry is either a full path object or a bare image array.
 
-import { display_idx } from '#lib/labels.js'
-import type { Vec3 } from '#lib/math.js'
-import { finite_vec3_from_values } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
-import {
-  has_multiple_xyz_frames,
-  iter_xyz_frames,
-  TextLines,
-} from '#lib/trajectory/helpers.js'
-import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
-import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz.js'
+import { display_idx } from '#lib/labels'
+import type { Vec3 } from '#lib/math'
+import { finite_vec3_from_values } from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
+import { parse_structure_file } from '#lib/structure/parse'
+import { has_multiple_xyz_frames, iter_xyz_frames, TextLines } from '#lib/trajectory/helpers'
+import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared'
+import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'

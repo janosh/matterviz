@@ -1,11 +1,11 @@
-import type { Vec3 } from '#lib/math.js'
-import type { Site } from '#lib/structure/index.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { Vec3 } from '#lib/math'
+import type { Site } from '#lib/structure/index'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import TrajectoryDataInspector from '#lib/trajectory/TrajectoryDataInspector.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
-import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { doc_query, limit_math_spread, query, trigger_resize_observer } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
@@ -163,9 +163,13 @@ test(`global tab derives Fmax from sites past the spread argument limit`, async 
   )
   const run = trajectory_from_frames([make_sites_frame(sites.slice(0, 2))])
   await mount_inspector({ run, current_frame: make_sites_frame(sites) })
-  const { Fmax, Atoms } = attributes()
+  const { Fmax, Atoms, Formula } = attributes()
   expect(Fmax).toEqual([`5`, `eV/Å`])
   expect(Atoms).toEqual([`2000`, ``])
+  // the formula's count renders as a subscript; the row's value (export, filter) stays plain
+  expect(Formula).toEqual([`Fe2000`, ``])
+  const formula_row = body_rows().find((row) => cell_texts(row)[0] === `Formula`)
+  expect(formula_row?.querySelector(`td sub`)?.textContent).toBe(`2000`)
 })
 
 // A render sample previews every n-th atom: counts and per-atom values come from the whole

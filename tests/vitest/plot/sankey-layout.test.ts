@@ -1,10 +1,10 @@
-import type { Vec3 } from '#lib/math.js'
-import type { SankeyData } from '#lib/plot/index.js'
+import type { Vec3 } from '#lib/math'
+import type { SankeyData } from '#lib/plot/index'
 import {
   bucket_sankey_data,
   compute_sankey_layout,
   sankey_from_links,
-} from '#lib/plot/sankey/sankey.js'
+} from '#lib/plot/sankey/sankey'
 import { sankey as d3_sankey, sankeyJustify } from 'd3-sankey'
 import { describe, expect, test, vi } from 'vite-plus/test'
 

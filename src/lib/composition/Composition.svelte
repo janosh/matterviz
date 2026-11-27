@@ -1,8 +1,8 @@
 <script lang="ts">
   import ExportPane from '#lib/io/ExportPane.svelte'
 
-  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
-  import type { CompositionType } from '#lib/composition/index.js'
+  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants'
+  import type { CompositionType } from '#lib/composition/index'
   import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import type { CmdAction, CmdSection, IconData } from 'svelte-widgets'
@@ -14,7 +14,7 @@
     Graph,
     ScatterPlot,
   } from 'svelte-widgets/icons'
-  import { svg_sources } from '#lib/io/export.js'
+  import { figure_sources } from '#lib/io/export'
   import type { CompositionChartProps } from './chart'
   import BarChart from './BarChart.svelte'
   import BubbleChart from './BubbleChart.svelte'
@@ -139,5 +139,5 @@ path below, which has no pointer position to read -->
   bind:export_pane_open
   filename={get_electro_neg_formula(parsed, { plain_text: true, delim: `` })}
   toggle_props={{ style: `display: none` }}
-  sources={svg_sources(() => svg_node)}
+  sources={figure_sources(() => svg_node)}
 />

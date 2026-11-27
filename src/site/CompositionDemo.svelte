@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import { to_error } from 'svelte-widgets/utils'
   import type { CompositionType } from 'matterviz'
   import {

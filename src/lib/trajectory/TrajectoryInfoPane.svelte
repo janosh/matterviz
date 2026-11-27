@@ -1,10 +1,10 @@
 <script module lang="ts">
-  import { is_finite_number } from '#lib/utils.js'
+  import { is_finite_number } from '#lib/utils'
   import { InformationOutline } from 'svelte-widgets/icons'
-  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
-  import { display_idx, trajectory_property_config, zero_if_negligible } from '#lib/labels.js'
+  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index'
+  import { display_idx, trajectory_property_config, zero_if_negligible } from '#lib/labels'
   import { format_bytes, format_num } from 'svelte-widgets/format'
-  import { array_extent } from '#lib/math.js'
+  import { array_extent } from '#lib/math'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {
     extract_label_and_unit,
@@ -212,8 +212,8 @@
 </script>
 
 <script lang="ts">
-  import type { ViewerPaneOptions } from '#lib/overlays/index.js'
-  import { ViewerPane } from '#lib/overlays/index.js'
+  import type { ViewerPaneOptions } from '#lib/overlays/index'
+  import { ViewerPane } from '#lib/overlays/index'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
 
   let {

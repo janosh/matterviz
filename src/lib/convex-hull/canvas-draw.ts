@@ -2,14 +2,14 @@
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
 import { clamp } from 'svelte-widgets/utils'
 import { format_num } from 'svelte-widgets/format'
-import { add_alpha, HIGHLIGHT, plot_color } from '#lib/colors/index.js'
+import { add_alpha, HIGHLIGHT, plot_color } from '#lib/colors/index'
 import {
   type FormulaLabelSegment,
   get_formula_label_segments,
-} from '#lib/composition/formula-markup.js'
-import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { capitalize, type D3SymbolName, symbol_map } from '#lib/labels.js'
+} from '#lib/composition/formula-markup'
+import { count_atoms_in_composition } from '#lib/composition/reduce'
+import type { ElementSymbol } from '#lib/element/index'
+import { capitalize, type D3SymbolName, symbol_map } from '#lib/labels'
 import {
   array_extent,
   mean,
@@ -17,20 +17,20 @@ import {
   sorted_numbers,
   to_radians,
   type Vec3,
-} from '#lib/math.js'
-import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
+} from '#lib/math'
+import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales'
 import {
   centered_rect,
   pad_rect,
   rect_within_rect,
   rects_overlap,
-} from '#lib/plot/core/layout.js'
-import type { Rect } from '#lib/plot/core/layout.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import type { SpatialIndex } from '#lib/plot/core/spatial-index.js'
-import { build_spatial_index, query_topmost } from '#lib/plot/core/spatial-index.js'
-import { DEFAULTS } from '#lib/settings.js'
-import { clamp01, is_finite_number } from '#lib/utils.js'
+} from '#lib/plot/core/layout'
+import type { Rect } from '#lib/plot/core/layout'
+import type { ColorScale } from '#lib/plot/core/types'
+import type { SpatialIndex } from '#lib/plot/core/spatial-index'
+import { build_spatial_index, query_topmost } from '#lib/plot/core/spatial-index'
+import { DEFAULTS } from '#lib/settings'
+import { clamp01, is_finite_number } from '#lib/utils'
 import { ticks } from 'd3-array'
 import { symbol } from 'd3-shape'
 import { TETRAHEDRON_VERTICES, TRIANGLE_VERTICES } from './barycentric-coords'

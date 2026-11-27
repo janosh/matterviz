@@ -3,9 +3,9 @@ import {
   property_column,
   site_columns,
   site_property_specs,
-} from '#lib/structure/site-table.js'
+} from '#lib/structure/site-table'
 import SiteTable from '#lib/structure/SiteTable.svelte'
-import { make_site } from '#lib/structure/site.js'
+import { make_site } from '#lib/structure/site'
 import { flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test } from 'vite-plus/test'
 

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { Crystal } from '#lib/structure/index.js'
-  import { Structure, make_site, structure_host_tool } from '#lib/structure/index.js'
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import { compute_lattice_params, create_frac_to_cart } from '#lib/math.js'
+  import type { Crystal } from '#lib/structure/index'
+  import { Structure, make_site, structure_host_tool } from '#lib/structure/index'
+  import type { Matrix3x3, Vec3 } from '#lib/math'
+  import { compute_lattice_params, create_frac_to_cart } from '#lib/math'
   import { onMount } from 'svelte'
   import DemoHostTool from './DemoHostTool.svelte'
 

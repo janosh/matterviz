@@ -1,5 +1,5 @@
 import FillArea from '#lib/plot/core/components/FillArea.svelte'
-import type { FillGradient, FillRegion } from '#lib/plot/core/types.js'
+import type { FillGradient, FillRegion } from '#lib/plot/core/types'
 import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, fire, keydown, mouse } from '../setup'

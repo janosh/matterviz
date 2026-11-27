@@ -4,10 +4,10 @@
 // conventional cell; SC's own cell choices (axis order, monoclinic unique axis a with α < 90°,
 // triclinic reciprocal-angle signs) follow pymatgen's SpacegroupAnalyzer so labels and
 // coordinates match its k-paths. Points come back in the SC primitive cell's reciprocal basis.
-import * as math from '#lib/math.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { point_group_rotations } from '#lib/symmetry/analyze.js'
-import { type CrystalSystem, spacegroup_to_crystal_sys } from '#lib/symmetry/spacegroups.js'
+import * as math from '#lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import { point_group_rotations } from '#lib/symmetry/analyze'
+import { type CrystalSystem, spacegroup_to_crystal_sys } from '#lib/symmetry/spacegroups'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import type { KPathData } from './types'
 

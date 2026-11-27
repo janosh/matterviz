@@ -6,8 +6,8 @@ only drawn while the viewer renders the analyzed (input) cell; pass `in_input_fr
 while a conventional/primitive cell is shown to disable the toggles and say why. -->
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
-  import * as math from '#lib/math.js'
-  import type { Matrix3x3 } from '#lib/math.js'
+  import * as math from '#lib/math'
+  import type { Matrix3x3 } from '#lib/math'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     count_symmetry_elements,
@@ -112,7 +112,7 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
     opacity: 0.6;
   }
   .frame-note {
-    color: var(--text-muted, #666);
+    color: var(--text-color-muted, #666);
     font-style: italic;
   }
   .swatch {

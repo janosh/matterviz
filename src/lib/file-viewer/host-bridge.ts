@@ -10,12 +10,12 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
-import { display_idx } from '#lib/labels.js'
-import type { FrameChannels } from '#lib/trajectory/frame.js'
-import { frame_transfers, materialize_frame } from '#lib/trajectory/frame.js'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host.js'
-import type { PreparePool } from '#lib/trajectory/prepare-pool.js'
+import { display_idx } from '#lib/labels'
+import type { FrameChannels } from '#lib/trajectory/frame'
+import { frame_transfers, materialize_frame } from '#lib/trajectory/frame'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import { host_run, type HostFrameInput } from '#lib/trajectory/runs/host'
+import type { PreparePool } from '#lib/trajectory/prepare-pool'
 import { to_error } from 'svelte-widgets/utils'
 import {
   frame_from_wire,

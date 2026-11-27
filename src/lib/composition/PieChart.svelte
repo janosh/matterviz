@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { annular_sector_path } from '#lib/plot/sunburst/render.js'
-  import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+  import { annular_sector_path } from '#lib/plot/sunburst/render'
+  import { hover_tooltip } from '#lib/tooltip/hover.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'

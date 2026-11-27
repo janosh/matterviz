@@ -4,11 +4,15 @@
 </script>
 
 <script lang="ts">
-  import type { TooltipPaint } from '#lib/colors/index.js'
-  import { css_var_names, resolve_color_token, tooltip_paint } from '#lib/colors/index.js'
-  import { watch_theme_changes } from '#lib/theme/index.js'
-  import { DEFAULT_CURSOR_SIZE, place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
-  import type { Rect } from '#lib/plot/core/layout.js'
+  import type { TooltipPaint } from '#lib/colors/index'
+  import { tooltip_paint } from '#lib/colors/index'
+  import {
+    css_var_names,
+    resolve_color_token,
+    watch_theme_changes,
+  } from 'svelte-widgets/theme-core'
+  import { DEFAULT_CURSOR_SIZE, place_tooltip } from '#lib/plot/core/decorations/tooltip'
+  import type { Rect } from '#lib/plot/core/layout'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

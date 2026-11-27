@@ -1,5 +1,5 @@
-import type { CrystalSystem } from '#lib/symmetry/spacegroups.js'
-import * as spg from '#lib/symmetry/spacegroups.js'
+import type { CrystalSystem } from '#lib/symmetry/spacegroups'
+import * as spg from '#lib/symmetry/spacegroups'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 // exact values are a cross-repo parity contract with pymatviz — don't change one side only

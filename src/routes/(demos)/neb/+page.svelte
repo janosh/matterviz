@@ -1,10 +1,10 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import LazyDemo from '#site/LazyDemo.svelte'
-  import { analyze_barrier, NebPlot, NebViewer, path_spline } from '#lib/neb/index.js'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
+  import { analyze_barrier, NebPlot, NebViewer, path_spline } from '#lib/neb/index'
   import { download } from 'svelte-widgets/browser'
-  import { display_idx } from '#lib/labels.js'
-  import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '#site/neb/index.js'
+  import { display_idx } from '#lib/labels'
+  import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '#site/neb/index'
   import InputFormat from './input-format.md'
 
   const direct = reaction_paths[`direct hop`]
@@ -40,9 +40,9 @@
     differ. The direct hop demonstrates force-projected fitting; the curved hop demonstrates
     the energy-only cubic fallback.
   </p>
-  <LazyDemo label="Comparing mechanisms" height="420px">
+  <LazyMount label="Comparing mechanisms" height="420px">
     <NebPlot paths={reaction_paths} energy_reference="initial" style="height: 420px" />
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="input-format">Input format</h2>
   <p>

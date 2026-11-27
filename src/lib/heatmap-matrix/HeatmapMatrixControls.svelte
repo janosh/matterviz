@@ -1,10 +1,10 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { DEFAULT_CONTROLS_MODE, type ShowControlsProp } from '#lib/controls.js'
-  import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
+  import { DEFAULT_CONTROLS_MODE, type ShowControlsProp } from '#lib/controls'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index'
   import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
-  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales'
+  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types'
   import type { ComponentProps, Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
   import type { ElementAxisOrderingKey, HeatmapDomainMode, SymmetricMode } from './index'
@@ -42,7 +42,7 @@
     show_col_summaries?: boolean
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
-    children?: Snippet<[{ controls_open: boolean }]>
+    children?: Snippet
   } = $props()
 
   // Stash custom format string so toggling the checkbox preserves it
@@ -155,7 +155,7 @@
       <span>Col sums</span>
       <input type="checkbox" bind:checked={show_col_summaries} />
     </label>
-    {@render children?.({ controls_open })}
+    {@render children?.()}
   </SettingsSection>
 </ControlPane>
 

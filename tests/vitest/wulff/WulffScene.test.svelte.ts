@@ -1,14 +1,14 @@
 // Mounts WulffScene against the recording Threlte stub (every facet edge is one instance of a
 // single InstancedMesh, rewritten in place when the energies change) and WulffShape's states
-import { euclidean_dist } from '#lib/math.js'
+import { euclidean_dist } from '#lib/math'
 import {
   compute_wulff_shape,
   type WulffFacetInput,
   type WulffShapeData,
   WulffScene,
   WulffShape,
-} from '#lib/wulff/index.js'
-import { wulff_examples } from '#site/wulff.js'
+} from '#lib/wulff/index'
+import { wulff_examples } from '#site/wulff'
 import { flushSync, mount, unmount } from 'svelte'
 import { InstancedMesh, Matrix4, Vector3 } from 'three/webgpu'
 import { afterEach, beforeAll, expect, test, vi } from 'vite-plus/test'
@@ -106,6 +106,56 @@ test.each([
   void unmount(component)
 })
 
+// The shared viewer chrome: show_controls drops named controls (all of them for false), and
+// scene_controls reach the scene's camera
+test.each([
+  [
+    undefined,
+    [`wulff-info-toggle`, `export-toggle`, `wulff-controls-toggle`, `fullscreen-btn`],
+  ],
+  [{ hidden: [`fullscreen`, `info-pane`] }, [`export-toggle`, `wulff-controls-toggle`]],
+  [{ hidden: [`export-pane`, `controls`] }, [`wulff-info-toggle`, `fullscreen-btn`]],
+  [false, []],
+] as const)(
+  `WulffShape show_controls=%j shows %j, tracks hover and gates the i key`,
+  async (show_controls, shown) => {
+    Object.defineProperty(navigator, `gpu`, { value: {}, configurable: true })
+    const onpointerenter = vi.fn()
+    const props = $state({
+      facets: two_families,
+      lattice: wulff_examples[0].lattice,
+      show_controls,
+      scene_controls: { fov: 23 },
+      hovered: false,
+      onpointerenter,
+    })
+    const component = mount(WulffShape, { target: document.body, props })
+    try {
+      await vi.waitFor(() => expect(document.querySelector(`.legend`)).not.toBeNull())
+      const buttons = document.querySelectorAll(`.wulff-shape section.control-buttons button`)
+      const classes = [...buttons].map((button) =>
+        shown.find((name) => button.classList.contains(name)),
+      )
+      expect(classes.filter(Boolean)).toEqual(shown)
+      const camera = threlte_stub.nodes.find(({ tag }) => tag === `PerspectiveCamera`)
+      expect(camera?.props.fov).toBe(23)
+      // `i` opens the info pane (marking the viewer active) only while its toggle shows
+      const viewer = document.querySelector(`.wulff-shape`)
+      viewer?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `i`, bubbles: true }))
+      flushSync()
+      const has_info = document.querySelector(`.wulff-info-toggle`) !== null
+      expect(viewer?.classList.contains(`active`)).toBe(has_info)
+      // hovered follows the pointer without displacing a caller's own handler
+      viewer?.dispatchEvent(new PointerEvent(`pointerenter`))
+      flushSync()
+      expect([props.hovered, onpointerenter.mock.calls.length]).toEqual([true, 1])
+    } finally {
+      Reflect.deleteProperty(navigator, `gpu`)
+      void unmount(component)
+    }
+  },
+)
+
 // ω-Ti's c axis is short: scaled with a it ended inside the shape. Every axis must clear the
 // surface along its own direction by the same margin, with its label just past the tip. (The
 // labels' occlusion needs a real bind:ref to the shape group, which this stub never fills.)
@@ -119,7 +169,7 @@ test(`axes clear the shape along their own direction, labels just past the tips`
       wulff,
       colors: wulff.families.map(() => `red`),
       lattice: example.lattice,
-      show_axes: true,
+      show_vectors: true,
     },
   })
   flushSync()

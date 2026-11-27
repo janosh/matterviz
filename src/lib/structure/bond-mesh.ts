@@ -32,10 +32,10 @@ import {
   instance_count_for_order,
   prepare_bond_placements,
 } from './bond-rendering'
-import { same_values } from '#lib/math.js'
+import { same_values } from '#lib/math'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
 import { InstanceColors } from './instance-colors'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
+import { css_to_linear_rgb } from '#lib/scene/colors'
 import type { BondPair } from './index'
 
 // Center and displacement preserve short bonds far from the origin. Sending two rounded

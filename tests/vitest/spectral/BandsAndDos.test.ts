@@ -1,6 +1,6 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
-import { mock_band_structure as band_structs } from '#site/spectral-mocks.js'
+import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types'
+import { mock_band_structure as band_structs } from '#site/spectral-mocks'
 import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vite-plus/test'
@@ -249,20 +249,18 @@ describe(`bands/DOS wrappers`, () => {
   })
 
   // One fullscreen button in the top-right plot's header (DOS side by side, bands when stacked)
-  // beside the caller's controls, hidden by fullscreen_toggle or that plot's show_controls
-  const kinds = [`default`, `fullscreen_toggle`, `show_controls`] as const
+  // beside the caller's controls, hidden by BandsAndDos' own show_controls at any width
+  const kinds = [`default`, `show_controls`] as const
   const cases = layouts.flatMap((row) => kinds.map((kind) => [...row, kind] as const))
   it.each(cases)(
     `fullscreen btn (%s, %ipx, %s)`,
     async (_label, width, layout_props, kind) => {
       const [host_idx, shown] = [width === 1200 ? 1 : 0, Number(kind === `default`)]
-      const hidden = { show_controls: { hidden: [`fullscreen`] as const } }
-      const [bands_props, dos_props] = [`bands`, `dos`].map((name, idx) => ({
+      const [bands_props, dos_props] = [`bands`, `dos`].map((name) => ({
         header_controls: createRawSnippet(() => ({ render: () => `<i class=${name}></i>` })),
-        ...(kind === `show_controls` && idx === host_idx ? hidden : {}),
       }))
-      const fullscreen_toggle = kind !== `fullscreen_toggle`
-      const props = { ...layout_props, bands_props, dos_props, fullscreen_toggle }
+      const show_controls = kind === `show_controls` ? { hidden: [`fullscreen`] } : undefined
+      const props = { ...layout_props, bands_props, dos_props, show_controls }
       const root = await mount_pair(props, width)
       const plots = [...root.querySelectorAll(`.scatter`)]
       const in_plots = (sel: string) => plots.map((plot) => plot.querySelectorAll(sel).length)

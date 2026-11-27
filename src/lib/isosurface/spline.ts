@@ -4,7 +4,7 @@ import {
   scale_lattice_matrix,
   type Vec2,
   type Vec3,
-} from '#lib/math.js'
+} from '#lib/math'
 import { safe_mod } from './grid'
 import { MAX_CUBIC_GRID_POINTS, type VolumetricData } from './types'
 

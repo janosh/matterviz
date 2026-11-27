@@ -1,20 +1,6 @@
 /// <reference types="@sveltejs/kit" />
 /// <reference types="svelte-widgets/source-links/virtual" />
-
-// Served by prop_docs_plugin (src/scripts/prop-docs.ts)
-declare module 'virtual:prop-docs' {
-  import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
-
-  // one lazy loader per component name
-  const loaders: Record<string, () => Promise<{ default: ComponentDoc }>>
-  export default loaders
-}
-declare module 'virtual:prop-docs/*' {
-  import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
-
-  const doc: ComponentDoc
-  export default doc
-}
+/// <reference types="svelte-widgets/prop-docs/virtual" />
 
 // Served by src/elements/vite.config.ts: each custom element's lazy component, settable prop
 // names, bindable ones and those without a default, and the stylesheet the elements share

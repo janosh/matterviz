@@ -1,8 +1,8 @@
 // Shared utilities for interactive axis functionality
 
-import { AXIS_TITLE_OFFSET } from '#lib/plot/core/layout.js'
-import { is_tick_label_map } from '#lib/plot/core/scales.js'
-import type { AxisConfig, AxisKey, AxisLoader } from '#lib/plot/core/types.js'
+import { AXIS_TITLE_OFFSET } from '#lib/plot/core/layout'
+import { is_tick_label_map } from '#lib/plot/core/scales'
+import type { AxisConfig, AxisKey, AxisLoader } from '#lib/plot/core/types'
 
 // Shared axis defaults across plot components (single source of truth)
 export const AXIS_DEFAULTS = {

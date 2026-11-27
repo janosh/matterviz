@@ -1,13 +1,18 @@
 import type { IconData } from 'svelte-widgets'
+import builders_src from '#root/node_modules/svelte-widgets/dist/icons/builders.js?raw'
 import custom_src from '#root/node_modules/svelte-widgets/dist/icons/custom.js?raw'
 import generated_src from '#root/node_modules/svelte-widgets/dist/icons/generated.js?raw'
 
 // The gallery needs every glyph, but any namespace import or computed access of
 // `svelte-widgets/icons` keeps all ~2000 glyphs in the module the root layout imports for its
 // own few icons, adding ~340 KB (gzip) to every route. So the gallery ships the glyph modules'
-// source text (its own `?raw` modules) and evaluates them as data: URL modules here.
+// source text (its own `?raw` modules) and evaluates them as data: URL modules here. A data:
+// module can't resolve relative imports, so the glyphs' `./builders.js` points at its own.
+const data_url = (src: string): string =>
+  `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`
+const builders_url = data_url(builders_src)
 const import_source = (src: string): Promise<Record<string, unknown>> =>
-  import(/* @vite-ignore */ `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`)
+  import(/* @vite-ignore */ data_url(src.replaceAll(`'./builders.js'`, `'${builders_url}'`)))
 
 const is_icon = (value: unknown): value is IconData =>
   typeof value === `object` && value !== null && `viewBox` in value

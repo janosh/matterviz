@@ -1,9 +1,9 @@
 <script lang="ts">
   import { InformationOutline } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
-  import type { MaterialSource } from '#lib/file-viewer/open.js'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import type { MaterialSource } from '#lib/file-viewer/open'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
+  import { normalize_show_controls } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -11,73 +11,68 @@
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { derived_error_notice } from '#lib/layout/error-notice.svelte.js'
-  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
-  import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
-  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
-  import { ViewerPane } from '#lib/overlays/index.js'
+  import { derived_error_notice } from '#lib/layout/error-notice.svelte'
+  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte'
+  import type { FileLoadCallback, FileLoadData } from '#lib/io/index'
+  import { ViewerChrome, type SceneViewerProps } from '#lib/layout/index'
+  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index'
+  import { ViewerPane } from '#lib/overlays/index'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-  import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
+  import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+  import { PlotTooltip } from '#lib/plot/index'
   import {
     create_renderer,
     key_walk_root,
     wheel_zoom_gate,
     webgpu_available,
-  } from '#lib/scene/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { join_hover_link } from '#lib/tooltip/index.js'
-  import { mark_pin } from '#lib/tooltip/pin.svelte.js'
-  import type { Crystal } from '#lib/structure/index.js'
-  import { point_group_rotations } from '#lib/symmetry/index.js'
-  import { structure_symmetry } from '#lib/symmetry/structure-symmetry.svelte.js'
+  } from '#lib/scene/index'
+  import { DEFAULTS } from '#lib/settings'
+  import { join_hover_link } from '#lib/tooltip/index'
+  import { mark_pin } from '#lib/tooltip/pin.svelte'
+  import type { Crystal } from '#lib/structure/index'
+  import { point_group_rotations } from '#lib/symmetry/index'
+  import { structure_symmetry } from '#lib/symmetry/structure-symmetry.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { canvas_sources, json_source } from '#lib/io/export.js'
+  import { canvas_sources, json_source } from '#lib/io/export'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { type HighSymmKPath, high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
-  import { det_3x3, dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math.js'
-  import { clamp, to_error } from 'svelte-widgets/utils'
-  import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
-  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
-  import type { SceneControlProps } from '#lib/scene/props.svelte.js'
+  import { det_3x3, dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math'
+  import { chain_handlers, to_error } from 'svelte-widgets/utils'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { shortcut_attrs } from 'svelte-widgets/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
+    BZControlName,
     BZHover,
     BZHoverData,
+    BZOrder,
     BZTooltipProp,
     IrreducibleBZData,
     KPathData,
   } from './types'
   import { ordinal_label } from './types'
 
-  type BrillouinControlName =
-    | `filename`
-    | `fullscreen`
-    | `info-pane`
-    | `export-pane`
-    | `controls`
-
   type BZHandlerData = FileLoadData & {
     structure?: Crystal
     bz_data?: BrillouinZoneData
-    bz_order?: number
+    bz_order?: BZOrder
     file_size?: number
     error_msg?: string
     fullscreen?: boolean
   }
   let {
     structure = $bindable(),
-    // Order of the Brillouin zone to render (1 = first zone; values above 3 are clamped to 3).
+    // Order of the Brillouin zone to render (1 = first zone)
     bz_order = $bindable(DEFAULTS.brillouin.bz_order),
     // Pre-computed zone; wins over the one derived from `k_lattice` or `structure`
     bz_data,
@@ -116,7 +111,9 @@
     dragover = $bindable(false),
     allow_file_drop = true,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
-    fullscreen_toggle = DEFAULTS.brillouin.fullscreen_toggle,
+    export_formats,
+    export_filename,
+    on_export,
     source,
     on_file_drop,
     spinner_props = {},
@@ -137,91 +134,69 @@
     on_error,
     on_fullscreen_change,
     on_point_hover,
-    scene_props = {},
+    scene_controls = {},
     ...rest
-  }: Partial<BrillouinZoneSettings> & {
-    // Crystal the zone is computed from (its reciprocal lattice). Replaced when a file is loaded.
-    structure?: Crystal
-    bz_data?: BrillouinZoneData
-    // reciprocal lattice (rows b_i, 2π included) to derive the zone from instead of `structure`
-    k_lattice?: Matrix3x3
-    // Whether the settings pane is open.
-    controls_open?: boolean
-    // Whether the info pane (zone order, volume, vertex and face counts, lattice, space group) is open.
-    info_pane_open?: boolean
-    // Output: irreducible zone computed from the structure's symmetry while `show_ibz` is on, else null.
-    ibz_data?: IrreducibleBZData | null
-    // Toolbar visibility: `always`, `hover`, `never` (or a boolean), or `{ mode, hidden, style }` to hide named controls.
-    show_controls?: ShowControlsProp<BrillouinControlName>
-    // camera, lighting and interaction options for the 3D scene, e.g. { gizmo: false }; not the
-    // scene, camera or projection this component binds or sets itself
-    scene_props?: Omit<SceneControlProps, `scene` | `camera` | `camera_projection`>
-    // True while the viewer is fullscreen.
-    fullscreen?: boolean
-    // Output: wrapper width in CSS px.
-    width?: number
-    // Output: wrapper height in CSS px.
-    height?: number
-    scene?: Scene // Threlte scene, e.g. for custom exports
-    camera?: Camera // Active camera, e.g. to read the live orthographic zoom
-    // The viewer's root element.
-    wrapper?: HTMLDivElement
-    // Resolution in dots per inch of PNG exports.
-    png_dpi?: number
-    // Output: true while the pointer is over the viewer.
-    hovered?: boolean
-    // Output: true while a file is dragged over the viewer.
-    dragover?: boolean
-    allow_file_drop?: boolean // false when a parent owns loading
-    // Show the fullscreen button in the controls.
-    fullscreen_toggle?: boolean
-    // Structure file to compute the zone from: a URL, File or { data, filename } payload
-    source?: MaterialSource
-    // Takes over loading: receives the raw content of every drop and `source` load instead of
-    // the viewer parsing it
-    on_file_drop?: FileLoadCallback
-    // Props for the spinner shown while loading.
-    spinner_props?: ComponentProps<typeof Spinner>
-    // True while a file is being loaded; shows a spinner overlay.
-    loading?: boolean
-    // Error text of the last failed load or zone computation, shown in a dismissible notice.
-    error_msg?: string
-    // Band-structure k-path to draw, in Cartesian reciprocal coordinates from the reciprocal
-    // lattice incl. 2π (spectral's band_k_path builds it from a band structure)
-    k_path?: KPathData
-    // Without a `k_path`, draw the structure's Setyawan–Curtarolo high-symmetry path (pymatgen's
-    // HighSymmKpath default), found from its symmetry
-    default_k_path?: boolean
-    // Currently hovered k-point in Cartesian reciprocal space coordinates
-    hovered_k_point?: Vec3 | null
-    // Persistently marked k-points in Cartesian reciprocal coordinates (same treatment as the
-    // hovered point; BrillouinZonePopup pins the clicked symmetry point this way)
-    highlighted_k_points?: Vec3[]
-    // Index of the currently hovered q-point in the band structure
-    hovered_qpoint_index?: number | null
-    // First and last q-point index of a k-path stretch to tint, e.g. the hovered path branch
-    highlighted_qpoint_range?: Vec2 | null
-    // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
-    on_kpath_hover?: (qpoint_index: number | null) => void
-    // a click on the k-path or a symmetry label, with the q-point it hit (e.g. to select it)
-    on_kpath_click?: (qpoint_index: number) => void
-    // Channel of an enclosing hover_links() the k-path's hover joins by q-point index, e.g. the
-    // Bands plotting the band structure k_path came from: a q-point hovered there marks its
-    // k-point and branch here, and the hovered k-path q-point there
-    link_hover?: string
-    // Content rendered inside the viewer, receiving the structure and the zone.
-    children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
-    // Hover tooltip: a snippet replaces its content, a { prefix, suffix } config customizes it, false hides it.
-    tooltip?: BZTooltipProp
-    // Called with the loaded structure and zone after a dropped or `source` file is parsed.
-    on_file_load?: (data: BZHandlerData) => void
-    // Called with `error_msg` when loading or computing the zone fails.
-    on_error?: (data: BZHandlerData) => void
-    // Called with the structure, zone and new `fullscreen` state when fullscreen is toggled.
-    on_fullscreen_change?: (data: BZHandlerData) => void
-    // Called with the data of the hovered zone point or k-path point, or null when the pointer leaves.
-    on_point_hover?: (data: BZHoverData | null) => void
-  } & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+  }: Partial<BrillouinZoneSettings> &
+    SceneViewerProps<BZControlName, BZHandlerData> & {
+      // Crystal the zone is computed from (its reciprocal lattice). Replaced when a file is loaded.
+      structure?: Crystal
+      bz_data?: BrillouinZoneData
+      // reciprocal lattice (rows b_i, 2π included) to derive the zone from instead of `structure`
+      k_lattice?: Matrix3x3
+      // Whether the info pane (zone order, volume, vertex and face counts, lattice, space group) is open.
+      info_pane_open?: boolean
+      // Output: irreducible zone computed from the structure's symmetry while `show_ibz` is on, else null.
+      ibz_data?: IrreducibleBZData | null
+      scene?: Scene // Threlte scene, e.g. for custom exports
+      camera?: Camera // Active camera, e.g. to read the live orthographic zoom
+      // Output: true while a file is dragged over the viewer.
+      dragover?: boolean
+      allow_file_drop?: boolean // false when a parent owns loading
+      // Structure file to compute the zone from: a URL, File or { data, filename } payload
+      source?: MaterialSource
+      // Takes over loading: receives the raw content of every drop and `source` load instead of
+      // the viewer parsing it
+      on_file_drop?: FileLoadCallback
+      // Props for the spinner shown while loading.
+      spinner_props?: ComponentProps<typeof Spinner>
+      // True while a file is being loaded; shows a spinner overlay.
+      loading?: boolean
+      // Error text of the last failed load or zone computation, shown in a dismissible notice.
+      error_msg?: string
+      // Band-structure k-path to draw, in Cartesian reciprocal coordinates from the reciprocal
+      // lattice incl. 2π (spectral's band_k_path builds it from a band structure)
+      k_path?: KPathData
+      // Without a `k_path`, draw the structure's Setyawan–Curtarolo high-symmetry path (pymatgen's
+      // HighSymmKpath default), found from its symmetry
+      default_k_path?: boolean
+      // Currently hovered k-point in Cartesian reciprocal space coordinates
+      hovered_k_point?: Vec3 | null
+      // Persistently marked k-points in Cartesian reciprocal coordinates (same treatment as the
+      // hovered point; BrillouinZonePopup pins the clicked symmetry point this way)
+      highlighted_k_points?: Vec3[]
+      // Index of the currently hovered q-point in the band structure
+      hovered_qpoint_index?: number | null
+      // First and last q-point index of a k-path stretch to tint, e.g. the hovered path branch
+      highlighted_qpoint_range?: Vec2 | null
+      // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
+      on_kpath_hover?: (qpoint_index: number | null) => void
+      // a click on the k-path or a symmetry label, with the q-point it hit (e.g. to select it)
+      on_kpath_click?: (qpoint_index: number) => void
+      // Channel of an enclosing hover_links() the k-path's hover joins by q-point index, e.g. the
+      // Bands plotting the band structure k_path came from: a q-point hovered there marks its
+      // k-point and branch here, and the hovered k-path q-point there
+      link_hover?: string
+      // Content rendered inside the viewer, receiving the structure and the zone.
+      children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
+      // Hover tooltip: a snippet replaces its content, a { prefix, suffix } config customizes it, false hides it.
+      tooltip?: BZTooltipProp
+      // Called with the loaded structure and zone after a dropped or `source` file is parsed.
+      on_file_load?: (data: BZHandlerData) => void
+      // Called with `error_msg` when loading or computing the zone fails.
+      on_error?: (data: BZHandlerData) => void
+      // Called with the data of the hovered zone point or k-path point, or null when the pointer leaves.
+      on_point_hover?: (data: BZHoverData | null) => void
+    } = $props()
 
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
@@ -286,7 +261,7 @@
       const lattice =
         path_k_lattice ?? k_lattice ?? (real && reciprocal_lattice(real, { two_pi: true }))
       if (!lattice) return {}
-      return { zone: compute_brillouin_zone(lattice, clamp(bz_order, 1, 3) as 1 | 2 | 3) }
+      return { zone: compute_brillouin_zone(lattice, bz_order) }
     } catch (err) {
       return { error: `BZ computation failed: ${to_error(err).message}` }
     }
@@ -452,6 +427,7 @@
   // `f` is owned by FullscreenButton, Escape by the open pane, else it unpins the tooltip
   const keys = viewer_keys(() => ({
     i: () => {
+      if (!controls_config.visible(`info-pane`)) return false // leaves the key to the host
       info_pane_open = !info_pane_open
     },
     r: () => reset_scene_cameras(wrapper),
@@ -470,9 +446,9 @@
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
   {...rest}
+  onpointerenter={chain_handlers(() => (hovered = true), rest.onpointerenter)}
+  onpointerleave={chain_handlers(() => (hovered = false), rest.onpointerleave)}
   class={[`brillouin-zone`, rest.class]}
   {@attach drop_zone}
   {@attach keys}
@@ -500,7 +476,6 @@
       {controls_config}
       filename={current_filename}
       bind:fullscreen
-      {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--bz-bg-fullscreen"
       on_fullscreen_change={(value) =>
@@ -512,19 +487,22 @@
           pane_name="Brillouin zone info"
           class_prefix="bz-info"
           closed_icon={InformationOutline}
-          toggle_props={shortcut_attrs(`info_pane`)}
+          toggle_props={shortcut_attrs(SHORTCUTS.info_pane)}
           shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
         >
           <InfoPaneCards cards={info_cards} empty_label="Brillouin zone info" />
         </ViewerPane>
       {/if}
 
-      {#if controls_config.visible(`export-pane`)}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
         <ExportPane
-          filename="{current_filename || `brillouin-zone`}-bz-order-{zone?.order ?? 1}"
+          filename={export_filename ??
+            `${current_filename || `brillouin-zone`}-bz-order-${zone?.order ?? 1}`}
           bind:export_pane_open
           bind:png_dpi
           sources={export_sources}
+          {export_formats}
+          {on_export}
           toggle_props={{
             class: `bz-export-toggle`,
             title: export_pane_open ? `` : `Export Brillouin zone`,
@@ -552,7 +530,7 @@
     {#if webgpu_available()}
       <Canvas createRenderer={create_renderer} shadows={false}>
         <BrillouinZoneScene
-          {...scene_props}
+          {...scene_controls}
           bz_data={zone}
           {surface_color}
           {surface_opacity}

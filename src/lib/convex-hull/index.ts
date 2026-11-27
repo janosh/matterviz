@@ -1,8 +1,8 @@
-import type { CompositionType } from '#lib/composition/index.js'
-import type { ShowControlsProp } from '#lib/controls.js'
-import type { ExportProps } from '#lib/io/export.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
+import type { CompositionType } from '#lib/composition/index'
+import type { ShowControlsProp } from '#lib/controls'
+import type { ExportProps } from '#lib/io/export'
+import type { ColorScale } from '#lib/plot/core/types'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { EnergySourceMode, HullModel, OpenElements } from './model'
@@ -93,7 +93,12 @@ export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> = TooltipProp<
   TooltipConfig<AnyDimEntry>
 >
 
-type ConvexHullControlName = `reset` | `info-pane` | `export-pane` | `fullscreen` | `controls`
+export type ConvexHullControlName =
+  | `reset`
+  | `info-pane`
+  | `export-pane`
+  | `fullscreen`
+  | `controls`
 
 // Base props shared across all convex hull components (2D, 3D, 4D)
 export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
@@ -119,8 +124,6 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // Called with the hovered entry's details, or null when the pointer leaves.
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean // bindable fullscreen state
-  fullscreen_toggle?: boolean // show/hide the fullscreen button
-  enable_info_pane?: boolean // Allow the info pane (hull statistics) and its toggle
   wrapper?: HTMLDivElement // The root element. Read-only.
   // Datasets larger than this start with labels hidden, unless label toggles are passed
   label_threshold?: number

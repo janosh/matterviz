@@ -1,4 +1,4 @@
-import { create_collapsible_legend } from '#lib/plot/core/collapsible-legend.js'
+import { create_collapsible_legend } from '#lib/plot/core/collapsible-legend'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import { flushSync } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'

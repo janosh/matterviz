@@ -1,12 +1,12 @@
 // Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
 // reference lines/planes.
 
-import { HOVER_SHELL_SCALE } from '#lib/scene/index.js'
-import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types.js'
-import type { RunningExtent } from '#lib/plot/core/scales.js'
-import { empty_extent, nice_range_from_extent } from '#lib/plot/core/scales.js'
+import { HOVER_SHELL_SCALE } from '#lib/scene/index'
+import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types'
+import type { RunningExtent } from '#lib/plot/core/scales'
+import { empty_extent, nice_range_from_extent } from '#lib/plot/core/scales'
 import { Plane, Vector3 } from 'three/webgpu'
-import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
+import type { Point3D, Vec2, Vec3 } from '#lib/math'
 
 // Scene box: x/y are horizontal (2:2), z is vertical (1)
 export const SCENE_SIZE: Vec3 = [10, 10, 5]

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { create_flash } from 'svelte-widgets/browser'
   import { Edit } from 'svelte-widgets/icons'
-  import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index.js'
+  import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index'
   import { JsonTree } from 'svelte-widgets/json-tree'
   import { set_at_path } from 'svelte-widgets/json-tree/utils'
   import { parse_diagram } from './diagram'
@@ -95,7 +95,7 @@
     }
   }
   .placeholder {
-    color: var(--text-muted, #888);
+    color: var(--text-color-muted, #888);
     font-style: italic;
     text-align: center;
     padding: 20px;

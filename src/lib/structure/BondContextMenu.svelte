@@ -1,8 +1,8 @@
 <script lang="ts">
   // Edit-bonds context menu anchored at a bond: set its order, remove it, or close
-  import type { Vec3 } from '#lib/math.js'
-  import { SceneLabel } from '#lib/scene/index.js'
-  import type { BondOrder } from '#lib/structure/index.js'
+  import type { Vec3 } from '#lib/math'
+  import { SceneLabel } from '#lib/scene/index'
+  import type { BondOrder } from '#lib/structure/index'
   import { BOND_ORDER_OPTIONS } from './bonding'
 
   let {

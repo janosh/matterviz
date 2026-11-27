@@ -1,4 +1,4 @@
-import type { PartialSettings } from '#lib/settings.js'
+import type { PartialSettings } from '#lib/settings'
 import {
   build_structure_props_from_settings,
   DEFAULTS,
@@ -6,8 +6,8 @@ import {
   is_valid_setting_value,
   merge,
   SETTINGS_CONFIG,
-} from '#lib/settings.js'
-import type { StructureViewState } from '#lib/settings/viewer-state.js'
+} from '#lib/settings'
+import type { StructureViewState } from '#lib/settings/viewer-state'
 import {
   clear_structure_view_state,
   create_structure_view_state,
@@ -17,9 +17,10 @@ import {
   serialize_structure_view_state,
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
   STRUCTURE_VIEW_STATE_VERSION,
-} from '#lib/settings/viewer-state.js'
-import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
-import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
+} from '#lib/settings/viewer-state'
+import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility'
+import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility'
+import { extract_prop_docs } from 'svelte-widgets/prop-docs/vite-plugin'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
@@ -49,7 +50,7 @@ describe(`Settings`, () => {
   )
 
   // The one admissibility rule behind the persisted viewer state and the VS Code settings reader
-  const { structure: struct_cfg, trajectory: traj_cfg } = SETTINGS_CONFIG
+  const { structure: struct_cfg, trajectory: traj_cfg, brillouin: bz_cfg } = SETTINGS_CONFIG
   const scale_cfg = struct_cfg.atom_color_scale
   test.each([
     [`enum member`, struct_cfg.show_bonds, `never`, true],
@@ -59,6 +60,10 @@ describe(`Settings`, () => {
     [`non-finite number`, struct_cfg.atom_radius, NaN, false],
     [`off-grid multipleOf`, traj_cfg.fps, 7.25, false],
     [`on-grid multipleOf`, traj_cfg.fps, 7.3, true],
+    // BrillouinZone throws for orders other than 1, 2, 3
+    [`fractional bz_order`, bz_cfg.bz_order, 1.5, false],
+    [`bz_order above 3`, bz_cfg.bz_order, 4, false],
+    [`bz_order 3`, bz_cfg.bz_order, 3, true],
     [`Vec3 of numbers`, struct_cfg.rotation, [0, 1, 2], true],
     [`Vec3 with a string`, struct_cfg.rotation, [0, `bad`, 0], false],
     [`too-short tuple`, struct_cfg.rotation, [0, 1], false],
@@ -509,10 +514,10 @@ describe(`Settings`, () => {
     })
 
     // Drift shapes the evaluator must refuse rather than skip, against a synthetic Trajectory
-    // (schema: fps 10, auto_play false, layout "auto", fullscreen_toggle true, fps_range [0,300])
+    // (schema: fps 10, auto_play false, layout "auto", fps_range [0,300])
     const synthetic = (props: string, preamble = ``) =>
       `<script lang="ts">
-        import { DEFAULTS } from '#lib/settings.js'
+        import { DEFAULTS } from '#lib/settings'
         ${preamble}
         let { ${props} } = $props()
       </script>`
@@ -540,8 +545,8 @@ describe(`Settings`, () => {
       ],
       [
         `template literal`,
-        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\``,
-        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\` (schema: true)`,
+        `auto_play = \`\${DEFAULTS.trajectory.auto_play}\``,
+        `auto_play = \`\${DEFAULTS.trajectory.auto_play}\` (schema: false)`,
       ],
       [
         `empty $bindable()`,
@@ -573,7 +578,7 @@ describe(`Settings`, () => {
     test(`a get_convex_hull_defaults consumer is held to every hull group`, async () => {
       const source = synthetic(
         `show_stable = $bindable(false), max_hull_dist_show_labels = $bindable(0.1)`,
-        `import { get_convex_hull_defaults } from '#lib/settings.js'`,
+        `import { get_convex_hull_defaults } from '#lib/settings'`,
       )
       expect((await analyze(`synthetic/ConvexHull`, source)).drift).toEqual([
         `show_stable = false (schema: true | true | true)`,
@@ -596,7 +601,11 @@ test(`settings builder groups structure props`, () => {
   expect(props.scene_props).toEqual(DEFAULTS.structure)
   expect(props.scene_props).not.toBe(DEFAULTS.structure) // embedders mutate scene_props
   expect(props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
-  expect(props.show_trajectory_lines).toBe(DEFAULTS.structure.show_trajectory_lines)
+  // Keys outside Structure's $props() (show_trajectory_lines, which belongs in scene_props)
+  // fall into ...rest and land on the wrapper div as HTML attributes
+  const { Structure } = extract_prop_docs([`src/lib/structure/Structure.svelte`])
+  const declared = new Set(Structure.props.map(({ name }) => name))
+  expect(Object.keys(props).filter((key) => !declared.has(key))).toEqual([])
 })
 
 describe(`Structure viewer state serialization`, () => {

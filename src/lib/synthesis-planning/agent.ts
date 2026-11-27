@@ -3,8 +3,8 @@
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
 // what a model needs to reason and reply.
 import { format_num } from 'svelte-widgets/format'
-import { GAS_SPECIES } from '#lib/convex-hull/types.js'
-import { plural } from '#lib/labels.js'
+import { GAS_SPECIES } from '#lib/convex-hull/types'
+import { plural } from '#lib/labels'
 import { format_mev } from './format-mev'
 import { DEFAULT_MAX_E_ABOVE_HULL } from './plan'
 import { format_recipe_text } from './recipe'

@@ -1,8 +1,8 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
-import type { Crystal, Site } from '#lib/structure/index.js'
-import { StructureDiff } from '#lib/structure-diff/index.js'
-import { compute_structure_diff } from '#lib/structure-diff/compute.js'
+import type { Crystal, Site } from '#lib/structure/index'
+import { StructureDiff } from '#lib/structure-diff/index'
+import { compute_structure_diff } from '#lib/structure-diff/compute'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { OrthographicCamera } from 'three'
@@ -22,7 +22,7 @@ const scene_stub = vi.hoisted(() => ({
   },
 }))
 // passthrough spy: counts diff recomputes per interaction
-vi.mock(`#lib/structure-diff/compute.js`, async (import_original) => {
+vi.mock(`#lib/structure-diff/compute`, async (import_original) => {
   const original = await import_original<{
     compute_structure_diff: typeof compute_structure_diff
   }>()

@@ -3,20 +3,20 @@
 // MessagePort. Large runs prepare their display frames in a few more workers.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
-import { HDF5_EXT_REGEX } from '#lib/constants.js'
-import { has_hdf5_magic, magic_head } from '#lib/io/is-binary.js'
-import { frame_transfers, type NumericFrame } from '#lib/trajectory/frame.js'
-import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
-import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
-import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
-import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
+import { HDF5_EXT_REGEX } from '#lib/constants'
+import { has_hdf5_magic, magic_head } from '#lib/io/is-binary'
+import { frame_transfers, type NumericFrame } from '#lib/trajectory/frame'
+import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils'
+import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker'
+import type { WorkerRun } from '#lib/trajectory/runs/worker'
 import { to_error } from 'svelte-widgets/utils'
 import { can_create_worker, disable_workers } from 'svelte-widgets/worker-client'
 import {
   create_prepare_pool,
   prepare_worker_count,
   type PreparePool,
-} from '#lib/trajectory/prepare-pool.js'
+} from '#lib/trajectory/prepare-pool'
 import { parse_file_content } from './parse'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'

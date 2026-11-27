@@ -1,6 +1,6 @@
 <script lang="ts">
   // Pourbaix conditions and display toggles, for the plot's controls pane or standalone
-  import { subscript_digits, superscript_digits } from '#lib/labels.js'
+  import { subscript_digits, superscript_digits } from '#lib/labels'
   import { format_num } from 'svelte-widgets/format'
   import type { HTMLAttributes } from 'svelte/elements'
 

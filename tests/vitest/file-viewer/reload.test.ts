@@ -1,14 +1,15 @@
 // Side-effect import: main.ts installs window.initializeMatterViz / cleanupMatterViz
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
-import '#lib/file-viewer/main.js'
-import type * as ParseModule from '#lib/file-viewer/parse.js'
-import type { ParseResult } from '#lib/file-viewer/parse.js'
-import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
-import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
-import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import '#lib/file-viewer/main'
+import type * as ParseModule from '#lib/file-viewer/parse'
+import type { ParseResult } from '#lib/file-viewer/parse'
+import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker'
+import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker'
+import { request_large_file_content } from '#lib/file-viewer/host-bridge'
+import type { TrajectoryRun } from '#lib/trajectory/index'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
+import { AlertCircle } from 'svelte-widgets/icons'
 
 const test_mocks = vi.hoisted(() => {
   const post_message = vi.fn()
@@ -64,11 +65,11 @@ const test_mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock(`#lib/file-viewer/parse.js`, async (import_original) => ({
+vi.mock(`#lib/file-viewer/parse`, async (import_original) => ({
   ...(await import_original<typeof ParseModule>()),
   parse_file_content: test_mocks.parse_file_content,
 }))
-vi.mock(`#lib/file-viewer/parse-in-worker.js`, async (import_original) => ({
+vi.mock(`#lib/file-viewer/parse-in-worker`, async (import_original) => ({
   ...(await import_original<typeof ParseWorkerModule>()),
   parse_in_worker: test_mocks.parse_in_worker,
 }))
@@ -213,9 +214,8 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
 
   // A parse failure is reported to the host (marker handling itself is covered in
   // file-viewer/main.test.ts; delegate to the real parser for this one case)
-  const { parse_file_content: real_parse_file_content } = await vi.importActual<
-    typeof ParseModule
-  >(`#lib/file-viewer/parse.js`)
+  const { parse_file_content: real_parse_file_content } =
+    await vi.importActual<typeof ParseModule>(`#lib/file-viewer/parse`)
   parse_file_content.mockImplementationOnce(real_parse_file_content)
   set_file_data(`LARGE_FILE:/tmp/structure.cif:536870912`, `structure.cif`)
   expect(await initialize_matterviz?.()).toBeNull()
@@ -632,6 +632,10 @@ test.each([
   await boot(content, `x.json`)
   const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
   expect(document.querySelector(`h2`)?.textContent).toBe(heading)
+  // an SVG alert icon heads the panel, not an emoji
+  expect(document.querySelector(`#matterviz-app svg path`)?.getAttribute(`d`)).toBe(
+    AlertCircle.d,
+  )
   expect(panel.includes(`Supported formats`)).toBe(heading.includes(`Parse`))
   expect(panel).toContain(content ? error?.message : `x.json is empty`)
 })

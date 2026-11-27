@@ -1,7 +1,7 @@
-import type { Vec3 } from '#lib/math.js'
-import { subtract } from '#lib/math.js'
-import type { Site } from '#lib/structure/index.js'
-import { is_image_site } from '#lib/structure/site.js'
+import type { Vec3 } from '#lib/math'
+import { subtract } from '#lib/math'
+import type { Site } from '#lib/structure/index'
+import { is_image_site } from '#lib/structure/site'
 
 const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
 // One tolerance for "fully occupied" in rendering and export: admits occupancies printed to 3

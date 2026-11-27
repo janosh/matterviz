@@ -1,5 +1,5 @@
 <script lang="ts" generics="Input">
-  import { materialize_frame_result } from '#lib/trajectory/frame.js'
+  import { materialize_frame_result } from '#lib/trajectory/frame'
 
   // Chrome shared by every whole-trajectory analysis pane (MSD, VACF, structure-id, ...):
   // the ViewerPane shell, indexed-trajectory warnings, frame-stride and timestep controls, the
@@ -11,20 +11,17 @@
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { display_idx, from_display_idx } from '#lib/labels.js'
-  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
-  import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
-  import type {
-    AnalysisCollectOptions,
-    AnalysisPaneContext,
-  } from '#lib/trajectory/analysis.js'
+  import { display_idx, from_display_idx } from '#lib/labels'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index'
+  import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index'
+  import type { AnalysisCollectOptions, AnalysisPaneContext } from '#lib/trajectory/analysis'
   import {
     analysis_frame_times,
     analysis_pane_setup,
     analysis_step_interval,
     no_full_pass_message,
     suggest_analysis_frame_stride,
-  } from '#lib/trajectory/analysis.js'
+  } from '#lib/trajectory/analysis'
   import { resolve_frame_range } from './runs/accumulate'
   import { create_request_owner } from './async-result.svelte'
   import { to_error } from 'svelte-widgets/utils'
@@ -89,7 +86,7 @@
     // Button text while `collect` runs
     collecting_label?: string
     // Position-sized (3 × f64) buffers per atom-frame the analysis holds, for the estimate
-    // line and the default stride budget, so the two cannot disagree
+    // line and the default stride budget (a `suggest_stride` may budget more, as MSD does)
     position_buffers?: number
     // Time between two SOURCE frames as recorded in the file, seeded into the timestep
     // controls (which only render when `time_unit_fallback` is given) and re-seeded on swap

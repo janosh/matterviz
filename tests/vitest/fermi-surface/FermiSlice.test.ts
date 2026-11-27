@@ -1,10 +1,6 @@
 import FermiSlice from '#lib/fermi-surface/FermiSlice.svelte'
-import type {
-  FermiSliceData,
-  FermiSurfaceData,
-  SpinChannel,
-} from '#lib/fermi-surface/types.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { FermiSliceData, FermiSurfaceData, SpinChannel } from '#lib/fermi-surface/types'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, mount_sized } from '../setup'

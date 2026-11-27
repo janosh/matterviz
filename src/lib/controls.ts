@@ -1,6 +1,6 @@
 import { is_plain_object } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
-import { host } from '#lib/host.js'
+import { host } from '#lib/host'
 
 // Shared visibility contract for viewer and plot controls.
 
@@ -47,10 +47,26 @@ export function normalize_show_controls(
   }
 }
 
-// Whether a viewer or plot shows its fullscreen toggle: asked for, visible under show_controls
-// and possible in the embedding app (host.fullscreen)
-export const shows_fullscreen_toggle = (toggle: boolean, config: ShowControlsState): boolean =>
-  toggle && host.fullscreen && config.visible(`fullscreen`)
+// Whether a viewer or plot shows its fullscreen toggle: visible under show_controls and
+// possible in the embedding app (host.fullscreen)
+export const shows_fullscreen_toggle = (config: ShowControlsState): boolean =>
+  host.fullscreen && config.visible(`fullscreen`)
+
+// `prop` with `names` added to its hidden controls, e.g. a composite hiding a child's own
+// fullscreen button behind its single one. Keeps false (`never`) as is.
+export function hide_controls<Name extends string>(
+  prop: ShowControlsProp<Name> | undefined,
+  ...names: Name[]
+): ShowControlsProp<Name> {
+  if (prop === false) return false
+  const config: ShowControlsConfig<Name> =
+    typeof prop === `object`
+      ? prop
+      : prop === undefined
+        ? {}
+        : { mode: prop === true ? `always` : prop }
+  return { ...config, hidden: [...new Set([...(config.hidden ?? []), ...names])] }
+}
 
 // Settings panes own their reset baseline; SettingsSection only renders changed keys.
 // Read through proxies so nested edits cannot mutate the captured baseline.

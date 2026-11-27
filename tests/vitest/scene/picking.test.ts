@@ -1,5 +1,5 @@
-import { TAP_MS, TouchTaps } from '#lib/scene/interactivity.js'
-import { front_hit, SphereInstances } from '#lib/scene/picking.js'
+import { TAP_MS, TouchTaps } from '#lib/scene/interactivity'
+import { front_hit, SphereInstances } from '#lib/scene/picking'
 import {
   InstancedMesh,
   Matrix4,

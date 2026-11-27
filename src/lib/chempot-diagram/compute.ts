@@ -1,7 +1,7 @@
 // Chemical potential diagrams: TypeScript port of pymatgen's ChemicalPotentialDiagram
 // (pymatgen/analysis/chempot_diagram.py)
 
-import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce'
 import {
   absolute_energy_per_atom,
   compute_e_form_per_atom,
@@ -10,8 +10,8 @@ import {
   get_energy_per_atom,
   has_absolute_energy,
   species_key_element,
-} from '#lib/convex-hull/thermodynamics.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+} from '#lib/convex-hull/thermodynamics'
+import type { PhaseData } from '#lib/convex-hull/types'
 import {
   array_extent,
   array_max,
@@ -30,8 +30,8 @@ import {
   polygon_centroid,
   polygon_signed_area,
   subtract,
-} from '#lib/math.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
+} from '#lib/math'
+import type { Vec2, Vec3 } from '#lib/math'
 import type {
   ChemPotBound,
   ChemPotDiagramConfig,
@@ -42,14 +42,6 @@ import type {
 import { CHEMPOT_DEFAULTS } from './types'
 
 // === Entry Helpers ===
-
-// Energy per atom (MP `correction` applied, see convex-hull/thermodynamics) or NaN when the
-// entry has no atoms or a non-finite energy, so callers can skip it without throwing.
-export function safe_energy_per_atom(entry: PhaseData): number {
-  if (count_atoms_in_composition(entry.composition) <= 0) return Number.NaN
-  const epa = get_energy_per_atom(entry)
-  return Number.isFinite(epa) ? epa : Number.NaN
-}
 
 // E_form-only entries (no energy or energy_per_atom) placed on their
 // references' absolute scale (E_form + Σ x_e E_e), so they share the absolute entries' axes
@@ -140,7 +132,7 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
   for (const entry of with_absolute_energies(entries)) {
     if (entry.exclude_from_hull) continue
     const key = formula_key_from_composition(entry.composition)
-    const epa = safe_energy_per_atom(entry)
+    const epa = get_energy_per_atom(entry)
     if (!Number.isFinite(epa)) continue
     const existing = by_formula.get(key)
     if (!existing || prefer_min_entry(entry, epa, existing.entry, existing.epa)) {
@@ -188,7 +180,7 @@ export function get_energy_stats_by_formula(
 ): Map<string, FormulaEnergyStats> {
   const stats = new Map<string, FormulaEnergyStats>()
   for (const entry of with_absolute_energies(entries)) {
-    const energy_per_atom = safe_energy_per_atom(entry)
+    const energy_per_atom = get_energy_per_atom(entry)
     if (!Number.isFinite(energy_per_atom)) continue
     const formula_key = formula_key_from_composition(entry.composition)
     const prev = stats.get(formula_key)
@@ -237,8 +229,8 @@ export function build_hyperplanes(
   for (const entry of min_entries) {
     const atom_count = count_atoms_in_composition(entry.composition)
     const composition = entry.composition as Record<string, number>
-    const energy_per_atom = safe_energy_per_atom(entry)
-    if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) continue
+    const energy_per_atom = get_energy_per_atom(entry) // NaN unless atom_count > 0
+    if (!Number.isFinite(energy_per_atom)) continue
     if (!always_include.has(entry)) {
       // build_chempot_hyperplanes validated the reference set, so null here is bad input
       const e_form = compute_e_form_per_atom(entry, el_refs)
@@ -933,7 +925,7 @@ export const get_ternary_combinations = (elements: string[]): string[][] =>
 // Deterministic fingerprint for equal-energy tie-breaking in prefer_min_entry. Only the
 // fields that affect the geometry take part (no structures or calculation metadata).
 function entry_fingerprint(entry: PhaseData): string {
-  const effective_energy = safe_energy_per_atom(entry)
+  const effective_energy = get_energy_per_atom(entry)
   const composition = Object.entries(entry.composition).toSorted(([left], [right]) =>
     left.localeCompare(right),
   )

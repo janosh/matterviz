@@ -4,7 +4,7 @@
   // mapping every finish emits untone_agx(color), so phase colors stay saturated and colormaps
   // match their legend while atoms keep AgX. Color, opacity and exposure are uniforms, so
   // dragging them never recompiles a shader.
-  import type { SurfaceFinish } from '#lib/settings.js'
+  import type { SurfaceFinish } from '#lib/settings'
   import type { Snippet } from 'svelte'
   import { T, useThrelte } from '@threlte/core'
   import { depth_cues } from '#lib/scene/lighting'

@@ -7,20 +7,20 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import type { TweenOptions } from 'svelte/motion'
-  import { add_alpha } from '#lib/colors/index.js'
-  import { display_idx } from '#lib/labels.js'
+  import { add_alpha } from '#lib/colors/index'
+  import { display_idx } from '#lib/labels'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
-  import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import type { FillGradient, FillHandlerEvent, FillRegion } from '#lib/plot/core/types.js'
-  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
+  import { is_fill_gradient } from '#lib/plot/core/fill-utils'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
+  import type { FillGradient, FillHandlerEvent, FillRegion } from '#lib/plot/core/types'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte'
 
+  const uid = $props.id()
   let {
     region,
     region_idx,
     is_first_segment = true,
-    defs_id = unique_id(`fill`),
+    defs_id = `fill-${uid}`,
     path,
     clip_path_id,
     x_scale_fn,

@@ -1,37 +1,32 @@
 <script lang="ts">
   import { is_plain_object } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
-  import { is_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { is_color, resolve_backdrop } from '#lib/colors/index'
   import type {
     ChemicalElement,
     ElementCategory,
     ElementSymbol,
     SplitLayout,
     TileSegment,
-  } from '#lib/element/index.js'
-  import {
-    element_data,
-    ElementPhoto,
-    ElementTile,
-    is_elem_symbol,
-  } from '#lib/element/index.js'
-  import { ELEM_SYMBOLS } from '#lib/labels.js'
-  import { array_extent } from '#lib/math.js'
+  } from '#lib/element/index'
+  import { element_data, ElementPhoto, ElementTile, is_elem_symbol } from '#lib/element/index'
+  import { ELEM_SYMBOLS } from '#lib/labels'
+  import { array_extent } from '#lib/math'
   import { ticks as d3_ticks } from 'd3-array'
-  import { ColorBar } from '#lib/plot/index.js'
+  import { ColorBar } from '#lib/plot/index'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { beside_rect, clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
-  import type { Rect } from '#lib/plot/core/layout.js'
-  import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
-  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
-  import { colors } from '#lib/state.svelte.js'
+  import { beside_rect, clip_bounds } from '#lib/plot/core/decorations/tooltip'
+  import type { Rect } from '#lib/plot/core/layout'
+  import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales'
+  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types'
+  import { colors } from '#lib/state.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { viewer_keys } from '#lib/shortcuts.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import type { HTMLAttributes, SVGAttributes } from 'svelte/elements'
-  import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
+  import type { MissingCellStyle } from '#lib/heatmap-matrix/index'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
   import {

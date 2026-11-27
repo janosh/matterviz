@@ -6,15 +6,15 @@
 // ElectronicBandStructure shape consumed by the spectral components.
 //
 // Schema reference: py4vasp's VASP 6.x schema definitions.
-import { create_frac_to_cart, euclidean_dist, reciprocal_lattice } from '#lib/math.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { pretty_sym_point } from '#lib/spectral/helpers.js'
+import { create_frac_to_cart, euclidean_dist, reciprocal_lattice } from '#lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { pretty_sym_point } from '#lib/spectral/helpers'
 import type {
   Branch,
   ElectronicBandStructure,
   ElectronicDos,
   QPoint,
-} from '#lib/spectral/index.js'
+} from '#lib/spectral/index'
 import type * as h5wasm from 'h5wasm'
 import {
   read_dataset,

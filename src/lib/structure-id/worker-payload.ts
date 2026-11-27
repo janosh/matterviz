@@ -3,16 +3,17 @@
 // element pairs) the species on each site, so that is all that crosses the thread boundary:
 // one flat Float64Array instead of a snapshot of every site (species, abc, label,
 // properties), which was 3.85x the bytes for the same answer.
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { AnyStructure, LatticeType, Pbc, Site } from '#lib/structure/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { AnyStructure, LatticeType, Pbc, Site, Species } from '#lib/structure/index'
 
 export interface StructureIdPayload {
   // x, y, z of site 0, then site 1, ... in A
   xyz: Float64Array
   lattice?: LatticeType
-  // Every species with its occupancy per site, only sent when the analysis groups by element
-  // (mixed-occupancy sites contribute to every partial g(r) they carry)
-  species?: Site[`species`][]
+  // Each site's species with occupancies, only sent when the analysis groups by element
+  // (mixed-occupancy sites feed every partial g(r) they carry): the distinct lists once plus
+  // an index per site, since cloning one object per site took 1.35 of a 4000-atom frame's 1.4 ms
+  species?: { table: Species[][]; site_idx: Uint32Array }
 }
 
 // Plain copies throughout: a Svelte $state proxy is not structured-cloneable, and the numbers
@@ -25,8 +26,24 @@ export const to_structure_id_payload = (
   const xyz = new Float64Array(sites.length * 3)
   for (const [site_idx, site] of sites.entries()) xyz.set(site.xyz, site_idx * 3)
   const payload: StructureIdPayload = { xyz }
-  if (with_species)
-    payload.species = sites.map((site) => site.species.map((entry) => ({ ...entry })))
+  if (with_species) {
+    const table: Species[][] = []
+    const idx_of_key = new Map<string, number>()
+    const site_idx = new Uint32Array(sites.length)
+    for (const [idx, { species }] of sites.entries()) {
+      // a template, not JSON, which writes NaN and ±Infinity occupancies as null
+      const key = species
+        .map(({ element, occu, oxidation_state }) => `${element} ${occu} ${oxidation_state}`)
+        .join(`,`)
+      let table_idx = idx_of_key.get(key)
+      if (table_idx === undefined) {
+        table_idx = table.push(species.map((entry) => ({ ...entry }))) - 1
+        idx_of_key.set(key, table_idx)
+      }
+      site_idx[idx] = table_idx
+    }
+    payload.species = { table, site_idx }
+  }
   if (!(`lattice` in structure)) return payload
   const { lattice } = structure
   payload.lattice = {
@@ -52,7 +69,7 @@ export const structure_from_payload = ({
   const sites: Site[] = Array.from({ length: xyz.length / 3 }, (_unused, site_idx) => ({
     xyz: [xyz[site_idx * 3], xyz[site_idx * 3 + 1], xyz[site_idx * 3 + 2]],
     abc: [0, 0, 0],
-    species: species?.[site_idx] ?? [],
+    species: species ? species.table[species.site_idx[site_idx]] : [],
     label: ``,
     properties: {},
   }))

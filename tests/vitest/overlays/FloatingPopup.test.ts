@@ -1,5 +1,5 @@
 import FloatingPopup from '#lib/overlays/FloatingPopup.svelte'
-import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+import { hover_tooltip } from '#lib/tooltip/hover.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'

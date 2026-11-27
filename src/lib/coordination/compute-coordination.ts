@@ -1,10 +1,10 @@
-import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding.js'
-import { compute_bonds, get_majority_element } from '#lib/structure/bonding.js'
-import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list.js'
-import { split_site_partners } from '#lib/structure/partial-occupancy.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding'
+import { compute_bonds, get_majority_element } from '#lib/structure/bonding'
+import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list'
+import { split_site_partners } from '#lib/structure/partial-occupancy'
+import type { Pbc } from '#lib/structure/pbc'
 
 // Element a site is bucketed under; `Unknown` when its majority species cannot be resolved
 const site_element = (site: Site): string => get_majority_element(site) ?? `Unknown`

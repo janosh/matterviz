@@ -1,9 +1,9 @@
 // Links a band plot to the band structure's k-path drawn in a Brillouin zone: hovering a band
 // point marks its k-point and shades its path branch (e.g. Γ→X), hovering the k-path marks the
 // q-point on the bands
-import type { KPathData } from '#lib/brillouin/types.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { is_finite_vec3 } from '#lib/math.js'
+import type { KPathData } from '#lib/brillouin/types'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import { is_finite_vec3 } from '#lib/math'
 import type { BandPointMeta } from './helpers'
 import { band_k_path, branch_qpoint_range, find_qpoint_at_rescaled_x } from './helpers'
 import type { BaseBandStructure } from './types'

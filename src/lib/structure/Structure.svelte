@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { SHORTCUTS, shortcut_attrs, viewer_keydown } from '#lib/shortcuts.js'
+  import { SHORTCUTS } from '#lib/shortcuts'
   import {
     get_image_source_idx,
     is_image_site,
@@ -9,11 +9,11 @@
   } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/multi-view viewport
   // layout. Acquisition and parsing use the shared material loader.
-  import type { ColorSchemeName } from '#lib/colors/index.js'
+  import type { ColorSchemeName } from '#lib/colors/index'
   import { rgb } from 'd3-color'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
+  import { normalize_show_controls } from '#lib/controls'
+  import type { ElementSymbol } from '#lib/element/index'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import {
@@ -35,28 +35,28 @@
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
-  import { parse_warnings_notice } from '#lib/labels.js'
+  import { parse_warnings_notice } from '#lib/labels'
   import { chain_handlers, clamp, to_error } from 'svelte-widgets/utils'
-  import { is_editable_event_target } from 'svelte-widgets/shortcuts'
-  import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index.js'
-  import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
-  import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
-  import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
-  import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
+  import { is_editable_event_target, shortcut_attrs } from 'svelte-widgets/shortcuts'
+  import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index'
+  import { set_isosurface_error_handler } from '#lib/isosurface/context'
+  import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice'
+  import { create_volume_slice_settings } from '#lib/isosurface/slice-settings'
+  import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
     VolumetricData,
-  } from '#lib/isosurface/types.js'
+  } from '#lib/isosurface/types'
   import VolumeSliceView from '#lib/isosurface/VolumeSliceView.svelte'
   import {
     normalize_active_volume_id,
     index_volumes,
     with_isosurface_defaults,
-  } from '#lib/isosurface/types.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
-  import { ToolbarMenu } from '#lib/overlays/index.js'
-  import { DEFAULTS, type ShowBonds } from '#lib/settings.js'
+  } from '#lib/isosurface/types'
+  import { ViewerChrome, type Viewer3DProps } from '#lib/layout/index'
+  import { ToolbarMenu } from '#lib/overlays/index'
+  import { DEFAULTS, type ShowBonds } from '#lib/settings'
   import type { ImageAtomCompletion } from './pbc'
   import { polyhedra_options_from } from './polyhedra'
   import type { BondingOptions, BondingStrategy } from './bonding'
@@ -76,7 +76,7 @@
     StructurePane,
     StructureView,
     Site,
-  } from '#lib/structure/index.js'
+  } from '#lib/structure/index'
   import {
     DEFAULT_STRUCTURE_VIEWS,
     default_vector_configs,
@@ -84,17 +84,16 @@
     get_structure_vector_keys,
     is_crystal,
     RESET_VIEW_TITLE,
-  } from '#lib/structure/index.js'
-  import type { CellType, SymmetryDataset, SymmetrySettings } from '#lib/symmetry/index.js'
-  import * as symmetry from '#lib/symmetry/index.js'
+  } from '#lib/structure/index'
+  import type { CellType, SymmetryDataset, SymmetrySettings } from '#lib/symmetry/index'
+  import * as symmetry from '#lib/symmetry/index'
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
-  import { join_hover_link } from '#lib/tooltip/index.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
+  import { join_hover_link } from '#lib/tooltip/index'
   import { onDestroy, untrack } from 'svelte'
-  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
+  import { tooltip as attach_tooltip, viewer_keydown } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from 'svelte-widgets/browser'
-  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
@@ -112,7 +111,7 @@
   import StructureInfoPane from './StructureInfoPane.svelte'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
   import type { StructureSettings } from './settings'
-  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index'
   import StructureViewport from './StructureViewport.svelte'
   import type { TrajectoryLinesStats } from './trajectory-lines'
   import type {
@@ -129,9 +128,9 @@
     tool_trail_stream,
   } from './prediction'
   import { replace_tool_volumes, tool_surface } from './host-tool-volumes'
-  import type { FileLoadCallback } from '#lib/io/index.js'
-  import type { MaterialSource } from '#lib/file-viewer/open.js'
-  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
+  import type { FileLoadCallback } from '#lib/io/index'
+  import type { MaterialSource } from '#lib/file-viewer/open'
+  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte'
   import { apply_structure_material } from './material'
 
   export type StructureControlName =
@@ -180,10 +179,10 @@
     show_controls,
     persist_settings = false,
     fullscreen = $bindable(false),
-    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
+    hovered = $bindable(false),
     color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     atom_color_field,
@@ -207,7 +206,6 @@
     trajectory_line_end_frame,
     defer_expensive_geometry = false,
 
-    enable_info_pane = true,
     analyze_symmetry = `on-demand`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     performance_mode = `quality`,
@@ -243,7 +241,7 @@
     // Inline CSS for the viewer's outer element, e.g. `height: 400px`.
     style: outer_style,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
+  }: Viewer3DProps<StructureControlName, StructureHandlerData> & {
     // A table of the sites beside the 3D view, linked to it (hover highlights, click selects).
     // `auto` docks it when the sites carry numbers worth reading (forces, magnetic moments,
     // charges, velocities) and the viewer is wide enough; its header button closes it.
@@ -288,18 +286,8 @@
     background_color?: string
     // Opacity 0-1 applied to `background_color`.
     background_opacity?: number
-    // 'always' | 'hover' | 'never' | { mode, hidden: StructureControlName[], style }
-    show_controls?: ShowControlsProp<StructureControlName>
     // Opt-in browser persistence of the controls pane settings
     persist_settings?: boolean
-    // Whether the viewer fills the screen.
-    fullscreen?: boolean
-    // Show the fullscreen button in the controls.
-    fullscreen_toggle?: boolean
-    // The viewer's root element.
-    wrapper?: HTMLDivElement
-    width?: number // output: wrapper width in CSS px
-    height?: number // output: wrapper height in CSS px
     // Element color scheme (palette) used for atoms and legend.
     color_scheme?: ColorSchemeName
     // How atoms are colored (by element, or a property, custom function or analysis result) and the color scale used.
@@ -348,8 +336,6 @@
     trajectory_line_end_frame?: number
     // Keep the last computed polyhedra instead of recomputing them, e.g. while scrubbing a trajectory.
     defer_expensive_geometry?: boolean
-    // Offer the structure info pane (keyboard shortcut `i`).
-    enable_info_pane?: boolean
     // `on-demand` (default) loads the ~0.75 MB symmetry WASM only once the viewer is touched
     // (press, focus, an open pane) or the display needs it (a conventional/primitive cell,
     // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
@@ -409,8 +395,6 @@
     site_table_props?: Partial<
       Omit<ComponentProps<typeof SiteTable>, `sites` | `selected_atoms` | `hovered_atom`>
     >
-    // Called with the structure and the new `fullscreen` state when fullscreen is toggled.
-    on_fullscreen_change?: EventHandler
     // Called with camera position, target, zoom and `camera_has_moved` when the camera is moved.
     on_camera_move?: EventHandler
     // Called with the reset camera pose when the camera is reset to fit the structure.
@@ -1043,7 +1027,6 @@
         ? `Each pane needs ${MULTI_VIEW_MIN_PANE.width}×${MULTI_VIEW_MIN_PANE.height} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
-  let hovered = $state(false)
   let focused = $state(false)
   let viewer_active = $derived(hovered || focused)
   let view_layout_menu_open = $state(false)
@@ -1318,7 +1301,7 @@
     // View toggles are plain letters everywhere; typing is already excluded by the editable
     // guard above. `f` is owned by FullscreenButton, which arbitrates it between nested
     // viewers. Chords stay the browser's and the host's.
-    if (key === `i` && plain_press && has_3d_view && enable_info_pane) {
+    if (key === `i` && plain_press && has_3d_view && controls_config.visible(`info-pane`)) {
       set_pane_open(`info`, !is_pane_open(`info`))
       shortcut_flash.show(`info`)
       return true
@@ -1558,7 +1541,6 @@
           <ViewerChrome
             {controls_config}
             bind:fullscreen
-            {fullscreen_toggle}
             wrapper={fullscreen_root}
             fullscreen_bg_css_var="--struct-bg-fullscreen"
             on_fullscreen_change={(value) =>
@@ -1579,7 +1561,7 @@
                       type="button"
                       class={['view-mode-option', { selected: current_layout.mode === mode }]}
                       {...mode === `multi`
-                        ? shortcut_attrs(`multi_view`, label)
+                        ? shortcut_attrs(SHORTCUTS.multi_view, label)
                         : { title: label }}
                       aria-pressed={current_layout.mode === mode}
                       onclick={() => select_structure_layout(mode)}
@@ -1622,7 +1604,7 @@
               </button>
             {/if}
 
-            {#if has_3d_view && enable_info_pane && session.mapped_base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
+            {#if has_3d_view && session.mapped_base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
               <StructureInfoPane
                 structure={session.mapped_base_structure}
                 displayed_structure={session.render_structure}
@@ -1635,7 +1617,7 @@
                 wyckoff_positions={session.wyckoff_rows}
                 toggle_props={{
                   style: shortcut_flash.style(`info`),
-                  ...shortcut_attrs(`info_pane`),
+                  ...shortcut_attrs(SHORTCUTS.info_pane),
                 }}
                 shortcut_scopes={[
                   `viewer`,
@@ -1914,24 +1896,8 @@
   .structure-site-layout.docked-sidebar-row {
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
-    /* Viewer and sidebar read as one rounded box: outer corners take --struct-border-radius,
-       the edge they share stays square so no gap opens between them */
-    --docked-radius: var(--struct-border-radius, 0);
-    > .structure {
-      border-radius: var(--docked-radius) 0 0 var(--docked-radius);
-    }
-    > :global(.structure-site-sidebar) {
-      border-radius: 0 var(--docked-radius) var(--docked-radius) 0;
-    }
-    /* stacked: viewer on top, sidebar below */
-    &:global(.docked-sidebar-stacked) {
-      > .structure {
-        border-radius: var(--docked-radius) var(--docked-radius) 0 0;
-      }
-      > :global(.structure-site-sidebar) {
-        border-radius: 0 0 var(--docked-radius) var(--docked-radius);
-      }
-    }
+    /* viewer and sidebar read as one rounded box */
+    --docked-sidebar-radius: var(--struct-border-radius, 0);
   }
   /* The site table's toolbar (up to six 22px buttons, 142px) shares the header row, left of
      the close button; the gap keeps the title clear of it when the sidebar fits its content,

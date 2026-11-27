@@ -6,7 +6,7 @@
     DataSeries,
     SizeScaleConfig,
     StyleOverrides,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
   import { onMount } from 'svelte'
   import TestControls from '../TestControls.svelte'
   import TestSection from '../TestSection.svelte'
@@ -88,7 +88,6 @@
       show_controls={false}
       show_legend={false}
       color_bar={null}
-      fullscreen_toggle={false}
       point_tween={{ duration: 0 }}
       line_tween={{ duration: 0 }}
       style="width: 1000px; height: 600px"

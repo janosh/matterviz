@@ -1,21 +1,21 @@
 <script lang="ts">
   import { pick_contrast_color } from 'svelte-widgets/attachments'
-  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index'
   import { format_path, resolve_path } from 'svelte-widgets/json-tree/path'
   import { relative_path_segments } from 'svelte-widgets/json-tree/utils'
-  import { plural } from '#lib/labels.js'
+  import { plural } from '#lib/labels'
   import JsonTree from 'svelte-widgets/JsonTree.svelte'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { merge } from '#lib/settings.js'
-  import type { DefaultSettings } from '#lib/settings.js'
-  import type { AnyStructure } from '#lib/structure/index.js'
+  import { merge } from '#lib/settings'
+  import type { DefaultSettings } from '#lib/settings'
+  import type { AnyStructure } from '#lib/structure/index'
   import {
     is_structure_like,
     optimade_structure_from_raw,
     optimade_to_structure,
     structure_from_json,
-  } from '#lib/structure/parse.js'
-  import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
+  } from '#lib/structure/parse'
+  import { collect_parse_warnings } from '#lib/trajectory/parse/shared'
   import { is_editable_event_target } from 'svelte-widgets/shortcuts'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'

@@ -1,5 +1,5 @@
 // Shared geometry construction and derived-geometry disposal for Threlte scenes.
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import {

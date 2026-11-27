@@ -4,19 +4,19 @@ import {
   raycast_atom_spheres,
   update_atom_coordinates,
   update_ordered_atom_positions,
-} from '#lib/structure/atom-instances.js'
-import type { Vec3 } from '#lib/math.js'
-import { make_site } from '#lib/structure/site.js'
-import { raycast_bond } from '#lib/structure/bond-mesh.js'
-import { write_bond_transform } from '#lib/structure/bond-rendering.js'
-import type { BondPair } from '#lib/structure/index.js'
-import type { StructureCutaway } from '#lib/structure/cutaway.js'
+} from '#lib/structure/atom-instances'
+import type { Vec3 } from '#lib/math'
+import { make_site } from '#lib/structure/site'
+import { raycast_bond } from '#lib/structure/bond-mesh'
+import { write_bond_transform } from '#lib/structure/bond-rendering'
+import type { BondPair } from '#lib/structure/index'
+import type { StructureCutaway } from '#lib/structure/cutaway'
 import {
   cutaway_bounds,
   cutaway_contains,
   enable_cutaway_picking,
   StructureCutawayGroup,
-} from '#lib/structure/cutaway.js'
+} from '#lib/structure/cutaway'
 import type { Intersection } from 'three/webgpu'
 import {
   DoubleSide,
@@ -34,7 +34,7 @@ import {
   Vector2,
 } from 'three/webgpu'
 import { expect, test, vi } from 'vite-plus/test'
-import { SphereInstances } from '#lib/scene/picking.js'
+import { SphereInstances } from '#lib/scene/picking'
 import { make_rng } from '../numeric-helpers'
 
 // Rotated triclinic cell with a shifted origin

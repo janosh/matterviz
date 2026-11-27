@@ -1,14 +1,14 @@
 // Parsers for phonopy mode data (frequencies + eigenvectors) and Born effective charges,
-// separate from `#lib/structure/parse.ts`, which discards the per-mode blocks.
+// separate from `#lib/structure/parse`, which discards the per-mode blocks.
 // Eigenvectors (phonopy convention) are of the mass-weighted dynamical matrix with
 // sum |e|^2 == 1; atom kappa moves by u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes
 // that weighting: consumers needing displacements divide by sqrt(mass) themselves.
 
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { is_plain_object } from 'svelte-widgets/utils'
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import { load as yaml_load } from 'js-yaml'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import type {
   BornChargeData,
   Complex,

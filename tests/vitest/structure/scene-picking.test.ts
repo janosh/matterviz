@@ -1,6 +1,6 @@
-import type { TapEvent } from '#lib/scene/index.js'
-import type { BondPair, Site } from '#lib/structure/index.js'
-import { make_site } from '#lib/structure/site.js'
+import type { TapEvent } from '#lib/scene/index'
+import type { BondPair, Site } from '#lib/structure/index'
+import { make_site } from '#lib/structure/site'
 import {
   ATOM_HOVER_CLEAR_DELAY_MS,
   bond_endpoint_hit_site_idx,
@@ -13,8 +13,8 @@ import {
   type PickState,
   scene_cursor,
   ScenePointer,
-} from '#lib/structure/scene-picking.svelte.js'
-import { MAX_SELECTED_SITES } from '#lib/structure/measure.js'
+} from '#lib/structure/scene-picking.svelte'
+import { MAX_SELECTED_SITES } from '#lib/structure/measure'
 import { Group, Vector3 } from 'three/webgpu'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 

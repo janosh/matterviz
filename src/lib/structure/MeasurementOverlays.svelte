@@ -4,12 +4,12 @@
   // value at each of its angles, or the torsion chain. Angle and torsion edges run between the
   // nearest images the values are measured from (see measure.pick_displacement).
   import { format_num } from 'svelte-widgets/format'
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
-  import { SceneLabel } from '#lib/scene/index.js'
-  import type { BondPair, MeasureMode, Site } from '#lib/structure/index.js'
+  import type { Matrix3x3, Vec3 } from '#lib/math'
+  import * as math from '#lib/math'
+  import { SceneLabel } from '#lib/scene/index'
+  import type { BondPair, MeasureMode, Site } from '#lib/structure/index'
   import { T } from '@threlte/core'
-  import { dispose_on_change } from '#lib/scene/geometry.svelte.js'
+  import { dispose_on_change } from '#lib/scene/geometry.svelte'
   import { CatmullRomCurve3, Quaternion, TubeGeometry, Vector3 } from 'three/webgpu'
   import { bond_strand_matrices, UNIT_CYLINDER } from './bond-mesh'
   import { bond_at, bond_site_1, bond_site_2, type BondData } from './bond-rendering'

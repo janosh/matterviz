@@ -1,8 +1,8 @@
 // Point sets and structures shared by the structure, bond-angle and perf-baseline tests
-import type { Vec3 } from '#lib/math.js'
-import { bond_records } from '#lib/structure/bond-rendering.js'
-import type { BondData } from '#lib/structure/bond-rendering.js'
-import type { BondPair, Crystal } from '#lib/structure/index.js'
+import type { Vec3 } from '#lib/math'
+import { bond_records } from '#lib/structure/bond-rendering'
+import type { BondData } from '#lib/structure/bond-rendering'
+import type { BondPair, Crystal } from '#lib/structure/index'
 import { expect } from 'vite-plus/test'
 import { max_abs_error } from '../numeric-helpers'
 import { make_crystal } from '../test-fixtures'

@@ -1,8 +1,8 @@
-import { display_idx } from '#lib/labels.js'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { AnyStructure, Pbc, Site } from '#lib/structure/index.js'
-import { numeric_sites, site_count } from '#lib/structure/site.js'
+import { display_idx } from '#lib/labels'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { AnyStructure, Pbc, Site } from '#lib/structure/index'
+import { numeric_sites, site_count } from '#lib/structure/site'
 
 export const NO_PBC: Pbc = [false, false, false]
 
@@ -130,6 +130,41 @@ function coarse_boundary_masks(
 
 type NeighborDistanceVisitor = (center: number, neighbor: number, distance: number) => void
 
+// A weighted pair-distance histogram the sweep fills itself, sparing histogram consumers (the
+// RDF) a visitor call per contact (1.38x on a 4000-atom frame at 10 A). Site `site` is of kind
+// `kinds[site]` (-1: never counted) and weighs `weights[site]`; each directed contact
+// visit_neighbor_distances would report, from a center of kind a to a partner of kind b, adds
+// the product of their weights to
+// counts[(a * n_kinds + b) * n_bins + distance_bin(distance, bin_size, n_bins)], in that order.
+export type PairHistogram = {
+  kinds: Int32Array
+  weights: Float64Array
+  n_kinds: number
+  bin_size: number
+  n_bins: number
+  counts: Float64Array
+}
+
+const NO_HISTOGRAM: PairHistogram = {
+  kinds: new Int32Array(0),
+  weights: new Float64Array(0),
+  n_kinds: 0,
+  bin_size: 1,
+  n_bins: 0,
+  counts: new Float64Array(0),
+}
+
+// Histogram bin of a pair distance in [0, n_bins * bin_size), else -1. Excludes zero distances
+// and the exact cutoff. Periodic self images remain included (they are the whole signal of a
+// 1-atom cell). Crystal shells often sit exactly on a bin edge (rocksalt a/2 = 2.8 Å on 0.2 Å
+// bins), and the image positions carry ±1 ulp of noise, so without the nudge one shell splits
+// across two bins. 1e-9 is ~4 orders above that noise (≤ n_bins · eps) and 1e-9 bin widths
+// below any physical separation, so it only decides edge cases, and decides them as [lo, hi).
+export const distance_bin = (distance: number, bin_size: number, n_bins: number): number => {
+  const bin = Math.floor(distance / bin_size + 1e-9)
+  return distance > 0 && bin < n_bins ? bin : -1
+}
+
 // Where to read site positions: a trajectory frame's numeric columns when it has them (read
 // inline by hot loops, sparing millions of accessor calls), its site objects otherwise
 export const site_positions = (
@@ -249,7 +284,7 @@ export function neighbor_query_cutoff(
   structure: AnyStructure,
   cutoff: number,
   query: Pick<CutoffQuery, 'pbc'>,
-  visit: NeighborDistanceVisitor,
+  visit: NeighborDistanceVisitor | PairHistogram,
 ): void
 export function neighbor_query_cutoff(
   structure: AnyStructure,
@@ -261,7 +296,7 @@ export function neighbor_query_cutoff(
     image_geometry = !unique_pairs,
     band,
   }: CutoffQuery,
-  visit?: NeighborDistanceVisitor,
+  visit?: NeighborDistanceVisitor | PairHistogram,
 ): NeighborList | void {
   const { sites, n_sites, coordinates, stride } = site_positions(structure)
   if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
@@ -471,6 +506,9 @@ export function neighbor_query_cutoff(
   // Reuse ranges when materialized queries revisit a bin in site discovery order.
   const ranges_by_bin = Array.from<Int32Array | undefined>({ length: visit ? 0 : n_bins })
   const n_groups = visit ? n_bins : n_cloud
+  // A histogram's fields, read once here instead of per contact (8% of the RDF kernel)
+  const histogram = typeof visit === `object` ? visit : NO_HISTOGRAM
+  const { kinds, weights, n_kinds, bin_size, n_bins: hist_bins, counts } = histogram
   for (let group_idx = 0; group_idx < n_groups; group_idx++) {
     const bin_idx = visit ? group_idx : bin_of[group_idx]
     const bin_first = bin_start[bin_idx]
@@ -540,8 +578,22 @@ export function neighbor_query_cutoff(
           // Keep the exact distance arithmetic while streaming each base endpoint once.
           if (visit) {
             const distance = Math.sqrt(dist_sq)
-            if (slot_a < n_sites) visit(slot_a, cloud_src[slot_b], distance)
-            if (slot_b < n_sites) visit(slot_b, cloud_src[slot_a], distance)
+            if (typeof visit === `function`) {
+              if (slot_a < n_sites) visit(slot_a, cloud_src[slot_b], distance)
+              if (slot_b < n_sites) visit(slot_b, cloud_src[slot_a], distance)
+              continue
+            }
+            const hist_bin = distance_bin(distance, bin_size, hist_bins)
+            const site_a = cloud_src[slot_a]
+            const site_b = cloud_src[slot_b]
+            const kind_a = kinds[site_a]
+            const kind_b = kinds[site_b]
+            if (hist_bin < 0 || kind_a < 0 || kind_b < 0) continue
+            const weight = weights[site_a] * weights[site_b]
+            if (slot_a < n_sites)
+              counts[(kind_a * n_kinds + kind_b) * hist_bins + hist_bin] += weight
+            if (slot_b < n_sites)
+              counts[(kind_b * n_kinds + kind_a) * hist_bins + hist_bin] += weight
             continue
           }
           if (band) {
@@ -720,10 +772,11 @@ export function lattice_pbc_or_throw(structure: AnyStructure, override?: Pbc): P
 // Visit each directed neighbor without retaining pair records or constructing result
 // arrays. Repeated periodic images are separate visits, including a site's own images.
 // This lets histograms process large cutoffs with memory proportional to the image cloud.
+// Given a PairHistogram instead of a visitor, the sweep bins each visit itself.
 export function visit_neighbor_distances(
   structure: AnyStructure,
   { cutoff, pbc }: { cutoff: number; pbc?: Pbc },
-  visit: NeighborDistanceVisitor,
+  visit: NeighborDistanceVisitor | PairHistogram,
 ): void {
   neighbor_query_cutoff(structure, cutoff, { pbc }, visit)
 }

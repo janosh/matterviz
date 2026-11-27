@@ -1,10 +1,16 @@
-import { FS_IN_ASE_TIME } from '#lib/constants.js'
-import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { compute_vacf } from '#lib/vacf/compute-vacf.js'
-import { collect_vacf_input, vacf_buffers, VELOCITY_SITE_PROPERTY } from '#lib/vacf/collect.js'
-import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis.js'
+import { FS_IN_ASE_TIME } from '#lib/constants'
+import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index'
+import { open_trajectory } from '#lib/trajectory/open'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { compute_vacf } from '#lib/vacf/compute-vacf'
+import { collect_msd_positions } from '#lib/msd/collect'
+import {
+  collect_vacf_input,
+  msd_stride_buffers,
+  vacf_buffers,
+  VELOCITY_SITE_PROPERTY,
+} from '#lib/vacf/collect'
+import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { make_frame } from '../test-fixtures'
 import { make_ase_md_buffer } from '../trajectory/fixtures'
@@ -117,6 +123,36 @@ describe(`collect_vacf_input`, () => {
     expect(collected.velocities).toBeInstanceOf(Float64Array)
   })
 
+  it(`shares a finished MSD sweep of the same frames, re-reading only for other requests`, async () => {
+    const run = make_run(20, false)
+    const collect = vi.spyOn(run, `collect_positions`)
+    collect.mockRejectedValueOnce(new Error(`read failed`))
+    await expect(collect_msd_positions(run)).rejects.toThrow(`read failed`)
+    const msd = await collect_msd_positions(run)
+    const vacf = await collect_vacf_input(run)
+    // a hit is a fresh object (so a recollect recomputes) around the shared buffer
+    const again = await collect_msd_positions(run)
+    expect(collect).toHaveBeenCalledTimes(2)
+    expect(vacf.positions).toBe(msd.positions)
+    expect(again.positions).toBe(msd.positions)
+    expect(again).not.toBe(msd)
+    await expect(
+      collect_vacf_input(run, { signal: AbortSignal.abort(`swapped`) }),
+    ).rejects.toBe(`swapped`)
+    // a budget a fresh sweep refuses still refuses
+    await expect(collect_msd_positions(run, { max_bytes: 100 })).rejects.toThrow(`budget`)
+    for (const options of [{ frame_stride: 2 }, { start_frame: 1 }, { end_frame: 19 }]) {
+      expect((await collect_msd_positions(run, options)).positions).not.toBe(msd.positions)
+    }
+    expect(collect).toHaveBeenCalledTimes(6)
+    // stored velocities are a channel the MSD sweep never read
+    const stored = make_run(20, true)
+    const stored_collect = vi.spyOn(stored, `collect_positions`)
+    await collect_msd_positions(stored)
+    expect((await collect_vacf_input(stored)).velocities).toBeInstanceOf(Float64Array)
+    expect(stored_collect).toHaveBeenCalledTimes(2)
+  })
+
   it.each([
     [`non-Float64Array`, [1, 2, 3], `needs a Float64Array`],
     [`wrong length`, new Float64Array(1), `must share a layout`],
@@ -136,18 +172,20 @@ describe(`collect_vacf_input`, () => {
 
   // positions + velocities = 2 trajectory-sized buffers, plus the unwrapped copy that deriving
   // velocities from wrapped positions in a cell caches (3). Budgeting that path at 1 told a
-  // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget.
+  // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget. MSD budgets
+  // the same whenever VACF derives from the positions it reads.
   it.each([
-    [`stored`, { box_length: 5, velocities: [[1, 0, 0]] }, [1, 1, 2], [1, 1, 1]],
-    [`molecule-derived`, {}, [1, 1, 2], [1, 1, 1]],
-    [`unwrapped-derived`, { box_length: 5, coords_unwrapped: true }, [1, 1, 2], [1, 1, 1]],
-    [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2]],
+    [`stored`, { box_length: 5, velocities: [[1, 0, 0]] }, [1, 1, 2], [1, 1, 1], 2],
+    [`molecule-derived`, {}, [1, 1, 2], [1, 1, 1], 2],
+    [`unwrapped-derived`, { box_length: 5, coords_unwrapped: true }, [1, 1, 2], [1, 1, 1], 2],
+    [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2], 3],
   ])(
     `budgets every buffer compute_vacf holds for %s velocities`,
-    (_label, frame_options, strides, window_strides) => {
+    (_label, frame_options, strides, window_strides, msd_buffers) => {
       const run = trajectory_from_frames(
         Array.from({ length: 1000 }, (_, idx) => make_frame(idx, [[0, 0, 0]], frame_options)),
       )
+      expect(msd_stride_buffers(run)).toBe(msd_buffers)
       const budgets = [72_000, 48_000, 24_000]
       const stride = (max_bytes: number, frame_count?: number) =>
         suggest_analysis_frame_stride(run, max_bytes, vacf_buffers(run), frame_count)

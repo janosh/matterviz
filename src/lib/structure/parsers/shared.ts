@@ -1,10 +1,10 @@
 // Plumbing shared by parse.ts and the format parsers here (numeric/element coercion,
 // warnings, CIF tokenization), so the parsers need not import their own dispatcher.
-import type { ElementSymbol } from '#lib/element/index.js'
-import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
-import { capitalize, display_idx } from '#lib/labels.js'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers'
+import { capitalize, display_idx } from '#lib/labels'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import type {
   AnyStructure,
   BondOrder,
@@ -12,10 +12,10 @@ import type {
   Pbc,
   Site,
   StructureBond,
-} from '#lib/structure/index.js'
-import { get_bond_key, normalize_structure_bond } from '#lib/structure/bonding.js'
-import { parse_warn, type WarnFn } from '#lib/trajectory/parse/shared.js'
-import { normalize_scientific_notation } from '#lib/utils.js'
+} from '#lib/structure/index'
+import { get_bond_key, normalize_structure_bond } from '#lib/structure/bonding'
+import { parse_warn, type WarnFn } from '#lib/trajectory/parse/shared'
+import { normalize_scientific_notation } from '#lib/utils'
 
 // === Numeric coercion ===
 

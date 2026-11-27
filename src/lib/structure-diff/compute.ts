@@ -1,7 +1,7 @@
 // Site-by-site comparison of two geometries of the same material (before/after relaxation,
 // ML vs DFT): site mapping, minimum-image displacements, RMSD and lattice changes.
-import { get_alphabetical_formula } from '#lib/composition/format.js'
-import { display_idx } from '#lib/labels.js'
+import { get_alphabetical_formula } from '#lib/composition/format'
+import { display_idx } from '#lib/labels'
 import {
   compute_lattice_params,
   create_cart_to_frac,
@@ -15,11 +15,11 @@ import {
   to_degrees,
   transpose_3x3,
   type Vec3,
-} from '#lib/math.js'
-import { characteristic_atom_spacing } from '#lib/structure/density.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { symmetric_eigen_3x3 } from '#lib/structure/thermal-ellipsoids.js'
-import { is_crystal } from '#lib/structure/validation.js'
+} from '#lib/math'
+import { characteristic_atom_spacing } from '#lib/structure/density'
+import type { AnyStructure, Site } from '#lib/structure/index'
+import { symmetric_eigen_3x3 } from '#lib/structure/thermal-ellipsoids'
+import { is_crystal } from '#lib/structure/validation'
 import { format_num } from 'svelte-widgets/format'
 import { clamp } from 'svelte-widgets/utils'
 

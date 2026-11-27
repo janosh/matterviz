@@ -1,4 +1,4 @@
-import type { PhaseData } from '#lib/convex-hull/index.js'
+import type { PhaseData } from '#lib/convex-hull/index'
 import {
   analyze_selectivity,
   assign_e_above_hull,
@@ -22,7 +22,7 @@ import {
   score_route,
   SYNTHESIS_PLAN_REQUEST_SCHEMA,
   SYNTHESIS_PLANNER_TOOL,
-} from '#lib/synthesis-planning/index.js'
+} from '#lib/synthesis-planning/index'
 import type {
   CompetingPhase,
   PlannerPhase,
@@ -30,19 +30,19 @@ import type {
   SynthesisPlanProgress,
   SynthesisPlanRequest,
   SynthesisReaction,
-} from '#lib/synthesis-planning/index.js'
+} from '#lib/synthesis-planning/index'
 import {
   create_thermo_cache,
   reaction_slice_lines,
   reaction_slice_points,
   slice_point_on_hull,
   solid_reactants,
-} from '#lib/synthesis-planning/thermo.js'
-import { fractional_composition } from '#lib/composition/parse.js'
-import { format_model_conditions } from '#lib/synthesis-planning/recipe.js'
-import { describe_atmosphere, describe_interface } from '#lib/synthesis-planning/scoring.js'
-import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
-import * as math from '#lib/math.js'
+} from '#lib/synthesis-planning/thermo'
+import { fractional_composition } from '#lib/composition/parse'
+import { format_model_conditions } from '#lib/synthesis-planning/recipe'
+import { describe_atmosphere, describe_interface } from '#lib/synthesis-planning/scoring'
+import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics'
+import * as math from '#lib/math'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_phase, read_maybe_gz } from '../test-fixtures'
 import pymatgen_reference from './fixtures/ba_ti_o_pymatgen_reference.json' with { type: 'json' }

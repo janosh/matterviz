@@ -1,5 +1,5 @@
-import { type CameraPose, create_camera_flight_controller } from '#lib/scene/camera-flight.js'
-import { key_walk_root, type KeyWalkRoot } from '#lib/scene/key-walk.svelte.js'
+import { type CameraPose, create_camera_flight_controller } from '#lib/scene/camera-flight'
+import { key_walk_root, type KeyWalkRoot } from '#lib/scene/key-walk.svelte'
 import { createThrelteContext } from '@threlte/core'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import type { WebGLRenderer } from 'three'

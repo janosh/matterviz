@@ -1,7 +1,7 @@
 // Lay out the margins for the decorations that leave the plot: those too big to sit inside,
 // plus those solve_decorations evicted for finding no free spot inside.
 
-import type { Sides } from '#lib/plot/core/layout.js'
+import type { Sides } from '#lib/plot/core/layout'
 import type {
   ColorbarDecorationItem,
   DecorationItem,

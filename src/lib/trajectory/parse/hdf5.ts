@@ -1,7 +1,7 @@
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import type { FrameChannels } from '../frame'
 import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '../frame'
-import type { Matrix3x3 } from '#lib/math.js'
+import type { Matrix3x3 } from '#lib/math'
 import {
   ATOM_BATCH_SIZE,
   atom_batch_masses,
@@ -14,8 +14,8 @@ import {
   first_non_increasing_index,
   is_valid_index,
   partition_point,
-} from '#lib/math.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+} from '#lib/math'
+import type { Pbc } from '#lib/structure/pbc'
 import { to_error } from 'svelte-widgets/utils'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
@@ -25,12 +25,12 @@ import {
   preview_atom_stride,
   is_supported_trajectory_signal_shape,
   values_per_sample,
-} from '#lib/trajectory/helpers.js'
+} from '#lib/trajectory/helpers'
 import type {
   PositionStreamOptions,
   TrajectoryPositionStream,
   TrajectorySignal,
-} from '#lib/trajectory/index.js'
+} from '#lib/trajectory/index'
 import {
   Hdf5GroupSelectionRequiredError,
   attribute_value,

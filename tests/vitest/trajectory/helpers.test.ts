@@ -1,7 +1,7 @@
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import { columns_to_csv } from '#lib/trajectory/analysis.js'
-import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { Matrix3x3 } from '#lib/math'
+import { columns_to_csv } from '#lib/trajectory/analysis'
+import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared'
 import {
   convert_atomic_numbers,
   create_sampled_frame,
@@ -10,8 +10,8 @@ import {
   holds_numbers,
   split_lines,
   TextLines,
-} from '#lib/trajectory/helpers.js'
-import { read_ndarray_from_view } from '#lib/trajectory/parse/ase.js'
+} from '#lib/trajectory/helpers'
+import { read_ndarray_from_view } from '#lib/trajectory/parse/ase'
 import { describe, expect, it } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 

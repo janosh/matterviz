@@ -6,17 +6,14 @@ import type {
   BondOrder,
   MeasureMode,
   StructureBond,
-} from '#lib/structure/index.js'
-import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
-import type { BondingOptions } from '#lib/structure/bonding.js'
-import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
-import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
-import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
-import {
-  StructureSession,
-  type StructureSessionInputs,
-} from '#lib/structure/session.svelte.js'
-import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
+} from '#lib/structure/index'
+import type { AtomColorConfig } from '#lib/structure/atom-properties'
+import type { BondingOptions } from '#lib/structure/bonding'
+import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties'
+import type { ImageAtomCompletion } from '#lib/structure/pbc'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra'
+import { StructureSession, type StructureSessionInputs } from '#lib/structure/session.svelte'
+import type { CellType, SymmetryDataset } from '#lib/symmetry/index'
 import { flushSync } from 'svelte'
 import { onTestFinished } from 'vite-plus/test'
 import { get_dummy_structure, image_options } from '../test-fixtures'

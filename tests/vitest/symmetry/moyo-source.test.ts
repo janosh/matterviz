@@ -1,7 +1,7 @@
 // A host-registered WASM source (the VS Code webview's URL) is fetched lazily by the first
 // analysis and survives a failed fetch. Isolated file: it mocks the wasm-bindgen init.
 import init from '@spglib/moyo-wasm'
-import { ensure_moyo_wasm_ready, set_moyo_wasm_source } from '#lib/symmetry/analyze.js'
+import { ensure_moyo_wasm_ready, set_moyo_wasm_source } from '#lib/symmetry/analyze'
 import { expect, test, vi } from 'vite-plus/test'
 
 vi.mock(`@spglib/moyo-wasm`, async (import_original) => ({

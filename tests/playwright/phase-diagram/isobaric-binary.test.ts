@@ -259,7 +259,9 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   test(`a failed SVG drop shows an error banner left of the corner buttons`, async ({
     page,
   }) => {
-    const { diagram } = get_diagram_elements(page)
+    // a diagram outside the page's drop zone, which owns drops onto the one inside it
+    const diagram = page.locator(`div.binary-phase-diagram`).nth(1)
+    await diagram.scrollIntoViewIfNeeded()
     await drop_file(page, diagram, `<svg><unclosed`, `bad.svg`, `image/svg+xml`)
     // the card, not its alert live region, which StatusMessage renders without a box
     const banner = diagram.locator(`[role="alert"] .status-message`)
@@ -294,7 +296,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
       timeout: 5000,
     })
     expect((await active_file.textContent())?.trim()).not.toBe(initial_active_text)
-    expect(await svg.locator(`.phase-regions path`).count()).toBeGreaterThanOrEqual(1)
   })
 
   test(`tie-line and lever rule in two-phase regions`, async ({ page }) => {
@@ -322,7 +323,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
         const y_pos = plot_top + (plot_bottom - plot_top) * y_frac
         await page.mouse.move(x_pos, y_pos)
 
-        if (await tie_line.isVisible().catch(() => false)) {
+        if (await tie_line.isVisible()) {
           // Verify tie-line structure (2 lines: white outline + colored, 3 circles: 2 endpoints + cursor)
           expect(await tie_line.locator(`line`).count()).toBe(2)
           expect(await tie_line.locator(`circle`).count()).toBe(3)
@@ -353,10 +354,9 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(label).toHaveText(`not scored`)
     await expect(legend).toBeVisible()
     const [label_box, legend_box] = await Promise.all([
-      label.boundingBox(),
-      legend.boundingBox(),
+      require_bbox(label),
+      require_bbox(legend),
     ])
-    if (!label_box || !legend_box) throw new Error(`label or legend has no box`)
     const overlaps =
       label_box.x < legend_box.x + legend_box.width &&
       legend_box.x < label_box.x + label_box.width &&

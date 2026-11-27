@@ -4,9 +4,8 @@
 // ASE); frames are decoded on read and cached by the session, never all at once. Per-frame
 // scalars for the plot are extracted progressively in chunks so a 100k-frame open stays
 // responsive.
-import { display_idx } from '#lib/labels.js'
-import { yield_turn } from '#lib/utils.js'
-import { to_error } from 'svelte-widgets/utils'
+import { display_idx } from '#lib/labels'
+import { to_error, yield_turn } from 'svelte-widgets/utils'
 import { encode_frame, type NumericFrame } from '../frame'
 import {
   create_plot_row_frame,

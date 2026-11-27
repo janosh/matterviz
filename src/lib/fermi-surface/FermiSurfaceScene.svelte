@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData } from '#lib/brillouin/index'
   import {
     bz_hover_data,
     cartesian_to_fractional,
@@ -9,9 +9,9 @@
     PolyhedronMesh,
     ReciprocalVectors,
     vectors_fit_extent,
-  } from '#lib/brillouin/index.js'
-  import type { Point2D, Vec3 } from '#lib/math.js'
-  import { resolve_value_range } from '#lib/plot/core/scales.js'
+  } from '#lib/brillouin/index'
+  import type { Point2D, Vec3 } from '#lib/math'
+  import { resolve_value_range } from '#lib/plot/core/scales'
   import {
     corner_vertex,
     depth_prepass_props,
@@ -20,10 +20,10 @@
     scene_interactivity,
     scene_key_walk,
     scene_pointer,
-  } from '#lib/scene/index.js'
-  import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  } from '#lib/scene/index'
+  import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index'
+  import { DEFAULTS } from '#lib/settings'
+  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte'
   import { T, useThrelte } from '@threlte/core'
   import {
     BufferGeometry,

@@ -1,13 +1,13 @@
 # Linked Brushing
 
-Brushing one view highlights the same items in every other view. Each `ScatterPlot` series carries `point_ids` (here element symbols), and every plot receives the shared selection as `highlighted_ids`: keyed points outside it are dimmed. The selection itself comes from `on_select`, which fires after every Alt+drag (Option+drag on macOS) and reports the brushed points with their `point_id`. The periodic table joins in through its existing `active_elements` and `color_overrides` props, and clicking a tile adds or removes that element.
+Brushing one view highlights the same items in every other view. Each `ScatterPlot` series carries `point_ids` (here element symbols), and every plot receives the shared selection as `highlighted_ids`: keyed points outside it are dimmed. The selection itself comes from `on_select`, which fires after every Alt+drag (Option+drag on macOS) and reports the brushed points (`items`) with their `point_id`. Every chart (`ScatterPlot`, `BarPlot`, `BoxPlot`, `Histogram`) shares this `on_select({ items, rect })` payload and a bindable `selection` of `{ series_idx, point_idx }` marks. The periodic table joins in through its existing `active_elements` and `color_overrides` props, and clicking a tile adds or removes that element.
 
 ```svelte example
 <script lang="ts">
   import { element_data, PeriodicTable, ScatterPlot } from 'matterviz'
   import { ELEM_PROPERTY_LABELS } from 'matterviz/labels'
   import { toggle_item } from 'matterviz/utils'
-  import type { ChemicalElement, ElementSymbol, InternalPoint } from 'matterviz'
+  import type { ChemicalElement, ElementSymbol, InternalPoint, SelectedMark } from 'matterviz'
 
   const symbols = element_data.map(({ symbol }) => symbol)
   const plots = [
@@ -22,13 +22,13 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
   // null = nothing brushed, so no view dims anything
   let selected = $state<ElementSymbol[] | null>(null)
   // Each plot's Alt+drag rings; cleared once the selection comes from elsewhere
-  let rings = $state<{ series_idx: number; point_idx: number }[][]>([[], []])
+  let rings = $state<SelectedMark[][]>([[], []])
 
   const on_brush =
     (plot_idx: number) =>
-    ({ points }: { points: InternalPoint[] }) => {
-      const ids = new Set(points.map(({ point_id }) => point_id))
-      selected = points.length > 0 ? symbols.filter((symbol) => ids.has(symbol)) : null
+    ({ items }: { items: InternalPoint[] }) => {
+      const ids = new Set(items.map(({ point_id }) => point_id))
+      selected = items.length > 0 ? symbols.filter((symbol) => ids.has(symbol)) : null
       rings[1 - plot_idx] = []
     }
   const set_selection = (next: ElementSymbol[]) => {
@@ -74,7 +74,7 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
         },
       ]}
       highlighted_ids={selected}
-      bind:selected_points={rings[plot_idx]}
+      bind:selection={rings[plot_idx]}
       on_select={on_brush(plot_idx)}
       x_axis={{ label: x_label, scale_type }}
       y_axis={{ label: y_label }}

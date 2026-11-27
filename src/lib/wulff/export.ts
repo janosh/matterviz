@@ -1,6 +1,6 @@
 // The shape as plain meshes for STL/GLB export (export_scene_as): one per family in its
 // color, closed and wound outward, without edges or axes, scaled to a unit sphere's volume
-import { polyhedron_geometry } from '#lib/brillouin/geometry.js'
+import { polyhedron_geometry } from '#lib/brillouin/geometry'
 import { Group, Mesh, MeshStandardMaterial } from 'three/webgpu'
 import { family_label } from './format'
 import type { WulffShapeData } from './types'

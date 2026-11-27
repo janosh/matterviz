@@ -1,9 +1,9 @@
 <script lang="ts">
-  import LazyDemo from './LazyDemo.svelte'
-  import element_data from '#lib/element/data.js'
-  import { array_extent, array_max, array_min, type Vec2 } from '#lib/math.js'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
+  import element_data from '#lib/element/data'
+  import { array_extent, array_max, array_min, type Vec2 } from '#lib/math'
   import TableInset from '#lib/periodic-table/TableInset.svelte'
-  import { open_element_page } from '#site/state.svelte.js'
+  import { open_element_page } from '#site/state.svelte'
 
   // Each element shows two values as diagonal triangles (atomic mass + density)
   const densities = element_data.map((element) => element.density || 0)
@@ -31,9 +31,9 @@ The periodic table supports multiple values per element with different visual la
   <strong>top-left = atomic mass</strong>,
   <strong>bottom-right = density</strong>.
 </p>
-<LazyDemo label="Multi-value heatmap" height="400px">
+<LazyMount label="Multi-value heatmap" height="400px">
   {#await Promise.all( [import('#lib/periodic-table/PeriodicTable.svelte'), import('#lib/plot/core/components/ColorBar.svelte')] )}
-    <p role="status">Loading multi-value heatmap…</p>
+    <p role="status" data-lazy-placeholder>Loading multi-value heatmap…</p>
   {:then [{ default: PeriodicTable }, { default: ColorBar }]}
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
@@ -61,7 +61,7 @@ The periodic table supports multiple values per element with different visual la
   {:catch error}
     <p role="alert">Failed to load multi-value heatmap: {String(error)}</p>
   {/await}
-</LazyDemo>
+</LazyMount>
 
 <style>
   .color-bars {

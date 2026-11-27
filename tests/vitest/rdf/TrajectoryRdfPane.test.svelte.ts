@@ -1,21 +1,20 @@
 // The shared chrome is covered in tests/vitest/trajectory/TrajectoryAnalysisPane.test.svelte.ts;
 // this pins what the RDF pane layers on top: its controls reach the sweep, the shell table and
 // CSV download appear once it lands, and a lattice-less run is refused with a reason.
-import { download } from 'svelte-widgets/browser'
 import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-import type { TrajectoryRdf } from '#lib/rdf/index.js'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { TrajectoryRdf } from '#lib/rdf/index'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, set_input } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 
-vi.mock(`svelte-widgets/browser`, async (import_original) => ({
-  ...(await import_original<Record<string, unknown>>()),
-  download: vi.fn(),
-}))
+// Saves reach `download`'s global hook (the one VS Code webviews install), also from inside
+// svelte-widgets' FileExportState, which a module mock of svelte-widgets/browser can't reach
+const download = vi.fn()
+beforeEach(() => vi.stubGlobal(`download`, download))
 
 const make_run = (n_frames: number, with_time = true): TrajectoryRun =>
   trajectory_from_frames(
@@ -34,6 +33,7 @@ afterEach(async () => {
   if (mounted_component) await unmount(mounted_component)
   mounted_component = undefined
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 const settle = async (rounds = 6) => {

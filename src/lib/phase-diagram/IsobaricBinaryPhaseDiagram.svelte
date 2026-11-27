@@ -1,19 +1,19 @@
 <script lang="ts">
   import { create_flash } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
-  import { add_alpha } from '#lib/colors/index.js'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import { add_alpha } from '#lib/colors/index'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { file_drop_zone } from '#lib/io/file-drop.js'
-  import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { type D3SymbolName, humanize, symbol_map } from '#lib/labels.js'
+  import { file_drop_zone } from '#lib/io/file-drop'
+  import type { FileLoadCallback, FileLoadData } from '#lib/io/types'
+  import { type D3SymbolName, humanize, symbol_map } from '#lib/labels'
   import { symbol } from 'd3-shape'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
-  import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
+  import { ViewerChrome } from '#lib/layout/index'
+  import { sanitize_html, sanitize_svg } from '#lib/sanitize'
   import {
     array_extent,
     compute_bounding_box_2d,
@@ -21,19 +21,18 @@
     polygon_label_point,
     polygon_signed_area,
     type Vec2,
-  } from '#lib/math.js'
-  import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
+  } from '#lib/math'
+  import { type AxisConfig, PlotTooltip } from '#lib/plot/index'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
-  import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
-  import { error_bar_path } from '#lib/plot/core/error-bars.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
-  import { viewer_keys } from '#lib/shortcuts.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import type { LegendConfig, LegendItem } from '#lib/plot/core/types'
+  import { error_bar_path } from '#lib/plot/core/error-bars'
+  import { viewer_keys } from 'svelte-widgets/attachments'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import { svg_sources, type ExportProps } from '#lib/io/export.js'
+  import { figure_sources, type ExportProps } from '#lib/io/export'
   import { compute_isopleth, phase_disagreement } from './analysis'
   import {
     BOUNDARY_STYLES,
@@ -83,7 +82,7 @@
     format_formula_svg,
     format_label_html,
     format_label_svg,
-  } from '#lib/composition/formula-markup.js'
+  } from '#lib/composition/formula-markup'
   import {
     CHAR_WIDTH_EM,
     compute_label_properties,
@@ -131,7 +130,6 @@
     show_disagreement = $bindable(PHASE_DIAGRAM_DEFAULTS.show_disagreement),
     legend = {},
     map_legend,
-    fullscreen_toggle = true,
     show_controls,
     controls_open = $bindable(false),
     export_pane_open = $bindable(false),
@@ -224,10 +222,8 @@
       // them. Each keeps its target, so a click still toggles what it names; an item's
       // `visible` mirrors that target's state, and legend.on_toggle gets the drawn position.
       map_legend?: (entries: PhaseLegendEntry[]) => PhaseLegendEntry[]
-      // Show the fullscreen button in the controls.
-      fullscreen_toggle?: boolean
       // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, editor, fullscreen) appear.
-      show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
+      show_controls?: ShowControlsProp<`controls` | `export-pane` | `editor` | `fullscreen`>
       // Whether the display controls pane is open.
       controls_open?: boolean
       // Whether the export pane is open (shortcut `e`).
@@ -251,6 +247,7 @@
       // Extra content rendered over the diagram, given its pixel size and fullscreen state.
       children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
     } = $props()
+  const uid = $props.id()
 
   // Keep calculations safe while the template renders the missing-data state
   const placeholder: BinaryPhaseDiagram = {
@@ -274,7 +271,7 @@
   // Instance-unique prefix for gradient ids, so two diagrams on one page never
   // cross-reference each other's gradients (first-in-document wins, with that instance's
   // pixel coords)
-  const gradient_uid = unique_id(`pd-gradient`)
+  const gradient_uid = `pd-gradient-${uid}`
   const plot_clip = `url(#${gradient_uid}-plot-area)`
 
   // Editor edits and dropped files override the data prop until it changes, which also
@@ -1328,7 +1325,6 @@
     <ViewerChrome
       {controls_config}
       bind:fullscreen
-      {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
       style="--viewer-buttons-top: var(--ctrl-btn-top, 30px); --viewer-buttons-right: var(--ctrl-btn-right, 20px)"
@@ -1359,13 +1355,13 @@
           shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
         />
       {/if}
-      {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
         <PhaseDiagramExportPane
           bind:export_pane_open
           bind:png_dpi
           {data}
           components={data.components}
-          image_sources={svg_sources(() =>
+          image_sources={figure_sources(() =>
             // looked up per export: the SVG re-mounts when the diagram is cleared and reloaded
             wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`),
           )}

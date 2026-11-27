@@ -2,19 +2,19 @@
   // Ternary (dim 3, triangle prism with an energy axis and orientation gizmo) and quaternary
   // (dim 4, tetrahedron) convex hulls on a 2D canvas. Everything dimension-specific comes
   // from the HullCanvasStrategy picked by `dim`; the component never reads camera angles.
-  import { add_alpha, default_element_colors } from '#lib/colors/index.js'
-  import { ColorBar } from '#lib/plot/index.js'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import type { ColorScaleConfig } from '#lib/plot/core/types.js'
+  import { add_alpha, default_element_colors } from '#lib/colors/index'
+  import { ColorBar } from '#lib/plot/index'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
+  import type { ColorScaleConfig } from '#lib/plot/core/types'
   import {
     create_renderer,
     Gizmo,
     webgpu_available,
     wheel_zoom_gate,
     wheel_zoom_surface,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import { Canvas, T } from '@threlte/core'
-  import { dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
+  import { export_figure } from 'svelte-widgets/figure-export'
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'
@@ -31,7 +31,7 @@
     HULL_CANVAS_STRATEGIES,
     hull_face_sets,
   } from './canvas-draw'
-  import { mean_point } from '#lib/math.js'
+  import { mean_point } from '#lib/math'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import { hull_distance_range, hull_style_css } from './helpers'
   import type { create_hull_data_pipeline } from './hull-state.svelte'
@@ -39,7 +39,7 @@
   import { merge_hull_config } from './index'
   import { html_to_text } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
-  import type { ShowControlsState } from '#lib/controls.js'
+  import type { ShowControlsState } from '#lib/controls'
   import type { HullSelection } from './canvas-interactions.svelte'
   import type { ConvexHullControlsType, HullOverlay } from './types'
 
@@ -166,10 +166,11 @@
     // oxfmt-ignore
     repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, color_scale, energy_range, merged_config, overlay],
   })
-  // PNG export: the scene redrawn at export resolution rather than the screen bitmap scaled up
-  export const to_png_blob = (png_dpi: number): Promise<Blob> => {
-    const { width, height } = interactions.canvas_dims
-    return paint_png_blob(width, height, dpi_to_scale(png_dpi), render_frame)
+  // the canvas surface registers export painters for both layers, so this PNG (and phase
+  // diagrams laying overlays on the canvas) redraws at export resolution
+  export const to_png_blob = async (png_dpi: number): Promise<Blob> => {
+    if (!canvas) throw new Error(`Convex hull canvas has not rendered yet`)
+    return export_figure(canvas, { format: `png`, dpi: png_dpi })
   }
   export const get_actions = (): Record<string, () => void> => ({
     r: interactions.reset_camera,

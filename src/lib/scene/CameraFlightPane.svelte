@@ -1,11 +1,11 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { wait_for_renderer, renderer_registry, scene_registry } from '#lib/io/export.js'
+  import { wait_for_renderer, renderer_registry, scene_registry } from '#lib/io/export'
   import { render_scene } from './lighting'
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
-  import { display_idx } from '#lib/labels.js'
-  import { ViewerPane, type PaneProps } from '#lib/overlays/index.js'
+  import ExportDestination from 'svelte-widgets/ExportDestination.svelte'
+  import { FileExportState } from 'svelte-widgets/browser'
+  import { display_idx } from '#lib/labels'
+  import { ViewerPane, type PaneProps } from '#lib/overlays/index'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { tick, type Snippet } from 'svelte'
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
@@ -354,11 +354,9 @@
               type="button"
               disabled={frames.length < 2 || path_export.disabled}
               onclick={() =>
-                path_export.run(({ filename, save }) =>
-                  save(
+                path_export.run(async ({ filename, open }) =>
+                  (await open(`${filename}.json`, `application/json`))(
                     JSON.stringify(flight, null, 2),
-                    `${filename}.json`,
-                    `application/json`,
                   ),
                 )}>Save path</button
             >
@@ -392,9 +390,11 @@
                 if (dragged_view !== null) event.preventDefault()
               }}
               ondrop={(event) => {
+                // a file dragged in from outside belongs to the enclosing viewer's drop zone
+                if (dragged_view === null) return
                 event.preventDefault()
                 event.stopPropagation()
-                if (dragged_view !== null) move_view(dragged_view, idx)
+                move_view(dragged_view, idx)
                 dragged_view = null
               }}
               ondragend={() => (dragged_view = null)}

@@ -2,8 +2,8 @@
 // structure center the camera sits on, looking back. A zone axis [uvw] is a DIRECT-lattice
 // direction (u*a + v*b + w*c), a plane normal (hkl) needs the RECIPROCAL lattice (h*b1 + k*b2
 // + l*b3): they only coincide for cubic cells, so cubic-only tests hide bugs here.
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_frac_to_cart, miller_plane_normal } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { create_frac_to_cart, miller_plane_normal } from '#lib/math'
 
 export const ZONE_AXIS_MODE_LABELS = {
   uvw: `Zone axis [uvw]`,

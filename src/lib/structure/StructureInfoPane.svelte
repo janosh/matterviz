@@ -7,24 +7,24 @@
     InfoPaneRow,
     PaneProps,
     PaneToggleProps,
-  } from '#lib/overlays/index.js'
-  import { ViewerPane } from '#lib/overlays/index.js'
+  } from '#lib/overlays/index'
+  import { ViewerPane } from '#lib/overlays/index'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
-  import { get_density, type AnyStructure } from '#lib/structure/index.js'
-  import type { BondingStrategy } from '#lib/structure/bonding.js'
-  import { toggle_item } from '#lib/utils.js'
-  import { has_usable_lattice } from '#lib/structure/validation.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { get_electro_neg_formula } from '#lib/composition/index'
+  import { element_by_symbol, type ElementSymbol } from '#lib/element/index'
+  import { get_element_palette } from '#lib/structure/element-palette.svelte'
+  import { get_density, type AnyStructure } from '#lib/structure/index'
+  import type { BondingStrategy } from '#lib/structure/bonding'
+  import { toggle_item } from '#lib/utils'
+  import { has_usable_lattice } from '#lib/structure/validation'
+  import { DEFAULTS } from '#lib/settings'
   import RdfPlot from '#lib/rdf/RdfPlot.svelte'
   import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
   import BondAnglePlot from '#lib/bond-angles/BondAnglePlot.svelte'
-  import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
-  import { count_symmetry_op_kinds, WyckoffTable } from '#lib/symmetry/index.js'
+  import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index'
+  import { count_symmetry_op_kinds, WyckoffTable } from '#lib/symmetry/index'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
+  import type { ShortcutScope } from '#lib/shortcuts'
 
   type SiteCard = InfoPaneCard & { idx: number; element: string }
 

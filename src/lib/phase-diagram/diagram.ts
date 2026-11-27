@@ -3,9 +3,10 @@
 
 import { format_num } from 'svelte-widgets/format'
 import { hsl } from 'd3-color'
-import { humanize } from '#lib/labels.js'
-import { hash_string, is_finite_number } from '#lib/utils.js'
-import type { Vec2 } from '#lib/math.js'
+import { humanize } from '#lib/labels'
+import { is_finite_number } from '#lib/utils'
+import { hash_string } from 'svelte-widgets/utils'
+import type { Vec2 } from '#lib/math'
 import {
   BINARY_DIAGRAM_FORMAT,
   type BinaryPhaseDiagram,

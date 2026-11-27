@@ -1,5 +1,5 @@
-import * as marginal_utils from '#lib/plot/core/marginals.js'
-import type { DataSeries, MarginalSideInput } from '#lib/plot/index.js'
+import * as marginal_utils from '#lib/plot/core/marginals'
+import type { DataSeries, MarginalSideInput } from '#lib/plot/index'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'

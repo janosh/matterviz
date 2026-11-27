@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   // Shared gear toggle + draggable pane shell for viewer controls.
-  import type { ViewerPaneOptions } from '#lib/overlays/index.js'
+  import type { ViewerPaneOptions } from '#lib/overlays/index'
   import ViewerPane from './ViewerPane.svelte'
   import type { Snippet } from 'svelte'
   import type { ClassValue } from 'svelte/elements'

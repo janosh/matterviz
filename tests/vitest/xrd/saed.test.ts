@@ -1,15 +1,15 @@
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { electron_form_factor } from '#lib/scattering/index.js'
-import type { Crystal } from '#lib/structure/index.js'
-import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { electron_form_factor } from '#lib/scattering/index'
+import type { Crystal } from '#lib/structure/index'
+import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index'
 import {
   compute_saed_pattern,
   laue_zone_label,
   saed_camera_pose,
   saed_pattern_radius,
-} from '#lib/xrd/saed.js'
-import { electron_wavelength } from '#lib/xrd/compute-xrd.js'
+} from '#lib/xrd/saed'
+import { electron_wavelength } from '#lib/xrd/compute-xrd'
 import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 

@@ -8,9 +8,9 @@
 
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
-  import { INSTANCE_STRIDE } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+  import { INSTANCE_STRIDE } from '#lib/plot/scatter-3d/instance-tween.svelte'
   import type { Material, SphereGeometry } from 'three/webgpu'
-  import { SphereInstances } from '#lib/scene/picking.js'
+  import { SphereInstances } from '#lib/scene/picking'
   import { Color, InstancedBufferAttribute, Sphere, SRGBColorSpace } from 'three/webgpu'
 
   // One InstancedMesh for many spheres sharing a caller-owned geometry and material, picked by

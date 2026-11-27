@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { Site } from '#lib/structure/index.js'
+  import type { Site } from '#lib/structure/index'
 
   export type HighlightTarget = {
     kind: `hover` | `selected` | `active`
@@ -14,7 +14,7 @@
   // Translucent shells outlining the hovered, selected and active sites. The target list is a
   // pulse-independent input; only the opacity reads the per-frame pulse value, so the list
   // isn't rebuilt every animation frame in every multi-view pane.
-  import { HOVER_SHELL_SCALE } from '#lib/scene/index.js'
+  import { HOVER_SHELL_SCALE } from '#lib/scene/index'
   import { T } from '@threlte/core'
   import { SphereGeometry } from 'three/webgpu'
   import { disable_raycast } from './scene-picking.svelte'

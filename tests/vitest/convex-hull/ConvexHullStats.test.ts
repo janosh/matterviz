@@ -1,6 +1,6 @@
 import ConvexHullStats from '#lib/convex-hull/ConvexHullStats.svelte'
 import ConvexHullInfoPane from '#lib/convex-hull/ConvexHullInfoPane.svelte'
-import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types.js'
+import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {

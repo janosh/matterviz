@@ -2,18 +2,18 @@
   // Orbit camera and lights of a reciprocal-space scene (BrillouinZoneScene, FermiSurfaceScene):
   // orbits the zone's centroid from a distance set by `size`, fitting `fit_extent` to the
   // viewport, and mirrors the Threlte scene and camera into bindables (see bind_renderer)
-  import type { Vec3 } from '#lib/math.js'
-  import { bind_renderer } from '#lib/scene/bind-renderer.svelte.js'
-  import { create_scene_camera, resolve_scene_controls } from '#lib/scene/props.svelte.js'
-  import type { SceneControlProps } from '#lib/scene/props.svelte.js'
+  import type { Vec3 } from '#lib/math'
+  import { bind_renderer } from '#lib/scene/bind-renderer.svelte'
+  import { create_scene_camera, resolve_scene_controls } from '#lib/scene/props.svelte'
+  import type { SceneControlProps } from '#lib/scene/props.svelte'
   import SceneCamera from '#lib/scene/SceneCamera.svelte'
   import SceneLights from '#lib/scene/SceneLights.svelte'
-  import type { CameraProjection } from '#lib/settings.js'
+  import type { CameraProjection } from '#lib/settings'
   import {
     ortho_zoom_for_extent,
     perspective_distance_for_extent,
-  } from '#lib/structure/camera-fit.js'
-  import * as math from '#lib/math.js'
+  } from '#lib/structure/camera-fit'
+  import * as math from '#lib/math'
   import { untrack } from 'svelte'
   import { default_camera_position, polyhedron_centroid } from './geometry'
 

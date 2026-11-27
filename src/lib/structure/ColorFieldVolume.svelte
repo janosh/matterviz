@@ -1,8 +1,8 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
-  import * as math from '#lib/math.js'
-  import type { Matrix3x3 } from '#lib/math.js'
-  import { clamp01 } from '#lib/utils.js'
+  import * as math from '#lib/math'
+  import type { Matrix3x3 } from '#lib/math'
+  import { clamp01 } from '#lib/utils'
   import {
     BackSide,
     BoxGeometry,

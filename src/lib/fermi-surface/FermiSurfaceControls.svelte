@@ -2,21 +2,21 @@
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import { track_settings } from '#lib/controls.js'
-  import { ISO_COLORMAP_SELECT_PROPS } from '#lib/isosurface/coloring.js'
-  import { ColorScaleSelect } from '#lib/plot/index.js'
-  import { ControlPane } from '#lib/overlays/index.js'
+  import { track_settings } from '#lib/controls'
+  import { ISO_COLORMAP_SELECT_PROPS } from '#lib/isosurface/coloring'
+  import { ColorScaleSelect } from '#lib/plot/index'
+  import { ControlPane } from '#lib/overlays/index'
   import CameraSection from '#lib/scene/CameraSection.svelte'
-  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
-  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales'
   import { html_to_text, make_change_detector } from 'svelte-widgets/utils'
-  import { parse_num_token } from '#lib/utils.js'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
+  import { parse_num_token } from '#lib/utils'
+  import type { ShortcutScope } from '#lib/shortcuts'
   import { untrack, type Snippet } from 'svelte'
-  import { sorted_numbers, type Vec2 } from '#lib/math.js'
+  import { sorted_numbers, type Vec2 } from '#lib/math'
   import { property_label, resolve_color_property } from './constants'
-  import { energy_unit_text } from '#lib/spectral/frequency-units.js'
+  import { energy_unit_text } from '#lib/spectral/frequency-units'
   import { mu_slider_range } from './compute'
   import { available_property_names } from './geometry'
   import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
@@ -477,7 +477,7 @@
   }
   .value {
     min-width: 3em;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.9em;
   }
 </style>

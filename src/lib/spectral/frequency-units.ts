@@ -5,7 +5,7 @@ import {
   HARTREE_TO_EV,
   PLANCK_J_S,
   THZ_TO_INVERSE_CM,
-} from '#lib/constants.js'
+} from '#lib/constants'
 import type { NormalizationMode } from './types'
 
 // Units a phonon DOS / band structure can be displayed in. `cm^-1` is the only spelling;

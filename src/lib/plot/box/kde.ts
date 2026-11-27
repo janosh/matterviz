@@ -2,8 +2,8 @@
 // Never mutates inputs.
 
 import { clamp } from 'svelte-widgets/utils'
-import type { Vec2 } from '#lib/math.js'
-import { array_extent, partition_point, quantile_unordered, sample_std } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
+import { array_extent, partition_point, quantile_unordered, sample_std } from '#lib/math'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis

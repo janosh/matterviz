@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { DEFAULTS } from '#lib/settings'
 
   // Zero lines off: 0 °C or 0 GPa is no reference on a phase diagram, and on a °C axis the
   // line would move with the unit
@@ -9,44 +9,45 @@
 </script>
 
 <script lang="ts">
-  import { format_label_html, format_label_svg } from '#lib/composition/formula-markup.js'
-  import { track_settings } from '#lib/controls.js'
-  import { symbol_map } from '#lib/labels.js'
-  import { PlotControls } from '#lib/plot/index.js'
-  import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
-  import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
+  import { format_label_html, format_label_svg } from '#lib/composition/formula-markup'
+  import { track_settings } from '#lib/controls'
+  import { symbol_map } from '#lib/labels'
+  import { PlotControls } from '#lib/plot/index'
+  import { sanitize_html, sanitize_svg } from '#lib/sanitize'
+  import { TooltipContent, TooltipValue } from '#lib/tooltip/index'
   import { tooltip as hint } from 'svelte-widgets/attachments'
-  import { json_source } from '#lib/io/export.js'
+  import { json_source } from '#lib/io/export'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { point_in_polygon, polygon_label_point, type Vec2 } from '#lib/math.js'
+  import { point_in_polygon, polygon_label_point, type Vec2 } from '#lib/math'
   import {
     create_cartesian_frame,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
-  import type { ObstacleSeries } from '#lib/plot/core/decorations/index.js'
-  import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { error_bar_path } from '#lib/plot/core/error-bars.js'
-  import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
-  import { pointer_pos } from '#lib/plot/core/interactions.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import { create_axis_scales } from '#lib/plot/core/scales.js'
+  import type { ObstacleSeries } from '#lib/plot/core/decorations/index'
+  import { with_obstacle_frame } from '#lib/plot/core/decorations/index'
+  import { error_bar_path } from '#lib/plot/core/error-bars'
+  import { resolve_plot_display } from '#lib/plot/core/display.svelte'
+  import { pointer_pos } from '#lib/plot/core/interactions'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { create_axis_scales } from '#lib/plot/core/scales'
   import type {
     AxisConfig,
     BasePlotProps,
+    CartesianPlotProps,
     DisplayConfig,
     LegendConfig,
     LegendItem,
     PanConfig,
-  } from '#lib/plot/core/types.js'
-  import { get_scale_type_name } from '#lib/plot/core/types.js'
-  import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { toggle_item } from '#lib/utils.js'
+  } from '#lib/plot/core/types'
+  import { get_scale_type_name } from '#lib/plot/core/types'
+  import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
+  import { toggle_item } from '#lib/utils'
   import { symbol } from 'd3-shape'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -110,7 +111,6 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     wrapper = $bindable(),
     export_filename,
     export_formats,
@@ -120,7 +120,8 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
-    Omit<BasePlotProps, `range_padding` | `hovered`> & {
+    Omit<BasePlotProps, `hovered`> &
+    Pick<CartesianPlotProps, `title`> & {
       // Pressure-temperature diagram to draw: phases, boundaries and special points with optional uncertainties.
       data?: PtPhaseDiagramData
       // Axis configs by quantity, whichever side swap_axes puts them on (label, ticks, format,
@@ -172,6 +173,7 @@
       // Extra controls-pane content above the built-in sections
       controls_extra?: Snippet
     } = $props()
+  const uid = $props.id()
 
   const BOUNDARY_HIT_PX = 6
   // Largest end-joining gap (fraction of the plot) traced regions pass without a warning
@@ -304,7 +306,7 @@
   })
 
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => ({ x: x_axis, x2: {}, y: y_axis, y2: {} }),
     auto_ranges: () => auto_ranges,
     has_x2: () => false,
@@ -319,7 +321,7 @@
     ref_lines: () => [],
     pan: () => pan,
     facet_layout: () => undefined,
-    clip_id_prefix: `pt-clip`,
+    clip_path_id: `pt-clip-${uid}`,
   })
   const no_marginals = normalize_marginals(false)
   const data_to_px = $derived.by(() => {
@@ -722,7 +724,6 @@
   aria-label="{pt_data?.system ? `${pt_data.system} ` : ``}pressure-temperature phase diagram"
   bind:fullscreen
   bind:wrapper
-  {fullscreen_toggle}
   {show_controls}
   marginals={no_marginals}
   marginal_series={[]}

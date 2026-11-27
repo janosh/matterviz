@@ -3,7 +3,7 @@
 // rate: a lerp of the endpoints would dolly in and out, and pass through the target between
 // opposite handles.
 import { motion_duration } from 'svelte-widgets/effects'
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import * as THREE from 'three/webgpu'
 
 // Structural, not OrbitControls: Threlte's `ref` and three's export declare the same object

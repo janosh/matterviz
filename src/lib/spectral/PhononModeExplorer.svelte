@@ -1,31 +1,34 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
-  import { same_while_equal } from '#lib/utils.js'
-  import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index.js'
+  import { clamp, html_to_text, same_while_equal, to_error } from 'svelte-widgets/utils'
+  import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { css_color_to_hex } from '#lib/colors/index.js'
-  import { strip_compression_extensions } from '#lib/io/decompress.js'
+  import { css_color_to_hex } from '#lib/colors/index'
+  import { strip_compression_extensions } from '#lib/io/decompress'
   import { ArrowCollapse, ArrowExpand, Settings } from 'svelte-widgets/icons'
   import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { FPS_STEP } from '#lib/constants.js'
+  import { DEFAULTS } from '#lib/settings'
+  import { FPS_STEP } from '#lib/constants'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { in_range, reciprocal_lattice } from '#lib/math.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
-  import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
-  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
-  import { parse_supercell_scaling, type StructureSettings } from '#lib/structure/index.js'
+  import { in_range, reciprocal_lattice } from '#lib/math'
+  import type { Vec2, Vec3 } from '#lib/math'
+  import type { ScatterHandlerEvent } from '#lib/plot/core/types'
+  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout'
+  import { parse_supercell_scaling, type StructureSettings } from '#lib/structure/index'
   import {
     polyhedra_options_from,
     type ResolvedPolyhedraOptions,
-  } from '#lib/structure/polyhedra.js'
+  } from '#lib/structure/polyhedra'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import {
+    is_editable_event_target,
+    is_modifier_chord,
+    shortcut_attrs,
+  } from 'svelte-widgets/shortcuts'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { shortcut_attrs } from '#lib/shortcuts.js'
+  import { SHORTCUTS } from '#lib/shortcuts'
   import type { ComponentProps } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
   import { on } from 'svelte/events'
@@ -135,7 +138,6 @@
       | `style`
       | `fps_range`
       | `step_labels`
-      | `fullscreen_toggle`
       | `on_play`
       | `on_pause`
       | `on_end`
@@ -466,9 +468,8 @@ under its open panes -->
       hovered_qpoint_index={path_link.active_qpoint}
       show_vectors={false}
       show_controls={false}
-      fullscreen_toggle={false}
       allow_file_drop={false}
-      scene_props={{ gizmo: false }}
+      scene_controls={{ gizmo: false }}
       on_kpath_click={(qpoint_idx) => select_on_path(qpoint_idx, selection?.mode_idx ?? 0)}
     >
       <button
@@ -524,7 +525,7 @@ under its open panes -->
     type="button"
     class="step-mode"
     aria-label={label}
-    {...shortcut_attrs(`phonon_mode`, `${label} with an eigenvector`)}
+    {...shortcut_attrs(SHORTCUTS.phonon_mode, `${label} with an eigenvector`)}
     disabled={!selection ||
       animatable_mode_indices.at(direction === 1 ? -1 : 0) === selection.mode_idx}
     onclick={() => step_mode(direction)}>{direction === 1 ? `›` : `‹`}</button
@@ -540,7 +541,7 @@ under its open panes -->
           >q-point
           <select
             aria-label="q-point"
-            {...shortcut_attrs(`phonon_qpoint`, `q-point`)}
+            {...shortcut_attrs(SHORTCUTS.phonon_qpoint, `q-point`)}
             value={selection?.qpoint_idx ?? 0}
             onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
           >
@@ -757,9 +758,6 @@ under its open panes -->
             children: structure_overlays,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
-            // the bar's fullscreen button takes the whole explorer; a second one for just the
-            // atomic-motion viewer would leave the plots behind
-            fullscreen_toggle: false,
             show_image_atoms: false,
             scene_props: {
               bonding_strategy: `explicit_only`,
@@ -909,7 +907,7 @@ under its open panes -->
     }
     .character,
     .sparse {
-      color: var(--text-muted, #6b7280);
+      color: var(--text-color-muted, #6b7280);
       font-size: 0.9em;
     }
   }

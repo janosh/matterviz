@@ -2,9 +2,9 @@
 // cross a widget boundary unchanged. All coordinates are [pressure, temperature] pairs in the
 // data's own units (pressure_unit, temperature_unit). A null-valued key counts as omitted.
 
-import type { Vec2 } from '#lib/math.js'
-import type { LineStyle } from '#lib/plot/index.js'
-import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
+import type { Vec2 } from '#lib/math'
+import type { LineStyle } from '#lib/plot/index'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index'
 import type { TempUnit } from '../types'
 
 export type PressureUnit = `Pa` | `kPa` | `MPa` | `GPa` | `bar` | `kbar` | `atm`

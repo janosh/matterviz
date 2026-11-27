@@ -7,26 +7,27 @@ import type {
   TrajectoryXQuantity,
   TrajHandlerData,
   HotspotRequest,
-} from '#lib/trajectory/index.js'
+} from '#lib/trajectory/index'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import * as plotting from '#lib/trajectory/plotting.js'
-import * as calc_rdf from '#lib/rdf/compute-rdf.js'
-import type { Site } from '#lib/structure/index.js'
+import { normalize_show_controls } from '#lib/controls'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import * as plotting from '#lib/trajectory/plotting'
+import * as calc_rdf from '#lib/rdf/compute-rdf'
+import type { Site } from '#lib/structure/index'
 import * as structure_component from '#lib/structure/Structure.svelte'
 import * as msd_pane_module from '#lib/msd/TrajectoryMsdPane.svelte'
 import * as rdf_pane_module from '#lib/rdf/TrajectoryRdfPane.svelte'
 import * as structure_id_pane_module from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
 import { Matrix4 } from 'three/webgpu'
-import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-import { FrameView } from '#lib/trajectory/frame.js'
-import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare.js'
+import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run'
+import { host_run } from '#lib/trajectory/runs/host'
+import { create_warning_collector } from '#lib/trajectory/parse/shared'
+import { FrameView } from '#lib/trajectory/frame'
+import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare'
 import {
   get_colorable_property_keys,
   get_property_colors,
-} from '#lib/structure/atom-properties.js'
+} from '#lib/structure/atom-properties'
 import {
   resize_element,
   trigger_resize_observer,
@@ -120,7 +121,7 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
 test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
   // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
   const viewer = vi.fn()
-  vi.doMock(`#lib/trajectory/index.js`, () => ({ trajectory_from_frames, Trajectory: viewer }))
+  vi.doMock(`#lib/trajectory/index`, () => ({ trajectory_from_frames, Trajectory: viewer }))
   try {
     const { default: TrajectoryTestPage } =
       await import('../../../src/routes/test/trajectory/+page.svelte')
@@ -131,7 +132,7 @@ test(`trajectory page initializes without reading query parameters during preren
       expect.objectContaining({ id: `loaded-trajectory` }),
     )
   } finally {
-    vi.doUnmock(`#lib/trajectory/index.js`)
+    vi.doUnmock(`#lib/trajectory/index`)
   }
 })
 
@@ -241,8 +242,6 @@ describe(`display modes`, () => {
       default_props({
         trajectory: run,
         current_step_idx: 0,
-        // closed, so the display packet carries only the channels the scene draws
-        data_inspector_open: false,
         structure_props: {
           scene_props: {
             show_polyhedra: `always`,
@@ -292,9 +291,7 @@ describe(`display modes`, () => {
       }
     const run = trajectory_from_frames(frames)
     const read = vi.spyOn(run, `read_frame`)
-    const props = $state(
-      default_props({ trajectory: run, active_pane: `controls`, data_inspector_open: false }),
-    )
+    const props = $state(default_props({ trajectory: run, active_pane: `controls` }))
     const target = mount_trajectory(props)
     const last_channels = () => read.mock.lastCall?.[2]?.vectors
     await tick()
@@ -552,8 +549,7 @@ describe(`controls`, () => {
   ] as const
 
   test(`every hideable control renders by default`, async () => {
-    // the info button hides while the inspector's Info tab shows the same cards
-    const props = $state(default_props({ data_inspector_open: false }))
+    const props = $state(default_props())
     const target = await mount_ticked(props)
     // a closed inspector: no sidebar, the info button back, the analysis button not lit
     expect(target.querySelector(`.analysis-button`)?.classList.contains(`active`)).toBe(false)
@@ -575,15 +571,16 @@ describe(`controls`, () => {
 
   // A render sample shows every n-th atom: inspector rows name source atoms, the scene numbers
   // its sites, so selection and hover map between the two in both directions
-  // Open by default, except where its menu entry is hidden: there nothing could close it.
-  // Its Info tab shows the info pane's cards, so the info button hides while it shows. The
-  // analysis button lights up for it only where its menu entry shows (null: no button).
+  // Closed by default. Opened, it still stays hidden where its menu entry is hidden (nothing
+  // could close it there). Its Info tab shows the info pane's cards, so the info button hides while
+  // it shows. The analysis button lights up for it only where its menu entry shows (null: no
+  // button).
   // oxfmt-ignore
   test.each([
-    [`default props`, {}, true, false, true],
-    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true, false],
-    [`no controls`, { show_controls: `never` as const }, false, false, null],
-    // data_inspector_open=false: in `every hideable control renders by default`
+    [`default props`, {}, false, true, false],
+    [`data_inspector_open=true`, { data_inspector_open: true }, true, false, true],
+    [`a hidden menu entry`, { data_inspector_open: true, show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true, false],
+    [`no controls`, { data_inspector_open: true, show_controls: `never` as const }, false, false, null],
   ])(
     `with %s the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
     (_name, overrides, shown, info_button, analysis_active) => {
@@ -603,7 +600,7 @@ describe(`controls`, () => {
     [1200, false],
   ])(`a %ipx viewer row stacks the inspector: %s`, async (row_width, stacked) => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(row_width)
-    const target = mount_trajectory(default_props())
+    const target = mount_trajectory(default_props({ data_inspector_open: true }))
     const row = query(target, `.viewer-row`)
     await vi.waitFor(() =>
       expect(row.classList.contains(`docked-sidebar-stacked`)).toBe(stacked),
@@ -614,7 +611,9 @@ describe(`controls`, () => {
   // The inspector's Info tab stands in for the info pane while it shows: an `info` active_pane
   // opens that tab, and switching between other panes keeps whichever tab the user picked
   test(`active_pane="info" opens the inspector's Info tab`, async () => {
-    const props = $state(default_props({ active_pane: `info` as Pane }))
+    const props = $state(
+      default_props({ active_pane: `info` as Pane, data_inspector_open: true }),
+    )
     mount_trajectory(props)
     const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
     const selected_tab = () =>
@@ -879,9 +878,7 @@ describe(`controls`, () => {
   // at mount and on every update (ending on the first again, so hidden controls come back)
   test(`hidden: [control] removes that control alone`, async () => {
     const names = HIDEABLE_CONTROLS.map(([name]) => name)
-    const props = $state(
-      default_props({ data_inspector_open: false, show_controls: { hidden: [names[0]] } }),
-    )
+    const props = $state(default_props({ show_controls: { hidden: [names[0]] } }))
     const target = await mount_ticked(props)
     const shown = () =>
       HIDEABLE_CONTROLS.filter(
@@ -1417,6 +1414,7 @@ describe(`banners`, () => {
 
 describe(`panes`, () => {
   test(`active_pane opens exactly one pane at a time`, async () => {
+    // passed, so the bound prop reads back the toggles
     const props = $state(
       default_props({ active_pane: null as Pane, data_inspector_open: false }),
     )
@@ -1529,7 +1527,6 @@ describe(`panes`, () => {
       default_props({
         auto_play: true,
         active_pane: null as Pane,
-        data_inspector_open: false,
         on_pause,
       }),
     )
@@ -1745,16 +1742,34 @@ describe(`events`, () => {
     mount_trajectory(props)
     doc_query<HTMLButtonElement>(`.fullscreen-button`).click()
     await vi.waitFor(() => expect(props.fullscreen).toBe(true))
-    expect(on_fullscreen_change).toHaveBeenCalledWith(payload(0, 0))
+    expect(on_fullscreen_change).toHaveBeenCalledWith({ ...payload(0, 0), fullscreen: true })
     expect(document.fullscreenElement).toBe(doc_query(`.trajectory`))
     props.show_controls = false
     await tick()
-    expect(doc_query<HTMLButtonElement>(`.fullscreen-button`).style.display).toBe(`none`)
+    expect(doc_query<HTMLButtonElement>(`.fullscreen-button`).hidden).toBe(true)
     await document.exitFullscreen()
     await tick()
     expect(props.fullscreen).toBe(false)
     expect(document.querySelector(`.trajectory > .sequence-control-bar`)).toBeNull()
   })
+
+  // The bar's fullscreen and the inspector's site list stand in for the structure's own
+  test.each([undefined, `always`, { style: `top: 0`, hidden: [`info-pane`] }] as const)(
+    `structure_props.show_controls=%j keeps the structure's fullscreen and site table hidden`,
+    async (show_controls) => {
+      const structure_props = last_props<StructureProps>(structure_component)
+      mount_trajectory(default_props({ structure_props: { show_controls } }))
+      await vi.waitFor(() => expect(structure_props().show_controls).toBeDefined())
+      const config = normalize_show_controls(structure_props().show_controls)
+      const names = [`fullscreen`, `site-table`, `info-pane`, `controls`]
+      expect(names.map(config.visible)).toEqual([
+        false,
+        false,
+        typeof show_controls !== `object`,
+        true,
+      ])
+    },
+  )
 
   test.each([`analysis-button`, `view-mode-button`])(
     `Escape closes %s without flashing and leaves parent-owned fullscreen alone`,
@@ -1909,7 +1924,7 @@ describe(`panes track progressively loaded property rows`, () => {
 
   // oxfmt-ignore
   test.each([
-    [`info`, { active_pane: `info`, data_inspector_open: false }, /Property Rows\s*(?<count>\d+(?: loaded)?)/,
+    [`info`, { active_pane: `info` }, /Property Rows\s*(?<count>\d+(?: loaded)?)/,
       [`2 loaded`, `5 loaded`, `5`]],
     [`data inspector`, { data_inspector_open: true }, /Frames \((?<count>\d+)\)/, [`2`, `5`, `5`]],
   ] as const)(

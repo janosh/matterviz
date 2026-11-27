@@ -1,19 +1,21 @@
 // Type definitions for Fermi surface visualization
-import type { BZHoverData } from '#lib/brillouin/index.js'
-import type { FileLoadData } from '#lib/io/types.js'
-import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
-import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import type { DefaultSettings } from '#lib/settings.js'
-import type { ElectronEnergyUnit } from '#lib/spectral/frequency-units.js'
-import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
+import type { BZHoverData } from '#lib/brillouin/index'
+import type { FileLoadData } from '#lib/io/types'
+import type { ScalarGrid3D } from '#lib/isosurface/grid'
+import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math'
+import type { ColorScale } from '#lib/plot/core/types'
+import type { DefaultSettings } from '#lib/settings'
+import type { ElectronEnergyUnit } from '#lib/spectral/frequency-units'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index'
+
+// Controls `show_controls` can hide by name
+export type FermiControlName = `filename` | `fullscreen` | `controls` | `export-pane`
 
 // Viewer settings FermiSurface forwards to FermiSurfaceControls (bound) and FermiSurfaceScene
 // (read-only); defaults live in DEFAULTS.fermi, whose color_scale is a bare scheme name
-export type FermiSurfaceSettings = Omit<
-  DefaultSettings[`fermi`],
-  `fullscreen_toggle` | `color_scale`
-> & { color_scale: ColorScale }
+export type FermiSurfaceSettings = Omit<DefaultSettings[`fermi`], `color_scale`> & {
+  color_scale: ColorScale
+}
 
 export type SpinChannel = `up` | `down` | null
 

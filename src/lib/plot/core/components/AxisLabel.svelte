@@ -2,9 +2,9 @@
   import { clamp } from 'svelte-widgets/utils'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
-  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout.js'
-  import type { Vec2 } from '#lib/math.js'
-  import type { AxisOption } from '#lib/plot/core/types.js'
+  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout'
+  import type { Vec2 } from '#lib/math'
+  import type { AxisOption } from '#lib/plot/core/types'
 
   // Axis title centered on (x, y). Static titles are SVG text wrapped by the same
   // measured layout auto-padding reserves for them; titles with selectable `options`

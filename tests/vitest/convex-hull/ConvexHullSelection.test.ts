@@ -1,9 +1,9 @@
-import type { HullModel } from '#lib/convex-hull/index.js'
+import type { HullModel } from '#lib/convex-hull/index'
 import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
-import * as thermo from '#lib/convex-hull/thermodynamics.js'
-import * as canvas_draw from '#lib/convex-hull/canvas-draw.js'
-import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+import * as thermo from '#lib/convex-hull/thermodynamics'
+import * as canvas_draw from '#lib/convex-hull/canvas-draw'
+import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords'
+import type { PhaseData } from '#lib/convex-hull/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { interpolateReds } from 'd3-scale-chromatic'
 import { SvelteMap } from 'svelte/reactivity'
@@ -40,7 +40,7 @@ beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).
-vi.mock(`#lib/convex-hull/canvas-draw.js`, async (import_actual) => {
+vi.mock(`#lib/convex-hull/canvas-draw`, async (import_actual) => {
   const actual = await import_actual()
   return {
     ...(actual as Record<string, unknown>),
@@ -327,6 +327,19 @@ describe(`convex hull replacement state`, () => {
       `${chem_sys} & Ehull`,
     )
     // the canvas hull redraws into a fresh 2x canvas rather than upscaling the screen bitmap
+    const live_canvas = target.querySelector(`canvas[tabindex="0"]`)
+    const drawn_from: unknown[] = []
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(function (
+      this: HTMLCanvasElement,
+    ) {
+      const ctx = make_canvas_context(this)
+      return new Proxy(ctx, {
+        get: (proxied, prop) =>
+          prop === `drawImage`
+            ? (source: unknown) => void drawn_from.push(source)
+            : Reflect.get(proxied, prop),
+      })
+    })
     const sizes: number[][] = []
     vi.spyOn(HTMLCanvasElement.prototype, `toBlob`).mockImplementation(function (
       this: HTMLCanvasElement,
@@ -340,6 +353,7 @@ describe(`convex hull replacement state`, () => {
     await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
     expect(on_export.mock.calls[0][1].data).toBeInstanceOf(Blob)
     expect(sizes).toEqual([[1600, 1200]]) // 2x the unmeasured canvas's 800x600 CSS size
+    expect(drawn_from).not.toContain(live_canvas)
   })
 
   const submit_probe = async (text: string) => {
@@ -740,13 +754,19 @@ describe(`convex hull replacement state`, () => {
     await vi.waitFor(() => expect(wrapper.requestFullscreen).toHaveBeenCalledOnce())
   })
 
+  // dropEffect none on dragover keeps the browser from firing drop (and navigating to the
+  // file); a drop that still arrives came via an enclosing drop zone, which gets to handle it
   test.each([`2d`, `3d`, `4d`] as const)(
-    `disabled %s drops still prevent browser navigation`,
+    `disabled %s hull refuses file drags and leaves drops to enclosing zones`,
     async (dim) => {
       await mount_harness({ dim, allow_file_drop: false })
-      const event = new DragEvent(`drop`, { bubbles: true, cancelable: true })
-      doc_query(`.convex-hull-${dim}`).dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
+      const hull = doc_query(`.convex-hull-${dim}`)
+      const over = create_drop_event([], { type: `dragover` })
+      hull.dispatchEvent(over)
+      expect([over.defaultPrevented, over.dataTransfer?.dropEffect]).toEqual([true, `none`])
+      const drop = create_drop_event([new File([`x`], `x.json`)])
+      hull.dispatchEvent(drop)
+      expect(drop.defaultPrevented).toBe(false)
     },
   )
 

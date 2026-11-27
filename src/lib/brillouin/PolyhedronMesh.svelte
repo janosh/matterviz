@@ -3,8 +3,8 @@
   // BrillouinZoneScene and the BZ overlay in FermiSurfaceScene. Owns the face geometry and
   // disposes it when the polyhedron changes or the mesh unmounts. The polygon face holding
   // `hovered_face` (a triangle index, from a pointer event's faceIndex) gets the hover highlight.
-  import type { TouchHoverProps } from '#lib/scene/index.js'
-  import { dispose_on_change, HoverHighlight } from '#lib/scene/index.js'
+  import type { TouchHoverProps } from '#lib/scene/index'
+  import { dispose_on_change, HoverHighlight } from '#lib/scene/index'
   import Cylinder from '#lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'

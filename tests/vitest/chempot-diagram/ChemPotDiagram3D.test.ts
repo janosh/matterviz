@@ -6,17 +6,16 @@ import {
   chempot_png_blob,
   chempot_svg_string,
   occlude_tick_labels,
-} from '#lib/chempot-diagram/export.js'
-import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
-import type * as scene_module from '#lib/scene/index.js'
+} from '#lib/chempot-diagram/export'
+import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types'
+import type { PhaseData } from '#lib/convex-hull/types'
+import type * as scene_module from '#lib/scene/index'
 import type * as threlte_core from '@threlte/core'
 import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometry.js'
-import { ARITY_COLORS } from '#lib/chempot-diagram/color.js'
-import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
-import type { Vec3 } from '#lib/math.js'
-import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-import { dpi_to_scale } from '#lib/io/export.js'
+import { ARITY_COLORS } from '#lib/chempot-diagram/color'
+import { swizzle_to_render } from '#lib/chempot-diagram/compute'
+import type { Vec3 } from '#lib/math'
+import { DEFAULT_PNG_DPI, dpi_to_scale } from 'svelte-widgets/figure-export'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import * as THREE from 'three/webgpu'
 import { afterEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
@@ -48,7 +47,7 @@ vi.mock(`three/examples/jsm/geometries/ConvexGeometry.js`, async (original) => {
   }
   return { ...mod, ConvexGeometry: CountingConvexGeometry }
 })
-vi.mock(`#lib/scene/index.js`, async (original) => ({
+vi.mock(`#lib/scene/index`, async (original) => ({
   ...(await original<typeof scene_module>()),
   webgpu_available: () => true,
 }))
@@ -95,7 +94,7 @@ test(`SVG snapshot of the canvas, its overlay labels and the view settings`, asy
   })
   canvas.toBlob = (callback: BlobCallback) => callback(png_blob())
   const svg = await chempot_svg_string(wrapper, { elements: [`Li`, `O`] })
-  expect(svg).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?><svg /)
+  expect(svg).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?>\n<svg /)
   expect(svg).toContain(`<image href="data:image/png;base64,iVBORw0KGgo`)
   const doc = new DOMParser().parseFromString(svg, `image/svg+xml`)
   expect([...doc.querySelectorAll(`text`)].map(({ textContent }) => textContent)).toEqual([

@@ -2,20 +2,20 @@ import { value_key } from 'svelte-widgets/utils'
 import type { BondData } from './bond-rendering'
 import { BondFrame, bond_site_1, bond_site_2 } from './bond-rendering'
 import { get_orig_site_idx, get_site, numeric_sites, site_count } from './site'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
+import { element_from_atomic_number } from '#lib/element/helpers'
 import { get_element_counts } from './density'
 // Coordination polyhedra detection: vertices come from the rendered bond graph, hulls from a
 // custom quickhull tailored to small point sets (CN 4-12). Three-free, so image-atom completion
 // (pbc.ts) can run it; polyhedra-render.ts builds the meshes. Hot paths use scalar math and
 // per-element caches to scale to large structures.
 
-import type { ElementSymbol } from '#lib/element/index.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import type { Vec3 } from '#lib/math.js'
-import { array_extent, array_max, same_position } from '#lib/math.js'
-import { POLYHEDRA_DEFAULTS } from '#lib/constants.js'
-import type { DefaultSettings } from '#lib/settings.js'
-import type { AnyStructure } from '#lib/structure/index.js'
+import type { ElementSymbol } from '#lib/element/index'
+import { element_by_symbol } from '#lib/element/data'
+import type { Vec3 } from '#lib/math'
+import { array_extent, array_max, same_position } from '#lib/math'
+import { POLYHEDRA_DEFAULTS } from '#lib/constants'
+import type { DefaultSettings } from '#lib/settings'
+import type { AnyStructure } from '#lib/structure/index'
 import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`

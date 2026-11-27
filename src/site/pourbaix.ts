@@ -4,9 +4,9 @@
 // (https://openstax.org/books/chemistry-2e/pages/g-standard-thermodynamic-properties-for-selected-substances).
 // That table lists no hydroxo-anions (HFeO2^-, HCuO2^-, ZnO2^2-), so these diagrams leave
 // out the alkaline redissolution region of the full Pourbaix-atlas diagrams.
-import { EV_TO_KJ_PER_MOL } from '#lib/constants.js'
-import type { PourbaixConfig, PourbaixEntry } from '#lib/pourbaix/index.js'
-import { import_pymatgen_pourbaix } from '#lib/pourbaix/pymatgen.js'
+import { EV_TO_KJ_PER_MOL } from '#lib/constants'
+import type { PourbaixConfig, PourbaixEntry } from '#lib/pourbaix/index'
+import { import_pymatgen_pourbaix } from '#lib/pourbaix/pymatgen'
 // Materials Project Ag–Te entries (DFT solids, experimental ions) from pymatgen's test files
 // (test-files/analysis/pourbaix_diagram/pourbaix_test_data.json, MIT license), saved as the
 // PourbaixDiagram(comp_dict={Ag: 0.5, Te: 0.5}, conc_dict={Ag: 1e-8, Te: 1e-8}) of

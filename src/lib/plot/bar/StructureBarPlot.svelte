@@ -1,26 +1,23 @@
 <script lang="ts">
-  import type { BarPlotOptions } from '#lib/plot/index.js'
+  import type { BarPlotOptions } from '#lib/plot/index'
   // Shell shared by the bar plots that histogram one-or-many structures (#lib/bond-angles,
   // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
   // Internal: apps use BondAnglePlot, CoordinationBarPlot or StructureTypePlot.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import type { FileLoadCallback } from '#lib/io/index.js'
+  import type { FileLoadCallback } from '#lib/io/index'
   import type {
     AxisConfig,
     BarHandlerProps,
     BarSeries,
     Orientation,
-  } from '#lib/plot/core/types.js'
-  import { on_change } from '#lib/plot/core/interactions.js'
-  import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
-  import type {
-    StructureEntry,
-    StructureSiteHighlight,
-  } from '#lib/plot/core/structure-input.js'
+  } from '#lib/plot/core/types'
+  import { on_change } from '#lib/plot/core/interactions'
+  import { structure_drop_zone } from '#lib/plot/core/structure-input'
+  import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input'
   import type { Snippet } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
   import BarPlot from './BarPlot.svelte'
 
   let {

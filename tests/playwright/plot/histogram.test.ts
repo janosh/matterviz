@@ -219,8 +219,9 @@ test.describe(`Histogram Component Tests`, () => {
       await page.setViewportSize({ width, height: 844 })
       await stroke_color.scrollIntoViewIfNeeded()
       expect((await require_bbox(stroke_color)).width).toBeGreaterThan(20)
-      const rows = pane.locator(`label:has(> input[type="range"])`)
-      for (const row of await rows.all()) {
+      const rows = await pane.locator(`label:has(> input[type="range"])`).all()
+      expect(rows.length).toBeGreaterThan(0) // an empty match would pass the loop vacuously
+      for (const row of rows) {
         const children = await bounding_boxes(row.locator(`:scope > *`))
         const row_box = await require_bbox(row, `controls row`)
         for (let idx = 0; idx < children.length; idx++) {

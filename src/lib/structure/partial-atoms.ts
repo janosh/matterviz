@@ -1,4 +1,4 @@
-import { grow_capacity, same_position } from '#lib/math.js'
+import { grow_capacity, same_position } from '#lib/math'
 import type { InstancedAtom } from './atom-instances'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import { cutaway_excludes, cutaway_planes } from './cutaway'

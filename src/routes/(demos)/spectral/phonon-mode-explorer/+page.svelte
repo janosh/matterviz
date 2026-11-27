@@ -4,15 +4,15 @@
   import FilePicker from '#lib/FilePicker.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import * as file_io from '#lib/io/index.js'
-  import type { Vec3 } from '#lib/math.js'
+  import * as file_io from '#lib/io/index'
+  import type { Vec3 } from '#lib/math'
   import type {
     IrRamanOptions,
     PhononBandColoring,
     PhononModeDataset,
     PhononModeSelection,
     SpectrumKind,
-  } from '#lib/spectral/index.js'
+  } from '#lib/spectral/index'
   import {
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
@@ -25,13 +25,13 @@
     PhononModeExplorer,
     qpoint_has_eigenvectors,
     spectrum_from_phonon_data,
-  } from '#lib/spectral/index.js'
-  import { parse_supercell_scaling } from '#lib/structure/index.js'
+  } from '#lib/spectral/index'
+  import { parse_supercell_scaling } from '#lib/structure/index'
   import type { QueryParams, UrlParamEntry } from 'svelte-widgets/browser'
   import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/browser'
   import { to_error } from 'svelte-widgets/utils'
-  import { glob_basename, glob_default } from '#site/imports.js'
-  import { latest_load } from '#site/state.svelte.js'
+  import { glob_basename, glob_default } from '#site/imports'
+  import { latest_load } from '#site/state.svelte'
   import { untrack } from 'svelte'
 
   type FixtureSource = { name: string; href: string }
@@ -237,7 +237,6 @@
   let uploaded_dataset = $state.raw<PhononModeDataset>()
   let load_error = $state<string>()
   let upload_loading = $state(false)
-  let dragover = $state(false)
   let url_initialized = $state(false)
   let selected_meta = $derived(FIXTURE_META[selected_filename])
   let active_dataset = $derived(uploaded_dataset ?? selected_fixture?.dataset)
@@ -251,7 +250,6 @@
       url: ``,
       label,
       category: path ? `band path` : `Γ point`,
-      category_icon: path ? `📈` : `🎯`,
     }),
   )
 
@@ -336,7 +334,7 @@
     if (fixture) explorer = initial_state(fixture.dataset)
   }
 
-  const handle_file_drop = file_io.create_file_drop_handler({
+  const drop_zone = file_io.file_drop_zone({
     allow: () => true,
     max_files: 1,
     on_drop: (content, filename, metadata) => {
@@ -353,15 +351,16 @@
     on_error: (error) => (load_error = error),
     set_loading: (value) => {
       upload_loading = value
-      if (value) [dragover, load_error] = [false, undefined]
+      if (value) load_error = undefined
     },
   })
 
-  // Bundled fixtures have no URL, so a dropped chip names only the fixture: load it directly
-  const handle_drop = (event: DragEvent): void => {
+  // Bundled fixtures have no URL, so a dropped chip names only the fixture: load it directly.
+  // Runs in the capture phase, where preventDefault claims the drop from drop_zone.
+  const claim_chip_drop = (event: DragEvent): void => {
     const chip_name = file_io.dropped_file_url(event)
     const chip = fixture_files.find((file) => file.name === chip_name)
-    if (!chip) return void handle_file_drop(event)
+    if (!chip) return
     event.preventDefault()
     void select_fixture(chip)
   }
@@ -449,13 +448,9 @@
 
 <section
   class="explorer-shell bleed-1400"
-  class:dragover
   aria-busy={upload_loading || fixture_loading}
-  ondrop={handle_drop}
-  {...file_io.drag_over_handlers({
-    allow: () => true,
-    set_dragover: (value) => (dragover = value),
-  })}
+  ondropcapture={claim_chip_drop}
+  {@attach drop_zone}
 >
   {#if load_error}<StatusMessage bind:message={load_error} type="error" dismissible />{/if}
   {#if active_dataset}
@@ -537,7 +532,7 @@
   }
   .explorer-shell {
     margin-block: 0 2.5em;
-    &.dragover {
+    &:global(.dragover) {
       outline: 2px dashed var(--accent-color, #4c78a8);
       outline-offset: 3px;
     }

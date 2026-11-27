@@ -208,7 +208,9 @@ test.describe(`StructureScene Component Tests`, { tag: `@webgl` }, () => {
     await expect(tooltip).toHaveCSS(`font-size`, `12px`)
     await page.setViewportSize({ width: 1920, height: 1080 })
     const viewer = page.locator(`#test-structure`)
-    const fullscreen_button = viewer.locator(`> section.control-buttons > .fullscreen-btn`)
+    const fullscreen_button = viewer
+      .locator(`> section.control-buttons`)
+      .getByRole(`button`, { name: /^(?:Enter|Exit) fullscreen$/ })
     await fullscreen_button.click()
     await expect(viewer).toHaveCSS(`height`, `1080px`)
     await hover_canvas_center(canvas)

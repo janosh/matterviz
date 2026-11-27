@@ -1,10 +1,10 @@
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { format_num } from 'svelte-widgets/format'
-import { HIGHLIGHT } from '#lib/colors/index.js'
-import type { CompositionType } from '#lib/composition/index.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { format_amount } from '#lib/composition/format.js'
-import { count_atoms_in_composition } from '#lib/composition/reduce.js'
+import { HIGHLIGHT } from '#lib/colors/index'
+import type { CompositionType } from '#lib/composition/index'
+import type { ElementSymbol } from '#lib/element/index'
+import { format_amount } from '#lib/composition/format'
+import { count_atoms_in_composition } from '#lib/composition/reduce'
 import {
   drop_cached_hull_data,
   entry_has_temp_data,
@@ -14,12 +14,12 @@ import {
   system_fractions,
 } from './thermodynamics'
 import { hull_plot_position } from './model'
-import { element_by_symbol } from '#lib/element/data.js'
-import { format_fractional } from '#lib/labels.js'
-import { array_extent, array_max, type Point3D } from '#lib/math.js'
+import { element_by_symbol } from '#lib/element/data'
+import { format_fractional } from '#lib/labels'
+import { array_extent, array_max, type Point3D } from '#lib/math'
 import { bisectLeft, bisectRight } from 'd3-array'
-import { resolve_color_scale } from '#lib/plot/core/scales.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
+import { resolve_color_scale } from '#lib/plot/core/scales'
+import type { ColorScale } from '#lib/plot/core/types'
 import type {
   ConvexHullConfig,
   ConvexHullEntry,
@@ -321,8 +321,6 @@ type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | nul
 // Energy per atom with the MP correction (as the hull uses it), null when the entry has no
 // finite energy or no atoms
 function compute_energy_per_atom(entry: PhaseData): number | null {
-  if (!(count_atoms_in_composition(entry.composition) > 0)) return null
-  if (!is_finite_number(entry.energy_per_atom) && !is_finite_number(entry.energy)) return null
   const energy_per_atom = get_energy_per_atom(entry)
   return is_finite_number(energy_per_atom) ? energy_per_atom : null
 }

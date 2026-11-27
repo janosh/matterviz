@@ -1,7 +1,7 @@
-import { make_volume } from '#lib/isosurface/types.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { create_frac_to_cart, type Vec3 } from '#lib/math.js'
+import { make_volume } from '#lib/isosurface/types'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import type { AnyStructure } from '#lib/structure/index'
+import { create_frac_to_cart, type Vec3 } from '#lib/math'
 
 const DEMO_FRAMES = 6
 

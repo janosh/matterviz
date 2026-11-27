@@ -1,5 +1,5 @@
-import { parse_formula } from '#lib/composition/parse.js'
-import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
+import { parse_formula } from '#lib/composition/parse'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants'
 import {
   analyze_gas_data,
   apply_gas_corrections,
@@ -13,17 +13,17 @@ import {
   get_default_gas_provider,
   get_effective_pressures,
   P_REF,
-} from '#lib/convex-hull/gas-thermodynamics.js'
-import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
-import { compute_hull_model } from '#lib/convex-hull/model.js'
-import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
-import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/types.js'
-import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy.js'
+} from '#lib/convex-hull/gas-thermodynamics'
+import { filter_entries_at_temperature } from '#lib/convex-hull/helpers'
+import { compute_hull_model } from '#lib/convex-hull/model'
+import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types'
+import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/types'
+import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy'
 import { describe, expect, test } from 'vite-plus/test'
 import { load_json, make_phase } from '../test-fixtures'
-import { process_hull_entries } from '#lib/convex-hull/thermodynamics.js'
-import { compute_section, prepare_diagram } from '#lib/phase-diagram/ternary/compute.js'
-import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
+import { process_hull_entries } from '#lib/convex-hull/thermodynamics'
+import { compute_section, prepare_diagram } from '#lib/phase-diagram/ternary/compute'
+import { plan_synthesis } from '#lib/synthesis-planning/plan'
 
 const provider = get_default_gas_provider()
 

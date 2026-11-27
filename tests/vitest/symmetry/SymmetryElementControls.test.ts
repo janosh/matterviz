@@ -1,7 +1,7 @@
 // Tests for the per-kind symmetry-element visibility toggles (legend + checkboxes)
-import type { Vec3 } from '#lib/math.js'
-import { diagonal_matrix } from '#lib/structure/supercell.js'
-import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
+import type { Vec3 } from '#lib/math'
+import { diagonal_matrix } from '#lib/structure/supercell'
+import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index'
 import {
   count_symmetry_elements,
   has_visible_symmetry_overlay,
@@ -9,7 +9,7 @@ import {
   SYM_ELEM_KIND_INFO,
   SYM_ELEMENTS_INPUT_FRAME_NOTE,
   tile_symmetry_elements,
-} from '#lib/symmetry/symmetry-elements.js'
+} from '#lib/symmetry/symmetry-elements'
 import SymmetryElementControls from '#lib/symmetry/SymmetryElementControls.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'

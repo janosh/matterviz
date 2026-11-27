@@ -1,12 +1,12 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
-import { is_finite_vec3_like } from '#lib/math.js'
-import type { AnalysisStreamOptions } from '#lib/trajectory/analysis.js'
-import { collect_trajectory_positions, position_buffers } from '#lib/trajectory/analysis.js'
+import { is_finite_vec3_like } from '#lib/math'
+import type { AnalysisStreamOptions } from '#lib/trajectory/analysis'
+import { collect_trajectory_positions, position_buffers } from '#lib/trajectory/analysis'
 import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
   TrajectoryRun,
-} from '#lib/trajectory/index.js'
+} from '#lib/trajectory/index'
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump
@@ -23,6 +23,11 @@ export const VELOCITY_SITE_PROPERTY = `velocity`
 // 1k-atom run. Striding lowers the VDOS Nyquist frequency by the same factor.
 export const vacf_buffers = (run: TrajectoryRun): number =>
   has_velocities(run.preview) ? 2 : 1 + position_buffers(run)
+
+// MSD's stride-hint budget: VACF's whenever VACF differentiates the same positions, so both
+// hint one stride and a single sweep serves them (collect_trajectory_positions shares it)
+export const msd_stride_buffers = (run: TrajectoryRun): number =>
+  has_velocities(run.preview) ? position_buffers(run) : vacf_buffers(run)
 
 // A frame carries velocities or it does not; write_frame_velocities enforces that
 // all-or-nothing rule, so site 0 speaks for the whole frame.

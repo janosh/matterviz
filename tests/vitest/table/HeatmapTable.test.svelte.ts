@@ -1,8 +1,8 @@
 import type { CellSnippetArgs, RowData, RowId, SummaryStat } from 'svelte-widgets/table'
-import type { ShowControlsProp } from '#lib/controls.js'
-import type { ColumnPrefs, Column } from '#lib/table/index.js'
+import type { ShowControlsProp } from '#lib/controls'
+import type { ColumnPrefs, Column } from '#lib/table/index'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
-import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
+import { TABLE_EXPORT_FORMATS } from '#lib/table/index'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vite-plus/test'
@@ -294,13 +294,22 @@ describe(`HeatmapTable`, () => {
     })
   })
 
-  it(`formats numbers with column format strings`, () => {
-    mount_table({
-      data: [{ Num: 0.123 }, { Num: 1.234 }],
-      columns: [{ id: `Num`, label: `Num`, format: `.1%` }],
-    })
-    expect(col_values(`Num`)).toEqual([`12.3%`, `123.4%`])
-  })
+  // also: rows stripe by index by default (DataTable's `striped`, right under virtualization)
+  it.each([undefined, false])(
+    `formats numbers with column format strings (striped=%s)`,
+    (striped) => {
+      mount_table({
+        data: [{ Num: 0.123 }, { Num: 1.234 }],
+        columns: [{ id: `Num`, label: `Num`, format: `.1%` }],
+        ...(striped === undefined ? {} : { striped }),
+      })
+      expect(col_values(`Num`)).toEqual([`12.3%`, `123.4%`])
+      const rows = [...document.querySelectorAll(`tbody tr[data-row-idx]`)]
+      expect(rows.map((row) => row.classList.contains(`stripe`))).toEqual(
+        striped === false ? [false, false] : [true, false],
+      )
+    },
+  )
 
   it.each([
     [`white`, `black`],

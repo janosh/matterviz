@@ -1,10 +1,6 @@
-import type { ChemicalElement, ElementCategory } from '#lib/element/types.js'
-import {
-  DEFAULT_CATEGORY_COLORS,
-  default_element_colors,
-  is_concrete_color,
-  resolve_color_token,
-} from './colors'
+import type { ChemicalElement, ElementCategory } from '#lib/element/types'
+import { resolve_color_token } from 'svelte-widgets/theme-core'
+import { DEFAULT_CATEGORY_COLORS, default_element_colors, is_concrete_color } from './colors'
 import { get_theme_preference, type ThemeMode } from './theme'
 
 // Periodic-table hover/selection state shared between the table, its controls and

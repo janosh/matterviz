@@ -1,7 +1,7 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { create_frac_to_cart, euclidean_dist } from '#lib/math.js'
-import type { Crystal, StructureBond } from '#lib/structure/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { create_frac_to_cart, euclidean_dist } from '#lib/math'
+import type { Crystal, StructureBond } from '#lib/structure/index'
 import {
   find_drawn_completion_sites,
   find_image_atoms,
@@ -10,24 +10,24 @@ import {
   shift_bonds_by_unwrap,
   unwrap_molecules,
   wrap_to_unit_cell,
-} from '#lib/structure/pbc.js'
-import type { ImageAtom, ImageAtomCompletion, ImageAtomOptions } from '#lib/structure/pbc.js'
-import { DEFAULTS } from '#lib/settings.js'
+} from '#lib/structure/pbc'
+import type { ImageAtom, ImageAtomCompletion, ImageAtomOptions } from '#lib/structure/pbc'
+import { DEFAULTS } from '#lib/settings'
 import {
   compute_bonds,
   electroneg_ratio,
   explicit_only,
   get_bond_data,
   get_majority_element,
-} from '#lib/structure/bonding.js'
-import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
-import { bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering.js'
-import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
-import { get_element_counts } from '#lib/structure/density.js'
-import { is_image_site } from '#lib/structure/site.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
-import { structure_map } from '#site/structures.js'
+} from '#lib/structure/bonding'
+import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra'
+import { bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra'
+import { parse_structure_file } from '#lib/structure/parse'
+import { get_element_counts } from '#lib/structure/density'
+import { is_image_site } from '#lib/structure/site'
+import { open_trajectory } from '#lib/trajectory/open'
+import { structure_map } from '#site/structures'
 import lifemn_cif from '#site/structures/Li4Fe3Mn1(PO4)4.cif?raw'
 import nacl_poscar from '#site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '#site/structures/quartz-alpha.cif?raw'

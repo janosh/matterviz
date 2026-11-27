@@ -1,7 +1,7 @@
-import { mul_3x3_vec3, subtract, transpose_3x3 } from '#lib/math.js'
-import { compute_frequency_range } from '#lib/spectral/helpers.js'
-import { load_phonon_fixtures, phonon_fixture_groups } from '#site/phonons/fixtures.js'
-import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
+import { mul_3x3_vec3, subtract, transpose_3x3 } from '#lib/math'
+import { compute_frequency_range } from '#lib/spectral/helpers'
+import { load_phonon_fixtures, phonon_fixture_groups } from '#site/phonons/fixtures'
+import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index'
 import { describe, expect, it } from 'vite-plus/test'
 
 describe(`Phonon Module Tests`, () => {

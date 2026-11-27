@@ -1,10 +1,10 @@
 // Fermi surface extraction through its Web Worker boundary: worker results match the main-thread
 // extraction exactly, a band grid crosses once per worker, results are cached per grid and
 // options, and a viewer's requests are scheduled latest-wins
-import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
-import { fermi_surface_transferables } from '#lib/fermi-surface/extract-job.js'
-import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
-import type { BandGridData, FermiSurfaceOptions } from '#lib/fermi-surface/types.js'
+import { extract_fermi_surface } from '#lib/fermi-surface/compute'
+import { fermi_surface_transferables } from '#lib/fermi-surface/extract-job'
+import { parse_fermi_file } from '#lib/fermi-surface/parse'
+import type { BandGridData, FermiSurfaceOptions } from '#lib/fermi-surface/types'
 import type { WorkerRequest } from 'svelte-widgets/worker-serve'
 import { create_input_store } from 'svelte-widgets/worker-serve'
 import { afterEach, expect, test } from 'vite-plus/test'
@@ -30,7 +30,7 @@ const {
   extract_fermi_surface_async,
   fermi_extraction_warm,
   register_fermi_viewer,
-} = await import(`#lib/fermi-surface/extract-async.js`)
+} = await import(`#lib/fermi-surface/extract-async`)
 afterEach(stub.reset)
 
 const cu_path = `src/site/fermi-surfaces/cu_fcc_bands.bxsf.gz`
@@ -152,7 +152,7 @@ test(`warmth follows the grids the worker holds, and an evicted grid is sent aga
 
 test(`extracts on the main thread where workers are disabled`, async () => {
   const main_thread_module = await import_without_workers(
-    () => import(`#lib/fermi-surface/extract-async.js`),
+    () => import(`#lib/fermi-surface/extract-async`),
   )
   const grid = load_cu()
   const options = { mu: -2.5, interpolation_factor: 0, wigner_seitz: true }

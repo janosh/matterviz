@@ -54,9 +54,9 @@ async function wheel_over(page: Page, root: Locator, zoom = false) {
   // A plain wheel scrolls with an animation that a software-rendered (CI WebGL) viewer can
   // stall past any fixed wait, so wait for the page to move
   if (!zoom) {
-    await page
-      .waitForFunction((start) => globalThis.scrollY !== start, start_y, { timeout: 5000 })
-      .catch(() => {}) // the assertion below reports a page that never scrolled
+    await expect
+      .poll(() => page.evaluate(() => globalThis.scrollY), `plain wheel scrolls the page`)
+      .not.toBe(start_y)
   }
   return page.evaluate((start) => {
     const { last_wheel } = globalThis as unknown as { last_wheel?: WheelEvent }

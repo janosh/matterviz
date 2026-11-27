@@ -1,23 +1,23 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import { track_settings } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls'
   // Controls panel for isosurface visualization settings. Surfaces are grouped under their
   // geometry-source volume; each exposes isovalue, opacity, colour and optional cross-volume
   // scalar colouring (color source, colormap, value range).
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
-  import type { Vec2 } from '#lib/math.js'
-  import { ColorScaleSelect } from '#lib/plot/index.js'
-  import { scheme_name, to_color_scale_config } from '#lib/plot/core/scales.js'
-  import type { ColorScaleConfig } from '#lib/plot/core/types.js'
+  import type { Vec2 } from '#lib/math'
+  import { ColorScaleSelect } from '#lib/plot/index'
+  import { scheme_name, to_color_scale_config } from '#lib/plot/core/scales'
+  import type { ColorScaleConfig } from '#lib/plot/core/types'
   import { html_to_text } from 'svelte-widgets/utils'
-  import { clamp01 } from '#lib/utils.js'
+  import { clamp01 } from '#lib/utils'
   import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, ISO_COLORMAP_SELECT_PROPS } from './coloring'
   import type { DisplayRange } from './sampling'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
-  import { SETTINGS_CONFIG, type SurfaceFinish } from '#lib/settings.js'
+  import { SETTINGS_CONFIG, type SurfaceFinish } from '#lib/settings'
   import { compare_volume_grids, UNIT_CELL_RANGE } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import {
@@ -847,7 +847,7 @@
       margin: 0;
     }
     .layer-value {
-      font-family: monospace;
+      font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
     }
   }

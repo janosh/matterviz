@@ -1,4 +1,4 @@
-import type { ColorScale } from '#lib/plot/core/types.js'
+import type { ColorScale } from '#lib/plot/core/types'
 
 export { default as PeriodicTable } from './PeriodicTable.svelte'
 export { default as PropertySelect } from './PropertySelect.svelte'

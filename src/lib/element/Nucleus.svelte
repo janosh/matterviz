@@ -5,8 +5,8 @@
     is_concrete_color,
     is_opaque_color,
     resolve_backdrop,
-  } from '#lib/colors/index.js'
-  import type { NucleonPaint, SymbolPaint } from '#lib/element/index.js'
+  } from '#lib/colors/index'
+  import type { NucleonPaint, SymbolPaint } from '#lib/element/index'
   import type { SVGAttributes } from 'svelte/elements'
 
   // fill and label fall back per field, so a partial paint keeps the other defaults

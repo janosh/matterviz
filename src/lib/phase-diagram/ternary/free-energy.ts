@@ -6,7 +6,7 @@
 // - static: E_i - sum_e x_e G_e(T)
 // - gas: compound gases (CO, CO2, H2O) at mu(T, p) in the same frame as the compounds
 // Elemental gases (O from O2, ...) shift the references by mu_e(T, p) - mu_e(ref).
-import { count_atoms_in_composition } from '#lib/composition/reduce.js'
+import { count_atoms_in_composition } from '#lib/composition/reduce'
 import {
   compute_element_mu_shift,
   compute_gas_chemical_potential,
@@ -14,19 +14,18 @@ import {
   gas_pressure_term,
   get_default_gas_provider,
   get_effective_pressures,
-} from '#lib/convex-hull/gas-thermodynamics.js'
-import { interpolate_energy_at_temperature } from '#lib/convex-hull/helpers.js'
+} from '#lib/convex-hull/gas-thermodynamics'
+import { interpolate_energy_at_temperature } from '#lib/convex-hull/helpers'
 import {
   absolute_energy_per_atom,
-  compute_e_form_per_atom,
   entry_has_temp_data,
   find_lowest_energy_unary_refs,
   has_absolute_energy,
-} from '#lib/convex-hull/thermodynamics.js'
-import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import { array_extent, array_max, array_min, type Vec2 } from '#lib/math.js'
+} from '#lib/convex-hull/thermodynamics'
+import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types'
+import type { ElementSymbol } from '#lib/element/index'
+import { element_by_symbol } from '#lib/element/data'
+import { array_extent, array_max, array_min, type Vec2 } from '#lib/math'
 import { G_ELEMENT_TEMPERATURES, G_ELEMENTS } from './g-els-data'
 import type { FreeEnergyOptions, FreeEnergySource, PhaseFreeEnergy } from './types'
 
@@ -352,10 +351,15 @@ export function build_free_energy_model(
       }
       const volume = get_volume_per_atom(entry) ?? NaN
       const reduced_mass = sisso_reduced_mass(fractions) ?? NaN
-      // unary_refs covers every element (synthetic zero-energy refs were filled in above)
-      const dh_form = entry.e_form_per_atom ?? compute_e_form_per_atom(entry, unary_refs)
-      if (dh_form === null)
-        throw new Error(`No E_form for ${entry.entry_id ?? JSON.stringify(entry.composition)}`)
+      // On the references' absolute scale, where synthetic and E_form-only references sit at
+      // their e_form_per_atom (get_energy_per_atom has no energy for them)
+      const dh_form =
+        entry.e_form_per_atom ??
+        static_energy(entry) -
+          fractions.reduce(
+            (sum, [element, frac]) => sum + frac * static_energy(unary_refs[element]),
+            0,
+          )
       return {
         source,
         t_range: SISSO_T_RANGE,

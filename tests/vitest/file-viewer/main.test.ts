@@ -1,25 +1,21 @@
-import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
-import {
-  frame_from_wire,
-  frame_to_wire,
-  type WireFrame,
-} from '#lib/file-viewer/host-protocol.js'
-import { create_display } from '#lib/file-viewer/main.js'
-import { mount_viewer } from '#lib/file-viewer/mount-viewer.js'
-import { DEFAULTS } from '#lib/settings.js'
-import { host } from '#lib/host.js'
-import { parse_file_content } from '#lib/file-viewer/parse.js'
-import { base64_to_array_buffer } from '#lib/utils.js'
-import type { ParseResult } from '#lib/file-viewer/parse.js'
-import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
+import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame'
+import { frame_from_wire, frame_to_wire, type WireFrame } from '#lib/file-viewer/host-protocol'
+import { create_display } from '#lib/file-viewer/main'
+import { mount_viewer } from '#lib/file-viewer/mount-viewer'
+import { DEFAULTS } from '#lib/settings'
+import { host } from '#lib/host'
+import { parse_file_content } from '#lib/file-viewer/parse'
+import { base64_to_array_buffer } from '#lib/utils'
+import type { ParseResult } from '#lib/file-viewer/parse'
+import { is_fermi_surface_data } from '#lib/fermi-surface/types'
 import type { DownloadData } from 'svelte-widgets/browser'
-import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
-import * as trajectory_parse from '#lib/trajectory/parse/index.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
-import type * as structure_parse_module from '#lib/structure/parse.js'
-import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { summarize_run } from '#lib/trajectory/run.js'
+import { MAX_STRING_CHARS } from '#lib/io/decompress'
+import * as trajectory_parse from '#lib/trajectory/parse/index'
+import { parse_structure_file } from '#lib/structure/parse'
+import type * as structure_parse_module from '#lib/structure/parse'
+import type { TrajectoryRun } from '#lib/trajectory/index'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
+import { summarize_run } from '#lib/trajectory/run'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { deflateSync as deflate_sync, gzipSync as gzip_sync } from 'node:zlib'
@@ -38,7 +34,7 @@ import {
 } from '../test-fixtures'
 
 // Spy defaulting to the real parser so a test can return a zero-atom structure (cell-only CIF)
-vi.mock('#lib/structure/parse.js', async (import_original) => {
+vi.mock('#lib/structure/parse', async (import_original) => {
   const original = await import_original<typeof structure_parse_module>()
   return { ...original, parse_structure_file: vi.fn(original.parse_structure_file) }
 })
@@ -333,18 +329,15 @@ test.each([``, `\uFEFF`])(`hull JSON named *convex* renders (prefix %j)`, async 
   ).resolves.toMatchObject({ type: `convex_hull`, data: hull_entries, filename })
 })
 
-// A fractional (or NaN) order built a bogus zone, and one outside 1-3 matched no option of the
-// order <select>: only 1, 2 or 3 reach BrillouinZone
+// Invalid orders used to fall back to the host's silently; now BrillouinZone reports them
 test.each([
   [2, 2],
-  [1.5, 3],
-  [Number.NaN, 3],
-  [0, 3],
-  [4, 3],
-  [-1, 3],
+  [4, 4],
+  [1.5, 1.5],
+  [undefined, 3],
 ])(`mount_viewer forwards bz_order %s as %s over the host's`, (bz_order, expected) => {
   const data = { k_lattice: IDENTITY_MATRIX3, bz_order }
-  const brillouin = { ...DEFAULTS.brillouin, bz_order: 3, surface_color: `#123456` }
+  const brillouin = { ...DEFAULTS.brillouin, bz_order: 3 as const, surface_color: `#123456` }
   mount_viewer(make_container(), `brillouin_zone`, data, {
     defaults: { ...DEFAULTS, brillouin },
   })
@@ -502,8 +495,6 @@ test.each([
   const mount_props = last_mount_props()
   expect(mount_props[prop_name]).toBe(data)
   expect(mount_props.allow_file_drop).toBe(allow_file_drop)
-  // the viewer's own toggle stays, gated by host.fullscreen
-  expect(mount_props).not.toHaveProperty(`fullscreen_toggle`)
   expect(host.wheel_zoom).toBe(`always`) // a viewer filling the tab has no page to scroll
 })
 
@@ -574,8 +565,6 @@ describe(`create_display trajectory display options`, () => {
     ]) {
       expect(mount_props).not.toHaveProperty(key)
     }
-    // the settings default, gated by host.fullscreen
-    expect(mount_props.fullscreen_toggle).toBe(true)
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
     ;(mount_props.on_step_change as (data: unknown) => void)({ step_idx: 7, frame_count: 20 })
     expect(on_step_change).toHaveBeenCalledWith(7, 20)
@@ -749,7 +738,7 @@ describe(`LARGE_FILE markers`, () => {
   // The bridge caches the host handle at import, so re-import after stubbing acquireVsCodeApi
   const fresh_parse = async () => {
     vi.resetModules()
-    return (await import(`#lib/file-viewer/parse.js`)).parse_file_content
+    return (await import(`#lib/file-viewer/parse`)).parse_file_content
   }
 
   test(`asks the host for the file and serves frames and plot rows from it`, async () => {
@@ -1008,7 +997,7 @@ describe(`VSCode Download Integration`, () => {
       setState: vi.fn(),
       getState: vi.fn(),
     }))
-    const { setup_vscode_download } = await import(`#lib/file-viewer/main.js`)
+    const { setup_vscode_download } = await import(`#lib/file-viewer/main`)
     setup_vscode_download()
     return mock_post_message
   }

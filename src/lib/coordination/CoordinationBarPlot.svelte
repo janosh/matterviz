@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { plot_color } from '#lib/colors/index.js'
-  import { format_value } from '#lib/labels.js'
-  import type { Vec2 } from '#lib/math.js'
-  import { sorted_numbers } from '#lib/math.js'
-  import type { BarSites, StructurePlotProps } from '#lib/plot/bar/index.js'
+  import { plot_color } from '#lib/colors/index'
+  import { format_value } from '#lib/labels'
+  import type { Vec2 } from '#lib/math'
+  import { sorted_numbers } from '#lib/math'
+  import type { BarSites, StructurePlotProps } from '#lib/plot/bar/index'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {
     compute_structure_entries,
     to_structure_entries,
-  } from '#lib/plot/core/structure-input.js'
-  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
-  import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
-  import { memo_by_identity } from '#lib/utils.js'
+  } from '#lib/plot/core/structure-input'
+  import type { StructureEntry } from '#lib/plot/core/structure-input'
+  import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types'
+  import { memo_by_identity } from 'svelte-widgets/utils'
   import { compute_coordination_nums, coordination_bar_sites } from './compute-coordination'
   import type { CoordinationSplitMode } from './index'
 

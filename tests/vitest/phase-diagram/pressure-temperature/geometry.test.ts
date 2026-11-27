@@ -4,8 +4,8 @@ import {
   point_in_polygon,
   polygon_signed_area,
   type Vec2,
-} from '#lib/math.js'
-import type { PixelSigma } from '#lib/phase-diagram/pressure-temperature/geometry.js'
+} from '#lib/math'
+import type { PixelSigma } from '#lib/phase-diagram/pressure-temperature/geometry'
 import {
   clip_polygon_to_rect,
   closest_on_segment,
@@ -13,16 +13,13 @@ import {
   interpolate_at,
   nearest_on_polylines,
   uncertainty_band,
-} from '#lib/phase-diagram/pressure-temperature/geometry.js'
+} from '#lib/phase-diagram/pressure-temperature/geometry'
 import type {
   PtBoundary,
   PtPhaseDiagramData,
   PtRegion,
-} from '#lib/phase-diagram/pressure-temperature/types.js'
-import {
-  iron_pt_diagram,
-  water_pt_diagram,
-} from '#site/phase-diagrams/pressure-temperature.js'
+} from '#lib/phase-diagram/pressure-temperature/types'
+import { iron_pt_diagram, water_pt_diagram } from '#site/phase-diagrams/pressure-temperature'
 import { describe, expect, test } from 'vite-plus/test'
 
 const total_area = (regions: PtRegion[]): number =>

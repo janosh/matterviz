@@ -1,33 +1,33 @@
 <script lang="ts">
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
-  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import type { PaneToggleProps } from '#lib/overlays/index'
+  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte'
   import type {
     MarginalAxis,
     MarginalAxisBinding,
     MarginalSeriesInput,
     ResolvedMarginals,
-  } from '#lib/plot/core/marginals.js'
+  } from '#lib/plot/core/marginals'
   import {
     marginal_axis,
     marginal_axis_presence,
     outer_strip_reservation,
-  } from '#lib/plot/core/marginals.js'
+  } from '#lib/plot/core/marginals'
   import PlotMarginals from '#lib/plot/core/components/PlotMarginals.svelte'
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import { chart_css_defaults } from '#lib/plot/core/components/ChartShell.svelte'
   import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
-  import type { UserContentProps } from '#lib/plot/core/types.js'
-  import { svg_sources, type ExportProps, type ExportSources } from '#lib/io/export.js'
-  import { chart_export_filename } from '#lib/plot/core/utils/chart-export.js'
+  import type { UserContentProps } from '#lib/plot/core/types'
+  import { figure_sources, type ExportProps, type ExportSources } from '#lib/io/export'
+  import { chart_export_filename } from '#lib/plot/core/utils/chart-export'
   import { html_to_text } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
-  import { viewer_keys } from '#lib/shortcuts.js'
+  import { viewer_keys } from 'svelte-widgets/attachments'
 
   // Public CSS knobs every Cartesian chart exposes (`--histogram-bg`, `--barplot-bg`, …),
   // mapped onto the frame's own variables so this stylesheet isn't duplicated per chart
@@ -56,7 +56,6 @@
     // Accessible name when neither the title nor the x/y axis labels give one (`Bar chart`)
     aria_label: string
     fullscreen?: boolean
-    fullscreen_toggle?: boolean
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // The outer container, exposed so charts can re-export it to their own callers
     wrapper?: HTMLDivElement
@@ -109,7 +108,6 @@
     aria_label,
     'aria-label': aria_label_override,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     show_controls,
     wrapper = $bindable(),
     require_size = true,
@@ -221,12 +219,11 @@
       bind:fullscreen
       {wrapper}
       {css_prefix}
-      {fullscreen_toggle}
       {show_controls}
       {controls_toggle_props}
       {header_controls}
       export_pane={{
-        sources: { ...svg_sources(() => frame.svg_element), ...export_sources },
+        sources: { ...figure_sources(() => frame.svg_element), ...export_sources },
         export_formats,
         on_export,
         filename: export_filename ?? chart_export_filename(frame),

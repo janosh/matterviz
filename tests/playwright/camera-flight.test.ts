@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type * as CameraFlightModule from '#lib/scene/camera-flight.js'
-import type { TrajectoryViewerController } from '#lib/trajectory/index.js'
+import type * as CameraFlightModule from '#lib/scene/camera-flight'
+import type { TrajectoryViewerController } from '#lib/trajectory/index'
 import { execFile } from 'node:child_process'
 import { readdir, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
@@ -222,7 +222,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
     const flight = pane.locator(`.camera-flight`)
     const motion = flight.getByLabel(`Camera interpolation`, { exact: true })
     await expect(motion).toBeVisible()
-    await expect(flight.getByText(`Advanced timing & motion`, { exact: true })).toHaveCount(0)
     await expect(flight).toHaveCSS(`font-size`, export_font_size)
     const duration = flight.getByLabel(`Flight duration`, { exact: true })
     const number_reference =
@@ -366,7 +365,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
       await preview.click()
       await expect(pause).toBeVisible()
       await expect(home).toBeDisabled({ timeout: 10_000 })
-      await expect(play_button).toHaveText(`⏸`)
+      await expect(play_button).toHaveAccessibleName(`Pause`)
       await play_button.click()
     }
     await expect(flight.getByRole(`alert`)).toHaveCount(0)
@@ -444,7 +443,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     })
     for (const insets of positions) expect(insets).toEqual(fitting_insets)
     // The fullscreen correction keeps manual placement ownership until Reset.
-    await pane.locator(`.reset-button`).click()
+    await pane.getByRole(`button`, { name: `Reset pane position`, exact: true }).click()
     await fullscreen_button.click()
     await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, `false`)
     // Narrow panes must keep the timeline and actions inside their scrollable content.

@@ -3,27 +3,27 @@
 // can never drift apart in which props each viewer receives.
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { PhaseData } from '#lib/convex-hull/types'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
-import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types'
+import { is_fermi_surface_data } from '#lib/fermi-surface/types'
 import {
   auto_isosurface_settings,
   DEFAULT_ISOSURFACE_SETTINGS,
   type VolumetricFileData,
-} from '#lib/isosurface/types.js'
+} from '#lib/isosurface/types'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
-import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
-import { build_structure_props_from_settings, type DefaultSettings } from '#lib/settings.js'
+import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types'
+import { build_structure_props_from_settings, type DefaultSettings } from '#lib/settings'
 import Bands from '#lib/spectral/Bands.svelte'
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import Dos from '#lib/spectral/Dos.svelte'
-import { normalize_band_structure, normalize_dos } from '#lib/spectral/helpers.js'
-import type { BaseBandStructure, DosData } from '#lib/spectral/types.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import type { StructureToolPrediction } from '#lib/structure/prediction.js'
+import { normalize_band_structure, normalize_dos } from '#lib/spectral/helpers'
+import type { BaseBandStructure, DosData } from '#lib/spectral/types'
+import type { AnyStructure } from '#lib/structure/index'
+import type { StructureToolPrediction } from '#lib/structure/prediction'
 import Structure from '#lib/structure/Structure.svelte'
-import type { XrdPattern } from '#lib/xrd/index.js'
+import type { XrdPattern } from '#lib/xrd/index'
 import XrdPlot from '#lib/xrd/XrdPlot.svelte'
 import { mount } from 'svelte'
 import type { RenderableType } from './detect'
@@ -114,12 +114,7 @@ export function mount_viewer(
       ? { fermi_data: data as FermiSurfaceData }
       : { band_data: data as BandGridData }
     // color_property stays unset so per-state data colors by its first property by default.
-    // fullscreen_toggle is web-only: the host gates the viewer's own toggle.
-    const {
-      color_property: _property,
-      fullscreen_toggle: _toggle,
-      ...fermi_defaults
-    } = defaults.fermi
+    const { color_property: _property, ...fermi_defaults } = defaults.fermi
     return mount(FermiSurface, {
       target,
       props: { ...fermi_defaults, ...fermi_props, ...no_file_drop },
@@ -151,13 +146,13 @@ export function mount_viewer(
       data as Record<string, unknown>
     // detect_view_type accepts a bare {k_lattice | reciprocal_lattice, ...} document, which
     // without its lattice handed over showed the empty "Drop Structure File" state
-    const { fullscreen_toggle: _toggle, ...bz_defaults } = defaults.brillouin
     const bz_props: Record<string, unknown> = {
-      ...bz_defaults,
+      ...defaults.brillouin,
       ...no_file_drop,
       structure,
       k_lattice: k_lattice ?? reciprocal_lattice,
-      ...(typeof bz_order === `number` && [1, 2, 3].includes(bz_order) && { bz_order }), // the order <select>'s options
+      // passed through unchecked: an order outside 1-3 shows BrillouinZone's error
+      ...(bz_order !== undefined && { bz_order }),
     }
     if (vertices && faces) bz_props.bz_data = data
     return mount(BrillouinZone, { target, props: bz_props })

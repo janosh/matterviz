@@ -1,23 +1,23 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import type { ScatterPlotOptions } from '#lib/plot/index.js'
-  import type { StructureOptions } from '#lib/structure/index.js'
+  import type { ScatterPlotOptions } from '#lib/plot/index'
+  import type { StructureOptions } from '#lib/structure/index'
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
-  import { DEFAULT_FPS_RANGE } from '#lib/constants.js'
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import { DEFAULT_FPS_RANGE } from '#lib/constants'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls'
+  import type { ShowControlsProp } from '#lib/controls'
   import StatGrid from 'svelte-widgets/StatGrid.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { as_text, file_drop_zone } from '#lib/io/index.js'
+  import { as_text, file_drop_zone } from '#lib/io/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { display_idx, parse_warnings_notice } from '#lib/labels.js'
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import { canvas_sources, json_source, type ExportProps } from '#lib/io/export'
+  import { csv_source } from '#lib/plot/core/utils/chart-export'
+  import { display_idx, parse_warnings_notice } from '#lib/labels'
+  import { FullscreenButton } from '#lib/layout/index'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import {
     create_sequence_player,
@@ -25,14 +25,15 @@
   } from 'svelte-widgets/sequence-player'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from 'svelte-widgets/SequenceControls.svelte'
-  import { Structure } from '#lib/structure/index.js'
-  import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
+  import { Structure } from '#lib/structure/index'
+  import { collect_parse_warnings } from '#lib/trajectory/parse/shared'
   import { clamp, to_error } from 'svelte-widgets/utils'
-  import { viewer_keydown } from '#lib/shortcuts.js'
+  import { viewer_keydown } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import type {
     EnergyReference,
+    NebControlName,
     PathProfile,
     ReactionCoordMode,
     ReactionPath,
@@ -42,8 +43,6 @@
   import { parse_dropped_paths, REACTION_PATH_FORMAT } from './parse'
   import type { PathSplineOptions } from './reaction-path'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
-
-  type NebControlName = `path` | `nav` | `step` | `fps` | `energy` | `export` | `fullscreen`
 
   let {
     paths,
@@ -59,7 +58,6 @@
     auto_play = false,
     show_controls,
     pane_ratio = $bindable(0.6),
-    fullscreen_toggle = true,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     error_msg = $bindable(undefined),
@@ -98,8 +96,6 @@
       show_controls?: ShowControlsProp<NebControlName>
       // Fraction of the width given to the energy plot, the structure gets the rest.
       pane_ratio?: number
-      // Show the fullscreen button in the control bar.
-      fullscreen_toggle?: boolean
       // Whether the viewer fills the screen.
       fullscreen?: boolean
       // The viewer's root element.
@@ -120,7 +116,7 @@
   const dropped_paths = new SvelteMap<string, ReactionPath>()
   let controls_height = $state(0)
   const controls_config = $derived(normalize_show_controls(show_controls, `always`))
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
+  const show_toggle = $derived(shows_fullscreen_toggle(controls_config))
 
   const merged: ReactionPathInput = $derived({
     ...(paths
@@ -365,7 +361,7 @@
           class="fullscreen-button"
         />
       {/if}
-      {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
         <ExportPane
           filename={export_filename}
           sources={export_sources}

@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Crystal } from '#lib'
-  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import type { AtomColorField } from '#lib/structure/atom-color-field.js'
-  import { cell_to_fractional } from '#lib/structure/cutaway.js'
-  import { Structure } from '#lib/structure/index.js'
-  import { make_site } from '#lib/structure/site.js'
+  import { compute_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math'
+  import { DEFAULTS } from '#lib/settings'
+  import type { AtomColorField } from '#lib/structure/atom-color-field'
+  import { cell_to_fractional } from '#lib/structure/cutaway'
+  import { Structure } from '#lib/structure/index'
+  import { make_site } from '#lib/structure/site'
   import TestSection from '../TestSection.svelte'
 
   // A thin slab (c < a, b) under a uniform cloud, viewed straight down c (orthographic): every

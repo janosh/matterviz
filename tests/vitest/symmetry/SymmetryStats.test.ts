@@ -1,4 +1,4 @@
-import type { SymmetryDataset } from '#lib/symmetry/index.js'
+import type { SymmetryDataset } from '#lib/symmetry/index'
 import SymmetryStats from '#lib/symmetry/SymmetryStats.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'

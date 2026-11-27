@@ -1,14 +1,15 @@
-import { display_idx } from '#lib/labels.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { element_by_symbol, element_data } from '#lib/element/index.js'
-import type { FileLoadData } from '#lib/io/types.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
-import type { CameraProjection } from '#lib/settings.js'
+import { display_idx } from '#lib/labels'
+import type { ElementSymbol } from '#lib/element/index'
+import { element_by_symbol, element_data } from '#lib/element/index'
+import type { FileLoadData } from '#lib/io/types'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { IsosurfaceSettings } from '#lib/isosurface/types'
+import type { CameraProjection } from '#lib/settings'
 import type { StructureSettings } from './settings'
 import type { Pbc } from './pbc'
 import { numeric_sites } from './site'
-import { shortcut_title } from '#lib/shortcuts.js'
+import { SHORTCUTS } from '#lib/shortcuts'
+import { shortcut_title } from 'svelte-widgets/shortcuts'
 
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
@@ -65,7 +66,7 @@ export type { StructureSettings, StructureOptions } from './settings'
 export { default as StructureGallery } from './StructureGallery.svelte'
 
 // defined here (not in StructureGallery.svelte's module script) so plain-TS
-// consumers can import it from '#lib/structure/index.js' without a .svelte module
+// consumers can import it from '#lib/structure/index' without a .svelte module
 // resolution, which type-aware lint can't see named exports of
 export type StructureGalleryItem = {
   id: string
@@ -185,11 +186,11 @@ export type BondPair = {
   cell_shift?: Vec3
 }
 
-export type { PerceivedBond, PerceptionOptions } from '#lib/structure/bond-order-perception.js'
+export type { PerceivedBond, PerceptionOptions } from '#lib/structure/bond-order-perception'
 export {
   compose_perceived_bonds,
   perceive_bond_orders,
-} from '#lib/structure/bond-order-perception.js'
+} from '#lib/structure/bond-order-perception'
 
 const atomic_masses = new Map(
   element_data.map(({ number, atomic_mass }) => [number, atomic_mass]),
@@ -228,7 +229,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 | null {
 
 export * from './vectors'
 
-export const RESET_VIEW_TITLE = `${shortcut_title(`reset_camera`, `Reset view`)} or double-click`
+export const RESET_VIEW_TITLE = `${shortcut_title(SHORTCUTS.reset_camera, `Reset view`)} or double-click`
 
 // Payload of Structure's file, fullscreen and camera callbacks; each emitter fills what it knows
 export interface StructureHandlerData extends FileLoadData {

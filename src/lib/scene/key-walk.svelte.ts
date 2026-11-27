@@ -4,12 +4,8 @@
 // leaving). Keys pick up from the pointer's hover. Each step replays the target's handlers, so
 // keyboard users get the mouse's tooltip, HoverHighlight and on_*_hover payload, and the
 // viewer's live region announces the target.
-import type { Vec3 } from '#lib/math.js'
-import {
-  focus_left,
-  is_activation_key,
-  step_point_cursor,
-} from '#lib/plot/core/interactions.js'
+import type { Vec3 } from '#lib/math'
+import { focus_left, is_activation_key, step_point_cursor } from '#lib/plot/core/interactions'
 import { useThrelte } from '@threlte/core'
 import { getContext, setContext } from 'svelte'
 import { on } from 'svelte/events'

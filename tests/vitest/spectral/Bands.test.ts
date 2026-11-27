@@ -1,9 +1,9 @@
-import type { Vec2, Vec3 } from '#lib/math.js'
-import type { AxisRanges } from '#lib/plot/core/types.js'
+import type { Vec2, Vec3 } from '#lib/math'
+import type { AxisRanges } from '#lib/plot/core/types'
 import Bands from '#lib/spectral/Bands.svelte'
-import type * as helpers from '#lib/spectral/helpers.js'
-import { build_point_metadata } from '#lib/spectral/helpers.js'
-import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
+import type * as helpers from '#lib/spectral/helpers'
+import { build_point_metadata } from '#lib/spectral/helpers'
+import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { beforeAll, describe, expect, it, vi } from 'vite-plus/test'
@@ -27,7 +27,7 @@ import {
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 
 // spied on to count the per-point work that builds a band series, which a restyle skips
-vi.mock(`#lib/spectral/helpers.js`, async (import_original) => {
+vi.mock(`#lib/spectral/helpers`, async (import_original) => {
   const actual = await import_original<typeof helpers>()
   return { ...actual, build_point_metadata: vi.fn(actual.build_point_metadata) }
 })

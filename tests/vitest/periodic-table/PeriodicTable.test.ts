@@ -1,10 +1,10 @@
 import type { ChemicalElement, ElementCategory } from '#lib'
-import element_data from '#lib/element/data.js'
+import element_data from '#lib/element/data'
 import PeriodicTable from '#lib/periodic-table/PeriodicTable.svelte'
-import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
-import { ELEM_HEATMAP_LABELS } from '#lib/labels.js'
-import * as math from '#lib/math.js'
-import { colors, selected } from '#lib/state.svelte.js'
+import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index'
+import { ELEM_HEATMAP_LABELS } from '#lib/labels'
+import * as math from '#lib/math'
+import { colors, selected } from '#lib/state.svelte'
 import PeriodicTableControls from '#site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '#site/PeriodicTableDemo.svelte'
 import type { ComponentProps } from 'svelte'
@@ -18,7 +18,7 @@ const { page, replace_url } = vi.hoisted(() => ({
   replace_url: vi.fn(async () => {}),
 }))
 vi.mock(`$app/state`, () => ({ page }))
-vi.mock(`#site/state.svelte.js`, () => ({ replace_url }))
+vi.mock(`#site/state.svelte`, () => ({ replace_url }))
 
 const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)

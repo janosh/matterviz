@@ -35,7 +35,7 @@
   }
   p {
     margin: 0 0 1em;
-    color: var(--text-muted);
+    color: var(--text-color-muted);
     font-size: 0.9em;
   }
 </style>

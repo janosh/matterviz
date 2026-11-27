@@ -1,11 +1,11 @@
 // same_composition_pairs: the structure diff demo's bundled same-formula examples
-import type { AnyStructure } from '#lib/structure/index.js'
-import { compute_structure_diff } from '#lib/structure-diff/compute.js'
+import type { AnyStructure } from '#lib/structure/index'
+import { compute_structure_diff } from '#lib/structure-diff/compute'
 import {
   parse_structure_fixture,
   same_composition_pairs,
   structure_files,
-} from '#site/structures.js'
+} from '#site/structures'
 import { expect, test } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 

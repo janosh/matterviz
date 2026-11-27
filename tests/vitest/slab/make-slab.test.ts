@@ -1,17 +1,17 @@
 import { format_num } from 'svelte-widgets/format'
-import type { Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { enumerate_terminations, detect_layers } from '#lib/slab/terminations.js'
+import type { Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { enumerate_terminations, detect_layers } from '#lib/slab/terminations'
 import {
   interplanar_spacing,
   make_oriented_bulk,
   slab_basis_transform,
-} from '#lib/slab/lattice-basis.js'
-import { make_slab } from '#lib/slab/make-slab.js'
-import type { Slab } from '#lib/slab/index.js'
-import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
-import { structure_map } from '#site/structures.js'
-import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
+} from '#lib/slab/lattice-basis'
+import { make_slab } from '#lib/slab/make-slab'
+import type { Slab } from '#lib/slab/index'
+import type { Crystal, Pbc, Site } from '#lib/structure/index'
+import { structure_map } from '#site/structures'
+import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
 import {
   FCC_FACE_CENTRES,

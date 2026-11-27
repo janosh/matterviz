@@ -1,9 +1,9 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
-  import type { StructureHandlerData } from '#lib/structure/index.js'
-  import type { TrajHandlerData } from '#lib/trajectory/index.js'
-  import { trajectory_files } from '#site/trajectories.js'
+  import type { StructureHandlerData } from '#lib/structure/index'
+  import type { TrajHandlerData } from '#lib/trajectory/index'
+  import { trajectory_files } from '#site/trajectories'
   import CopyButton from 'svelte-widgets/CopyButton.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
@@ -22,8 +22,8 @@
     const [{ default: FilePicker }, { structure_files }, { molecule_files }] =
       await Promise.all([
         import('#lib/FilePicker.svelte'),
-        import('#site/structures.js'),
-        import('#site/molecules.js'),
+        import('#site/structures'),
+        import('#site/molecules'),
       ])
     return {
       default: FilePicker,
@@ -88,7 +88,7 @@
       <h3>
         {structure_filenames[idx]}
       </h3>
-      <LazyDemo
+      <LazyMount
         label="Structure viewer: {structure_filenames[idx]}"
         load={() => import('#lib/structure/Structure.svelte')}
         props={{
@@ -113,7 +113,7 @@
   Compressed variants (e.g.&nbsp;<code>.gz</code>, <code>.bz2</code>) are supported as well.
 </p>
 
-<LazyDemo
+<LazyMount
   label="Structure example files"
   height="180px"
   load={load_structure_picker}
@@ -135,7 +135,7 @@
 
 <h2 id="trajectory-viewer"><a href="/trajectory">Trajectory Viewer</a></h2>
 
-<LazyDemo
+<LazyMount
   label="Trajectory viewer"
   load={() => import('#lib/trajectory/Trajectory.svelte')}
   class="full-bleed"
@@ -150,7 +150,7 @@
 
 <p class="note">Drag any of these trajectory files onto a viewer above to load them:</p>
 
-<LazyDemo
+<LazyMount
   label="Trajectory example files"
   height="120px"
   load={() => import('#lib/FilePicker.svelte')}
@@ -159,7 +159,7 @@
 
 <h2 id="periodic-table"><a href="/periodic-table">Periodic Table</a></h2>
 
-<LazyDemo
+<LazyMount
   label="Periodic table"
   load={() => import('#site/PeriodicTableDemo.svelte')}
   props={{}}
@@ -175,7 +175,7 @@
   density of states. Pick a material below to switch systems.
 </p>
 
-<LazyDemo
+<LazyMount
   label="Phonon spectra"
   height="560px"
   load={() => import('#site/PhononSpectraDemo.svelte')}
@@ -190,7 +190,7 @@
   Pick an example below or drag your own file onto the viewer.
 </p>
 
-<LazyDemo
+<LazyMount
   label="Fermi surface"
   height="600px"
   load={() => import('#site/FermiSurfaceDemo.svelte')}
@@ -206,7 +206,7 @@
   chemical system below to switch.
 </p>
 
-<LazyDemo
+<LazyMount
   label="Convex hull"
   height="600px"
   load={() => import('#site/ConvexHullDemo.svelte')}

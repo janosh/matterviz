@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { is_plain_object } from 'svelte-widgets/utils'
-import { parse_axis_label, subscript_digits } from '#lib/labels.js'
+import { parse_axis_label, subscript_digits } from '#lib/labels'
 import {
   array_extent,
   add,
@@ -13,8 +13,8 @@ import {
   scale as scale_vec,
   sorted_numbers,
   subtract,
-} from '#lib/math.js'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+} from '#lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
 import type { ElectronEnergyUnit, FrequencyUnit } from './frequency-units'
 import {
   convert_frequencies,
@@ -26,7 +26,7 @@ import {
   parse_frequency_unit,
   spectral_value_label,
 } from './frequency-units'
-import type { KPathData } from '#lib/brillouin/types.js'
+import type { KPathData } from '#lib/brillouin/types'
 import type * as types from './types'
 
 // Fractional reciprocal coordinates are equivalent when they differ by a lattice vector.

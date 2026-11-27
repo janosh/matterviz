@@ -197,7 +197,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
 
 <style>
   button.quick {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.8em;
     border: 1px solid rgba(128, 128, 128, 0.25);
     border-radius: 4px;
@@ -353,7 +353,7 @@ Additional features in `FormulaFilter`:
     gap: 1em;
   }
   button.quick {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.8em;
     border: 1px solid rgba(128, 128, 128, 0.25);
     border-radius: 4px;

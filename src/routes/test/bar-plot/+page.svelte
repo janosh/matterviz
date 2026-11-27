@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { BarSeries } from '#lib/plot/index.js'
-  import { BarPlot } from '#lib/plot/index.js'
+  import type { BarSeries } from '#lib/plot/index'
+  import { BarPlot } from '#lib/plot/index'
   import type { ComponentProps } from 'svelte'
   import TestSection from '../TestSection.svelte'
 

@@ -3,7 +3,7 @@
 // rebuild) and a surface whose geometry cannot be built must not get a mesh.
 import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-import type { FermiHover, FermiIsosurface } from '#lib/fermi-surface/types.js'
+import type { FermiHover, FermiIsosurface } from '#lib/fermi-surface/types'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   type BufferGeometry,
@@ -12,10 +12,10 @@ import {
   type MeshStandardMaterial,
   Vector3,
 } from 'three/webgpu'
-import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
-import { sheet_color } from '#lib/fermi-surface/constants.js'
-import { brighten_hex } from '#lib/scene/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { centered_cell_edges } from '#lib/fermi-surface/compute'
+import { sheet_color } from '#lib/fermi-surface/constants'
+import { brighten_hex } from '#lib/scene/index'
+import type { Matrix3x3, Vec3 } from '#lib/math'
 import { afterEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   hover_highlight,

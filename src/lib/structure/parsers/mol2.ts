@@ -1,9 +1,9 @@
 // Tripos MOL2: `@<TRIPOS>` delimited sections. ATOM rows carry SYBYL atom types
 // (`C.ar`, `N.4`), BOND rows carry bond orders, and the optional CRYSIN section a cell.
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { AnyStructure, BondOrder, Site } from '#lib/structure/index.js'
-import { make_site } from '#lib/structure/site.js'
-import { parse_warn } from '#lib/trajectory/parse/shared.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { AnyStructure, BondOrder, Site } from '#lib/structure/index'
+import { make_site } from '#lib/structure/site'
+import { parse_warn } from '#lib/trajectory/parse/shared'
 import {
   cell_frame,
   drop_placeholder_cell,

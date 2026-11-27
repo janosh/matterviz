@@ -6,14 +6,14 @@
     count_atoms_in_composition,
     get_electro_neg_formula,
     get_reduced_formula,
-  } from '#lib/composition/index.js'
-  import type { InfoPaneCard } from '#lib/overlays/index.js'
+  } from '#lib/composition/index'
+  import type { InfoPaneCard } from '#lib/overlays/index'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import Histogram from '#lib/plot/histogram/Histogram.svelte'
-  import type { Column } from '#lib/table/index.js'
-  import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
+  import type { Column } from '#lib/table/index'
+  import { TABLE_EXPORT_FORMATS } from '#lib/table/index'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
-  import { join_hover_link } from '#lib/tooltip/index.js'
+  import { join_hover_link } from '#lib/tooltip/index'
   import { escape_html } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

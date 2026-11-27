@@ -4,13 +4,13 @@
 // chunks (TextLines), so such a file still opens as XYZ, LAMMPS or XDATCAR.
 // Decompression and HDF5 group choice belong to the caller (the file viewer): an ambiguous
 // HDF5 file throws Hdf5GroupSelectionRequiredError.
-import { display_idx } from '#lib/labels.js'
-import { HDF5_EXT_REGEX, INDEX_ABOVE_BYTES } from '#lib/constants.js'
-import { decode_text_chunks, MAX_STRING_CHARS, text_encoding_of } from '#lib/io/decompress.js'
-import { is_binary } from '#lib/io/is-binary.js'
+import { display_idx } from '#lib/labels'
+import { HDF5_EXT_REGEX, INDEX_ABOVE_BYTES } from '#lib/constants'
+import { decode_text_chunks, MAX_STRING_CHARS, text_encoding_of } from '#lib/io/decompress'
+import { is_binary } from '#lib/io/is-binary'
 import { is_plain_object, to_error } from 'svelte-widgets/utils'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
+import type { AnyStructure } from '#lib/structure/index'
+import { is_structure_like, structure_from_json } from '#lib/structure/parse'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames, has_multiple_xyz_frames, TextLines } from './helpers'
 import type { NumericFrame } from './frame'

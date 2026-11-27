@@ -1,5 +1,5 @@
-import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
-import type { CameraProjection } from '#lib/settings.js'
+import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math'
+import type { CameraProjection } from '#lib/settings'
 
 // One family of crystal planes {hkl} and its surface energy. `miller` is any representative
 // (the family is expanded with the point group), `energy` in J/m². With a `slope` (J/m² per
@@ -51,11 +51,14 @@ export type WulffHover = { mark: string; miller: Vec3; screen_position: Point2D 
 
 // Viewer display defaults (WulffShape, WulffScene)
 export const WULFF_DEFAULTS = {
-  opacity: 1,
+  surface_opacity: 1,
   edge_color: `#222222`,
   edge_width: 0.006, // fraction of the shape's radius
-  show_axes: true,
+  show_vectors: true, // the crystal axes a, b, c
   show_legend: true,
   camera_projection: `perspective` as CameraProjection,
 }
 export type WulffDisplaySettings = typeof WULFF_DEFAULTS
+
+// Controls `show_controls` can hide by name
+export type WulffControlName = `fullscreen` | `info-pane` | `export-pane` | `controls`

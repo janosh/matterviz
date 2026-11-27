@@ -3,15 +3,15 @@ import {
   type D3InterpolateName,
   get_d3_interpolator,
   is_palette_range,
-} from '#lib/colors/scale-names.js'
-import type { Vec2 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+} from '#lib/colors/scale-names'
+import type { Vec2 } from '#lib/math'
+import * as math from '#lib/math'
 import {
   axis_transform,
   range_bounds,
   resolve_axis_range,
   validate_log_range,
-} from '#lib/plot/core/interactions.js'
+} from '#lib/plot/core/interactions'
 import type {
   AxisDerive,
   ColorScale,
@@ -19,14 +19,14 @@ import type {
   ScaleType,
   SizeScaleConfig,
   TimeInterval,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_time_scale,
   SCALE_DEFAULTS,
-} from '#lib/plot/core/types.js'
-import { clamp01 } from '#lib/utils.js'
+} from '#lib/plot/core/types'
+import { clamp01 } from '#lib/utils'
 import { range, ticks as d3_ticks } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {
@@ -620,11 +620,19 @@ export function nice_range_from_extent(
   limits: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
-  is_time = false,
-  // Padding factor of marks centred on the data ends (edge_range_padding). After nicing, each
-  // automatic end widens just enough for those marks to draw whole (also when the other end is
-  // pinned, and past an end snapped to an observed 0), not by a whole extra tick step.
-  edge_padding = 0,
+  {
+    is_time = false,
+    edge_padding = 0,
+    nice = true,
+  }: {
+    is_time?: boolean
+    // Padding factor of marks centred on the data ends (edge_range_padding). After nicing, each
+    // automatic end widens just enough for those marks to draw whole (also when the other end
+    // is pinned, and past an end snapped to an observed 0), not by a whole extra tick step.
+    edge_padding?: number
+    // false keeps the padded data ends instead of rounding them out to nice tick values
+    nice?: boolean
+  } = {},
 ): Vec2 {
   // An inset would cut the data ends off (no caller passes one), and NaN poisons the range
   if (!(padding_factor >= 0))
@@ -722,9 +730,13 @@ export function nice_range_from_extent(
   if (data_min === data_max) return [data_min, data_max]
   if (is_time) return fit_marks([data_min, data_max])
 
-  // D3's nice() for pretty boundaries, except arcsinh which keeps the padded domain
-  if (type_name === `arcsinh`) {
-    return fit_marks([snap_zero_min ? 0 : data_min, snap_zero_max ? 0 : data_max])
+  // D3's nice() for pretty boundaries, except arcsinh and `nice: false`, which keep the padded
+  // domain (a log one floored at its smallest positive value)
+  if (type_name === `arcsinh` || !nice) {
+    const ends: Vec2 =
+      type_name === `log` ? positive_log_domain(data_min, data_max) : [data_min, data_max]
+    const result = fit_marks([snap_zero_min ? 0 : ends[0], snap_zero_max ? 0 : ends[1]])
+    return type_name === `log` ? validate_log_range(result) : result
   }
 
   const scale =

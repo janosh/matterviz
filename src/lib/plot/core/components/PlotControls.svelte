@@ -1,27 +1,27 @@
 <script module lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { enum_labels, type SettingType } from '#lib/settings.js'
+  import { enum_labels, type SettingType } from '#lib/settings'
 
   export { enum_options }
 </script>
 
 <script lang="ts">
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
-  import { ControlPane } from '#lib/overlays/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { ControlPane } from '#lib/overlays/index'
+  import { DEFAULTS } from '#lib/settings'
   import { timeFormat } from 'd3-time-format'
   import { tooltip } from 'svelte-widgets/attachments'
   import { format_num } from 'svelte-widgets/format'
-  import { in_range, type Vec2 } from '#lib/math.js'
-  import type { AxisConfig, AxisKey, PlotControlsProps } from '#lib/plot/core/types.js'
-  import { normalize_y2_sync } from '#lib/plot/core/interactions.js'
+  import { in_range, type Vec2 } from '#lib/math'
+  import type { AxisConfig, AxisKey, PlotControlsProps } from '#lib/plot/core/types'
+  import { normalize_y2_sync } from '#lib/plot/core/interactions'
   import {
     get_scale_type_name,
     is_scale_type_name,
     is_time_scale,
     is_y2_sync_mode,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
 
   let {
     show_controls = true,

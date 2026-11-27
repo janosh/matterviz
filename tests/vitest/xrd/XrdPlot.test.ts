@@ -1,10 +1,10 @@
 import XrdPlot from '#lib/xrd/XrdPlot.svelte'
 // static so loading the demo page (and the structures it ships) is not billed to the test timeout
 import Page from '#root/src/routes/(demos)/structure/xrd/+page.svelte'
-import { PLOT_COLORS } from '#lib/colors/index.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import type { Hkl, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
-import * as xrd from '#lib/xrd/index.js'
+import { PLOT_COLORS } from '#lib/colors/index'
+import type { Matrix3x3 } from '#lib/math'
+import type { Hkl, XrdPattern, XrdPeak } from '#lib/xrd/index'
+import * as xrd from '#lib/xrd/index'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {
@@ -81,13 +81,13 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
   const component = mount(Page, { target: document.body })
   try {
     flushSync()
-    for (const region of document.querySelectorAll(`.lazy-demo`))
+    for (const region of document.querySelectorAll(`.lazy-mount`))
       trigger_intersection(region, false)
     await tick()
     expect(compute).not.toHaveBeenCalled()
     expect(saed).not.toHaveBeenCalled()
     const show = async (label: string) => {
-      const region = document.querySelector(`.lazy-demo[aria-label="${label}"]`)
+      const region = document.querySelector(`.lazy-mount[aria-label="${label}"]`)
       if (!region) throw new Error(`Missing ${label} demo`)
       trigger_intersection(region, true)
       await tick()
@@ -611,10 +611,10 @@ describe(`XrdPlot`, () => {
 
     const bar_plot = query(target, `.bar-plot`)
     expect(bar_plot.classList.contains(`dragover`)).toBe(false)
-    for (const event_type of [`dragover`, `dragleave`]) {
-      bar_plot.dispatchEvent(new DragEvent(event_type, { bubbles: true, cancelable: true }))
+    for (const type of [`dragenter`, `dragleave`]) {
+      bar_plot.dispatchEvent(create_drop_event([], { type }))
       await tick()
-      expect(bar_plot.classList.contains(`dragover`)).toBe(event_type === `dragover`)
+      expect(bar_plot.classList.contains(`dragover`)).toBe(type === `dragenter`)
     }
   })
 

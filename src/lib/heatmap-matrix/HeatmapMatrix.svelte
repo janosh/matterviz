@@ -1,38 +1,37 @@
 <script lang="ts">
   import type { VirtualScroll } from 'svelte-widgets/table'
   import { with_defaults } from 'svelte-widgets/utils'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
+  import { FileExportState } from 'svelte-widgets/browser'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import {
-    html_to_svg,
     json_source,
     run_export,
-    svg_sources,
+    figure_sources,
     type ExportProps,
     type ExportSources,
-  } from '#lib/io/export.js'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { normalize_show_controls } from '#lib/controls.js'
+  } from '#lib/io/export'
+  import { normalize_show_controls } from '#lib/controls'
 
-  import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { quantile_unordered, type Vec2 } from '#lib/math.js'
-  import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
-  import { get_scale_type_name } from '#lib/plot/core/types.js'
-  import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { quantile_unordered, type Vec2 } from '#lib/math'
+  import type { AxisConfig, BasePlotProps, ColorScale } from '#lib/plot/core/types'
+  import { get_scale_type_name } from '#lib/plot/core/types'
+  import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { beside_rect } from '#lib/plot/core/decorations/tooltip.js'
-  import type { Rect } from '#lib/plot/core/layout.js'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
+  import { beside_rect } from '#lib/plot/core/decorations/tooltip'
+  import type { Rect } from '#lib/plot/core/layout'
+  import type { TooltipProp } from '#lib/tooltip/index'
   import { virtual_window } from 'svelte-widgets/virtual'
   import { format_num, rows_to_csv } from 'svelte-widgets/format'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, onMount, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
   import type {
     AxisItem,
@@ -99,7 +98,9 @@
     show_values = $bindable(false),
     show_controls,
     controls_open = $bindable(false),
-    controls_props = {},
+    controls_toggle_props,
+    controls_pane_props,
+    controls_extra,
     x_axis = {},
     y_axis = {},
     tooltip,
@@ -107,7 +108,8 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> &
-    ExportProps & {
+    ExportProps &
+    Pick<BasePlotProps, `controls_toggle_props` | `controls_pane_props`> & {
       // Column items in input order (display order is set by x_order). Index into each values row.
       x_items: AxisItem[]
       // Row items in input order (display order is set by y_order). Index into values.
@@ -190,11 +192,8 @@
       show_controls?: ShowControlsProp<`controls`>
       // Whether the controls pane is open.
       controls_open?: boolean
-      // Props forwarded to the controls pane: pane_props, toggle_props and extra children.
-      controls_props?: Pick<
-        ComponentProps<typeof HeatmapMatrixControls>,
-        `pane_props` | `toggle_props` | `children`
-      >
+      // Snippet rendered at the end of the controls pane
+      controls_extra?: Snippet
       // Axis config (label used as axis title)
       x_axis?: AxisConfig
       // Row axis config; its label is used as the axis title.
@@ -726,7 +725,7 @@
       vis_y.map((y_idx) => vis_x.map((x_idx) => get_value(x_idx, y_idx))),
     )
   const export_sources: ExportSources = {
-    ...svg_sources(() => matrix_el && html_to_svg(matrix_el)),
+    ...figure_sources(() => matrix_el),
     // explicit header: object key order would put integer-like labels ("1", "10") first
     csv: () =>
       rows_to_csv(visible_rows(), [
@@ -864,7 +863,9 @@
   style:padding-left={y_axis.label ? `1.8em` : undefined}
 >
   <HeatmapMatrixControls
-    {...controls_props}
+    toggle_props={controls_toggle_props}
+    pane_props={controls_pane_props}
+    children={controls_extra}
     bind:controls_open
     bind:color_scale
     bind:domain_mode

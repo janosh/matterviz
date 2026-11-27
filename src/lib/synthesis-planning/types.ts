@@ -1,10 +1,6 @@
-import type { CompositionType } from '#lib/composition/index.js'
-import type {
-  GasSpecies,
-  GasThermodynamicsProvider,
-  PhaseData,
-} from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/types.js'
+import type { CompositionType } from '#lib/composition/index'
+import type { GasSpecies, GasThermodynamicsProvider, PhaseData } from '#lib/convex-hull/types'
+import type { ElementSymbol } from '#lib/element/types'
 
 export interface RouteComparisonOptions {
   // Maximum visible lines per cell before hover/focus expansion; defaults to 8.

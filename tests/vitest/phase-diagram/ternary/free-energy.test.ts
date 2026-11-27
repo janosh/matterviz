@@ -1,5 +1,5 @@
-import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
-import type { ElementSymbol } from '#lib/element/index.js'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants'
+import type { ElementSymbol } from '#lib/element/index'
 import {
   build_free_energy_model,
   default_t_range,
@@ -7,14 +7,14 @@ import {
   get_volume_per_atom,
   sisso_g_delta,
   sisso_reduced_mass,
-} from '#lib/phase-diagram/ternary/free-energy.js'
-import { G_ELEMENTS } from '#lib/phase-diagram/ternary/g-els-data.js'
+} from '#lib/phase-diagram/ternary/free-energy'
+import { G_ELEMENTS } from '#lib/phase-diagram/ternary/g-els-data'
 import {
   compute_element_mu_shift,
   compute_gas_chemical_potential,
   get_default_gas_provider,
   get_effective_pressures,
-} from '#lib/convex-hull/gas-thermodynamics.js'
+} from '#lib/convex-hull/gas-thermodynamics'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_phase } from '../../test-fixtures'
 
@@ -144,6 +144,21 @@ describe(`build_free_energy_model`, () => {
         mode: `sisso`,
       }).dg_form(900)
     expect(sisso_at_900(undefined)).toBeCloseTo(sisso_at_900(-4.5 - refs), 10)
+    // ...including a synthetic corner (no Co entry) at 0 eV, which used to throw "No E_form"
+    const licoo2_at_900 = (e_form_per_atom?: number) =>
+      phase_energy(
+        [
+          lithium,
+          oxygen_2,
+          make_phase({ Li: 1, Co: 1, O: 2 }, -5, { volume_per_atom: 9, e_form_per_atom }),
+        ],
+        { mode: `sisso` },
+        2,
+      ).dg_form(900)
+    expect(licoo2_at_900(undefined)).toBeCloseTo(
+      licoo2_at_900(-5 - (-1.9 / 4 + -2.45 / 2)),
+      10,
+    )
   })
 
   test(`gas atmosphere shifts the oxygen reference`, () => {

@@ -1,4 +1,4 @@
-import { assert_non_negative } from '#lib/math.js'
+import { assert_non_negative } from '#lib/math'
 import { html_to_text } from 'svelte-widgets/utils'
 import type { DecorationSize, LegendDecorationItem } from './types'
 

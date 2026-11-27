@@ -1,18 +1,17 @@
 <script lang="ts">
   import { clamp } from 'svelte-widgets/utils'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import ExportDestination from './ExportDestination.svelte'
-  import { FileExportState } from './file-export.svelte'
-  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import { ViewerPane } from '#lib/overlays/index.js'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
+  import ExportDestination from 'svelte-widgets/ExportDestination.svelte'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
+  import { ViewerPane } from '#lib/overlays/index'
   import type { ExportItem, ExportSection } from './types'
   import { export_sections, type ExportProps, type ExportSources } from './export'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import type { Snippet } from 'svelte'
   import Popover from 'svelte-widgets/Popover.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Check, Copy, Download } from 'svelte-widgets/icons'
-  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { create_clipboard_feedback, FileExportState } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // mdi:export-variant is not included in svelte-widgets' generated icon set.
@@ -116,7 +115,13 @@
           {#each section.items as item, item_idx (item.label)}
             {@const copy_key = `${sec_idx}-${item_idx}`}
             <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
-            {@const why = item.disabled ? item.disabled_reason : undefined}
+            {@const save_as_blocked =
+              Boolean(item.save_as_reason) && state.destination === `save-as`}
+            {@const why = item.disabled
+              ? item.disabled_reason
+              : save_as_blocked
+                ? item.save_as_reason
+                : undefined}
             {@const hint_id = why ? `${pane_id}-${copy_key}-hint` : undefined}
             {@const why_suffix = why ? ` — ${why}` : ``}
             <span class="export-item" class:disabled={item.disabled}>
@@ -126,7 +131,7 @@
                   type="button"
                   onclick={() =>
                     state.run((context) => item.on_download?.({ ...context, png_dpi }))}
-                  disabled={busy || state.disabled || item.disabled}
+                  disabled={busy || state.disabled || item.disabled || save_as_blocked}
                   aria-label={`Download ${item.label}`}
                   aria-describedby={hint_id}
                   title={`Download ${item.label}${

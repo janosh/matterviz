@@ -2,8 +2,8 @@
 // (counterpart to pymatviz's chem_sys_sunburst).
 
 // type-only import (erased at runtime, so no import cycle with #lib/plot)
-import type { SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
+import type { SunburstNode } from '#lib/plot/core/utils/hierarchy-layout'
+import { is_elem_symbol } from '#lib/element/helpers'
 import { extract_formula_elements } from './parse'
 
 interface ChemSysSunburstMetadata {

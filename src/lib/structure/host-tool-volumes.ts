@@ -1,9 +1,5 @@
-import {
-  auto_volume_layer,
-  index_volumes,
-  retain_volume_layers,
-} from '#lib/isosurface/types.js'
-import type { IsosurfaceLayer, VolumetricData } from '#lib/isosurface/types.js'
+import { auto_volume_layer, index_volumes, retain_volume_layers } from '#lib/isosurface/types'
+import type { IsosurfaceLayer, VolumetricData } from '#lib/isosurface/types'
 
 // One default surface for a tool's fields: the first field gets an auto layer, colored after
 // the viewer's other layers; further fields (e.g. a magnetization beside a charge density)

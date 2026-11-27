@@ -1,9 +1,9 @@
 <script lang="ts">
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
-  import type { BarMode, PlotConfig } from '#lib/plot/index.js'
-  import { PlotControls } from '#lib/plot/index.js'
-  import type { Orientation, PlotControlsProps } from '#lib/plot/core/types.js'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls'
+  import type { BarMode, PlotConfig } from '#lib/plot/index'
+  import { PlotControls } from '#lib/plot/index'
+  import type { Orientation, PlotControlsProps } from '#lib/plot/core/types'
   import type { Snippet } from 'svelte'
 
   let {

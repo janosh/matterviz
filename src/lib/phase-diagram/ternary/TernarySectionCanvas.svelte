@@ -2,9 +2,9 @@
   // Isothermal section: the Gibbs triangle tiled by tie-triangles at one temperature, stable
   // phases as vertices, unstable phases faded by hull distance. Hovering a composition shows
   // its tie-triangle (lever rule), a click (un)pins it; drawing reuses convex-hull helpers.
-  import { add_alpha, default_element_colors } from '#lib/colors/index.js'
-  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
-  import type { LabelOpts, Projected } from '#lib/convex-hull/canvas-draw.js'
+  import { add_alpha, default_element_colors } from '#lib/colors/index'
+  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords'
+  import type { LabelOpts, Projected } from '#lib/convex-hull/canvas-draw'
   import {
     build_hull_faces,
     build_hull_pick_index,
@@ -16,17 +16,13 @@
     face_color_resolver,
     find_hull_entry_at_mouse,
     hull_face_sets,
-  } from '#lib/convex-hull/canvas-draw.js'
-  import { get_energy_color_scale, merge_highlight_style } from '#lib/convex-hull/helpers.js'
-  import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
-  import { lerp, type Vec2 } from '#lib/math.js'
-  import {
-    inside_triangle,
-    TRIANGLE_HEIGHT,
-    xy_to_ternary,
-  } from '#lib/plot/ternary/ternary.js'
+  } from '#lib/convex-hull/canvas-draw'
+  import { get_energy_color_scale, merge_highlight_style } from '#lib/convex-hull/helpers'
+  import type { ConvexHullEntry } from '#lib/convex-hull/types'
+  import { lerp, type Vec2 } from '#lib/math'
+  import { inside_triangle, TRIANGLE_HEIGHT, xy_to_ternary } from '#lib/plot/ternary/ternary'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'
+  import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte'
   import { decompose_composition, type DiagramModel, hits_pin } from './compute'
   import type { Decomposition, IsothermalSection, SectionHover, TernaryDisplay } from './types'
   import { TERNARY_COLORS } from './types'

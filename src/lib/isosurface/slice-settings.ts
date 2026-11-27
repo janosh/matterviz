@@ -1,5 +1,5 @@
-import type { Vec3 } from '#lib/math.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
+import type { Vec3 } from '#lib/math'
+import type { ColorScale } from '#lib/plot/core/types'
 import { DEFAULT_SLICE_SCHEME } from './slice-rendering'
 import type { VolumeSliceMode } from './slice-rendering'
 

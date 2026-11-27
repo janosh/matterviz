@@ -5,7 +5,7 @@
 // remote machine, so these numbers separate host reads, the network and webview rendering.
 // Free of DOM and Svelte imports, like host-bridge.ts which records into it.
 
-import type { PrepareTiming } from '#lib/trajectory/prepare-pool.js'
+import type { PrepareTiming } from '#lib/trajectory/prepare-pool'
 
 interface FrameSample {
   idx: number

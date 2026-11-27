@@ -1,4 +1,4 @@
-import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
+import type { BaseBandStructure, PhononDos } from '#lib/spectral/types'
 
 // Three-point Γ-X phonon band structure and single-peak phonon DOS shared by the dos and
 // bands-and-dos test pages and the BandsAndDos unit tests

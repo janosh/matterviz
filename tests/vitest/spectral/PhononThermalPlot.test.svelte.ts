@@ -1,5 +1,5 @@
 import PhononThermalPlot from '#lib/spectral/PhononThermalPlot.svelte'
-import type { PhononDos } from '#lib/spectral/index.js'
+import type { PhononDos } from '#lib/spectral/index'
 import { describe, expect, test } from 'vite-plus/test'
 import { flush_render, mount_in_test } from '../setup'
 

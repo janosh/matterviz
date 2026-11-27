@@ -1,19 +1,14 @@
 // Sweep frame cache (spectral/sweep-frames): loads on request, once per frame and loader,
 // aborts loads that leave the window and evicts heavy data beyond it and the recent frames
-import { descriptor_value } from '#lib/spectral/sweep.js'
-import type {
-  DescriptorSpec,
-  Sweep,
-  SweepFrame,
-  SweepFrameLoader,
-} from '#lib/spectral/sweep.js'
-import { create_sweep_frames, RECENT_FRAMES } from '#lib/spectral/sweep-frames.svelte.js'
+import { descriptor_value } from '#lib/spectral/sweep'
+import type { DescriptorSpec, Sweep, SweepFrame, SweepFrameLoader } from '#lib/spectral/sweep'
+import { create_sweep_frames, RECENT_FRAMES } from '#lib/spectral/sweep-frames.svelte'
 import type {
   BaseBandStructure,
   ElectronicDos,
   ModeValues,
   PhononDos,
-} from '#lib/spectral/types.js'
+} from '#lib/spectral/types'
 import { flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 

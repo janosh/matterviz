@@ -8,13 +8,13 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import { TooltipValue } from '#lib/tooltip/index.js'
-  import { add_alpha, plot_color } from '#lib/colors/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { TooltipValue } from '#lib/tooltip/index'
+  import { add_alpha, plot_color } from '#lib/colors/index'
+  import { sanitize_html } from '#lib/sanitize'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-  import { DEFAULT_PLOT_PADDING, plot_area_line } from '#lib/plot/core/layout.js'
-  import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
-  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
+  import { DEFAULT_PLOT_PADDING, plot_area_line } from '#lib/plot/core/layout'
+  import type { AxisConfig, DataSeries } from '#lib/plot/core/types'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index'
   import {
     bonding_sign,
     type CohpCurves,

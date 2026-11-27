@@ -1,26 +1,26 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
-import { parse_file_content } from '#lib/file-viewer/parse.js'
+import { materialize_frame_result } from '#lib/trajectory/frame'
+import { parse_file_content } from '#lib/file-viewer/parse'
 import type {
   StructureToolPrediction,
   StructureToolOverlay,
   StructureToolProvenance,
   StructureToolRun,
   StructureToolVolume,
-} from '#lib/structure/host-tool.svelte.js'
-import { create_structure_tool_controller } from '#lib/structure/host-tool.svelte.js'
+} from '#lib/structure/host-tool.svelte'
+import { create_structure_tool_controller } from '#lib/structure/host-tool.svelte'
 import {
   apply_tool_geometry,
   prediction_to_json,
   prediction_from_json,
   type StructureToolGeometry,
-} from '#lib/structure/prediction.js'
-import { replace_tool_volumes } from '#lib/structure/host-tool-volumes.js'
-import { auto_volume_layer, type IsosurfaceLayer } from '#lib/isosurface/types.js'
+} from '#lib/structure/prediction'
+import { replace_tool_volumes } from '#lib/structure/host-tool-volumes'
+import { auto_volume_layer, type IsosurfaceLayer } from '#lib/isosurface/types'
 import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host-tool/demo'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { structure_to_json_str } from '#lib/structure/export.js'
-import { create_frac_to_cart, det_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index'
+import { structure_to_json_str } from '#lib/structure/export'
+import { create_frac_to_cart, det_3x3, type Matrix3x3, type Vec3 } from '#lib/math'
 import {
   fcc_primitive_matrix,
   make_crystal,

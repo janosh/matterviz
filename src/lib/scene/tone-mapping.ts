@@ -6,7 +6,7 @@
 // fitted guess and Newton steps, see UNTONE_GUESS).
 import { exp2, Fn, Loop, mat3, uniform, vec3 } from 'three/tsl'
 import type { Node } from 'three/webgpu'
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 
 // The renderer's tone-mapping exposure as a uniform, so changing it never recompiles a shader
 export const agx_exposure = uniform(1).onRenderUpdate(({ renderer }) => {

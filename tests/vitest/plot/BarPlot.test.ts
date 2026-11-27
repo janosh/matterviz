@@ -2,13 +2,13 @@ import { format_num } from 'svelte-widgets/format'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
 import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
-import { plot_color } from '#lib/colors/index.js'
-import type { BarHandlerProps, BarSeries } from '#lib/plot/index.js'
+import { plot_color } from '#lib/colors/index'
+import type { BarHandlerProps, BarSeries } from '#lib/plot/index'
 import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { point_in_rect, rects_overlap } from '#lib/plot/core/layout.js'
-import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
-import { measure_text_width } from '#lib/plot/core/tick-layout.js'
+import { point_in_rect, rects_overlap } from '#lib/plot/core/layout'
+import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics'
+import { measure_text_width } from '#lib/plot/core/tick-layout'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   clip_rect,
@@ -444,6 +444,19 @@ describe(`BarPlot`, () => {
     const label_x = Number(plot.querySelector(`.bar-label`)?.getAttribute(`x`))
     const width = measure_text_width(label, { ...DEFAULT_FONT_SPEC, font_size: 11 })
     expect(label_x + width).toBeLessThanOrEqual(clip_right + 1e-9)
+  })
+
+  // plain-http pages have no crypto.randomUUID, which made every plot throw on mount
+  test(`mounts with unique clip and pattern ids without crypto.randomUUID`, async () => {
+    vi.stubGlobal(`crypto`, {})
+    onTestFinished(() => void vi.unstubAllGlobals())
+    const ids: (string | undefined)[] = []
+    for (const _ of [1, 2]) {
+      const plot = await mount_sized_bar_plot({ series: [{ x: [1], y: [5] }] })
+      ids.push(plot.querySelector(`clipPath`)?.id)
+    }
+    expect(ids[0]).toMatch(/^chart-clip-c\d+$/)
+    expect(ids[0]).not.toBe(ids[1])
   })
 
   test(`rotates vertical bar labels outward`, async () => {

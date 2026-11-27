@@ -1,12 +1,12 @@
 <script lang="ts">
   // Scene overlay of a structure diff: translucent reference ghosts and thin arrows from each
   // ghost to its target atom. Render inside Structure's scene_children snippet.
-  import { default_element_colors } from '#lib/colors/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { pack_arrows } from '#lib/structure/arrow-instances.js'
+  import { default_element_colors } from '#lib/colors/index'
+  import { DEFAULTS } from '#lib/settings'
+  import { pack_arrows } from '#lib/structure/arrow-instances'
   import ArrowInstances from '#lib/structure/ArrowInstances.svelte'
-  import { characteristic_atom_spacing } from '#lib/structure/density.js'
-  import type { AnyStructure, Site } from '#lib/structure/index.js'
+  import { characteristic_atom_spacing } from '#lib/structure/density'
+  import type { AnyStructure, Site } from '#lib/structure/index'
   import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
   import { ghost_positions, type StructureDiffResult } from './compute'
 

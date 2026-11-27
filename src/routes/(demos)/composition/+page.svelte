@@ -1,7 +1,7 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
-  import type { ElementPatterns } from '#lib/composition/index.js'
-  import { BarChart, BubbleChart, PieChart } from '#lib/composition/index.js'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
+  import type { ElementPatterns } from '#lib/composition/index'
+  import { BarChart, BubbleChart, PieChart } from '#lib/composition/index'
   import CompositionDemo from '#site/CompositionDemo.svelte'
 
   let show_labels = $state(true)
@@ -60,9 +60,9 @@
 </div>
 
 <h2 id="dynamic-user-input">Dynamic User Input</h2>
-<LazyDemo label="Dynamic composition input" height="300px">
+<LazyMount label="Dynamic composition input" height="300px">
   <CompositionDemo show_interactive />
-</LazyDemo>
+</LazyMount>
 
 <style>
   h2:not(:first-of-type) {

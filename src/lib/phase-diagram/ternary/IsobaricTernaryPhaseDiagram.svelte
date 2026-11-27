@@ -5,44 +5,42 @@
   // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
   // pin (its assemblage follows T), click the pin again or press Escape to drop it.
   import { format_num } from 'svelte-widgets/format'
-  import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { resolve_css_color } from '#lib/colors/index'
+  import { is_dark_mode, watch_dark_mode } from 'svelte-widgets/theme-core'
+  import { get_electro_neg_formula } from '#lib/composition/index'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
-  import { relevant_gases as find_relevant_gases } from '#lib/convex-hull/gas-thermodynamics.js'
-  import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types.js'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import { TransportPause, TransportPlay } from 'svelte-widgets/icons'
+  import { canvas_text_color } from '#lib/canvas-surface.svelte'
+  import { relevant_gases as find_relevant_gases } from '#lib/convex-hull/gas-thermodynamics'
+  import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { file_drop_zone } from '#lib/io/file-drop.js'
-  import { as_text } from '#lib/io/decompress.js'
-  import {
-    canvas_overlay_png_blob,
-    type ExportProps,
-    type ExportSources,
-  } from '#lib/io/export.js'
-  import type { FileLoadCallback } from '#lib/io/types.js'
-  import { ViewerChrome } from '#lib/layout/index.js'
+  import { file_drop_zone } from '#lib/io/file-drop'
+  import { as_text } from '#lib/io/decompress'
+  import { canvas_figure, type ExportProps, type ExportSources } from '#lib/io/export'
+  import type { FileLoadCallback } from '#lib/io/types'
+  import { ViewerChrome } from '#lib/layout/index'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
-  import type { Vec2 } from '#lib/math.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { viewer_keydown } from '#lib/shortcuts.js'
+  import type { Vec2 } from '#lib/math'
+  import { PlotTooltip } from '#lib/plot/index'
+  import { sanitize_html } from '#lib/sanitize'
   import {
     create_renderer,
     key_walk_root,
     wheel_zoom_gate,
     webgpu_available,
-  } from '#lib/scene/index.js'
+  } from '#lib/scene/index'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { clamp, to_error } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
-  import type { TooltipProp } from '#lib/tooltip/index.js'
+  import type { TooltipProp } from '#lib/tooltip/index'
   import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
+  import { tooltip as attach_tooltip, viewer_keydown } from 'svelte-widgets/attachments'
   import PhaseDiagramExportPane from '../PhaseDiagramExportPane.svelte'
   import { compute_ternary_phase_diagram_async } from './async-compute.svelte'
   import {
@@ -90,7 +88,6 @@
     on_export,
     on_phase_hover,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     wrapper = $bindable(),
     allow_file_drop = true,
     on_file_drop,
@@ -122,7 +119,7 @@
       // Partial pressure in bar per gas species (O, N, H, F); used when gas_enabled.
       gas_pressures?: Partial<Record<GasSpecies, number>>
       // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, fullscreen) appear.
-      show_controls?: ShowControlsProp<`controls` | `export` | `fullscreen`>
+      show_controls?: ShowControlsProp<`controls` | `export-pane` | `fullscreen`>
       // Whether the controls pane is open.
       controls_open?: boolean
       // Whether the export pane is open (shortcut `e`).
@@ -133,8 +130,6 @@
       on_phase_hover?: (hover: TernaryPhaseHover | null) => void
       // Whether the diagram fills the screen.
       fullscreen?: boolean
-      // Show the fullscreen button in the controls.
-      fullscreen_toggle?: boolean
       // The root element. Read-only.
       wrapper?: HTMLDivElement
       // Dropped JSON arrays of convex-hull entries replace `entries`
@@ -386,10 +381,13 @@
     png: (dpi) => {
       const panel = wrapper?.querySelector(`.section-panel`)
       const overlays = `canvas.pulse-overlay, :is(.tick-label, .axis-label, .phase-label)`
-      return canvas_overlay_png_blob(
+      return canvas_figure(
         panel?.querySelector<HTMLCanvasElement>(`canvas:not(.pulse-overlay)`),
-        [...(panel?.querySelectorAll<HTMLElement>(overlays) ?? [])],
-        dpi,
+        {
+          format: `png`,
+          dpi,
+          overlays: [...(panel?.querySelectorAll<HTMLElement>(overlays) ?? [])],
+        },
       )
     },
   }
@@ -439,7 +437,6 @@
   <ViewerChrome
     {controls_config}
     bind:fullscreen
-    {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
   >
@@ -460,7 +457,7 @@
         shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
       />
     {/if}
-    {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+    {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
       <PhaseDiagramExportPane
         bind:export_pane_open
         bind:png_dpi
@@ -539,7 +536,7 @@
               content: `${playing ? `Pause` : `Heat`} at ${settings.play_speed} K/s (space)`,
             })}
           >
-            {playing ? `⏸` : `▶`}
+            <Icon icon={playing ? TransportPause : TransportPlay} />
           </button>
           <div class="slider-wrap">
             <div class="event-ticks" aria-hidden="true">
@@ -824,7 +821,8 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
-    line-height: 1;
+    display: grid;
+    place-items: center;
   }
   .slider-wrap {
     position: relative;

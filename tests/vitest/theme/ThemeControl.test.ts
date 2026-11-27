@@ -3,7 +3,7 @@ import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
-vi.mock(`#lib/theme/index.js`, () => ({
+vi.mock(`#lib/theme/index`, () => ({
   apply_theme_to_dom: vi.fn(),
   save_theme_preference: vi.fn(),
   THEME_OPTIONS: [
@@ -13,7 +13,7 @@ vi.mock(`#lib/theme/index.js`, () => ({
   ],
 }))
 
-vi.mock(`#lib/state.svelte.js`, () => ({ theme_state: { mode: `light` } }))
+vi.mock(`#lib/state.svelte`, () => ({ theme_state: { mode: `light` } }))
 
 describe(`ThemeControl`, () => {
   test(`renders theme options with a default aria-label`, () => {

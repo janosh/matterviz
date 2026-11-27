@@ -1,17 +1,17 @@
 // Trajectory acquisition: `source` as URL / File / bytes, drag-and-drop (OS drags
 // carry a File plus a text/plain path to ignore, FilePicker drags a URL), worker parsing with
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
-import * as parse_worker from '#lib/file-viewer/parse-in-worker.js'
+import * as parse_worker from '#lib/file-viewer/parse-in-worker'
 import type {
   TrajectoryController,
   TrajectoryRun,
   TrajHandlerData,
-} from '#lib/trajectory/index.js'
-import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
+} from '#lib/trajectory/index'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
-import { summarize_run } from '#lib/trajectory/run.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
-import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
+import { summarize_run } from '#lib/trajectory/run'
+import { host_run } from '#lib/trajectory/runs/host'
+import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import {
@@ -258,7 +258,7 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     const target = mount_viewer({ source: { data: bytes, filename: `mystery.bin` }, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
     expect(on_error.mock.calls[0][0]).toMatchObject({
-      error_msg: `🚫 Binary format not supported: mystery.bin`,
+      error_msg: `Binary format not supported: mystery.bin`,
       filename: `mystery.bin`,
       file_size: 4,
       source_filename: `mystery.bin`,
@@ -299,6 +299,10 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
       const controller = on_controller.mock.calls.at(-1)?.[0]
       expect(controller?.state().total_frames).toBe(0)
       expect(doc_query<HTMLProgressElement>(`progress`).value).toBe(current)
+      // a visible percentage beside the bar, kept out of the live region
+      const percent = document.querySelector(`.trajectory-loading span[aria-hidden="true"]`)
+      expect(percent?.textContent?.trim() ?? null).toBe(current > 0 ? `42%` : null)
+      expect(percent?.closest(`[aria-live]`) ?? null).toBeNull()
       // known progress replaces the spinner with the bar
       expect(document.querySelector(`.trajectory-loading .spinner`)).toBeNull()
       if (!release) throw new Error(`worker stub never ran`)
@@ -699,8 +703,6 @@ describe(`bindable re-exposure`, () => {
         current_step_idx: 0,
         display_mode: `structure`,
         active_pane: null,
-        // closed, so the info button the round trip clicks shows
-        data_inspector_open: false,
         show_controls: `always`,
         on_file_load,
       })

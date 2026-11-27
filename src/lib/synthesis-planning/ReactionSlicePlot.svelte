@@ -4,9 +4,10 @@
   // driving force per atom of reacting mixture (precursors plus consumed gas) as "formation
   // energy" (pymatgen InterfacialReactivity view).
   // 2 precursors give a pseudo-binary, 3 a pseudo-ternary, 4 a pseudo-quaternary hull.
-  import { format_formula_html } from '#lib/composition/index.js'
-  import { ConvexHull } from '#lib/convex-hull/index.js'
-  import type { PhaseData } from '#lib/convex-hull/index.js'
+  import { format_formula_html } from '#lib/composition/index'
+  import { hide_controls } from '#lib/controls'
+  import { ConvexHull } from '#lib/convex-hull/index'
+  import type { PhaseData } from '#lib/convex-hull/index'
   import type { ComponentProps } from 'svelte'
   import { reaction_slice_points, solid_reactants } from './thermo'
   import type { SynthesisRoute } from './types'
@@ -53,10 +54,10 @@
     y_axis={{ label: `ΔE<sub>rxn</sub> (eV/atom of mixture)` }}
     show_unstable_labels
     controls={{ title: `Reaction slice` }}
-    enable_info_pane={false}
     enable_structure_preview={false}
     allow_file_drop={false}
     {...rest}
+    show_controls={hide_controls(rest.show_controls, `info-pane`)}
     style="height: 400px; --hull-title-top: 0; {rest.style ?? ``}"
   />
 {/if}

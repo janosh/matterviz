@@ -3,13 +3,13 @@
 // partition is in normalized coordinates (angle fraction in [0, 1], y0 === depth) independent
 // of pixel size and zoom: Sunburst maps it to screen space per frame, Treemap re-tiles it.
 
-import { is_finite_number } from '#lib/utils.js'
+import { is_finite_number } from '#lib/utils'
 import { hsl } from 'd3-color'
 import type { HierarchyNode, HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
-import { PLOT_COLORS } from '#lib/colors/index.js'
-import type { FillPattern } from '#lib/plot/core/patterns.js'
-import { DEFAULTS } from '#lib/settings.js'
+import { PLOT_COLORS } from '#lib/colors/index'
+import type { FillPattern } from '#lib/plot/core/patterns'
+import { DEFAULTS } from '#lib/settings'
 
 // === Sunburst chart types ===
 // How node values are interpreted (plotly `branchvalues` semantics):

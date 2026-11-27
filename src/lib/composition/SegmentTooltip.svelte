@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { TooltipValue } from '#lib/tooltip/index'
   import type { ChartSegment } from './chart'
   import { format_amount } from './format'
 

@@ -1,11 +1,11 @@
 // VASP XDATCAR trajectory parsing: frames are located by line and decoded on demand (the eager
 // parser decodes them all), so the eager and indexed paths read identical frames
-import type { ElementSymbol } from '#lib/element/types.js'
-import { symbol_to_atomic_number } from '#lib/element/helpers.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { LineScanner } from '#lib/structure/parsers/shared.js'
-import { parse_vasp_header } from '#lib/structure/parsers/vasp-header.js'
+import type { ElementSymbol } from '#lib/element/types'
+import { symbol_to_atomic_number } from '#lib/element/helpers'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { LineScanner } from '#lib/structure/parsers/shared'
+import { parse_vasp_header } from '#lib/structure/parsers/vasp-header'
 import {
   create_plot_row_frame,
   create_trajectory_frame,
@@ -14,7 +14,7 @@ import {
   holds_numbers,
   NonFiniteFrameError,
   TextLines,
-} from '#lib/trajectory/helpers.js'
+} from '#lib/trajectory/helpers'
 import { frame_property_row } from '../extract'
 import { create_numeric_md_frame } from '../frame'
 import type { AseFrames } from './ase'

@@ -1,14 +1,14 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { normalize_show_controls } from '#lib/controls.js'
-  import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
-  import { plot_color } from '#lib/colors/index.js'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { normalize_show_controls } from '#lib/controls'
+  import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index'
+  import { plot_color } from '#lib/colors/index'
+  import { get_electro_neg_formula } from '#lib/composition/index'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { ScatterPlot } from '#lib/plot/index.js'
-  import type { RadiationType } from '#lib/scattering/index.js'
-  import type { Crystal, Pbc } from '#lib/structure/index.js'
+  import { ScatterPlot } from '#lib/plot/index'
+  import type { RadiationType } from '#lib/scattering/index'
+  import type { Crystal, Pbc } from '#lib/structure/index'
   import { html_to_text, to_error } from 'svelte-widgets/utils'
   import {
     compute_all_pair_rdfs,

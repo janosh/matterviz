@@ -12,11 +12,11 @@ import { readFileSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
+import { prop_docs_plugin } from 'svelte-widgets/prop-docs/vite-plugin'
 import source_links from 'svelte-widgets/source-links/vite-plugin'
 import { configDefaults, defineConfig, type Plugin } from 'vite-plus'
 import { BaseSequencer, type TestSpecification } from 'vite-plus/test/node'
 import * as shared from './src/vite-plugins.ts'
-import { prop_docs_plugin } from './src/scripts/prop-docs.ts'
 
 // svelte-widgets' default highlighter only knows starry-night's `common` bundle plus
 // Svelte, which would leave the tsx/vue fences in the framework-interop docs unstyled
@@ -27,7 +27,7 @@ export const docs = markdown_vite(
       hide_style: true,
       collapsible: true,
       csr: true,
-      wrapper: `#site/CodeExample.svelte`,
+      lazy: true,
     },
     highlight: highlighter.highlight,
     typography: true,
@@ -191,8 +191,9 @@ export default defineConfig({
   optimizeDeps: {
     // Deps the startup scan misses trigger a re-optimize + reload mid page load (two Svelte
     // runtimes, a 500 from `get_first_child`). It skips dynamic imports inside functions only
-    // markup calls, like +layout.svelte's `{@attach link_sources}` source links.
-    include: [`svelte-widgets/source-links`],
+    // markup calls, like +layout.svelte's `{@attach link_sources}` source links, and worker
+    // entries (`new URL(..., import.meta.url)`), whose reload flaked the camera-flight e2e.
+    include: [`svelte-widgets/source-links`, `svelte-widgets/worker-serve`],
     rolldownOptions: { plugins: [scan_virtual_relative_imports] },
   },
   // The @threlte/extras barrel loads three-perf (for PerfMonitor, unused here), which imports

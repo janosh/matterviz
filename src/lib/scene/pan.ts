@@ -3,7 +3,7 @@
 // fly-to keep pivoting about the scene center; picking and <HTML> labels follow via the
 // projection matrix. `camera.view` is the only source of truth (`read_pan_offset`,
 // `clearViewOffset()`).
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import { type Camera, MOUSE, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
 type PannableCamera = PerspectiveCamera | OrthographicCamera

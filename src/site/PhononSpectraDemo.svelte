@@ -1,15 +1,15 @@
 <script lang="ts">
-  import type { FileInfo } from '#lib/io/index.js'
+  import type { FileInfo } from '#lib/io/index'
   import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-  import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
+  import type { PhononBandStructure, PhononDos } from '#lib/spectral/index'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { Crystal } from '#lib/structure/index'
   import {
     load_phonon_fixtures,
     phonon_fixture_groups,
     phonon_method_label,
-  } from '#site/phonons/fixtures.js'
-  import { latest_load } from '#site/state.svelte.js'
+  } from '#site/phonons/fixtures'
+  import { latest_load } from '#site/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
@@ -25,7 +25,7 @@
 
   // Fetch only the picked material's fixtures (one per method). The last loaded material
   // stays on screen until the next one arrives, and nothing renders before the first, so the
-  // LazyDemo wrapper keeps its height while this demo's data loads.
+  // LazyMount wrapper keeps its height while this demo's data loads.
   type Shown = {
     band_structs: Record<string, PhononBandStructure>
     doses: Record<string, PhononDos>

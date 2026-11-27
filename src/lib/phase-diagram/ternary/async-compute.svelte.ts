@@ -1,8 +1,8 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // Web Worker wrapper for compute_ternary_phase_diagram with a main-thread fallback (SSR, no
 // Worker, or a custom gas provider, which is a function and cannot cross the thread boundary).
-import { slim_phase_entry } from '#lib/convex-hull/helpers.js'
-import type { PhaseData } from '#lib/convex-hull/types.js'
+import { slim_phase_entry } from '#lib/convex-hull/helpers'
+import type { PhaseData } from '#lib/convex-hull/types'
 import { create_worker_client } from 'svelte-widgets/worker-client'
 import { compute_ternary_phase_diagram } from './compute'
 import { get_volume_per_atom } from './free-energy'

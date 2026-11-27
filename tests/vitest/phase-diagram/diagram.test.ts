@@ -15,15 +15,15 @@ import {
   provenance_caption,
   region_label,
   temperature_extent,
-} from '#lib/phase-diagram/diagram.js'
-import type { BinaryPhase, BinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
+} from '#lib/phase-diagram/diagram'
+import type { BinaryPhase, BinaryPhaseDiagram } from '#lib/phase-diagram/index'
 import {
   compute_lever_rule,
   find_region_at,
   LIQUID_COLOR,
   SOLID_PHASE_PALETTE,
-} from '#lib/phase-diagram/utils.js'
-import { binary_diagrams, binary_observations } from '#site/phase-diagrams.js'
+} from '#lib/phase-diagram/utils'
+import { binary_diagrams, binary_observations } from '#site/phase-diagrams'
 import { hsl } from 'd3-color'
 import { describe, expect, test } from 'vite-plus/test'
 import {

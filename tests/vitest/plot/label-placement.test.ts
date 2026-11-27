@@ -1,7 +1,7 @@
-import type { InternalPoint } from '#lib/plot/index.js'
-import type { PlotScaleFn } from '#lib/plot/core/scales.js'
-import type { LabelPlacementConfig } from '#lib/plot/core/types.js'
-import type { AnchorInfo, LabelState } from '#lib/plot/core/utils/label-placement.js'
+import type { InternalPoint } from '#lib/plot/index'
+import type { PlotScaleFn } from '#lib/plot/core/scales'
+import type { LabelPlacementConfig } from '#lib/plot/core/types'
+import type { AnchorInfo, LabelState } from '#lib/plot/core/utils/label-placement'
 import {
   compute_delta_energy,
   compute_label_positions,
@@ -14,7 +14,7 @@ import {
   rect_overlap_area,
   segment_rect_intersects,
   segments_intersect,
-} from '#lib/plot/core/utils/label-placement.js'
+} from '#lib/plot/core/utils/label-placement'
 import { describe, expect, test } from 'vite-plus/test'
 import { with_measured_text } from '../setup'
 

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { AnyStructure, StructureSettings } from '#lib/structure/index.js'
-  import { is_crystal, parse_supercell_matrix, Structure } from '#lib/structure/index.js'
-  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '#lib/symmetry/index.js'
+  import type { AnyStructure, StructureSettings } from '#lib/structure/index'
+  import { is_crystal, parse_supercell_matrix, Structure } from '#lib/structure/index'
+  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '#lib/symmetry/index'
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
@@ -14,9 +14,9 @@
     SymmetryElementControls,
     SymmetryStats,
     WyckoffTable,
-  } from '#lib/symmetry/index.js'
-  import { structure_files } from '#site/structures.js'
-  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte.js'
+  } from '#lib/symmetry/index'
+  import { structure_files } from '#site/structures'
+  import { url_param, loaded_fixture, set_url_param } from '#site/state.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
@@ -187,7 +187,7 @@
     {#each layout_examples as { id, title, layout, height, style }, idx (id)}
       <div class="example-section">
         <h3 {id}>{title}</h3>
-        <LazyDemo label={title} {height} class={layout}>
+        <LazyMount label={title} {height} class={layout}>
           <SymmetryStats
             sym_data={layout_viewers[idx]?.analysis.sym_data ?? null}
             bind:settings={layout_sym_settings[idx]}
@@ -200,11 +200,11 @@
             bind:symmetry_settings={layout_sym_settings[idx]}
             {style}
           />
-        </LazyDemo>
+        </LazyMount>
       </div>
     {/each}
   {:else}
-    <p style="text-align: center; color: var(--text-muted, #666)">
+    <p style="text-align: center; color: var(--text-color-muted, #666)">
       Load a structure above to see layout examples
     </p>
   {/if}
@@ -233,7 +233,7 @@
       padding: 2em;
       background: var(--surface-bg, #f5f5f5);
       border-radius: 8pt;
-      color: var(--text-muted, #666);
+      color: var(--text-color-muted, #666);
     }
   }
   .loading-placeholder {

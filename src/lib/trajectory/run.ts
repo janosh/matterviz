@@ -5,7 +5,7 @@
 // Deliberately free of Svelte runes: runs are built inside Web Workers and the VS Code
 // extension host as well as in components. The viewer mirrors `properties` into `$state`
 // through `subscribe` (see session.svelte.ts).
-import { is_valid_index } from '#lib/math.js'
+import { is_valid_index } from '#lib/math'
 import {
   materialize_frame,
   select_frame_channels,

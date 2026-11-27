@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Vec2 } from '#lib/math.js'
-  import { BinnedScatterPlot, type DensePointSeries } from '#lib/plot/index.js'
+  import type { Vec2 } from '#lib/math'
+  import { BinnedScatterPlot, type DensePointSeries } from '#lib/plot/index'
   import { onMount } from 'svelte'
   import TestSection from '../TestSection.svelte'
 

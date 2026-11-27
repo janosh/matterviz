@@ -1,11 +1,11 @@
-import { display_idx } from '#lib/labels.js'
+import { display_idx } from '#lib/labels'
 import {
   element_from_atomic_number,
   element_from_lammps_type,
   symbol_to_atomic_number,
-} from '#lib/element/helpers.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '#lib/constants.js'
+} from '#lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/types'
+import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '#lib/constants'
 import {
   cell_to_lattice_matrix,
   is_finite_matrix3x3,
@@ -14,11 +14,12 @@ import {
   is_finite_vec3,
   type Matrix3x3,
   transpose_3x3,
-} from '#lib/math.js'
-import { parse_leading_num, yield_turn } from '#lib/utils.js'
-import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
-import type { Pbc } from '#lib/structure/pbc.js'
-import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers.js'
+} from '#lib/math'
+import { parse_leading_num } from '#lib/utils'
+import { yield_turn } from 'svelte-widgets/utils'
+import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared'
+import type { Pbc } from '#lib/structure/pbc'
+import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers'
 import {
   compute_force_stats,
   create_plot_row_frame,
@@ -32,8 +33,8 @@ import {
   NonFiniteFrameError,
   parse_extxyz_columns,
   TextLines,
-} from '#lib/trajectory/helpers.js'
-import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index.js'
+} from '#lib/trajectory/helpers'
+import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index'
 import { frame_property_row } from '../extract'
 import {
   create_numeric_md_frame,
@@ -41,7 +42,7 @@ import {
   type NumericFrame,
   write_frame_vector,
 } from '../frame'
-import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
+import { MAX_STRING_CHARS } from '#lib/io/decompress'
 import { ase_momentum_mass, ase_velocity, type ByteSource } from './ase'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'

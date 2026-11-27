@@ -6,15 +6,15 @@ import type {
   LegendDecorationItem,
   ReferenceAnnotationCandidate,
   ReferenceAnnotationDecorationItem,
-} from '#lib/plot/core/decorations/index.js'
-import { project_obstacles } from '#lib/plot/core/decorations/obstacles.js'
-import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
-import type { Rect } from '#lib/plot/core/layout.js'
+} from '#lib/plot/core/decorations/index'
+import { project_obstacles } from '#lib/plot/core/decorations/obstacles'
+import { solve_decorations } from '#lib/plot/core/decorations/solve'
+import type { Rect } from '#lib/plot/core/layout'
 import {
   compute_element_placement,
   rect_within_rect,
   rects_overlap,
-} from '#lib/plot/core/layout.js'
+} from '#lib/plot/core/layout'
 import { describe, expect, test } from 'vite-plus/test'
 import { dense_unit_grid } from '../../setup'
 

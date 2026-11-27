@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '#lib'
-  import type { StructureSettings } from '#lib/structure/index.js'
+  import type { StructureSettings } from '#lib/structure/index'
   import Structure from '#lib/structure/Structure.svelte'
 
   // Svelte's dev-only prop-ownership checks compare a prop's binding against the component

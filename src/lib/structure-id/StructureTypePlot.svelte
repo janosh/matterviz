@@ -1,19 +1,19 @@
 <script lang="ts">
   import { value_key } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
-  import type { Vec2 } from '#lib/math.js'
-  import type { StructurePlotProps } from '#lib/plot/bar/index.js'
+  import type { Vec2 } from '#lib/math'
+  import type { StructurePlotProps } from '#lib/plot/bar/index'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
-  import { to_structure_entries } from '#lib/plot/core/structure-input.js'
-  import type { StructureEntry, StructureInput } from '#lib/plot/core/structure-input.js'
-  import type { BarHandlerProps, BarSeries, UserContentProps } from '#lib/plot/core/types.js'
-  import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
-  import { is_drag, series_hover_props } from '#lib/plot/core/interactions.js'
+  import { to_structure_entries } from '#lib/plot/core/structure-input'
+  import type { StructureEntry, StructureInput } from '#lib/plot/core/structure-input'
+  import type { BarHandlerProps, BarSeries, UserContentProps } from '#lib/plot/core/types'
+  import { use_async_result } from '#lib/trajectory/async-result.svelte'
+  import { is_drag, series_hover_props } from '#lib/plot/core/interactions'
   import { compute_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './compute-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './compute-cna'
   import type { StructureIdOptions, StructureIdResult } from './compute-structure-id'
-  import type { AnyStructure } from '#lib/structure/index.js'
+  import type { AnyStructure } from '#lib/structure/index'
 
   type PlotMetadata = Record<string, unknown>
 

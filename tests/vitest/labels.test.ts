@@ -1,5 +1,5 @@
-import { element_data } from '#lib/element/index.js'
-import type { Vec3 } from '#lib/math.js'
+import { element_data } from '#lib/element/index'
+import type { Vec3 } from '#lib/math'
 import {
   ELEM_HEATMAP_KEYS,
   ELEM_HEATMAP_LABELS,
@@ -15,7 +15,7 @@ import {
   symbol_map,
   symbol_names,
   trajectory_property_config,
-} from '#lib/labels.js'
+} from '#lib/labels'
 import { tickStep, ticks } from 'd3-array'
 import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vite-plus/test'

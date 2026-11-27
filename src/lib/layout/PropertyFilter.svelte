@@ -1,10 +1,10 @@
 <script lang="ts">
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Close } from 'svelte-widgets/icons'
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import { html_to_text } from 'svelte-widgets/utils'
-  import type { HistogramSeries } from '#lib/plot/index.js'
-  import { Histogram } from '#lib/plot/index.js'
+  import type { HistogramSeries } from '#lib/plot/index'
+  import { Histogram } from '#lib/plot/index'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -101,7 +101,6 @@
     padding={{ t: 0, b: 12, l: 2, r: 2 }}
     bar={{ stroke_width: 0, border_radius: 1, opacity: 0.5 }}
     style="--histogram-min-height: {histogram_height}px; --histogram-svg-height: 0; --histogram-bg: transparent"
-    fullscreen_toggle={false}
     range_padding={0}
   />
   {#if log}<span class="log-label">log</span>{/if}
@@ -201,7 +200,7 @@
       padding: 3pt 6pt;
       background: color-mix(in srgb, currentColor 2%, transparent);
       color: inherit;
-      font-family: var(--mono-font, monospace);
+      font-family: var(--font-mono);
       &::placeholder {
         opacity: 0.4;
       }

@@ -10,7 +10,7 @@ import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
 import { renderer_stub, reset_stub } from './reactive-renderer-registry'
-import { library_prop_docs } from './setup'
+import { library_prop_docs, PROP_DOCS_TIMEOUT } from './setup'
 
 const component_name = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
 const { check_blob_workers, spectral_doc } = vi.hoisted(() => ({
@@ -167,25 +167,31 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
 // the custom elements define an accessor per prop, which shadows an HTMLElement member of that name
-test(`no widget prop binds defaulted data or shadows the DOM`, async () => {
-  const library_docs = await library_prop_docs()
-  // the registry shared with the custom elements: src/lib paths by widget_type
-  const docs = Object.values(COMPONENTS).map((path) => {
-    const doc = library_docs[component_name(path)]
-    if (!doc) throw new Error(`No prop docs for widget component src/lib/${path}.svelte`)
-    return [component_name(path), doc] as const
-  })
-  const defaulted = docs.flatMap(([component, { props }]) =>
-    props
-      .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
-      .map(({ name, default: init }) => `${component}.${name} = ${init}`),
-  )
-  expect(defaulted).toEqual([])
-  const names = docs.flatMap(([, { props }]) => props.map(({ name }) => name))
-  expect(new Set(names.filter((name) => name in HTMLElement.prototype))).toEqual(
-    new Set([`children`, `id`, `normalize`, `onkeydown`, `style`, `title`]),
-  )
-})
+test(
+  `no widget prop binds defaulted data or shadows the DOM`,
+  { timeout: PROP_DOCS_TIMEOUT },
+  async () => {
+    const library_docs = await library_prop_docs()
+    // the registry shared with the custom elements: src/lib paths by widget_type
+    const docs = Object.values(COMPONENTS).map((path) => {
+      const doc = library_docs[component_name(path)]
+      if (!doc) throw new Error(`No prop docs for widget component src/lib/${path}.svelte`)
+      return [component_name(path), doc] as const
+    })
+    const defaulted = docs.flatMap(([component, { props }]) =>
+      props
+        .filter(
+          ({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init,
+        )
+        .map(({ name, default: init }) => `${component}.${name} = ${init}`),
+    )
+    expect(defaulted).toEqual([])
+    const names = docs.flatMap(([, { props }]) => props.map(({ name }) => name))
+    expect(new Set(names.filter((name) => name in HTMLElement.prototype))).toEqual(
+      new Set([`children`, `id`, `normalize`, `onkeydown`, `style`, `title`]),
+    )
+  },
+)
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
 const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram
@@ -353,6 +359,13 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
     expect(WIDGET_MODEL_KEYS.structure).toEqual(
       expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
     )
+    for (const widget of [
+      `brillouin_zone`,
+      `fermi_surface`,
+      `wulff_shape`,
+      `binned_scatter_plot`,
+    ])
+      expect(WIDGET_MODEL_KEYS[widget], widget).toContain(`show_controls`)
     expect(WIDGET_MODEL_KEYS.scatter_plot).toEqual(
       expect.arrayContaining([
         `active_point`,
@@ -645,22 +658,23 @@ describe(`widget config wiring`, () => {
   })
 })
 
-// A missing/None writeback trait seeds (and reverts to) the component fallback, never null
+// A missing/None writeback trait seeds (and reverts to) the component fallback, never null.
+// Each value differs from the one before it, so every step can fail.
 describe(`writeback wiring`, () => {
   test.each([
     [`structure`, `selected_sites`, [], [3], [5, 6]],
     [`structure`, `hovered_site_idx`, null, 2, 9],
     [`structure`, `active_volume_id`, null, `potential`, `spin`],
-    [`structure`, `display_mode`, `structure`, `slice`, `structure`],
+    [`structure`, `display_mode`, `structure`, `slice`, `slice`],
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`structure`, `active_pane`, null, `flight`, `export`],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `auto`, `plot`, `structure`],
-    [`trajectory`, `plot_type`, `time-series`, `distribution`, `time-series`],
+    [`trajectory`, `plot_type`, `time-series`, `distribution`, `distribution`],
     [`trajectory`, `distribution_property`, null, `energy`, `force_max`],
     [`trajectory`, `active_pane`, null, `hotspots`, `flight`],
-    [`trajectory`, `data_inspector_open`, true, false, true],
-    [`scatter_plot`, `controls_open`, false, true, false],
+    [`trajectory`, `data_inspector_open`, false, true, true],
+    [`scatter_plot`, `controls_open`, false, true, true],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
     [`sunburst`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
@@ -678,19 +692,18 @@ describe(`writeback wiring`, () => {
       const stub = run_widget(widget_type, model)
       expect(stub.read()[key]).toEqual(default_value)
       expect(model.save_count).toBe(0) // initial writeback effects are no-ops
+      expect([local_value, python_value]).not.toContainEqual(default_value)
       stub.write(key, local_value)
       flushSync()
       expect(model.state[key]).toEqual(local_value)
-      // Python -> component without a writeback echo
+      // cleared from Python -> revert to default, without a writeback echo
       const save_count = model.save_count
-      model.push_from_python(key, python_value)
-      flushSync()
-      expect(stub.read()[key]).toEqual(python_value)
-      expect(model.save_count).toBe(save_count)
-
-      model.push_from_python(key, null) // cleared -> revert to default, still no echo
+      model.push_from_python(key, null)
       flushSync()
       expect(stub.read()[key]).toEqual(default_value)
+      model.push_from_python(key, python_value) // Python -> component, still no echo
+      flushSync()
+      expect(stub.read()[key]).toEqual(python_value)
       expect(model.save_count).toBe(save_count)
     },
   )
@@ -716,7 +729,7 @@ describe(`imported and output writebacks`, () => {
     ],
     [
       `wulff_shape`,
-      { opacity: 1, edge_color: `#222222`, edge_width: 0.006, show_axes: true },
+      { surface_opacity: 1, edge_color: `#222222`, edge_width: 0.006, show_vectors: true },
       { show_legend: true, camera_projection: `perspective` },
     ],
   ] as const)(`%s seeds every synced setting with its default`, (widget_type, ...parts) => {
@@ -966,16 +979,16 @@ describe(`export_svg`, () => {
     chart.setAttribute(`viewBox`, `0 0 200 100`)
     chart.setAttribute(`aria-label`, `Bar chart`)
     const { dispose, exported } = await render_with({}, [icon, chart])
-    const markup = exported()
+    const markup = await exported()
     expect(markup.startsWith(`<?xml version="1.0" encoding="UTF-8"?>\n<svg`)).toBe(true)
-    // sized, rounded and stripped of interaction attributes by svg_to_string, the accessible
+    // sized, rounded and stripped of interaction attributes by export_figure, the accessible
     // name kept as a <title>
     expect(markup).toContain(`width="200"`)
     expect(markup).toContain(`cx="1.23"`)
     expect(markup).not.toMatch(/icon|data-idx|aria-label/)
     expect(markup).toContain(`<title>Bar chart</title>`)
     dispose()
-    expect(exported).toThrow(`No rendered MatterViz widget`)
+    await expect(exported()).rejects.toThrow(`No rendered MatterViz widget`)
   })
 
   test(`HTML figures are redrawn as SVG`, async () => {
@@ -988,8 +1001,9 @@ describe(`export_svg`, () => {
       grid,
     ])
     // the grid's own frame, with the inset redrawn inside it
-    expect(exported()).toContain(`viewBox="0 0 300 200"`)
-    expect(exported().match(/<svg/g)).toHaveLength(2)
+    const markup = await exported()
+    expect(markup).toContain(`viewBox="0 0 300 200"`)
+    expect(markup.match(/<svg/g)).toHaveLength(2)
   })
 
   test(`heatmap_matrix exports the matrix grid, not the open controls pane's grid section`, async () => {
@@ -1001,7 +1015,7 @@ describe(`export_svg`, () => {
     heatmap.classList.add(`heatmap`)
     const { html_figure } = WIDGETS.heatmap_matrix
     const { exported } = await render_with({ html_figure }, [heatmap])
-    expect(exported()).toContain(`viewBox="0 0 300 200"`)
+    expect(await exported()).toContain(`viewBox="0 0 300 200"`)
   })
 
   // the build entry (index.ts) lazy-loads anywidget.ts so anywidget's 2 s _esm import timeout
@@ -1053,7 +1067,8 @@ describe(`export_svg`, () => {
     ],
   ])(`%s`, async (_label, spec_extra, nodes, message) => {
     const { exported } = await render_with(spec_extra, nodes())
-    if (message) expect(exported).toThrow(`MatterViz export_probe renders ${message}`)
-    else expect(exported()).toContain(`<svg`)
+    if (message)
+      await expect(exported()).rejects.toThrow(`MatterViz export_probe renders ${message}`)
+    else expect(await exported()).toContain(`<svg`)
   })
 })

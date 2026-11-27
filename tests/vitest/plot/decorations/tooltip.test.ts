@@ -1,9 +1,9 @@
-import type { TooltipPlacementConfig } from '#lib/plot/core/decorations/index.js'
+import type { TooltipPlacementConfig } from '#lib/plot/core/decorations/index'
 import {
   beside_rect,
   get_tooltip_placement_candidates,
   place_tooltip,
-} from '#lib/plot/core/decorations/tooltip.js'
+} from '#lib/plot/core/decorations/tooltip'
 import { describe, expect, test } from 'vite-plus/test'
 
 const base_config: TooltipPlacementConfig = {

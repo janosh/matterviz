@@ -1,12 +1,13 @@
 // The vitest environment has no Worker, so these exercise the synchronous SSR fallback path
 // of compute_structure_id_async — including that a thrown error becomes a rejection rather
 // than a synchronous throw, which is the contract every caller's .catch() relies on.
-import { compute_structure_id } from '#lib/structure-id/compute-structure-id.js'
-import { compute_structure_id_async } from '#lib/structure-id/async-compute.svelte.js'
+import { compute_structure_id } from '#lib/structure-id/compute-structure-id'
+import { compute_structure_id_async } from '#lib/structure-id/async-compute.svelte'
 import {
   structure_from_payload,
   to_structure_id_payload,
-} from '#lib/structure-id/worker-payload.js'
+} from '#lib/structure-id/worker-payload'
+import type { Species } from '#lib/structure/index'
 import { describe, expect, test } from 'vite-plus/test'
 import { make_bcc, make_fcc } from './lattices'
 
@@ -28,6 +29,24 @@ describe(`worker payload`, () => {
     expect(compute_structure_id(structure_from_payload(payload), options)).toEqual(
       compute_structure_id(structure, options),
     )
+  })
+
+  // one table entry per distinct species list, non-finite occupancies kept
+  test(`round-trips each site's species through the deduped table`, () => {
+    const species: Species[][] = [
+      [{ element: `Fe`, occu: NaN }],
+      [{ element: `Fe`, occu: Infinity }],
+      [
+        { element: `Fe`, occu: 0.5, oxidation_state: 0 },
+        { element: `Ni`, occu: 0.5 },
+      ],
+      [],
+      [{ element: `Fe`, occu: NaN }],
+    ]
+    const sites = species.map((entry) => ({ ...bulk.sites[0], species: entry }))
+    const payload = to_structure_id_payload({ sites }, true)
+    expect(payload.species?.table).toHaveLength(4)
+    expect(structure_from_payload(payload).sites.map((site) => site.species)).toEqual(species)
   })
 
   test(`rejects a position buffer that is not a whole number of sites`, () => {

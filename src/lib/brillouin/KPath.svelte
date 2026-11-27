@@ -2,16 +2,12 @@
   // A band structure's k-path in a reciprocal-space scene (Brillouin zone, Fermi surface) with
   // symmetry-point labels, hovered k-point and tinted hovered/highlighted segments. Hovering the
   // path or a label reports the nearer q-point index, so a band plot beside it can mark it.
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
-  import { SceneLabel } from '#lib/scene/index.js'
-  import type {
-    ThreltePointerEvent,
-    TouchHoverProps,
-    HoverHandlers,
-  } from '#lib/scene/index.js'
-  import { write_bond_transform } from '#lib/structure/bond-rendering.js'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { Point2D, Vec2, Vec3 } from '#lib/math'
+  import * as math from '#lib/math'
+  import { SceneLabel } from '#lib/scene/index'
+  import type { ThreltePointerEvent, TouchHoverProps, HoverHandlers } from '#lib/scene/index'
+  import { write_bond_transform } from '#lib/structure/bond-rendering'
   import { T, useThrelte } from '@threlte/core'
   import {
     Color,

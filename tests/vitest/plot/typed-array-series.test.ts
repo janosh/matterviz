@@ -4,10 +4,10 @@ import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import { clean_series } from '#lib/plot/core/data-cleaning.js'
-import type { DataSeries, NumericColumn } from '#lib/plot/core/types.js'
-import { materialize_series_points } from '#lib/plot/scatter/scatter-data.js'
-import { mulberry32 } from '#lib/math.js'
+import { clean_series } from '#lib/plot/core/data-cleaning'
+import type { DataSeries, NumericColumn } from '#lib/plot/core/types'
+import { materialize_series_points } from '#lib/plot/scatter/scatter-data'
+import { mulberry32 } from '#lib/math'
 import { type mount, unmount } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'
 import { mount_sized, plot_svg } from '../setup'
@@ -18,7 +18,7 @@ const xs = Array.from({ length: 40 }, (_, idx) => idx * 0.5)
 const ys = xs.map((_, idx) => (idx === 5 ? NaN : idx === 9 ? Infinity : rand() * 10 - 3))
 const typed = (values: readonly number[]): Float64Array => Float64Array.from(values)
 
-// Unique ids (clip paths, gradients) differ between mounts; the drawing must not
+// $props.id() ids (clip paths, gradients: `c<n>`) differ between mounts; the drawing must not
 const normalized_svg = async (
   component: Parameters<typeof mount_sized>[0],
   props: Record<string, unknown>,
@@ -29,10 +29,7 @@ const normalized_svg = async (
     selector,
     on_mount: (instance) => (mounted = instance),
   })
-  const html = plot_svg(root).outerHTML.replaceAll(
-    /[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}/g,
-    `<id>`,
-  )
+  const html = plot_svg(root).outerHTML.replaceAll(/(?<=-)c\d+\b/g, `<id>`)
   if (mounted) await unmount(mounted)
   root.parentElement?.remove()
   return html

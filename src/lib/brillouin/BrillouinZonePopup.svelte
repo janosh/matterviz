@@ -3,10 +3,10 @@
   // Small floating Brillouin zone that marks one or more symmetry points on the k-path; Bands
   // opens it when a symmetry-point tick label is clicked. Same FloatingPopup shell as the
   // convex hull's StructurePopup.
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { Matrix3x3 } from '#lib/math.js'
-  import { FloatingPopup } from '#lib/overlays/index.js'
-  import { KCoords } from '#lib/tooltip/index.js'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { Matrix3x3 } from '#lib/math'
+  import { FloatingPopup } from '#lib/overlays/index'
+  import { KCoords } from '#lib/tooltip/index'
   import type { ComponentProps, Snippet } from 'svelte'
   import BrillouinZone from './BrillouinZone.svelte'
   import { BZ_POPUP_DEFAULT_WIDTH } from './types'
@@ -29,7 +29,7 @@
     k_path?: KPathData
     width?: number
     height?: number
-    bz_props?: Omit<BrillouinZoneOptions, `show_controls` | `fullscreen_toggle`>
+    bz_props?: Omit<BrillouinZoneOptions, `show_controls`>
   } = $props()
 </script>
 
@@ -43,9 +43,8 @@
       {k_path}
       highlighted_k_points={points.map(({ position }) => position)}
       show_controls={false}
-      fullscreen_toggle={false}
       allow_file_drop={false}
-      scene_props={{ gizmo: false, ...bz_props.scene_props }}
+      scene_controls={{ gizmo: false, ...bz_props.scene_controls }}
       style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0; {bz_props.style ??
         ``}"
     >

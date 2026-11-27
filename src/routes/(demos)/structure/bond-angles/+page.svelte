@@ -1,19 +1,19 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { Crystal } from '#lib'
-  import { SETTINGS_CONFIG } from '#lib/settings.js'
-  import type { BondAngleNormalizeMode, BondAngleSplitMode } from '#lib/bond-angles/index.js'
+  import { SETTINGS_CONFIG } from '#lib/settings'
+  import type { BondAngleNormalizeMode, BondAngleSplitMode } from '#lib/bond-angles/index'
   import {
     BondAnglePlot,
     BOND_ANGLE_DEFAULT_BIN_WIDTH,
     BOND_ANGLE_NORMALIZE_MODES,
     BOND_ANGLE_SPLIT_MODES,
-  } from '#lib/bond-angles/index.js'
+  } from '#lib/bond-angles/index'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
-  import { Structure } from '#lib/structure/index.js'
-  import type { BondingStrategy } from '#lib/structure/bonding.js'
-  import { structure_files, structure_map } from '#site/structures.js'
+  import { highlight_site_union } from '#lib/plot/core/structure-input'
+  import { Structure } from '#lib/structure/index'
+  import type { BondingStrategy } from '#lib/structure/bonding'
+  import { structure_files, structure_map } from '#site/structures'
   import EnumSelect from '../../EnumSelect.svelte'
   import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
 
@@ -65,7 +65,7 @@
 
   <StructurePicker bind:selected={single_id} />
 
-  <LazyDemo label="Single Structure" class="demo-2col" style="margin-block: 2em">
+  <LazyMount label="Single Structure" class="demo-2col" style="margin-block: 2em">
     {#if single_struct}
       <BondAnglePlot
         structures={single_struct}
@@ -83,7 +83,7 @@
         style="height: 500px"
       />
     {/if}
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="compare-structures">Compare Structures</h2>
   <p>
@@ -101,7 +101,7 @@
 
   <StructurePicker bind:selected={selected_ids} />
 
-  <LazyDemo label="Compare Structures">
+  <LazyMount label="Compare Structures">
     <BondAnglePlot
       structures={selected_structures}
       strategy={multi_strategy}
@@ -110,13 +110,13 @@
       {bin_width}
       style="height: 500px"
     />
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="try-your-own-structure">Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
-  <LazyDemo label="Try Your Own Structure">
+  <LazyMount label="Try Your Own Structure">
     <BondAnglePlot structures={{}} split_mode="by_triplet" style="height: 500px" />
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <style>

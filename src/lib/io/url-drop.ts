@@ -1,5 +1,6 @@
 import type { LoadedPayload } from './decompress'
 import { classify_payload, compression_wrapper_of } from './decompress'
+import { whole_percent_reporter } from '#lib/utils'
 import type {
   FileInfo,
   FileLoadCallback,
@@ -73,12 +74,32 @@ async function load_url_content(
   return callback(content, filename, { source_filename, source_url: url })
 }
 
+// Pass a response's body through a byte counter reporting whole download percents. Body
+// chunks only stream through (no copies held here), so .blob() keeps the browser's own large-
+// blob storage. Without a Content-Length there is nothing to divide by, and a content-encoded
+// body streams decoded bytes against its encoded length, so neither reports.
+const with_download_progress = (resp: Response, on_percent: (percent: number) => void) => {
+  const total = Number(resp.headers.get(`content-length`))
+  const encoding = resp.headers.get(`content-encoding`) ?? `identity`
+  if (!total || !resp.body || encoding !== `identity`) return resp
+  const report = whole_percent_reporter(on_percent)
+  let loaded = 0
+  const counter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      report((loaded += chunk.byteLength) / total)
+      controller.enqueue(chunk)
+    },
+  })
+  return new Response(resp.body.pipeThrough(counter), { headers: resp.headers })
+}
+
 // Fetch `url` and classify its payload the way a dropped File would be (see
 // classify_payload); compressed payloads are inflated by their bytes, not their name.
 export async function fetch_payload(
   url: string,
   keep_blob: boolean,
   signal?: AbortSignal,
+  on_download_percent?: (percent: number) => void,
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob> & FileLoadMeta> {
   // Strip query string/hash before basename/extension detection so pre-signed
   // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
@@ -94,7 +115,8 @@ export async function fetch_payload(
   const source_filename = extract_filename(resp.headers, url_basename)
   // Classified from one Blob so binary payloads never need a second fetch, and like a dropped
   // file a gzip body behind a text name (POSCAR, run.xyz) inflates by its magic bytes
-  const payload = await classify_payload(await resp.blob(), [source_filename, url_basename], {
+  const body = on_download_percent ? with_download_progress(resp, on_download_percent) : resp
+  const payload = await classify_payload(await body.blob(), [source_filename, url_basename], {
     keep_blob,
     wrappers_may_be_decoded: true,
     source: url,

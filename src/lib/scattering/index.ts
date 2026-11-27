@@ -1,9 +1,9 @@
 // Shared scattering factors for neutron/electron diffraction and total-PDF G(r) weighting.
 // Kept free of Svelte imports so worker-side consumers (XRD, RDF) can pull it in cheaply.
-import { ELEM_SYMBOLS } from '#lib/element/types.js'
+import { ELEM_SYMBOLS } from '#lib/element/types'
 // is_elem_symbol lives in the Svelte-free leaf module; #lib/element re-exports Svelte components
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import type { ElementSymbol } from '#lib/element/index.js'
+import { is_elem_symbol } from '#lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/index'
 // relative (not #lib/) since svelte-package leaves aliased JSON imports unresolved in dist/
 import ATOMIC_SCATTERING_PARAMS from '../xrd/atomic_scattering_params.json' with { type: 'json' }
 import NEUTRON_SCATTERING_LENGTHS from './neutron-scattering-lengths.json' with { type: 'json' }

@@ -1,7 +1,7 @@
-import { type ElementSymbol, is_elem_symbol } from '#lib/element/index.js'
-import type { Vec2 } from '#lib/math.js'
-import { resolve_color_scale } from '#lib/plot/core/scales.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
+import { type ElementSymbol, is_elem_symbol } from '#lib/element/index'
+import type { Vec2 } from '#lib/math'
+import { resolve_color_scale } from '#lib/plot/core/scales'
+import type { ColorScale } from '#lib/plot/core/types'
 
 // Plain or typed arrays
 type Numbers = ArrayLike<number> & Iterable<number>

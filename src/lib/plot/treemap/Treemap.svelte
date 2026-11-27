@@ -2,39 +2,39 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { BasePlotProps } from '#lib/plot/index.js'
-  import { TreemapControls } from '#lib/plot/index.js'
+  import type { BasePlotProps } from '#lib/plot/index'
+  import { TreemapControls } from '#lib/plot/index'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import HierarchyShell from '#lib/plot/core/components/HierarchyShell.svelte'
-  import type { Rect, Sides } from '#lib/plot/core/layout.js'
-  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
-  import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
-  import type { HierarchyChartProps } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
-  import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
-  import type { PositionedArc } from '#lib/plot/core/utils/hierarchy-layout.js'
+  import type { Rect, Sides } from '#lib/plot/core/layout'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte'
+  import { SCALE_DEFAULTS } from '#lib/plot/core/types'
+  import type { HierarchyChartProps } from '#lib/plot/core/utils/hierarchy-state.svelte'
+  import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte'
+  import type { PositionedArc } from '#lib/plot/core/utils/hierarchy-layout'
   import {
     corner_label_lines,
     measure_treemap_label_block,
     normalize_treemap_label_lines,
     place_treemap_label,
     safe_font_size,
-  } from '#lib/plot/treemap/labels.js'
+  } from '#lib/plot/treemap/labels'
   import type {
     TreemapLabelAlign,
     TreemapLabelBlock,
     TreemapLabelFit,
     TreemapLabelFormatter,
     TreemapLabelPlacement,
-  } from '#lib/plot/treemap/labels.js'
-  import type { Tiling } from '#lib/plot/treemap/treemap.js'
+  } from '#lib/plot/treemap/labels'
+  import type { Tiling } from '#lib/plot/treemap/treemap'
   import {
     align_tiling,
     header_strip,
     lerp_rects,
     tile_rects,
     treemap_hover_veil,
-  } from '#lib/plot/treemap/treemap.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/treemap/treemap'
+  import { DEFAULTS } from '#lib/settings'
   import { type Snippet, untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -87,12 +87,11 @@
     controls_pane_props,
     fullscreen = $bindable(false),
     controls_extra,
-    // show_controls, controls_toggle_props, fullscreen_toggle, header_controls and children
+    // show_controls, controls_toggle_props, header_controls and children
     // reach ChartShell through rest
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
-    // Cartesian-only props would otherwise leak to the wrapper div as invalid DOM attributes
-    Omit<BasePlotProps, `range_padding` | `title`> &
+    BasePlotProps &
     // data/value semantics, coloring, legend, export and node handlers shared with Sunburst
     HierarchyChartProps<Metadata> & {
       padding_inner?: number // px gap between sibling cells

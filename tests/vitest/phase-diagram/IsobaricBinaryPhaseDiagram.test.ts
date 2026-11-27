@@ -1,6 +1,6 @@
-import { add_alpha } from '#lib/colors/index.js'
-import { point_in_polygon, type Vec2 } from '#lib/math.js'
-import { LIQUID_COLOR } from '#lib/phase-diagram/utils.js'
+import { add_alpha } from '#lib/colors/index'
+import { point_in_polygon, type Vec2 } from '#lib/math'
+import { LIQUID_COLOR } from '#lib/phase-diagram/utils'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type {
   BinaryPhaseDiagram,
@@ -8,8 +8,8 @@ import type {
   DiagramHighlight,
   DiagramXFrame,
   PhaseLegendEntry,
-} from '#lib/phase-diagram/types.js'
-import { binary_diagrams } from '#site/phase-diagrams.js'
+} from '#lib/phase-diagram/types'
+import { binary_diagrams } from '#site/phase-diagrams'
 import { type ComponentProps, createRawSnippet, type mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {
@@ -967,7 +967,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // allow_file_drop=false ignores the drop and never shows the drop highlight
     const disabled = await mount_diagram({ allow_file_drop: false })
-    disabled.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    disabled.dispatchEvent(create_drop_event([], { type: `dragenter` }))
     expect(disabled.classList.contains(`dragover`)).toBe(false)
     await drop(empty_svg(), disabled)
     await tick()

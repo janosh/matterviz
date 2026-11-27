@@ -1,4 +1,5 @@
 import {
+  compact_formula,
   format_formula_html,
   format_formula_svg,
   format_label_html,
@@ -6,7 +7,7 @@ import {
   get_formula_label_segments,
   is_compound,
   tokenize_formula_markup,
-} from '#lib/composition/formula-markup.js'
+} from '#lib/composition/formula-markup'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`get_formula_label_segments`, () => {
@@ -46,6 +47,10 @@ describe(`get_formula_label_segments`, () => {
 })
 
 // === Formula markup (is_compound / tokenize / HTML / SVG) ===
+
+test(`compact_formula strips all whitespace`, () => {
+  expect(compact_formula(` Li3 Fe2\t(P\nO4)\r3 `)).toBe(`Li3Fe2(PO4)3`)
+})
 
 describe(`is_compound`, () => {
   test.each([
@@ -88,6 +93,7 @@ describe(`tokenize_formula_markup`, () => {
     // Greek letters and multi-phase labels pass through whole
     [`α`, [text(`α`)]],
     [`α + β`, [text(`α + β`)]],
+    [`La2NiO4 + NiO`, [text(`La2NiO4 + NiO`)]], // label formatters split on ` + ` first
     [``, []],
   ])(`%s`, (formula, expected) => {
     expect(tokenize_formula_markup(formula)).toEqual(expected)
@@ -105,30 +111,11 @@ describe.each<[string, Formatter, [string, string][]]>([
     `format_formula_html`,
     format_formula_html,
     [
-      [`Fe3C`, `Fe<sub>3</sub>C`],
-      [`SiO2`, `SiO<sub>2</sub>`],
-      [`Al2O3`, `Al<sub>2</sub>O<sub>3</sub>`],
-      [`O2-`, `O<sub>2</sub><sup>-</sup>`],
-      [`SO4^2-`, `SO<sub>4</sub><sup>2-</sup>`],
-      [`Fe^3+`, `Fe<sup>3+</sup>`],
-      [`Cu^+`, `Cu<sup>+</sup>`], // a lone element's caret charge (was plain Cu^+)
-      [`Fe2^3+O3^2-`, `Fe<sub>2</sub><sup>3+</sup>O<sub>3</sub><sup>2-</sup>`],
-      [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
-      [`Li.5CoO2`, `Li<sub>.5</sub>CoO<sub>2</sub>`],
-      // The number after a hydrate separator counts whole water molecules, not atoms in the
-      // group before it, so it belongs at full size. Every digit run was classified as a
-      // subscript, which printed sodium carbonate decahydrate as Na₂CO₃·₁₀H₂O.
-      [`CuSO4·5H2O`, `CuSO<sub>4</sub>·5H<sub>2</sub>O`],
-      [`CuSO4•5H2O`, `CuSO<sub>4</sub>•5H<sub>2</sub>O`], // the parser's other hydrate dots
-      [`CuSO4∙5H2O`, `CuSO<sub>4</sub>∙5H<sub>2</sub>O`],
-      [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
-      [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
-      [`CaSO4·.5H2O`, `CaSO<sub>4</sub>·.5H<sub>2</sub>O`],
-      // a leading coefficient scales the whole formula like a hydrate's (was ₂H₂O)
-      [`2H2O`, `2H<sub>2</sub>O`],
-      [`0.5Fe2O3`, `0.5Fe<sub>2</sub>O<sub>3</sub>`],
-      // a signed number after a plain word is an entry id, not a charge (was mp<sup>-1234</sup>)
-      [`mp-1234`, `mp-1234`],
+      // whole-string only: a variable letter that a word goes on from stays (Hex_A3 is no Heₓ),
+      // and a spaced hydrate dot still makes the next number a coefficient. Formulas both
+      // renderers share are in FormulaText.test.ts.
+      [`Hex_A3`, `Hex_A<sub>3</sub>`],
+      [`CuSO4 · 5H2O`, `CuSO<sub>4</sub> · 5H<sub>2</sub>O`],
       [`Cl-2`, `Cl<sup>-2</sup>`],
     ],
   ],

@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { HIGHLIGHT } from '#lib/colors/index.js'
+  import { HIGHLIGHT } from '#lib/colors/index'
   import { create_on_screen } from 'svelte-widgets/effects'
-  import { type D3SymbolName, symbol_map } from '#lib/labels.js'
-  import { lerp, type Point2D } from '#lib/math.js'
-  import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types.js'
-  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
+  import { type D3SymbolName, symbol_map } from '#lib/labels'
+  import { lerp, type Point2D } from '#lib/math'
+  import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte'
   import {
     estimate_label_size,
     LABEL_PLACEMENT_DEFAULTS,
     label_leader_segment,
     POINT_LABEL_FONT_SIZE,
-  } from '#lib/plot/core/utils/label-placement.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/core/utils/label-placement'
+  import { DEFAULTS } from '#lib/settings'
   import { rgb } from 'd3-color'
   import { symbol, symbolCircle } from 'd3-shape'
   import { untrack } from 'svelte'

@@ -1,16 +1,16 @@
 // Vertex-color generation for cross-volume isosurface coloring: maps sampled
 // scalar values through a d3 colormap LUT to Three.js color buffer attributes.
-import type { D3InterpolateName } from '#lib/colors/index.js'
-import type { Vec2 } from '#lib/math.js'
+import type { D3InterpolateName } from '#lib/colors/index'
+import type { Vec2 } from '#lib/math'
 import {
   color_interpolator,
   color_ramp_scale,
   to_color_scale_config,
-} from '#lib/plot/core/scales.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import { get_scale_type_name } from '#lib/plot/core/types.js'
-import { clamp01 } from '#lib/utils.js'
-import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
+} from '#lib/plot/core/scales'
+import type { ColorScale } from '#lib/plot/core/types'
+import { get_scale_type_name } from '#lib/plot/core/types'
+import { clamp01 } from '#lib/utils'
+import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors'
 import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import type { DataRange } from './types'
 

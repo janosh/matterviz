@@ -1,7 +1,7 @@
 // Shared entry points of the whole-trajectory analyses (MSD, VACF, structure-id,
 // spectroscopy, trails): one place that turns a run into a position sweep, and the frame
 // accounting the analysis panes display before a sweep starts.
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import { materialize_frame_result } from '#lib/trajectory/frame'
 import type {
   CollectPositionsOptions,
   FrameRange,
@@ -9,7 +9,7 @@ import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
-import { is_crystal } from '#lib/structure/validation.js'
+import { is_crystal } from '#lib/structure/validation'
 import { csv_line } from 'svelte-widgets/format'
 import type { TrajectoryRun } from './run'
 import {
@@ -48,20 +48,50 @@ export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
   min_frames?: number
 }
 
+// Finished sweeps per run and request, held weakly through their position buffer: while one
+// consumer keeps the buffer (the MSD pane its input, VACF its wrapped copy), another asking
+// for the same frames and channels (VACF without stored velocities) shares it instead of
+// re-reading every frame into a second one, and nothing here keeps it alive past its last
+// consumer. Each hit returns a fresh object so a recollect still recomputes. Only settled
+// sweeps are shared, so no consumer inherits another's abort signal or progress callback.
+const collected_buffers = new WeakMap<TrajectoryRun, Map<string, WeakRef<Float64Array>>>()
+const stream_of_buffer = new WeakMap<Float64Array, TrajectoryPositionStream>()
+
 // Async so the guards below reject like a failing sweep does, and one catch covers both
 export const collect_trajectory_positions = async (
   run: TrajectoryRun,
   { analysis_name, min_frames = 1, ...options }: CollectTrajectoryPositionsOptions,
 ): Promise<TrajectoryPositionStream> => {
   const { start_frame, end_frame } = resolve_frame_range(run.frame_count, options)
-  const collected_frames = Math.ceil((end_frame - start_frame) / (options.frame_stride ?? 1))
+  const { frame_stride = 1, max_bytes, vector_keys, signal_keys, signal } = options
+  const collected_frames = Math.ceil((end_frame - start_frame) / frame_stride)
   if (collected_frames < min_frames) {
     throw new Error(
       `${analysis_name}: need at least ${min_frames} frames, got ${collected_frames}`,
     )
   }
   if (!run.collect_positions) throw new Error(no_full_pass_message(run, analysis_name))
-  return run.collect_positions(options)
+  // max_bytes belongs to the request: a budget a fresh sweep would refuse must still refuse
+  const key = JSON.stringify([
+    start_frame,
+    end_frame,
+    frame_stride,
+    max_bytes,
+    vector_keys,
+    signal_keys,
+  ])
+  const buffers = collected_buffers.get(run) ?? new Map()
+  collected_buffers.set(run, buffers)
+  const buffer = buffers.get(key)?.deref()
+  const cached = buffer && stream_of_buffer.get(buffer)
+  if (cached) {
+    signal?.throwIfAborted()
+    return { ...cached }
+  }
+  const stream = await run.collect_positions(options)
+  stream_of_buffer.set(stream.positions, stream)
+  buffers.set(key, new WeakRef(stream.positions))
+  return stream
 }
 
 // Why a run without collect_positions cannot be analysed; shown by the panes and thrown by

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { interpolateBlues, interpolateReds } from 'd3-scale-chromatic'
-import type { FillGradient, LegendItem } from '#lib/plot/index.js'
+import type { FillGradient, LegendItem } from '#lib/plot/index'
 import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
 import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
 import {

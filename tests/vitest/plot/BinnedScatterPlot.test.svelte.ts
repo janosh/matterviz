@@ -1,12 +1,12 @@
-import * as density_utils from '#lib/plot/scatter/adaptive-density.js'
-import type { Vec2 } from '#lib/math.js'
-import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
-import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
-import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
-import type { BinnedDensityConfig } from '#lib/plot/scatter/binned-scatter-types.js'
+import * as density_utils from '#lib/plot/scatter/adaptive-density'
+import type { Vec2 } from '#lib/math'
+import type { FacetLayoutContext } from '#lib/plot/core/facets'
+import { rects_overlap, type Rect } from '#lib/plot/core/layout'
+import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types'
+import type { BinnedDensityConfig } from '#lib/plot/scatter/binned-scatter-types'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
-import { svg_to_string } from '#lib/io/export.js'
-import { plot_color } from '#lib/colors/index.js'
+import { export_figure } from 'svelte-widgets/figure-export'
+import { plot_color } from '#lib/colors/index'
 import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -245,7 +245,11 @@ describe(`BinnedScatterPlot`, () => {
     await tick()
     expect(plot.classList.contains(`fullscreen`)).toBe(false)
     expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
-    await mount_plot({ ...diagonal(), ...hidden_colorbar, fullscreen_toggle: false })
+    await mount_plot({
+      ...diagonal(),
+      ...hidden_colorbar,
+      show_controls: { hidden: [`fullscreen`] },
+    })
     expect(document.querySelector(`.fullscreen-btn`)).toBeNull()
   })
 
@@ -698,7 +702,7 @@ describe(`BinnedScatterPlot`, () => {
       return `data:image/png;base64,${btoa(`${this.width}x${this.height}`)}`
     })
     const exported = new DOMParser().parseFromString(
-      svg_to_string(plot_svg()),
+      await (await export_figure(plot_svg(), { format: `svg` })).text(),
       `image/svg+xml`,
     )
     expect(

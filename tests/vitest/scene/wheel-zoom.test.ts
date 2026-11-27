@@ -4,8 +4,8 @@ import {
   PAGE_SCROLL_GAP_MS,
   WHEEL_ZOOM_HINT_MS,
   WheelZoomGate,
-} from '#lib/scene/wheel-zoom.svelte.js'
-import { host, type WheelZoomMode } from '#lib/host.js'
+} from '#lib/scene/wheel-zoom.svelte'
+import { host, type WheelZoomMode } from '#lib/host'
 import { flushSync } from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { mock_fullscreen } from '../setup'

@@ -1,9 +1,9 @@
 // Build a surface slab: cleave an oriented bulk cell at a chosen termination, stack it to
 // the requested thickness and open up vacuum along the surface normal.
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import type { Crystal, Site } from '#lib/structure/index.js'
-import { wrap_frac_coord } from '#lib/structure/pbc.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import type { Crystal, Site } from '#lib/structure/index'
+import { wrap_frac_coord } from '#lib/structure/pbc'
 import { assemble_crystal, make_oriented_bulk, shorten_in_plane } from './lattice-basis'
 import {
   detect_layers,

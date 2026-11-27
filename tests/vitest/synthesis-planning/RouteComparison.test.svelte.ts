@@ -1,9 +1,9 @@
-import type { PhaseData } from '#lib/convex-hull/index.js'
+import type { PhaseData } from '#lib/convex-hull/index'
 import ReactionSlicePlot from '#lib/synthesis-planning/ReactionSlicePlot.svelte'
 import RouteComparison from '#lib/synthesis-planning/RouteComparison.svelte'
 import RouteTable from '#lib/synthesis-planning/RouteTable.svelte'
-import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
-import type { SynthesisRoute } from '#lib/synthesis-planning/types.js'
+import { plan_synthesis } from '#lib/synthesis-planning/plan'
+import type { SynthesisRoute } from '#lib/synthesis-planning/types'
 import { tick } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
@@ -257,4 +257,15 @@ test.each([
   })
   await vi.waitFor(() => doc_query(`.x-label`))
   expect(doc_query(`.x-label`).textContent).toContain(`Atom fraction of ${x_formula} in`)
+})
+
+// The slice's hull hides its info pane on top of whatever controls the caller hides
+test.each([
+  [undefined, [`.hull-export-toggle`, `.legend-controls-btn`]],
+  [{ hidden: [`export-pane` as const] }, [`.legend-controls-btn`]],
+])(`reaction slice with show_controls=%j shows only %j`, async (show_controls, shown) => {
+  mount_in_test(ReactionSlicePlot, { route: base, show_controls })
+  await vi.waitFor(() => doc_query(`.legend-controls-btn`))
+  const toggles = [`.info-btn`, `.hull-export-toggle`, `.legend-controls-btn`]
+  expect(toggles.filter((sel) => document.querySelector(sel))).toEqual(shown)
 })

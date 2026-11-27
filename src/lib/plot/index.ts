@@ -3,7 +3,7 @@ import type { HTMLAttributes } from 'svelte/elements'
 import type ScatterPlot from './scatter/ScatterPlot.svelte'
 import type BarPlot from './bar/BarPlot.svelte'
 import type Histogram from './histogram/Histogram.svelte'
-import type { BasePlotProps, PlotConfig } from './core/types'
+import type { BasePlotProps, CartesianPlotProps } from './core/types'
 
 // Public plot API. Chart families are exported wholesale; each folder has its own index.ts
 // barrel re-exported here.
@@ -111,22 +111,8 @@ type PlotElementOptions = Pick<
 
 // Composite charts deliberately expose presentation and interaction options, never child data.
 type PlotOptionKey =
-  | keyof PlotConfig
   | Exclude<keyof BasePlotProps, 'hovered'>
-  | 'legend'
-  | 'show_legend'
-  | 'pan'
-  | 'view'
-  | 'marginals'
-  | 'ref_lines'
-  | 'on_ref_line_click'
-  | 'on_ref_line_hover'
-  | 'header_controls'
-  | 'user_content'
-  | 'hidden_series'
-  | 'on_hidden_series_change'
-  | 'on_axis_change'
-  | 'axis_loading'
+  | Exclude<keyof CartesianPlotProps, 'selection' | 'facet_layout'>
   | 'tooltip'
   | 'controls_extra'
 
@@ -152,7 +138,7 @@ export type ScatterPlotOptions = PlotElementOptions &
     | 'marker_renderer'
     | 'error_bar_cap'
     | 'point_hit_padding'
-    | 'on_select'
+    | 'shared_xy_range'
     | 'highlighted_ids'
   >
 
@@ -170,21 +156,12 @@ export type BarPlotOptions = PlotElementOptions &
     | 'on_bar_hover'
     | 'on_point_click'
     | 'on_point_hover'
-    | 'on_select'
   >
 
 export type HistogramOptions = PlotElementOptions &
   Pick<
     ComponentProps<typeof Histogram>,
-    | PlotOptionKey
-    | 'bins'
-    | 'normalize'
-    | 'bar'
-    | 'mode'
-    | 'on_bar_click'
-    | 'on_bar_hover'
-    | 'on_series_toggle'
-    | 'on_select'
+    PlotOptionKey | 'bins' | 'normalize' | 'bar' | 'mode' | 'on_bar_click' | 'on_bar_hover'
   >
 
 export { create_axis_loader } from './core/axis-utils'

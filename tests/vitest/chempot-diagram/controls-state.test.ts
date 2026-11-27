@@ -1,4 +1,4 @@
-import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera.js'
+import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera'
 import ChemPotControls from '#lib/chempot-diagram/ChemPotControls.svelte'
 import diagram_source from '#lib/chempot-diagram/ChemPotDiagram3D.svelte?raw'
 import scene_source from '#lib/chempot-diagram/ChemPotScene3D.svelte?raw'
@@ -6,10 +6,10 @@ import ChemPotSlices from '#lib/chempot-diagram/ChemPotSlices.svelte'
 import {
   create_chempot_overrides,
   sticky_range,
-} from '#lib/chempot-diagram/controls-state.svelte.js'
-import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
-import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
-import type { Vec2 } from '#lib/math.js'
+} from '#lib/chempot-diagram/controls-state.svelte'
+import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types'
+import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types'
+import type { Vec2 } from '#lib/math'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { clip_rect, doc_query, fire, mouse, plot_svg, resize_element } from '../setup'

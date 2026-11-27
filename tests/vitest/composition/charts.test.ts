@@ -1,5 +1,5 @@
-import { ELEMENT_COLOR_SCHEMES } from '#lib/colors/index.js'
-import type { CompositionType } from '#lib/composition/index.js'
+import { ELEMENT_COLOR_SCHEMES } from '#lib/colors/index'
+import type { CompositionType } from '#lib/composition/index'
 import BarChart from '#lib/composition/BarChart.svelte'
 import BubbleChart from '#lib/composition/BubbleChart.svelte'
 import {
@@ -7,7 +7,7 @@ import {
   fit_font_scale,
   segment_suffix,
   segment_title,
-} from '#lib/composition/chart.js'
+} from '#lib/composition/chart'
 import PieChart from '#lib/composition/PieChart.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -56,7 +56,7 @@ describe(`shared segment helpers`, () => {
       mark.dispatchEvent(new Event(`pointerleave`))
       flushSync()
       expect(document.querySelector(`.plot-tooltip`)).toBeNull()
-      mark.dispatchEvent(new FocusEvent(`focus`))
+      mark.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
       flushSync()
       expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
       document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))

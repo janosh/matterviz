@@ -1,7 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { require_bbox, webgl_on_ci_for_tagged } from '../helpers'
 import {
-  ensure_pane_visible,
   expect_face_color_modes,
   get_canvas_hash,
   goto_perf_page,
@@ -93,7 +92,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, { tag: `@webgl` }, () => {
     await expect.poll(unstable_count).toBe(0)
     await threshold.fill(`0.5`)
     await expect.poll(unstable_count).toBeGreaterThan(0)
-    await ensure_pane_visible(info, diagram.locator(`.info-btn`))
+    await open_pane(diagram, `info`) // opening the controls pane closed it (outside click)
     await expect(info.getByTestId(`hull-visible-unstable`)).toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     expect(ownership_warnings).toEqual([])
@@ -128,7 +127,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, { tag: `@webgl` }, () => {
     await hull_canvas(diagram).click({
       position: { x: box.width / 2, y: box.height / 2 },
     })
-    await expect(diagram.locator(`.structure-popup`)).toBeHidden({ timeout: 5000 })
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
   })
 
   test(`hull renders centered in bounds; face color modes, opacity slider and face toggle redraw it`, async ({

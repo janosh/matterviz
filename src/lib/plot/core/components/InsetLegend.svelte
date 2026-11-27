@@ -1,9 +1,9 @@
 <script lang="ts">
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
-  import { chain_callbacks } from '#lib/plot/core/interactions.js'
-  import { compute_element_placement, type Rect } from '#lib/plot/core/layout.js'
-  import type { LegendConfig } from '#lib/plot/core/types.js'
-  import { observe_size } from '#lib/plot/core/utils.js'
+  import { chain_callbacks } from '#lib/plot/core/interactions'
+  import { compute_element_placement, type Rect } from '#lib/plot/core/layout'
+  import type { LegendConfig } from '#lib/plot/core/types'
+  import { observe_size } from '#lib/plot/core/utils'
   import type { ComponentProps } from 'svelte'
 
   // Legend of a chart without a CartesianFrame (Sankey, ternary, sunburst, treemap), placed

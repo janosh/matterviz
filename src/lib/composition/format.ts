@@ -1,10 +1,10 @@
 import { format_num } from 'svelte-widgets/format'
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { CompositionType } from '#lib/composition/index.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { get_element_counts } from '#lib/structure/density.js'
+import type { ElementSymbol } from '#lib/element/index'
+import type { CompositionType } from '#lib/composition/index'
+import { element_by_symbol } from '#lib/element/data'
+import { is_elem_symbol } from '#lib/element/helpers'
+import type { AnyStructure } from '#lib/structure/index'
+import { get_element_counts } from '#lib/structure/density'
 import { parse_composition } from './parse'
 
 // Default d3 format for stoichiometric amounts: fixed notation with trailing zeros trimmed.

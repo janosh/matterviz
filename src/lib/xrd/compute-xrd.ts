@@ -1,8 +1,8 @@
-import type { CompositionType } from '#lib/composition/index.js'
-import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '#lib/constants.js'
-import * as math from '#lib/math.js'
-import type { Vec2 } from '#lib/math.js'
-import type { RadiationType } from '#lib/scattering/index.js'
+import type { CompositionType } from '#lib/composition/index'
+import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '#lib/constants'
+import * as math from '#lib/math'
+import type { Vec2 } from '#lib/math'
+import type { RadiationType } from '#lib/scattering/index'
 import {
   ELECTRON_FORM_FACTOR_CONST,
   form_factor_z,
@@ -11,8 +11,8 @@ import {
   neutron_scattering_length,
   scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
-} from '#lib/scattering/index.js'
-import type { Crystal } from '#lib/structure/index.js'
+} from '#lib/scattering/index'
+import type { Crystal } from '#lib/structure/index'
 import { clamp, to_error } from 'svelte-widgets/utils'
 import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 

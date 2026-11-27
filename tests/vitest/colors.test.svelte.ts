@@ -1,8 +1,4 @@
-import {
-  resolve_backdrop,
-  resolve_color_token,
-  resolve_css_color,
-} from '#lib/colors/backdrop.svelte.js'
+import { resolve_backdrop, resolve_css_color } from '#lib/colors/backdrop.svelte'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 
@@ -118,22 +114,6 @@ test(`resolve_backdrop without a token takes the painted ancestor behind the nod
   document.body.append(panel)
   panel.append(node)
   expect(observe(() => resolve_backdrop(() => node)).current).toBe(`rgb(10, 20, 30)`)
-})
-
-// Color-function tokens like light-dark() compute to that literal string, which only the browser
-// resolves. happy-dom can't, so a var() value and a stubbed probe style stand in for it.
-test(`resolve_color_token resolves color functions on a removed probe and passes colors through`, () => {
-  const node = make_node()
-  const real = globalThis.getComputedStyle
-  vi.spyOn(globalThis, `getComputedStyle`).mockImplementation((element) =>
-    element.tagName === `SPAN`
-      ? ({ color: `rgb(24, 23, 28)` } as CSSStyleDeclaration)
-      : real(element),
-  )
-  expect(resolve_color_token(node, `var(--surface)`)).toBe(`rgb(24, 23, 28)`)
-  expect(node.querySelector(`span`)).toBeNull()
-  expect(resolve_color_token(node, `#123456`)).toBe(`#123456`)
-  expect(resolve_color_token(node, `light-dark(#fff, #000)`)).toBe(`light-dark(#fff, #000)`)
 })
 
 test.each([

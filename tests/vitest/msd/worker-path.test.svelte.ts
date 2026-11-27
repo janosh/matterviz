@@ -3,12 +3,12 @@
 // is installed before the module is imported so the real postMessage plumbing runs.
 // The generic client (request ids, dedupe, abort, error replies) is covered by
 // svelte-widgets' worker-client tests; only the MSD-specific contract is asserted here.
-import type { compute_msd_async as ComputeMsdAsync } from '#lib/msd/async-compute.svelte.js'
-import { compute_msd } from '#lib/msd/compute-msd.js'
-import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
+import type { compute_msd_async as ComputeMsdAsync } from '#lib/msd/async-compute.svelte'
+import { compute_msd } from '#lib/msd/compute-msd'
+import type { MsdOptions, MsdResult } from '#lib/msd/index'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
-import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index'
 import { create_input_store, type WorkerRequest } from 'svelte-widgets/worker-serve'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vite-plus/test'
@@ -25,7 +25,7 @@ let compute_msd_async: typeof ComputeMsdAsync
 
 beforeAll(async () => {
   // Imported after the stub so the module-level singleton picks it up
-  ;({ compute_msd_async } = await import(`#lib/msd/async-compute.svelte.js`))
+  ;({ compute_msd_async } = await import(`#lib/msd/async-compute.svelte`))
 })
 afterEach(stub.reset)
 
@@ -108,7 +108,7 @@ it(`MsdPlot reports the element curve under a legend entry`, async () => {
 // The pane hands the collected stream itself to the worker client: a deep $state proxy of its
 // frame steps and cells made every payload snapshot 10x slower
 it(`TrajectoryMsdPane computes on the collected stream, not a proxy of it`, async () => {
-  const async_module = await import(`#lib/msd/async-compute.svelte.js`)
+  const async_module = await import(`#lib/msd/async-compute.svelte`)
   const compute = vi.spyOn(async_module, `compute_msd_async`)
   const run = orbit_run(40, 0.04, 1)
   const collect = vi.spyOn(run, `collect_positions`)

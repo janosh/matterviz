@@ -1,26 +1,27 @@
 <script lang="ts">
-  import type { AxisConfig } from '#lib/plot/index.js'
-  import { get_convex_hull_defaults } from '#lib/settings.js'
+  import type { AxisConfig } from '#lib/plot/index'
+  import { get_convex_hull_defaults } from '#lib/settings'
   import { untrack } from 'svelte'
-  import { normalize_show_controls } from '#lib/controls.js'
-  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts.js'
+  import { normalize_show_controls } from '#lib/controls'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { shortcut_attrs } from 'svelte-widgets/shortcuts'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
-  import { ViewerChrome } from '#lib/layout/index.js'
+  import { ViewerChrome } from '#lib/layout/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { json_source, svg_sources, type ExportSources } from '#lib/io/export.js'
+  import { json_source, figure_sources, type ExportSources } from '#lib/io/export'
   import {
     csv_source,
     export_filename as chart_filename,
-  } from '#lib/plot/core/utils/chart-export.js'
-  import { PlotTooltip } from '#lib/plot/index.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { join_hover_link } from '#lib/tooltip/index.js'
-  import { first_duplicate } from '#lib/utils.js'
+  } from '#lib/plot/core/utils/chart-export'
+  import { PlotTooltip } from '#lib/plot/index'
+  import { sanitize_html } from '#lib/sanitize'
+  import { join_hover_link } from '#lib/tooltip/index'
+  import { first_duplicate } from '#lib/utils'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -47,8 +48,8 @@
     decompose_hull_composition,
     normalize_hull_composition_keys,
   } from './thermodynamics'
-  import type { CompositionType } from '#lib/composition/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { CompositionType } from '#lib/composition/index'
+  import type { ElementSymbol } from '#lib/element/index'
 
   // One public viewer infers dimensionality; renderers only handle their plot geometry.
   type ConvexHullProps = BaseConvexHullProps &
@@ -97,8 +98,6 @@
     show_controls,
     on_point_click,
     on_point_hover,
-    fullscreen_toggle = true,
-    enable_info_pane = true,
     allow_file_drop = true,
     on_file_load,
     enable_click_selection = true,
@@ -340,7 +339,7 @@
     }))
   const export_sources = $derived<ExportSources>({
     ...(dim === 2
-      ? svg_sources(() => wrapper?.querySelector<SVGSVGElement>(`:scope > svg`))
+      ? figure_sources(() => wrapper?.querySelector<SVGSVGElement>(`:scope > svg`))
       : {
           png: (png_dpi) => {
             if (!renderer) throw new Error(`Convex hull canvas has not rendered yet`)
@@ -408,7 +407,6 @@
   <ViewerChrome
     {controls_config}
     bind:fullscreen
-    {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--hull-bg-fullscreen"
     on_fullscreen_change={context?.recenter_camera}
@@ -420,14 +418,14 @@
         type="button"
         onclick={() => reset_all(context?.reset_camera)}
         {...dim === 2
-          ? shortcut_attrs(`hull_reset`)
+          ? shortcut_attrs(SHORTCUTS.hull_reset)
           : { title: SHORTCUTS.hull_reset.description }}
       >
         <Icon icon={Reset} />
       </button>
     {/if}
 
-    {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
+    {#if phase_stats && controls_config.visible(`info-pane`)}
       <ConvexHullInfoPane
         bind:pane_open={info_pane_open}
         bind:probe_composition

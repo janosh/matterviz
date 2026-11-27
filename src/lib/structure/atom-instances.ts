@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math'
 import type { Site } from './index'
 import { is_image_site } from './site'
 import { is_full_occupancy, single_element_occupancy } from './partial-occupancy'
@@ -11,7 +11,7 @@ import {
   local_ray,
   ray_sphere_candidates,
   scratch_matrix,
-} from '#lib/scene/picking.js'
+} from '#lib/scene/picking'
 import type { Material, Matrix4, Raycaster, Intersection } from 'three/webgpu'
 import {
   DynamicDrawUsage,

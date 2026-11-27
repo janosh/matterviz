@@ -1,16 +1,16 @@
-import * as draw from '#lib/convex-hull/canvas-draw.js'
-import * as helpers from '#lib/convex-hull/helpers.js'
+import * as draw from '#lib/convex-hull/canvas-draw'
+import * as helpers from '#lib/convex-hull/helpers'
 import {
   compute_e_above_hull,
   decompose_hull_composition,
   get_energy_per_atom,
-} from '#lib/convex-hull/thermodynamics.js'
-import { compute_hull_model, hull_plot_position } from '#lib/convex-hull/model.js'
-import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
-import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
-import { resolve_color_scale } from '#lib/plot/core/scales.js'
+} from '#lib/convex-hull/thermodynamics'
+import { compute_hull_model, hull_plot_position } from '#lib/convex-hull/model'
+import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types'
+import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types'
+import type { ElementSymbol } from '#lib/element/index'
+import type { ColorScale } from '#lib/plot/core/types'
+import { resolve_color_scale } from '#lib/plot/core/scales'
 import * as d3_sc from 'd3-scale-chromatic'
 import {
   afterEach,

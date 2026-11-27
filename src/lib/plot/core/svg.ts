@@ -1,6 +1,6 @@
 // SVG path and rendering utilities for plot components.
 
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import type { CurveFactory } from 'd3-shape'
 
 // Build a closed SVG path for a violin (KDE density) shape.

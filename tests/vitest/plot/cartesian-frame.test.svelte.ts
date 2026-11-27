@@ -6,22 +6,22 @@ import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import type { ShowControlsProp } from '#lib/controls.js'
-import type { Vec2 } from '#lib/math.js'
-import { type AxisConfig, type AxisRanges, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+import type { ShowControlsProp } from '#lib/controls'
+import type { Vec2 } from '#lib/math'
+import { type AxisConfig, type AxisRanges, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types'
 import {
   AXIS_LABEL_HEIGHT,
   DEFAULT_PLOT_PADDING,
   rect_within_rect,
   rects_overlap,
   Y_TITLE_EDGE_AIR,
-} from '#lib/plot/core/layout.js'
+} from '#lib/plot/core/layout'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
-import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
-import type { PaneToggleProps } from '#lib/overlays/index.js'
-import type * as decorations from '#lib/plot/core/decorations/index.js'
-import { solve_decorations } from '#lib/plot/core/decorations/index.js'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte'
+import type { PaneToggleProps } from '#lib/overlays/index'
+import type * as decorations from '#lib/plot/core/decorations/index'
+import { solve_decorations } from '#lib/plot/core/decorations/index'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
@@ -43,7 +43,7 @@ import {
 } from '../setup'
 
 // Passthrough spy, so tests can count decoration solves
-vi.mock(`#lib/plot/core/decorations/index.js`, async (import_original) => {
+vi.mock(`#lib/plot/core/decorations/index`, async (import_original) => {
   const original = await import_original<typeof decorations>()
   return { ...original, solve_decorations: vi.fn(original.solve_decorations) }
 })
@@ -784,6 +784,153 @@ describe(`cartesian frame`, () => {
     expect(tick_values(`y2`)).toEqual(tick_values(`y`))
   })
 
+  // shared_xy_range gives x and y one range: the union of both auto ranges, pins on either
+  // axis pinning both; pan/zoom stays per axis and a reset returns to the shared range
+  const parity_series = (scale: `linear` | `log`) =>
+    scale === `log` ? { x: [1, 10, 30], y: [0.2, 4, 90] } : { x: [0, 5, 10], y: [-6, 1, 3] }
+  test.each([
+    { scale: `linear`, pins: {}, lower: -6, upper: 10 },
+    { scale: `linear`, pins: { x_axis: { range: [-20, null] } }, lower: -20, upper: 10 },
+    { scale: `linear`, pins: { y_axis: { range: [null, 50] } }, lower: -6, upper: 50 },
+    // a pin inside the other axis's data still pins both
+    { scale: `linear`, pins: { x_axis: { range: [null, 2] } }, lower: -6, upper: 2 },
+    { scale: `log`, pins: {}, lower: 0.2, upper: 90 },
+  ] as const)(
+    `ScatterPlot shared_xy_range on $scale axes with pins $pins`,
+    async ({ scale, pins, lower, upper }) => {
+      const pin_of = (axis_name: `x_axis` | `y_axis`) =>
+        (pins as Partial<Record<string, AxisConfig>>)[axis_name]
+      // each mount gets its own `view`: a shared one would hand the first plot's view on
+      const mount_view = async (shared_xy_range: boolean) => {
+        const bound = $state<{ view?: Partial<AxisRanges> }>({ view: undefined })
+        const [x_axis, y_axis] = ([`x_axis`, `y_axis`] as const).map((axis_name) => ({
+          scale_type: scale,
+          ...pin_of(axis_name),
+        }))
+        const series = [{ ...parity_series(scale), markers: `points` as const }]
+        const props = { series, x_axis, y_axis, shared_xy_range }
+        const plot = await mount_sized(ScatterPlot, bind_props(props, bound), {
+          selector: `.scatter`,
+        })
+        return { plot, bound }
+      }
+      const own = (await mount_view(false)).bound.view
+      expect(own?.x).not.toEqual(own?.y)
+      const { plot, bound } = await mount_view(true)
+      const { x, y } = bound.view ?? {}
+      if (!x) throw new Error(`no view mirrored`)
+      expect(y).toEqual(x)
+      // pinned bounds (from either axis) land exactly, auto ones cover the data of both axes
+      for (const [bound_idx, edge] of [lower, upper].entries()) {
+        const pin =
+          pin_of(`x_axis`)?.range?.[bound_idx] ?? pin_of(`y_axis`)?.range?.[bound_idx]
+        if (pin != null) expect(x[bound_idx]).toBe(pin)
+        else expect(bound_idx ? x[1] >= edge : x[0] <= edge, `bound ${bound_idx}`).toBe(true)
+      }
+      if (scale === `log`) expect(x[0]).toBeGreaterThan(0)
+      // a rect zoom moves each axis on its own, a reset restores the shared range
+      const clip = clip_rect(plot)
+      const at = (frac_x: number, frac_y: number): Vec2 => [
+        clip.x + clip.width * frac_x,
+        clip.y + clip.height * frac_y,
+      ]
+      const svg = query(plot, `svg[role="application"]`)
+      await drag(svg, {}, at(0.1, 0.2), at(0.6, 0.4))
+      expect(bound.view?.x).not.toEqual(bound.view?.y)
+      svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      await tick()
+      expect([bound.view?.x, bound.view?.y]).toEqual([x, x])
+    },
+  )
+
+  // nice: false shares the padded data ends instead of whole decades ([0.1, 1000] here);
+  // line-only series reach no further than their points, so no marker padding is added
+  test(`ScatterPlot log-log shared_xy_range with nice: false spans the padded data`, async () => {
+    const bound = $state<{ view?: Partial<AxisRanges> }>({ view: undefined })
+    const axis = { scale_type: `log` as const, nice: false }
+    const { x: xs, y: ys } = parity_series(`log`)
+    const props = {
+      series: [{ x: xs, y: ys, markers: `line` as const }],
+      x_axis: axis,
+      y_axis: axis,
+      range_padding: 0.1,
+      shared_xy_range: true,
+    }
+    await mount_sized(ScatterPlot, bind_props(props, bound), { selector: `.scatter` })
+    const padded = (values: number[]): Vec2 => {
+      const [lower, upper] = [Math.min(...values), Math.max(...values)].map(Math.log10)
+      const pad = (upper - lower) * 0.1
+      return [10 ** (lower - pad), 10 ** (upper + pad)]
+    }
+    const [x_padded, y_padded] = [padded(xs), padded(ys)]
+    const expected = [Math.min(x_padded[0], y_padded[0]), Math.max(x_padded[1], y_padded[1])]
+    expect([bound.view?.x, bound.view?.y]).toEqual([expected, expected])
+  })
+
+  // A facet grid reconciles each axis across panels, which would undo the sharing
+  test.each([
+    [`ScatterPlot`, ScatterPlot],
+    [`BinnedScatterPlot`, BinnedScatterPlot],
+  ] as [string, unknown][])(
+    `%s shared_xy_range throws inside a facet grid`,
+    (_name, component) => {
+      const facet_layout = {
+        padding: {},
+        ranges: {},
+        axis_visibility: {},
+        report_layout: () => {},
+        update_range: () => {},
+      }
+      const props = { series: [{ x: [0, 1], y: [2, 3] }], facet_layout, shared_xy_range: true }
+      // the range sync runs in a post effect, so flush it inside the assertion
+      const chart = component as Component<typeof props>
+      expect(() => flushSync(() => mount_in_test(chart, props))).toThrow(
+        /not supported in facet grids/,
+      )
+    },
+  )
+
+  // BinnedScatterPlot has no `view`, so compare where each axis places its ticks: one range
+  // puts a value at the same fraction along both axes
+  test(`BinnedScatterPlot shared_xy_range spans x and y over one range`, async () => {
+    const tick_fracs = (plot: HTMLElement, axis: `x` | `y`): Map<number, number> => {
+      const clip = clip_rect(plot)
+      const entries = [...plot.querySelectorAll(`g.${axis}-axis g.tick`)].map((tick_el) => {
+        const value = Number(tick_el.textContent?.trim().replace(`\u2212`, `-`))
+        const [pos_x, pos_y] = (tick_el.getAttribute(`transform`) ?? ``)
+          .match(/-?[\d.]+/g)
+          ?.map(Number) ?? [NaN, NaN]
+        const frac =
+          axis === `x`
+            ? (pos_x - clip.x) / clip.width
+            : (clip.y + clip.height - pos_y) / clip.height
+        return [value, frac] as const
+      })
+      return new Map(entries)
+    }
+    const mount_binned = async (shared_xy_range: boolean) => {
+      const plot = await mount_sized(
+        BinnedScatterPlot,
+        { series: [{ x: [0, 5, 10], y: [-6, 1, 3] }], color_bar: null, shared_xy_range },
+        { selector: `.binned-scatter`, width: 400, height: 400 },
+      )
+      const [x_fracs, y_fracs] = [tick_fracs(plot, `x`), tick_fracs(plot, `y`)]
+      const common = [...x_fracs.keys()].filter((value) => y_fracs.has(value))
+      return { x_fracs, y_fracs, common }
+    }
+    const own = await mount_binned(false)
+    expect(own.common.some((value) => own.x_fracs.get(value) !== own.y_fracs.get(value))).toBe(
+      true,
+    )
+    const shared = await mount_binned(true)
+    expect(shared.common.length).toBeGreaterThanOrEqual(2)
+    for (const value of shared.common) {
+      expect(shared.y_fracs.get(value)).toBeCloseTo(shared.x_fracs.get(value) ?? NaN, 6)
+    }
+    // the shared range reaches y's low data end on x too
+    expect(Math.min(...shared.x_fracs.keys())).toBeLessThanOrEqual(-4)
+  })
+
   test(`title-only y2 axis expands right padding`, async () => {
     const plot = await mount_sized(
       BarPlot,
@@ -1047,7 +1194,6 @@ test.each([
       dims: { width: 320, height: 200, fullscreen },
       fullscreen,
       css_prefix: `scatter`,
-      fullscreen_toggle: true,
       show_controls,
       header_controls: createRawSnippet((dims: () => { width: number; height: number }) => ({
         render: () => `<span class="custom">${dims().width}x${dims().height}</span>`,

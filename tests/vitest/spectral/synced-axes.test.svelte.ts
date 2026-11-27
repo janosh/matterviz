@@ -1,11 +1,11 @@
 import {
   create_bands_dos_sync,
   shared_resolved_padding_floor,
-} from '#lib/spectral/synced-axes.svelte.js'
-import type { Vec2 } from '#lib/math.js'
-import type { AxisConfig } from '#lib/plot/core/types.js'
-import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
-import type { BaseBandStructure, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
+} from '#lib/spectral/synced-axes.svelte'
+import type { Vec2 } from '#lib/math'
+import type { AxisConfig } from '#lib/plot/core/types'
+import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout'
+import type { BaseBandStructure, FrequencyUnit, PhononDos } from '#lib/spectral/types'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vite-plus/test'
 

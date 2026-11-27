@@ -1,22 +1,21 @@
 import type { AnyStructure } from '#lib'
 import { Check, Copy } from 'svelte-widgets/icons'
-import { download } from 'svelte-widgets/browser'
 import app_css from '#lib/app.css?inline'
-import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export.js'
-import type { CameraFlight } from '#lib/scene/camera-flight.js'
+import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export'
+import type { CameraFlight } from '#lib/scene/camera-flight'
 import {
   camera_flight_registry,
   create_camera_flight_controller,
-} from '#lib/scene/camera-flight.js'
-import { export_scene_as } from '#lib/scene/export.js'
+} from '#lib/scene/camera-flight'
+import { export_scene_as } from '#lib/scene/export'
 import StructureExportPane from '#lib/structure/StructureExportPane.svelte'
-import * as export_funcs from '#lib/structure/export.js'
+import * as export_funcs from '#lib/structure/export'
 import { mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
 import type { Scene, WebGPURenderer } from 'three/webgpu'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, mock_canvas_context, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 
@@ -26,10 +25,11 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
     props: { export_pane_open: true, ...props },
   })
 
-vi.mock(`svelte-widgets/browser`, async (import_original) => ({
-  ...(await import_original<Record<string, unknown>>()),
-  download: vi.fn(),
-}))
+// Saves reach `download`'s global hook (the one VS Code webviews install), also from inside
+// svelte-widgets' FileExportState, which a module mock of svelte-widgets/browser can't reach
+const download = vi.fn()
+beforeEach(() => vi.stubGlobal(`download`, download))
+afterEach(() => void vi.unstubAllGlobals())
 
 // what each mocked serializer returns
 const mock_contents = vi.hoisted(() => ({
@@ -40,7 +40,7 @@ const mock_contents = vi.hoisted(() => ({
 }))
 type MockFormat = keyof typeof mock_contents
 
-vi.mock(`#lib/structure/export.js`, async (import_original) => {
+vi.mock(`#lib/structure/export`, async (import_original) => {
   const original = await import_original<typeof export_funcs>()
   const formats = Object.entries(original.STRUCT_TEXT_FORMATS).map(([fmt, spec]) => [
     fmt,
@@ -53,11 +53,14 @@ vi.mock(`#lib/structure/export.js`, async (import_original) => {
   }
 })
 
-vi.mock(`#lib/io/export.js`, async (importOriginal) => ({
+vi.mock(`#lib/io/export`, async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   export_canvas_as_png: vi.fn(),
 }))
-vi.mock(`#lib/scene/export.js`, () => ({ export_scene_as: vi.fn(() => Promise.resolve()) }))
+vi.mock(`#lib/scene/export`, () => ({
+  export_scene_as: vi.fn(() => Promise.resolve()),
+  OBJ_SAVE_AS_REASON: `OBJ writes two files`,
+}))
 
 describe(`StructureExportPane`, () => {
   let wrapper_div: HTMLDivElement
@@ -309,7 +312,7 @@ describe(`StructureExportPane`, () => {
         slice_canvas,
         `charge-density-slice`,
         144,
-        expect.any(Function),
+        expect.objectContaining({ destination: `downloads`, open: expect.any(Function) }),
       )
     })
     expect(document.body.textContent).not.toContain(`Export as 3D model`)
@@ -330,7 +333,7 @@ describe(`StructureExportPane`, () => {
           mock_scene,
           format,
           `structure-basename`,
-          expect.any(Function),
+          expect.objectContaining({ destination: `downloads`, open: expect.any(Function) }),
         ),
       )
       expect(export_funcs.create_structure_filename).toHaveBeenCalledWith(simple_structure)
@@ -341,6 +344,23 @@ describe(`StructureExportPane`, () => {
     mount_pane({ structure: simple_structure, scene: undefined })
     expect(get_button(`Download GLB`).disabled).toBe(true)
     expect(get_button(`Download OBJ`).disabled).toBe(true)
+  })
+
+  // OBJ writes .obj + .mtl, which one Save As dialog can't name: only its download is blocked
+  test(`Save As disables OBJ download with its reason, GLB stays enabled`, async () => {
+    vi.stubGlobal(`showSaveFilePicker`, vi.fn())
+    mount_pane({ structure: simple_structure, scene: mock_scene })
+    expect(get_button(`Download OBJ`).disabled).toBe(false)
+    const ask = [...document.querySelectorAll(`input[type="radio"]`)].find(
+      (radio) => radio.parentElement?.textContent?.trim() === `Ask each time`,
+    )
+    if (!(ask instanceof HTMLInputElement)) throw new TypeError(`Save As radio missing`)
+    ask.click()
+    await tick()
+    const obj_btn = get_button(`Download OBJ`)
+    expect(obj_btn.disabled).toBe(true)
+    expect(obj_btn.title).toBe(`Download OBJ — OBJ writes two files`)
+    expect(get_button(`Download GLB`).disabled).toBe(false)
   })
 
   // oxfmt-ignore
@@ -385,20 +405,23 @@ describe(`StructureExportPane`, () => {
 
   test.each([`Download`, `Copy`])(
     `a throwing serializer on %s is logged, not thrown from the click handler`,
-    (action) => {
+    async (action) => {
       vi.mocked(export_funcs.STRUCT_TEXT_FORMATS.cif.to_str).mockImplementationOnce(() => {
         throw new Error(`serializer exploded`)
       })
       const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
       mount_pane({ structure: simple_structure })
       expect(() => get_button(`${action} CIF`).click()).not.toThrow()
-      expect(console_error_spy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          action === `Download`
-            ? `Export structure-basename failed`
-            : `Failed to copy CIF to clipboard`,
+      // a download serializes once its file is open, after the click handler returned
+      await vi.waitFor(() =>
+        expect(console_error_spy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            action === `Download`
+              ? `Export structure-basename failed`
+              : `Failed to copy CIF to clipboard`,
+          ),
+          expect.any(Error),
         ),
-        expect.any(Error),
       )
       console_error_spy.mockRestore()
     },
@@ -435,7 +458,7 @@ describe(`StructureExportPane`, () => {
         wrapper_div.querySelector(`canvas`),
         `structure-basename`,
         props.png_dpi ?? 144,
-        expect.any(Function),
+        expect.objectContaining({ destination: `downloads`, open: expect.any(Function) }),
       )
     })
   })

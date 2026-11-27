@@ -5,9 +5,9 @@
 // reaction coordinate — by default the cumulative arc length through configuration
 // space — not a time step, so this module is deliberately standalone.
 
-import type { Vec3 } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+import type { Vec3 } from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
+import type { Pbc } from '#lib/structure/pbc'
 
 // All of parse.ts is user-facing file reading, but reaction-path.ts is mostly internals:
 // spline primitives, geometry helpers and validators have no consumer outside this
@@ -61,6 +61,16 @@ export type NamedReactionPath = { key: string; path: ReactionPath }
 // `arc_length` (default) is the cumulative minimum-image distance through
 // configuration space; `image_index` plots against the 1-based image number.
 export type ReactionCoordMode = `arc_length` | `image_index`
+
+// Controls NebViewer's `show_controls` can hide by name
+export type NebControlName =
+  | `path`
+  | `nav`
+  | `step`
+  | `fps`
+  | `energy`
+  | `export-pane`
+  | `fullscreen`
 
 // `initial` subtracts the first image energy, making barriers directly readable.
 export type EnergyReference = `absolute` | `initial`

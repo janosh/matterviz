@@ -1,6 +1,6 @@
 <script>
   import { page } from '$app/state'
-  import { routes as all_routes } from '#site/state.svelte.js'
+  import { routes as all_routes } from '#site/state.svelte'
   import Nav from 'svelte-widgets/Nav.svelte'
 
   const routes = all_routes
@@ -17,6 +17,6 @@
 <style>
   h1 + p {
     text-align: center;
-    color: var(--text-muted);
+    color: var(--text-color-muted);
   }
 </style>

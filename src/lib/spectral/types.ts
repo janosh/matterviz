@@ -1,6 +1,6 @@
 // Types of band structures, densities of states and vibrational spectra
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { InternalPoint, LineStyle } from '#lib/plot/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { InternalPoint, LineStyle } from '#lib/plot/index'
 import type { ElectronEnergyUnit } from './frequency-units'
 
 // Discriminator of bands and DOS alike: phonon data is in THz (DOS `frequencies`), electronic

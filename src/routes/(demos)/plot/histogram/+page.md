@@ -8,7 +8,7 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { Histogram, type HistogramHandlerProps } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let bins = $state(50)
   let sample_size = $state(1000)
@@ -22,8 +22,8 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
     label: `Normal Distribution (N=${format_num(sample_size, `~s`)}, μ=50, σ=15)`,
   })
 
-  const describe = ({ value, count, property }: HistogramHandlerProps): string =>
-    `${property} - Value: ${value.toFixed(1)}, Count: ${count}, Percentage: ${format_num(
+  const describe = ({ x: bin_center, count, label }: HistogramHandlerProps): string =>
+    `${label} - Value: ${bin_center.toFixed(1)}, Count: ${count}, Percentage: ${format_num(
       count / sample_size,
       `.2~%`,
     )}`
@@ -48,8 +48,8 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
   </label>
 </div>
 
-{#snippet tooltip({ value, count })}
-  Value: {value.toFixed(1)}<br />Count: {count}<br />
+{#snippet tooltip({ x: bin_center, count })}
+  Value: {bin_center.toFixed(1)}<br />Count: {count}<br />
   %: {format_num(count / sample_size, `.2~%`)}
 {/snippet}
 
@@ -87,7 +87,7 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let display = $state({ x_grid: true, y_grid: false, y2_grid: false })
   let series = $state([
@@ -122,9 +122,9 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
   bar={{ opacity: 0.6 }}
   style="height: 400px"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    Score: {value.toFixed(1)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    Score: {bin_center.toFixed(1)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -138,7 +138,7 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `linear`, label: `Count (Normal/Uniform)` })
@@ -229,9 +229,9 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
   bind:display
   style="height: 450px; margin-block: 1em;"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    Value: {value.toFixed(2)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    Value: {bin_center.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 
@@ -250,7 +250,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `log` })
@@ -307,9 +307,9 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   bind:y_axis
   style="height: 450px; margin-block: 1em"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    Value: {value.toExponential(2)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    Value: {bin_center.toExponential(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 
@@ -326,7 +326,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_signed_data, seeded_rng } from '#site/histogram-data.js'
+  import { generate_signed_data, seeded_rng } from '#site/histogram-data'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
   let x_scale_type = $state(`arcsinh`)
@@ -400,8 +400,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   bind:y_axis
   style="height: 400px"
 >
-  {#snippet tooltip({ value, count })}
-    Value: {value.toFixed(1)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count })}
+    Value: {bin_center.toFixed(1)}<br />Count: {count}
   {/snippet}
 </Histogram>
 
@@ -419,8 +419,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { FilePicker, Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
-  import { url_selection } from '#site/state.svelte.js'
+  import * as utils from '#site/histogram-data'
+  import { url_selection } from '#site/state.svelte'
 
   const selected = url_selection(`dist`, [`bimodal`, `skewed`, `discrete`, `age`, `mixture`])
   let mode = $state(`single`)
@@ -469,10 +469,10 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
     {{ age: `Age`, discrete: `Rating` }[selected.value] ?? `Value`}: {format_num(
-      value,
+      bin_center,
       selected.value === `discrete` ? `.1f` : `.0f`,
     )}<br />
     Count: {count}<br />%: {format_num(count / current.data.length, `.2~%`)}
@@ -487,7 +487,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let normalize = $state(`density`)
   let bins = $state(40)
@@ -529,7 +529,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let bin_counts = $state([10, 25, 50, 100])
   let data_type = $state(`mixed`)
@@ -576,7 +576,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let color_scheme = $state(`default`)
   let x_format = $state(`number`)
@@ -654,10 +654,11 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     color_scheme
   ][0]}; border-radius: 8px;"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />
-    {x_format === `currency` ? `Price: $${value.toFixed(0)}` : `Value: ${value.toFixed(2)}`}<br
-    />
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />
+    {x_format === `currency`
+      ? `Price: $${bin_center.toFixed(0)}`
+      : `Value: ${bin_center.toFixed(2)}`}<br />
     Count: {count}
   {/snippet}
 </Histogram>
@@ -670,7 +671,7 @@ Binning is a single pass over the samples (100k values into 200 bins takes ~3 ms
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   let dataset_size = $state(10000)
   let data_type = $state(`normal`)
@@ -728,8 +729,8 @@ points, {bins} bins, {mode} mode
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br />Value: {value.toFixed(2)}<br />Count: {count}
+  {#snippet tooltip({ x: bin_center, count, label })}
+    <strong>{label}</strong><br />Value: {bin_center.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
 ```
@@ -741,7 +742,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '#site/histogram-data.js'
+  import { generate_normal } from '#site/histogram-data'
 
   let comparison_mode = $state(false)
 
@@ -892,7 +893,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { type HistogramSeries, Histogram, create_axis_loader, type AxisKey } from 'matterviz'
-  import { box_muller, seeded_rng } from '#site/histogram-data.js'
+  import { box_muller, seeded_rng } from '#site/histogram-data'
 
   // One sample of each distribution, drawn from a seeded uniform rng and normal()
   const samplers = {
@@ -1032,7 +1033,7 @@ Display multiple histograms in a responsive 2×2 grid:
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '#site/histogram-data.js'
+  import * as utils from '#site/histogram-data'
 
   const plots = [
     {
@@ -1111,7 +1112,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_exponential, generate_normal } from '#site/histogram-data.js'
+  import { generate_exponential, generate_normal } from '#site/histogram-data'
 
   const n_samples = 200
   const y1_values = generate_normal(n_samples, 50, 15)
@@ -1171,7 +1172,7 @@ Plot two distributions with independent x-scales on the same histogram. The prim
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal, seeded_rng } from '#site/histogram-data.js'
+  import { generate_normal, seeded_rng } from '#site/histogram-data'
 
   // Seeded so the two mass distributions are reproducible on reload
   const rng = seeded_rng(42)

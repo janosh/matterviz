@@ -1,15 +1,15 @@
 // Web Worker branch of compute_rdfs_async (see structure-id/worker-path.test.ts for why a
 // stub Worker is installed before the import): the payload must carry one element per site,
 // which the structure-id payload omits, or every pair would histogram as X-X.
-import type { compute_rdfs_async as ComputeRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
+import type { compute_rdfs_async as ComputeRdfsAsync } from '#lib/rdf/async-compute.svelte'
 import {
   compute_all_pair_rdfs,
   compute_rdf,
   compute_rdfs,
   type RdfsOptions,
-} from '#lib/rdf/compute-rdf.js'
-import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
-import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
+} from '#lib/rdf/compute-rdf'
+import type { StructureIdPayload } from '#lib/structure-id/worker-payload'
+import { structure_from_payload } from '#lib/structure-id/worker-payload'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeAll, expect, test } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
@@ -23,7 +23,7 @@ const stub = install_stub_worker<{
 let compute_rdfs_async: typeof ComputeRdfsAsync
 
 beforeAll(async () => {
-  ;({ compute_rdfs_async } = await import(`#lib/rdf/async-compute.svelte.js`))
+  ;({ compute_rdfs_async } = await import(`#lib/rdf/async-compute.svelte`))
 })
 afterEach(stub.reset)
 
@@ -37,7 +37,10 @@ test(`ships positions, lattice and species, and matches the sync per-pair and al
   expect_module_worker(stub.instances, `src/lib/rdf/rdf-worker.ts`)
   const { input: payload } = stub.posted[0].message
   expect(Object.keys(payload).toSorted()).toEqual([`lattice`, `species`, `xyz`])
-  expect(payload.species).toEqual(crystal.sites.map((site) => site.species))
+  expect(payload.species?.table).toHaveLength(2) // one entry per distinct species
+  expect(structure_from_payload(payload).sites.map((site) => site.species)).toEqual(
+    crystal.sites.map((site) => site.species),
+  )
   expect(result.map((pattern) => pattern.element_pair)).toEqual([
     [`Cl`, `Cl`],
     [`Cl`, `Na`],

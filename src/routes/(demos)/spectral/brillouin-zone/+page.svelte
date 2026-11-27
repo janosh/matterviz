@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { url_selection } from '#site/state.svelte.js'
+  import { url_selection } from '#site/state.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { BrillouinZone } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { Crystal } from '#lib/structure/index.js'
-  import { is_crystal } from '#lib/structure/validation.js'
-  import { parse_structure_fixture, structure_files, structure_map } from '#site/structures.js'
+  import type { Crystal } from '#lib/structure/index'
+  import { is_crystal } from '#lib/structure/validation'
+  import { parse_structure_fixture, structure_files, structure_map } from '#site/structures'
 
   let dropped_structure = $state<Crystal | undefined>()
   // A Brillouin zone needs a lattice, so molecules stay out of the picker
@@ -48,7 +48,12 @@
       description: `${order === 2 ? `2nd` : `3rd`} order BZ`,
       order,
     })),
-    { id: null, label: `Drag & Drop`, description: `Drop your structure file here`, order: 1 },
+    {
+      id: null,
+      label: `Drag & Drop`,
+      description: `Drop your structure file here`,
+      order: 1 as const,
+    },
   ]
 
   let surface_opacity = $state(0.4)
@@ -72,9 +77,9 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <LazyDemo label="{label}: {description}">
+      <LazyMount label="{label}: {description}">
         <BrillouinZone {structure} {surface_opacity} show_ibz {default_k_path} />
-      </LazyDemo>
+      </LazyMount>
     </div>
   {/each}
 </div>
@@ -92,7 +97,7 @@
     on_click={({ name }) => (picked.value = name)}
     style="max-width: 600px; margin-inline: auto"
   />
-  <LazyDemo label="Try Your Own Structure" height="450px">
+  <LazyMount label="Try Your Own Structure" height="450px">
     <BrillouinZone
       bind:structure={dropped_structure}
       {surface_opacity}
@@ -101,7 +106,7 @@
       allow_file_drop
       style="height: 450px"
     />
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <h2 id="higher-order-brillouin-zones" style="margin-block: 3em 1em">
@@ -114,7 +119,7 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <LazyDemo label="{label}: {description}">
+      <LazyMount label="{label}: {description}">
         <BrillouinZone
           {structure}
           {surface_opacity}
@@ -123,7 +128,7 @@
           show_controls
           allow_file_drop
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
   {/each}
 </div>

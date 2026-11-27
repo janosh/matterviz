@@ -2,9 +2,9 @@
 // between points (a claim scattered data like a parity plot does not support), bars state the
 // uncertainty pointwise and also work in x: measurement error is rarely confined to one axis.
 
-import { is_finite_number } from '#lib/utils.js'
-import type { Vec2 } from '#lib/math.js'
-import type { RunningExtent } from '#lib/plot/core/scales.js'
+import { is_finite_number } from '#lib/utils'
+import type { Vec2 } from '#lib/math'
+import type { RunningExtent } from '#lib/plot/core/scales'
 
 // Scalar (same for every point), per-point array, or asymmetric. Deliberately the same
 // shape `ErrorBand.error` accepts, so moving between a ribbon and bars is a prop rename.

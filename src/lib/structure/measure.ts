@@ -1,8 +1,8 @@
 // functions for measuring distances and angles between structure sites
 
 import { clamp } from 'svelte-widgets/utils'
-import { display_idx } from '#lib/labels.js'
-import type { LatticeConverters, Matrix3x3, Vec3 } from '#lib/math.js'
+import { display_idx } from '#lib/labels'
+import type { LatticeConverters, Matrix3x3, Vec3 } from '#lib/math'
 import {
   add,
   create_lattice_converters,
@@ -14,8 +14,8 @@ import {
   scale,
   subtract,
   to_degrees,
-} from '#lib/math.js'
-import type { MeasureMode, Site } from '#lib/structure/index.js'
+} from '#lib/math'
+import type { MeasureMode, Site } from '#lib/structure/index'
 import type { Pbc } from './pbc'
 
 export const MAX_SELECTED_SITES = 8

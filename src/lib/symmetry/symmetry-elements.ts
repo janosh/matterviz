@@ -15,11 +15,11 @@
 // - intrinsic (screw/glide) translation w_i = P·w; location part w_loc = w − w_i
 // - fixed point x₀ = orbit average of the origin under (W, w_loc): since the translation
 //   part of (W, w_loc)ⁿ vanishes, the average of {0, (W,w_loc)·0, …} is exactly fixed
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
-import { clip_frac_plane_to_cell } from '#lib/structure/lattice-planes.js'
-import { whole_tile_counts } from '#lib/structure/supercell.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
+import { clip_frac_plane_to_cell } from '#lib/structure/lattice-planes'
+import { whole_tile_counts } from '#lib/structure/supercell'
+import { wrap_to_unit_cell } from '#lib/structure/pbc'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 // All element kinds in display order (axes, planes, then point elements), followed by both

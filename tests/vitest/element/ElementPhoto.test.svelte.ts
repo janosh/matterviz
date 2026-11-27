@@ -1,5 +1,5 @@
 import ElementPhoto from '#lib/element/ElementPhoto.svelte'
-import element_data from '#lib/element/data.js'
+import element_data from '#lib/element/data'
 import { mount, tick, unmount } from 'svelte'
 import { expect, test } from 'vite-plus/test'
 import { doc_query } from '../setup'

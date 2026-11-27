@@ -1,18 +1,18 @@
 // Pure data-transform helpers for ScatterPlot.svelte. Everything here is stateless:
 // component $state/$derived values are passed in as parameters.
-import { partition_point, type Vec2 } from '#lib/math.js'
-import { error_getter } from '#lib/plot/core/error-bars.js'
-import { plot_color } from '#lib/colors/index.js'
-import { symbol_names } from '#lib/labels.js'
-import { DEFAULTS } from '#lib/settings.js'
-import { first_duplicate, is_finite_number } from '#lib/utils.js'
+import { partition_point, type Vec2 } from '#lib/math'
+import { error_getter } from '#lib/plot/core/error-bars'
+import { plot_color } from '#lib/colors/index'
+import { symbol_names } from '#lib/labels'
+import { DEFAULTS } from '#lib/settings'
+import { first_duplicate, is_finite_number } from '#lib/utils'
 import {
   get_series_symbol,
   is_transparent_or_none,
   shown_point_style,
-} from '#lib/plot/core/data-transform.js'
-import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
-import { range_bounds } from '#lib/plot/core/interactions.js'
+} from '#lib/plot/core/data-transform'
+import { is_fill_gradient } from '#lib/plot/core/fill-utils'
+import { range_bounds } from '#lib/plot/core/interactions'
 import type {
   AxisKey,
   AxisRanges,
@@ -23,8 +23,8 @@ import type {
   LineCurve,
   PointStyle,
   StyleOverrides,
-} from '#lib/plot/core/types.js'
-import { assert_series_lengths, has_marker, is_numeric_column } from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
+import { assert_series_lengths, has_marker, is_numeric_column } from '#lib/plot/core/types'
 
 // A colour/size value a scale can map: NaN, ±Infinity and null fall back to the series style
 // like a missing value (d3 scales map NaN to undefined: a black marker at the default size)
@@ -464,9 +464,34 @@ export const strict_x_direction = (values: ArrayLike<number>): -1 | 0 | 1 => {
   return direction
 }
 
+// Decimate a pixel polyline per `column_px`-wide column: a run of more than 6 vertices keeps
+// its first two, lowest, highest and last two, in order (M4 plus the neighbours monotone
+// tangents read). Segments crossing a column edge keep their ends and those ends' neighbours,
+// so they draw as before, and segments within a column stay inside its kept y-span: no
+// column's drawn y-extent changes. A NaN vertex (a line break) forms its own run.
+function decimate_columns(points: Vec2[], column_px: number): Vec2[] {
+  const kept: Vec2[] = []
+  for (let start = 0; start < points.length;) {
+    const column = Math.floor(points[start][0] / column_px)
+    let [end, low, high] = [start + 1, start, start]
+    for (; end < points.length && Math.floor(points[end][0] / column_px) === column; end++) {
+      if (points[end][1] < points[low][1]) low = end
+      else if (points[end][1] > points[high][1]) high = end
+    }
+    if (end - start <= 6) for (let idx = start; idx < end; idx++) kept.push(points[idx])
+    else {
+      const picks = [start, start + 1, low, high, end - 2, end - 1].toSorted((a, b) => a - b)
+      for (const idx of new Set(picks)) kept.push(points[idx])
+    }
+    start = end
+  }
+  return kept
+}
+
 // Retain boundary-crossing segments and enough neighboring vertices for d3's local
 // monotone tangents. Natural/basis/Catmull–Rom curves retain their complete path. `cropped`:
-// whether the range left any vertex out (a wider range then keeps more).
+// whether the range left any vertex out (a wider range then keeps more). A `column_px` > 0
+// decimates linear and step lines, and monotone ones in strict x order (see decimate_columns).
 export function project_line_points(
   data: Pick<DataSeries, `x` | `y` | `line_breaks`>,
   x_scale: (value: number) => number,
@@ -474,6 +499,7 @@ export function project_line_points(
   x_range: Vec2,
   direction: -1 | 0 | 1,
   curve: LineCurve = `monotone`,
+  column_px = 0,
 ): { points: Vec2[]; cropped: boolean } {
   const { x: coord_x, y: coord_y } = data
   let start = 0
@@ -510,5 +536,11 @@ export function project_line_points(
     const pixel_y = y_scale(coord_y[idx])
     if (Number.isFinite(pixel_x) && Number.isFinite(pixel_y)) points.push([pixel_x, pixel_y])
   }
-  return { points, cropped: start > 0 || end < coord_x.length }
+  const decimate =
+    column_px > 0 &&
+    (curve === `linear` || curve === `step` || (curve === `monotone` && direction !== 0))
+  return {
+    points: decimate ? decimate_columns(points, column_px) : points,
+    cropped: start > 0 || end < coord_x.length,
+  }
 }

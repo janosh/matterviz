@@ -1,4 +1,4 @@
-import type { InfoPaneCard } from '#lib/overlays/index.js'
+import type { InfoPaneCard } from '#lib/overlays/index'
 import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'

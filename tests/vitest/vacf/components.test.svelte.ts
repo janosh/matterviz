@@ -1,10 +1,10 @@
 // Covers the worker plumbing of compute_vacf_async and the two UI components.
 // happy-dom has no Worker, so a stub is installed before the module is imported and the
 // real postMessage path runs; the components then exercise the synchronous fallback.
-import type * as VacfAsyncModule from '#lib/vacf/async-compute.svelte.js'
-import * as collect_module from '#lib/vacf/collect.js'
-import { compute_vacf } from '#lib/vacf/compute-vacf.js'
-import type { VacfInput, VacfOptions, VacfResult } from '#lib/vacf/index.js'
+import type * as VacfAsyncModule from '#lib/vacf/async-compute.svelte'
+import * as collect_module from '#lib/vacf/collect'
+import { compute_vacf } from '#lib/vacf/compute-vacf'
+import type { VacfInput, VacfOptions, VacfResult } from '#lib/vacf/index'
 import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '#lib/vacf/VacfPlot.svelte'
 import { create_input_store, type WorkerRequest } from 'svelte-widgets/worker-serve'
@@ -38,7 +38,7 @@ const orbit_input = (n_frames: number, with_velocities = true): VacfInput => {
 
 beforeAll(async () => {
   // Imported after the stub so the module-level singleton picks it up
-  vacf_async_module = await import(`#lib/vacf/async-compute.svelte.js`)
+  vacf_async_module = await import(`#lib/vacf/async-compute.svelte`)
   ;({ compute_vacf_async } = vacf_async_module)
 })
 

@@ -1,19 +1,19 @@
 import Dos from '#lib/spectral/Dos.svelte'
-import type { Vec2 } from '#lib/math.js'
-import type { PymatgenCompleteDos } from '#lib/spectral/helpers.js'
+import type { Vec2 } from '#lib/math'
+import type { PymatgenCompleteDos } from '#lib/spectral/helpers'
 import {
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
   normalize_dos,
   validate_sigma_range,
-} from '#lib/spectral/helpers.js'
+} from '#lib/spectral/helpers'
 import type {
   ElectronicDos,
   FrequencyUnit,
   NormalizationMode,
   PhononDos,
-} from '#lib/spectral/types.js'
+} from '#lib/spectral/types'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import {
@@ -27,8 +27,8 @@ import {
   reset_section,
   translate_of,
 } from '../setup'
-import { convert_frequencies } from '#lib/spectral/frequency-units.js'
-import type { Sides } from '#lib/plot/core/layout.js'
+import { convert_frequencies } from '#lib/spectral/frequency-units'
+import type { Sides } from '#lib/plot/core/layout'
 
 // Test fixtures
 const phonon_dos: PhononDos = {

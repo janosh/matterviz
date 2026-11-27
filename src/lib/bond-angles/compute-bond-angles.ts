@@ -2,15 +2,15 @@
 // neighbours and record the angle subtended at that atom, then bin over 0-180 degrees.
 // Third member of the local-structure family alongside #lib/rdf and #lib/coordination.
 
-import type { Vec3 } from '#lib/math.js'
-import { is_valid_index, sorted_numbers } from '#lib/math.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding.js'
-import { compute_bonds, intern_site_elements } from '#lib/structure/bonding.js'
-import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list.js'
-import { angle_between_vectors } from '#lib/structure/measure.js'
-import { split_site_partners } from '#lib/structure/partial-occupancy.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+import type { Vec3 } from '#lib/math'
+import { is_valid_index, sorted_numbers } from '#lib/math'
+import type { AnyStructure } from '#lib/structure/index'
+import type { BondingOptions, BondingStrategy } from '#lib/structure/bonding'
+import { compute_bonds, intern_site_elements } from '#lib/structure/bonding'
+import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list'
+import { angle_between_vectors } from '#lib/structure/measure'
+import { split_site_partners } from '#lib/structure/partial-occupancy'
+import type { Pbc } from '#lib/structure/pbc'
 
 // Angles are undirected, so the whole distribution lives in [0, 180]
 export const MAX_BOND_ANGLE = 180

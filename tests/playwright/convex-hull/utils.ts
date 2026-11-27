@@ -15,16 +15,6 @@ export const goto_perf_page = async (
   return page.locator(`.convex-hull-${dim}`).first()
 }
 
-export async function ensure_pane_visible(pane: Locator, opener_btn: Locator): Promise<void> {
-  // Try to make pane visible by clicking its opener button if needed
-  try {
-    if (!(await pane.isVisible())) await opener_btn.click()
-    if (!(await pane.isVisible())) await pane.scrollIntoViewIfNeeded()
-  } catch {
-    // Best-effort fallback to avoid test flakiness
-  }
-}
-
 // Open a DraggablePane through its toggle, re-clicking while a click lands before hydration.
 // Clicks only while the toggle reports the pane closed, so a retry never closes it again.
 async function open_pane(

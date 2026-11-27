@@ -1,11 +1,11 @@
 <script lang="ts">
   import GlassChip from 'svelte-widgets/GlassChip.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import type { AnyStructure } from '#lib/structure/index.js'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { FloatingPopup } from '#lib/overlays/index.js'
-  import { sanitize_formula } from '#lib/sanitize.js'
-  import { Structure } from '#lib/structure/index.js'
+  import type { AnyStructure } from '#lib/structure/index'
+  import { get_electro_neg_formula } from '#lib/composition/index'
+  import { FloatingPopup } from '#lib/overlays/index'
+  import { sanitize_formula } from '#lib/sanitize'
+  import { Structure } from '#lib/structure/index'
   import type { StructurePopupContext, StructurePopupStats } from './types'
   import type { ComponentProps, Snippet } from 'svelte'
 

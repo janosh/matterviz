@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   // Outer shell of the non-Cartesian charts: the measured wrapper div, fullscreen mode and the
@@ -23,8 +23,8 @@
   // (`--<prefix>-width`, `--<prefix>-bg`, …) so every chart is themed the same way.
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
-  import type { ExportProps, ExportSources } from '#lib/io/export.js'
+  import type { PaneToggleProps } from '#lib/overlays/index'
+  import type { ExportProps, ExportSources } from '#lib/io/export'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -36,7 +36,6 @@
     width = $bindable(0),
     height = $bindable(0),
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     show_controls,
     chrome_color,
     controls_toggle_props,
@@ -64,7 +63,6 @@
       width?: number
       height?: number
       fullscreen?: boolean
-      fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `fullscreen`>
       // Color for the chrome icons, from what the chart paints under the top-right corner. A
       // prop, not a CSS var in `style`: a caller's rest `style` would clobber that.
@@ -110,7 +108,6 @@
       bind:fullscreen
       {wrapper}
       {css_prefix}
-      {fullscreen_toggle}
       {show_controls}
       corner
       {chrome_color}

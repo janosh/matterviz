@@ -1,11 +1,7 @@
-import {
-  FrameView,
-  materialize_frame,
-  materialize_frame_result,
-} from '#lib/trajectory/frame.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
-import type { Complex, PhononModeData, VibrationalSpectrum } from '#lib/spectral/index.js'
+import { FrameView, materialize_frame, materialize_frame_result } from '#lib/trajectory/frame'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math'
+import type { Complex, PhononModeData, VibrationalSpectrum } from '#lib/spectral/index'
 import {
   is_commensurate_phonon_supercell,
   is_imaginary_frequency,
@@ -21,12 +17,12 @@ import {
   phonon_qpoint_labels,
   phonon_supercell,
   qpoint_has_eigenvectors,
-} from '#lib/spectral/phonon-modes.js'
-import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
-import { get_structure_vector_keys } from '#lib/structure/vectors.js'
-import { compute_bonds, explicit_only, get_bond_key } from '#lib/structure/bonding.js'
-import type { PolyhedraSettings } from '#lib/structure/polyhedra.js'
-import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
+} from '#lib/spectral/phonon-modes'
+import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes'
+import { get_structure_vector_keys } from '#lib/structure/vectors'
+import { compute_bonds, explicit_only, get_bond_key } from '#lib/structure/bonding'
+import type { PolyhedraSettings } from '#lib/structure/polyhedra'
+import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra'
 import { describe, expect, it } from 'vite-plus/test'
 import cspbi3_band_yaml from '#site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'

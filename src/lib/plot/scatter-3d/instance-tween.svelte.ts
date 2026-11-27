@@ -4,7 +4,7 @@
 // buffers, the hover halo) follows the animation.
 
 import { motion_duration } from 'svelte-widgets/effects'
-import { same_values } from '#lib/math.js'
+import { same_values } from '#lib/math'
 import { cubicOut } from 'svelte/easing'
 import type { TweenOptions } from 'svelte/motion'
 import { Color, SRGBColorSpace } from 'three/webgpu'

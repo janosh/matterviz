@@ -1,11 +1,11 @@
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import FacetGrid from '#lib/plot/core/components/FacetGrid.svelte'
-import type { FacetPanel, FacetPanelContext } from '#lib/plot/core/facets.js'
+import type { FacetPanel, FacetPanelContext } from '#lib/plot/core/facets'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import type { DataSeries } from '#lib/plot/index.js'
+import type { DataSeries } from '#lib/plot/index'
 import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { clip_rect, drag, query, trigger_resize_observer } from '../setup'
@@ -106,7 +106,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
           padding: data.padding,
           x_axis: { label: `Shared x` },
           y_axis: { label: `Shared y` },
-          fullscreen_toggle: false,
+          show_controls: { hidden: [`fullscreen`] },
         }
         Object.defineProperty(props, `facet_layout`, { get: get_context })
         const component = mount(plot_case.component, { target: element, props })

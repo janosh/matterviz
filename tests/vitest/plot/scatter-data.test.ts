@@ -1,10 +1,10 @@
 import { line } from 'd3-shape'
-import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
-import type { Vec2 } from '#lib/math.js'
-import type { AxisKey, AxisRanges, DataSeries } from '#lib/plot/index.js'
-import { plot_color } from '#lib/colors/index.js'
-import { get_series_symbol } from '#lib/plot/core/data-transform.js'
-import type { LegendFill } from '#lib/plot/scatter/scatter-data.js'
+import { line_curve_factory } from '#lib/plot/core/fill-utils'
+import type { Vec2 } from '#lib/math'
+import type { AxisKey, AxisRanges, DataSeries, LineCurve } from '#lib/plot/index'
+import { plot_color } from '#lib/colors/index'
+import { get_series_symbol } from '#lib/plot/core/data-transform'
+import type { LegendFill } from '#lib/plot/scatter/scatter-data'
 import {
   build_fill_legend_items,
   build_series_legend_items,
@@ -16,8 +16,9 @@ import {
   pick_tooltip_bg,
   project_line_points,
   strict_x_direction,
-} from '#lib/plot/scatter/scatter-data.js'
+} from '#lib/plot/scatter/scatter-data'
 import { describe, expect, test } from 'vite-plus/test'
+import { make_rng } from '../numeric-helpers'
 import { index_read_counter } from '../setup'
 
 const color_scale = (val: number) => `scale(${val})`
@@ -497,6 +498,7 @@ describe(`viewport line projection`, () => {
               range,
               strict_x_direction(data.x),
               curve,
+              1, // decimation leaves a line of one vertex per pixel column alone
             )
             const full = project_line_points(data, x_scale, y_scale, range, 0, curve)
             expect([was_cropped, full.cropped]).toEqual([true, false])
@@ -528,6 +530,104 @@ describe(`viewport line projection`, () => {
             }
             expect(segments(cropped)).toEqual(segments(full.points))
             expect(cropped.length).toBeLessThan(full.points.length)
+          }
+        }
+      }
+    },
+  )
+
+  // Each drawn segment: its start point, then the command's coordinates
+  const drawn_segments = (points: Vec2[], curve: LineCurve) => {
+    const segments: number[][] = []
+    let start: number[] = []
+    const draw = (...coords: number[]) => {
+      segments.push([...start, ...coords])
+      start = coords.slice(-2)
+    }
+    line()
+      .curve(line_curve_factory(curve))
+      .context({
+        moveTo: (...coords: number[]) => (start = coords),
+        lineTo: draw,
+        bezierCurveTo: draw,
+        closePath: () => {},
+      } as unknown as CanvasRenderingContext2D)(points)
+    return segments
+  }
+
+  test.each([`linear`, `step`, `monotone`] as const)(
+    `decimates a dense %s line keeping each pixel column's drawn y-extent`,
+    (curve) => {
+      const rng = make_rng(7)
+      const same = (val: number) => val
+      const all_x: Vec2 = [-Infinity, Infinity]
+      // ~50 vertices per column, then a tail of 5-6 (kept whole), with dropped NaN ys and breaks
+      const steps = Array.from({ length: 3000 }, (_, idx) =>
+        idx < 2900 ? 0.01 * rng() : 0.18,
+      )
+      const ascending = steps.map((_, idx) => steps.slice(0, idx + 1).reduce((a, b) => a + b))
+      const repeating = ascending.map((val) => Math.round(val * 20) / 20) // not strict
+      for (const x of [ascending, ascending.toReversed(), repeating]) {
+        for (const column_px of [1, 0.5]) {
+          const data = {
+            x,
+            y: x.map(() => (rng() < 0.01 ? NaN : 100 * rng())),
+            line_breaks: [700, 1500],
+          }
+          const direction = strict_x_direction(x)
+          const project = (px: number, line_curve: LineCurve = curve) =>
+            project_line_points(data, same, same, all_x, direction, line_curve, px).points
+          const [full, kept] = [project(0), project(column_px)]
+          // non-local curves never decimate, monotone ones only in strict x order
+          expect(project(column_px, `natural`)).toEqual(full)
+          if (curve === `monotone` && direction === 0) {
+            expect(kept).toEqual(full)
+            continue
+          }
+          // kept vertices are full's, in order, at most 6 per run (2 breaks split 2 columns and
+          // add 2 NaN markers)
+          let at = 0
+          for (const [px, py] of kept) {
+            at =
+              full.findIndex(
+                ([fx, fy], idx) => idx >= at && Object.is(fx, px) && Object.is(fy, py),
+              ) + 1
+            expect(at).toBeGreaterThan(0)
+          }
+          const column = (px: number) => Math.floor(px / column_px)
+          const y_spans = (points: Vec2[]) => {
+            const spans = new Map<number, Vec2>()
+            for (const [px, py] of points.filter(([x_px]) => Number.isFinite(x_px))) {
+              const [low, high] = spans.get(column(px)) ?? [py, py]
+              spans.set(column(px), [Math.min(low, py), Math.max(high, py)])
+            }
+            return spans
+          }
+          const spans = y_spans(full)
+          expect(y_spans(kept)).toEqual(spans)
+          expect(kept.length).toBeLessThan(full.length / 4)
+          expect(kept.length).toBeLessThanOrEqual(6 * (spans.size + 2) + 2)
+          // the tail's vertices all survive
+          const in_tail = ([px]: Vec2) => px > ascending[2900]
+          expect(kept.filter(in_tail)).toEqual(full.filter(in_tail))
+          // segments crossing a column edge draw as before, new ones stay in one column's span
+          const [full_segments, kept_segments] = [full, kept].map((pts) =>
+            drawn_segments(pts, curve),
+          )
+          const keys = (segments: number[][]) => new Set(segments.map(String))
+          const [full_keys, kept_keys] = [keys(full_segments), keys(kept_segments)]
+          for (const segment of full_segments) {
+            if (column(segment[0]) !== column(segment[segment.length - 2]))
+              expect(kept_keys.has(String(segment))).toBe(true)
+          }
+          for (const segment of kept_segments.filter((seg) => !full_keys.has(String(seg)))) {
+            const [low, high] = spans.get(column(segment[0])) ?? [NaN, NaN]
+            for (let idx = 0; idx < segment.length; idx += 2) {
+              expect(column(segment[idx])).toBe(column(segment[0]))
+              // control points may round past a span end by an ulp of these O(100) values
+              expect(segment[idx + 1]).toBeGreaterThanOrEqual(low - 1e-12)
+              expect(segment[idx + 1]).toBeLessThanOrEqual(high + 1e-12)
+            }
           }
         }
       }

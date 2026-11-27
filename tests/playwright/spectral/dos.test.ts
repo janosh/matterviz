@@ -51,7 +51,9 @@ test.describe(`DOS Component Tests`, () => {
     await expect(curves(plot.locator(`svg`)).first()).toBeVisible()
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
-    await expect(page.locator(`[data-testid="dos-no-legend"] .legend`)).toBeHidden()
+    const no_legend = page.getByTestId(`dos-no-legend`)
+    await expect(curves(no_legend).first()).toBeVisible() // rendered, so a legend could show
+    await expect(no_legend.locator(`.legend`)).toBeHidden()
   })
 
   test(`multiple DOS get a toggleable legend and series-labelled tooltips`, async ({

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
-  import { DEFAULTS } from '#lib/settings.js'
-  import type { AnyStructure, Molecule } from '#lib/structure/index.js'
-  import { Structure } from '#lib/structure/index.js'
-  import type { Vec3 } from '#lib/math.js'
-  import { url_param } from '#site/state.svelte.js'
-  import { parse_structure_fixture } from '#site/structures.js'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
+  import { DEFAULTS } from '#lib/settings'
+  import type { AnyStructure, Molecule } from '#lib/structure/index'
+  import { Structure } from '#lib/structure/index'
+  import type { Vec3 } from '#lib/math'
+  import { url_param } from '#site/state.svelte'
+  import { parse_structure_fixture } from '#site/structures'
   import { onMount } from 'svelte'
 
   // Load any site structure fixture via ?file=<name> URL param (e.g.
@@ -204,13 +204,13 @@
   not treated as a coordination environment.
 </p>
 
-<LazyDemo label="Molecular polyhedra" height="400px">
+<LazyMount label="Molecular polyhedra" height="400px">
   <Structure
     structure={sf6}
     scene_props={sf6_scene_props}
     style="height: 400px; max-width: 600px; margin-inline: auto"
   />
-</LazyDemo>
+</LazyMount>
 
 <style>
   nav {

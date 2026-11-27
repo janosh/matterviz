@@ -2,18 +2,18 @@
 // uniform in the x scale's transformed space (linear, log10, arcsinh) and counted in one pass
 // into typed arrays, so a million samples bin in a few milliseconds.
 
-import { zero_if_negligible } from '#lib/labels.js'
-import type { Vec2 } from '#lib/math.js'
-import type { FillPattern } from '#lib/plot/core/patterns.js'
+import { zero_if_negligible } from '#lib/labels'
+import type { Vec2 } from '#lib/math'
+import type { FillPattern } from '#lib/plot/core/patterns'
 import {
   accumulate_extent,
   empty_extent,
   nice_range_from_extent,
   positive_log_domain,
-} from '#lib/plot/core/scales.js'
-import type { AxisConfig, NumericColumn, ScaleType } from '#lib/plot/core/types.js'
-import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types.js'
-import { plot_color } from '#lib/colors/index.js'
+} from '#lib/plot/core/scales'
+import type { AxisConfig, NumericColumn, ScaleType } from '#lib/plot/core/types'
+import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types'
+import { plot_color } from '#lib/colors/index'
 
 // One distribution to bin: `values` are the samples; everything else is legend/axis metadata.
 export interface HistogramSeries {
@@ -313,7 +313,8 @@ export function compute_count_range(
     scale_type,
     y_limit,
     range_padding,
-  }: { scale_type: ScaleType; y_limit: RangeLimit; range_padding: number },
+    nice,
+  }: { scale_type: ScaleType; y_limit: RangeLimit; range_padding: number; nice?: boolean },
 ): Vec2 {
   const type_name = get_scale_type_name(scale_type)
   let max_value = 0
@@ -334,6 +335,7 @@ export function compute_count_range(
     y_limit,
     scale_type,
     range_padding,
+    { nice },
   )
   // Keep singleton log bins visible; a missing lower limit falls back to the positive minimum.
   if (is_log) {

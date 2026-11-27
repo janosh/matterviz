@@ -1,11 +1,12 @@
 // Brillouin zone generation via convex hull
 
 import { format_num } from 'svelte-widgets/format'
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import * as math from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
+import * as math from '#lib/math'
 import { Vector3 } from 'three/webgpu'
 import { ConvexHull, type VertexNode } from 'three/examples/jsm/math/ConvexHull.js'
-import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './types'
+import type { BrillouinZoneData, BZOrder, ConvexHullData, IrreducibleBZData } from './types'
+import { BZ_ORDERS } from './types'
 
 const TOL = 1e-8
 // Three unit normals whose parallelepiped volume is below this are treated as linearly
@@ -228,21 +229,29 @@ function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
 // the count
 const MAX_PLANES_BY_ORDER = { 2: 80, 3: 150 } as const
 
+const is_bz_order = (order: number): order is BZOrder =>
+  (BZ_ORDERS as readonly number[]).includes(order)
+
 // Generate BZ vertices for nth-order zone via three-plane intersections. Order 1 is exact for
 // any lattice; orders 2 and 3 use the ±order index shell truncated to the nearest
 // MAX_PLANES_BY_ORDER[order] Bragg planes.
-export function generate_bz_vertices(k_lattice: Matrix3x3, order: 1 | 2 | 3 = 1): Vec3[] {
-  const clamped_order = Math.min(order, 3) as typeof order
+export function generate_bz_vertices(k_lattice: Matrix3x3, order = 1): Vec3[] {
+  // Orders come from untyped settings and JSON; reject rather than clamp
+  if (!is_bz_order(order)) {
+    throw new RangeError(
+      `Brillouin zone order must be 1, 2 or 3, got ${JSON.stringify(order)}`,
+    )
+  }
   // Vertices are Cartesian, so any basis of the same lattice gives the same zones; a
   // reduced one keeps the index shells small and meaningful
   const basis = math.reduce_basis(k_lattice)
   const dual = math.reciprocal_lattice(basis) // throws for a singular k_lattice
-  if (clamped_order === 1) return first_bz_vertices(basis, dual)
+  if (order === 1) return first_bz_vertices(basis, dual)
 
-  const ranges: Vec3 = [clamped_order, clamped_order, clamped_order]
+  const ranges: Vec3 = [order, order, order]
   return intersect_bragg_planes(
-    bragg_planes(basis, ranges).slice(0, MAX_PLANES_BY_ORDER[clamped_order]),
-    clamped_order,
+    bragg_planes(basis, ranges).slice(0, MAX_PLANES_BY_ORDER[order]),
+    order,
   )
 }
 
@@ -392,16 +401,13 @@ export function compute_convex_hull(
 // Compute complete Brillouin zone with topology and volume. Order 1 is the exact Wigner-Seitz
 // cell; orders 2 and 3 return the convex hull of zones 1..n (the union itself is not convex),
 // so their `volume` is that hull's volume rather than n·V₁.
-export function compute_brillouin_zone(
-  k_lattice: Matrix3x3,
-  order: 1 | 2 | 3 = 1,
-): BrillouinZoneData {
+export function compute_brillouin_zone(k_lattice: Matrix3x3, order = 1): BrillouinZoneData {
   if (k_lattice.some((row) => row.some((val) => !Number.isFinite(val)))) {
     throw new Error(`Reciprocal lattice has non-finite entries: ${JSON.stringify(k_lattice)}`)
   }
   // too few vertices throw in first_bz_vertices (order 1) or compute_convex_hull
   return {
-    order: Math.min(order, 3),
+    order,
     ...hull_geometry(compute_convex_hull(generate_bz_vertices(k_lattice, order))),
     k_lattice,
   }

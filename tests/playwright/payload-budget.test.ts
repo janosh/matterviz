@@ -4,7 +4,7 @@ import process from 'node:process'
 import { load_all_demos } from './helpers'
 
 // Payload budget per demo route: bytes and requests a visitor downloads on load plus scrolling
-// to the bottom so every LazyDemo mounts. Catches demos that ship far more data than they need
+// to the bottom so every LazyMount mounts. Catches demos that ship far more data than they need
 // (/convex-hull downloaded 192 MB before its hull datasets were compacted in #494).
 // Bytes are encoded response bodies: `vp preview` gzips like GitHub Pages does, so they track
 // what users download. Data only fetched on a click (e.g. the quinary stats dataset) is excluded.
@@ -123,7 +123,7 @@ for (const route of demo_routes) {
     await load_all_demos(page)
     await network_quiet()
     // a demo whose import failed swaps its placeholder for this alert and downloads nothing
-    await expect(page.locator(`.lazy-demo > p[role="alert"]`)).toHaveCount(0)
+    await expect(page.locator(`.lazy-mount > p[role="alert"]`)).toHaveCount(0)
 
     collecting = false
     const finished = await Promise.all(responses)

@@ -2,19 +2,15 @@
 // extensions/anywidget/readme.md). Arrays stay the decoded typed arrays, each frame encoded on
 // read into a numeric MD frame, so no per-site JS objects exist beyond frame 0's preview.
 // The run borrows the payload's buffers (zero-copy), so they must stay unmodified for its life.
-import { element_by_symbol } from '#lib/element/data.js'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
-import {
-  type BinaryArray,
-  checked_array,
-  decode_binary_envelope,
-} from '#lib/io/binary-arrays.js'
-import { AMU_PER_A3_TO_G_PER_CM3 } from '#lib/constants.js'
-import { display_idx } from '#lib/labels.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import { TIME_UNIT_TO_THZ } from '#lib/spectral/frequency-units.js'
-import { make_lattice } from '#lib/structure/parsers/shared.js'
-import type { LatticeType, Pbc } from '#lib/structure/index.js'
+import { element_by_symbol } from '#lib/element/data'
+import { element_from_atomic_number } from '#lib/element/helpers'
+import { type BinaryArray, checked_array, decode_binary_envelope } from '#lib/io/binary-arrays'
+import { AMU_PER_A3_TO_G_PER_CM3 } from '#lib/constants'
+import { display_idx } from '#lib/labels'
+import type { Matrix3x3 } from '#lib/math'
+import { TIME_UNIT_TO_THZ } from '#lib/spectral/frequency-units'
+import { make_lattice } from '#lib/structure/parsers/shared'
+import type { LatticeType, Pbc } from '#lib/structure/index'
 import { is_plain_object } from 'svelte-widgets/utils'
 import { BOOKKEEPING_METADATA_KEYS } from './extract'
 import { create_numeric_md_frame, write_frame_vector } from './frame'

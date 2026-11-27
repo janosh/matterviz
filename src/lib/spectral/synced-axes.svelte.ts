@@ -1,16 +1,12 @@
 // Side-by-side plots (bands + DOS) that share a frequency / energy axis: one y_axis config per
 // panel and the live view of each, linked so a zoom in either panel moves the other while a
 // reset returns both to the shared range.
-import type { Sides } from '#lib/plot/core/layout.js'
-import type { Vec2 } from '#lib/math.js'
-import { vec2_equal } from '#lib/plot/core/interactions.js'
-import { tick_font_size } from '#lib/plot/core/tick-layout.js'
-import {
-  axis_with_range,
-  is_valid_range,
-  max_side_padding,
-} from '#lib/plot/core/shared-axes.js'
-import type { AxisConfig, AxisRanges } from '#lib/plot/core/types.js'
+import type { Sides } from '#lib/plot/core/layout'
+import type { Vec2 } from '#lib/math'
+import { vec2_equal } from '#lib/plot/core/interactions'
+import { tick_font_size } from '#lib/plot/core/tick-layout'
+import { axis_with_range, is_valid_range, max_side_padding } from '#lib/plot/core/shared-axes'
+import type { AxisConfig, AxisRanges } from '#lib/plot/core/types'
 import {
   compute_frequency_range,
   electronic_energy_unit,

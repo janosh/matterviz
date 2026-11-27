@@ -8,10 +8,10 @@
     normalize_show_controls,
     shows_fullscreen_toggle,
     type ShowControlsProp,
-  } from '#lib/controls.js'
+  } from '#lib/controls'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { FullscreenButton } from '#lib/layout/index.js'
-  import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import { FullscreenButton } from '#lib/layout/index'
+  import type { PaneToggleProps } from '#lib/overlays/index'
   import type { ComponentProps, Snippet } from 'svelte'
 
   // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, export
@@ -21,7 +21,6 @@
     fullscreen = $bindable(false),
     wrapper,
     css_prefix,
-    fullscreen_toggle,
     show_controls,
     corner = false,
     chrome_color,
@@ -34,7 +33,6 @@
     fullscreen?: boolean
     wrapper?: HTMLDivElement
     css_prefix: string
-    fullscreen_toggle: boolean
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // Tucked into the corner with tighter spacing (ChartShell), buttons taking chrome_color
     corner?: boolean
@@ -48,7 +46,7 @@
   } = $props()
 
   const controls_config = $derived(normalize_show_controls(show_controls))
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
+  const show_toggle = $derived(shows_fullscreen_toggle(controls_config))
   // ControlPane positions its toggle absolutely by default; static joins the header flex row
   const toggle_props = $derived({
     ...controls_toggle_props,

@@ -1,28 +1,14 @@
 <script lang="ts">
-  import type { ComponentProps } from 'svelte'
   import SubpageGrid from 'svelte-widgets/SubpageGrid.svelte'
   import { Code, Globe, Heart } from 'svelte-widgets/icons'
+  import { to_subpages } from '#site/overview'
 
-  const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
-    {
-      label: `Use Without Svelte`,
-      href: `/how-to/use-without-svelte`,
-      description: `Embed MatterViz in React, Vue, and plain HTML with custom elements.`,
-      icon: Code,
-    },
-    {
-      label: `Connect to External APIs`,
-      href: `/how-to/hook-up-to-external-api`,
-      description: `Fetch and visualize crystal structures from materials databases using OPTIMADE.`,
-      icon: Globe,
-    },
-    {
-      label: `Acknowledgements`,
-      href: `/acknowledgements`,
-      description: `The open-source projects, data sources, and contributors behind MatterViz.`,
-      icon: Heart,
-    },
-  ]
+  // oxfmt-ignore
+  const subpages = to_subpages([
+    [`/how-to/use-without-svelte`, `Use Without Svelte`, Code, `Embed MatterViz in React, Vue, and plain HTML with custom elements.`],
+    [`/how-to/hook-up-to-external-api`, `Connect to External APIs`, Globe, `Fetch and visualize crystal structures from materials databases using OPTIMADE.`],
+    [`/acknowledgements`, `Acknowledgements`, Heart, `The open-source projects, data sources, and contributors behind MatterViz.`],
+  ])
 </script>
 
 <SubpageGrid

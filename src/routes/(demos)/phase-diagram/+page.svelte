@@ -1,6 +1,6 @@
 <script lang="ts">
   import FilePicker from '#lib/FilePicker.svelte'
-  import { as_text, dropped_file_url, file_drop_zone, load_from_url } from '#lib/io/index.js'
+  import { as_text, dropped_file_url, file_drop_zone, load_from_url } from '#lib/io/index'
   import type {
     BinaryPhaseDiagram,
     CompUnit,
@@ -9,7 +9,7 @@
     DiagramHighlight,
     ObservationPrediction,
     TempUnit,
-  } from '#lib/phase-diagram/index.js'
+  } from '#lib/phase-diagram/index'
   import {
     GibbsEnergyPlot,
     IsobaricBinaryPhaseDiagram,
@@ -18,10 +18,10 @@
     parse_phase_diagram_svg,
     provenance_caption,
     temperature_extent,
-  } from '#lib/phase-diagram/index.js'
-  import type { AxisConfig } from '#lib/plot/index.js'
-  import type { TdbParseResult } from '#site/phase-diagrams/tdb-parse.js'
-  import { get_system_name, parse_tdb } from '#site/phase-diagrams/tdb-parse.js'
+  } from '#lib/phase-diagram/index'
+  import type { AxisConfig } from '#lib/plot/index'
+  import type { TdbParseResult } from '#site/phase-diagrams/tdb-parse'
+  import { get_system_name, parse_tdb } from '#site/phase-diagrams/tdb-parse'
   import TdbInfoPanel from '#site/phase-diagrams/TdbInfoPanel.svelte'
   import { to_error } from 'svelte-widgets/utils'
   import {
@@ -29,8 +29,8 @@
     binary_diagrams,
     binary_observations,
     find_precomputed_diagram,
-  } from '#site/phase-diagrams.js'
-  import { url_param, latest_load, loaded_fixture, set_url_param } from '#site/state.svelte.js'
+  } from '#site/phase-diagrams'
+  import { url_param, latest_load, loaded_fixture, set_url_param } from '#site/state.svelte'
   import { onMount } from 'svelte'
 
   // Track currently loaded diagram
@@ -134,12 +134,11 @@
   }
 
   // FilePicker drags carry the entry's URL; built-in diagrams have no fetchable URL, so claim
-  // those before file_drop_zone (which fetches every URL drop) sees them
+  // those (preventDefault in the capture phase) before file_drop_zone fetches the URL
   function handle_builtin_drop(event: DragEvent): void {
     const url = dropped_file_url(event)
     if (!url?.startsWith(`builtin:`)) return
     event.preventDefault()
-    event.stopImmediatePropagation()
     const entry = all_phase_diagram_files.find((file) => file.url === url)
     void load_file(url, entry?.name ?? url)
   }
@@ -217,6 +216,7 @@
       observations={binary_observations}
       bind:temp_unit
       bind:comp_unit
+      allow_file_drop={false}
       style="height: 600px"
     />
   {/if}

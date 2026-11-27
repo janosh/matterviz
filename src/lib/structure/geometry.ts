@@ -1,7 +1,7 @@
 // Three.js orientation helpers shared by 3D components (Arrow, Cylinder, Lattice,
 // SymmetryElements). Kept out of #lib/math, which is pure TS with no three.js dependency.
-import { add, EPS, type Matrix3x3, scale, subtract, type Vec3 } from '#lib/math.js'
-import { DEFAULTS } from '#lib/settings.js'
+import { add, EPS, type Matrix3x3, scale, subtract, type Vec3 } from '#lib/math'
+import { DEFAULTS } from '#lib/settings'
 import { resolve_arrow_size } from './vectors'
 import { Euler, Quaternion, Vector3 } from 'three/webgpu'
 

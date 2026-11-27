@@ -2,28 +2,29 @@
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_bytes, format_num } from 'svelte-widgets/format'
-  import { materialize_frame_result } from '#lib/trajectory/frame.js'
+  import { materialize_frame_result } from '#lib/trajectory/frame'
 
-  import { track_settings } from '#lib/controls.js'
-  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import type { VideoFormat } from '#lib/io/export.js'
+  import { track_settings } from '#lib/controls'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
+  import type { VideoFormat } from '#lib/io/export'
+  import { export_trajectory_video, is_video_export_supported } from '#lib/io/export'
+  import { observe_canvas_presence } from 'svelte-widgets/figure-export'
   import {
-    export_trajectory_video,
-    is_video_export_supported,
-    observe_canvas_presence,
-  } from '#lib/io/export.js'
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
+    ExportCancelledError,
+    FileExportState,
+    type FileExportContext,
+  } from 'svelte-widgets/browser'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import type { ExportItem, ExportSection } from '#lib/io/types.js'
-  import { display_idx, from_display_idx } from '#lib/labels.js'
+  import type { ExportItem, ExportSection } from '#lib/io/types'
+  import { display_idx, from_display_idx } from '#lib/labels'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import {
     poscar_export_unavailable_reason,
     xyz_export_unavailable_reason,
-  } from '#lib/structure/export.js'
-  import type { TrajectoryRun } from '#lib/trajectory/index.js'
-  import type { TrajectoryFrameResolver } from '#lib/trajectory/file-export.js'
+  } from '#lib/structure/export'
+  import type { TrajectoryRun } from '#lib/trajectory/index'
+  import type { TrajectoryFrameResolver } from '#lib/trajectory/file-export'
   import {
     collect_frame_property_rows,
     create_poscar_frame_range_zip,
@@ -31,15 +32,14 @@
     frame_rows_to_json,
     serialize_extxyz_frame_range,
     trajectory_export_basename,
-  } from '#lib/trajectory/file-export.js'
+  } from '#lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { abortable } from '#lib/utils.js'
-  import { clamp, to_error } from 'svelte-widgets/utils'
+  import { abortable, clamp, to_error } from 'svelte-widgets/utils'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera, Download } from 'svelte-widgets/icons'
-  import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight.js'
+  import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight'
 
   let {
     export_pane_open = $bindable(false),
@@ -185,7 +185,8 @@
       controller.signal.throwIfAborted()
       return result
     } catch (error) {
-      if (!controller.signal.aborted) {
+      // a dismissed Save As dialog cancels like the cancel button does
+      if (!controller.signal.aborted && !(error instanceof ExportCancelledError)) {
         console.error(`Trajectory ${label} export failed:`, error)
         export_error = to_error(error).message
       }
@@ -219,10 +220,10 @@
   ): ExportItem => ({
     ...item,
     disabled: data_export_disabled || Boolean(item.disabled_reason),
-    on_download: ({ filename: basename, prepare }) =>
+    on_download: ({ filename: basename, open }) =>
       run_export(item.label, async (signal) => {
-        const save = await prepare(`${basename}${suffix}`, signal)
-        await save(await serialize(signal, basename), mime)
+        const write = await open(`${basename}${suffix}`, mime, signal)
+        await write(await serialize(signal, basename))
       }),
   })
 
@@ -245,7 +246,7 @@
     const frame_count = video_frame_count
     await run_export(format.toUpperCase(), async (signal) => {
       const output_name = `${context.filename}.${format}`
-      const save = await context.prepare(output_name, signal)
+      const write = await context.open(output_name, `video/${format}`, signal)
       // The viewer pauses playback here, before a lazy frame read can take over.
       await on_step_change(original_step)
       await export_trajectory_video(canvas, output_name, {
@@ -257,7 +258,7 @@
         bitrate: bitrate_mbps * 1e6,
         camera_flight: flight,
         signal,
-        on_save: (blob) => save(blob, blob.type),
+        on_save: write,
         on_progress: (progress) => {
           if (running) running.progress = progress
         },
@@ -541,7 +542,7 @@
   }
   .export-progress {
     text-align: center;
-    --task-status-button-justify: center;
+    --task-status-justify: center;
   }
   .export-info {
     margin-top: 1ex;

@@ -1,5 +1,5 @@
-import { colors } from '#lib/state.svelte.js'
-import type { WyckoffPos } from '#lib/symmetry/index.js'
+import { colors } from '#lib/state.svelte'
+import type { WyckoffPos } from '#lib/symmetry/index'
 import WyckoffTable from '#lib/symmetry/WyckoffTable.svelte'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'

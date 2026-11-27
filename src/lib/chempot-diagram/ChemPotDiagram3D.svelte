@@ -2,24 +2,24 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { clamp } from 'svelte-widgets/utils'
   import { create_delayed_flag } from 'svelte-widgets/effects'
-  import { viewer_keys } from '#lib/shortcuts.js'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
-  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import type { ExportSection } from '#lib/io/index.js'
-  import { json_source, type ExportSources } from '#lib/io/export.js'
+  import type { ExportSection } from '#lib/io/index'
+  import { json_source, type ExportSources } from '#lib/io/export'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { ViewerChrome } from '#lib/layout/index.js'
+  import { ViewerChrome } from '#lib/layout/index'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
-  import { ViewerPane } from '#lib/overlays/index.js'
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { Vec3 } from '#lib/math.js'
-  import { add, array_extent, merge_coplanar_triangles, subtract } from '#lib/math.js'
-  import { ScatterPlot3DControls } from '#lib/plot/index.js'
-  import type { ThreltePointerEvent } from '#lib/scene/index.js'
+  import { ViewerPane } from '#lib/overlays/index'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { Vec3 } from '#lib/math'
+  import { add, array_extent, merge_coplanar_triangles, subtract } from '#lib/math'
+  import { ScatterPlot3DControls } from '#lib/plot/index'
+  import type { ThreltePointerEvent } from '#lib/scene/index'
   import {
     clear_pan_offset,
     create_renderer,
@@ -28,13 +28,9 @@
     wheel_zoom_gate,
     positions_geometry,
     webgpu_available,
-  } from '#lib/scene/index.js'
-  import type {
-    AxisConfig3D,
-    CameraProjection3D,
-    DisplayConfig3D,
-  } from '#lib/plot/core/types.js'
-  import { get_3d_auto_ranges } from '#lib/plot/scatter-3d/scene-coords.js'
+  } from '#lib/scene/index'
+  import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '#lib/plot/core/types'
+  import { get_3d_auto_ranges } from '#lib/plot/scatter-3d/scene-coords'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount, untrack } from 'svelte'
@@ -46,7 +42,7 @@
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     container_pointer,
@@ -111,7 +107,7 @@
     tooltip,
   }: ChemPotDiagramProps & {
     show_controls?: ShowControlsProp<
-      `controls` | `fullscreen` | `export` | `formulas` | `slice`
+      `controls` | `fullscreen` | `export-pane` | `formulas` | `slice`
     >
   } = $props()
   let wrapper = $state<HTMLDivElement>()
@@ -948,16 +944,14 @@
         {
           label: `View`,
           hint: `Camera and display settings as JSON`,
-          on_download: ({ filename, save }) =>
-            save(
+          on_download: async ({ filename, open }) =>
+            (await open(`${filename}-view.json`, `application/json`))(
               JSON.stringify(current_view_settings(), null, 2),
-              `${filename}-view.json`,
-              `application/json`,
             ),
         },
         {
           label: `GLB`,
-          on_download: ({ filename, save }) =>
+          on_download: (context) =>
             export_glb_file(
               {
                 hull_geometry: colored_hull_geometry,
@@ -966,8 +960,8 @@
                 formula_meshes: formula_mesh_data,
                 formula_edges: formula_edge_data,
               },
-              filename,
-              save,
+              context.filename,
+              context,
             ),
         },
       ],
@@ -1070,7 +1064,7 @@
     {wrapper}
     fullscreen_bg_css_var="--chempot-3d-bg-fullscreen"
   >
-    {#if controls_config.visible(`export`)}
+    {#if controls_config.visible(`export-pane`)}
       <ExportPane
         filename={export_basename}
         bind:export_pane_open={export_pane.get, export_pane.set}

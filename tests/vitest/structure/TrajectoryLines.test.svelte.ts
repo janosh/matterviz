@@ -1,6 +1,6 @@
 import TrajectoryLines from '#lib/structure/TrajectoryLines.svelte'
-import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
-import { TrajectoryTrail } from '#lib/structure/trajectory-lines.js'
+import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines'
+import { TrajectoryTrail } from '#lib/structure/trajectory-lines'
 import { mount_scene } from '../scene/mount'
 import { bind_props } from '../setup'
 import { make_position_stream } from '../test-fixtures'

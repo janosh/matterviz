@@ -1,7 +1,7 @@
 <script lang="ts">
   import { PdfPlot, RdfPlot } from '#lib'
-  import type { RdfPattern } from '#lib/rdf/index.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { RdfPattern } from '#lib/rdf/index'
+  import type { Crystal } from '#lib/structure/index'
 
   let {
     pattern,

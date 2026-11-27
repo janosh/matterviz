@@ -1,5 +1,5 @@
 import { pick_contrast_color } from 'svelte-widgets/attachments'
-import type { Paint } from '#lib/colors/index.js'
+import type { Paint } from '#lib/colors/index'
 import {
   add_alpha,
   composite_colors,
@@ -12,18 +12,16 @@ import {
   get_d3_interpolator,
   is_color,
   is_concrete_color,
-  is_dark_mode,
   is_d3_interpolate_name,
   is_opaque_color,
   perceived_brightness,
   PLOT_COLORS,
   tooltip_paint,
-  watch_dark_mode,
-} from '#lib/colors/index.js'
-import { ELEM_SYMBOLS } from '#lib/element/types.js'
+} from '#lib/colors/index'
+import { ELEM_SYMBOLS } from '#lib/element/types'
 import { rgb as d3_rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
-import { beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
+import { describe, expect, it, test, vi } from 'vite-plus/test'
 
 test(`every d3-scale-chromatic interpolate* export is a registered interpolator`, () => {
   const names = Object.keys(d3_sc).filter((name) => name.startsWith(`interpolate`))
@@ -266,63 +264,5 @@ describe(`add_alpha`, () => {
     [`unknown-format`, 0.5, `unknown-format`], // passthrough unknown
   ])(`add_alpha(%s, %s) = %s`, (color, alpha, expected) => {
     expect(add_alpha(color, alpha)).toBe(expected)
-  })
-})
-
-describe(`is_dark_mode + watch_dark_mode`, () => {
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 0)) // observers report async
-  beforeEach(() => {
-    document.documentElement.removeAttribute(`style`)
-    delete document.documentElement.dataset.theme
-  })
-
-  // The element's computed color-scheme is the single source: the root's inline scheme on the
-  // site, a widget element's own scheme in a notebook; nothing declared → the OS preference
-  it.each([
-    [`dark`, true],
-    [`light`, false],
-    [`light dark`, false],
-  ])(`reads a declared color-scheme %j -> dark=%s`, (scheme, expected) => {
-    document.documentElement.style.colorScheme = scheme
-    expect(is_dark_mode()).toBe(expected)
-  })
-
-  it(`a widget element's own scheme wins over the page root's`, () => {
-    document.documentElement.style.colorScheme = `light`
-    const widget = document.createElement(`div`)
-    widget.style.colorScheme = `dark`
-    document.body.append(widget)
-    const canvas = document.createElement(`canvas`)
-    widget.append(canvas)
-    expect(is_dark_mode(canvas)).toBe(true)
-    expect(is_dark_mode()).toBe(false)
-    widget.remove()
-  })
-
-  it(`watch_dark_mode reports changes for the element's scheme, never on subscribe, and stops after cleanup`, async () => {
-    // silent on subscribe: callers subscribe inside effects that write state in the callback
-    const widget = document.createElement(`div`)
-    document.body.append(widget)
-    const widget_calls: boolean[] = []
-    const stop_widget = watch_dark_mode((dark) => widget_calls.push(dark), widget)
-    expect(widget_calls).toEqual([])
-    widget.style.colorScheme = `dark`
-    document.documentElement.style.colorScheme = `light`
-    await settle()
-    expect(widget_calls.at(-1)).toBe(true) // re-read from the element, not the (light) root
-    stop_widget()
-    widget.remove()
-
-    const calls: boolean[] = []
-    const cleanup = watch_dark_mode((dark) => calls.push(dark))
-    expect(calls).toEqual([])
-    document.documentElement.style.colorScheme = `dark`
-    await settle()
-    expect(calls.at(-1)).toBe(true)
-    cleanup()
-    const count = calls.length
-    document.documentElement.style.colorScheme = `light`
-    await settle()
-    expect(calls).toHaveLength(count)
   })
 })

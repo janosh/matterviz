@@ -3,18 +3,18 @@ import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,
   TrajectorySpectroscopyResult,
-} from '#lib/spectral/trajectory-spectroscopy.js'
+} from '#lib/spectral/trajectory-spectroscopy'
 import {
   compute_trajectory_spectroscopy,
   validate_trajectory_signal,
-} from '#lib/spectral/trajectory-spectroscopy.js'
-import { THZ_TO_INVERSE_CM } from '#lib/constants.js'
-import type { ElementSymbol } from '#lib/element/index.js'
-import { one_sided_periodogram } from '#lib/fft.js'
-import * as math from '#lib/math.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { Pbc } from '#lib/structure/pbc.js'
-import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
+} from '#lib/spectral/trajectory-spectroscopy'
+import { THZ_TO_INVERSE_CM } from '#lib/constants'
+import type { ElementSymbol } from '#lib/element/index'
+import { one_sided_periodogram } from '#lib/fft'
+import * as math from '#lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import type { Pbc } from '#lib/structure/pbc'
+import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index'
 import { describe, expect, it } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, cubic_matrix, make_signal } from '../test-fixtures'
 

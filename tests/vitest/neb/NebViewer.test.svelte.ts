@@ -1,10 +1,10 @@
 import { format_num } from 'svelte-widgets/format'
 import NebPlot from '#lib/neb/NebPlot.svelte'
-import { host } from '#lib/host.js'
+import { host } from '#lib/host'
 import NebViewer from '#lib/neb/NebViewer.svelte'
-import { path_spline } from '#lib/neb/reaction-path.js'
-import { parse_reaction_path_json } from '#lib/neb/parse.js'
-import { reaction_paths } from '#site/neb/index.js'
+import { path_spline } from '#lib/neb/reaction-path'
+import { parse_reaction_path_json } from '#lib/neb/parse'
+import { reaction_paths } from '#site/neb/index'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
@@ -395,23 +395,29 @@ describe(`NebViewer`, () => {
     ).toBe(`7 total images`)
   })
 
-  test(`applies shared control visibility names; export_formats=[] drops the export pane`, async () => {
-    const viewer = await mount_viewer({
-      paths: direct_path,
-      export_formats: [],
-      show_controls: { mode: `always`, hidden: [`fps`, `energy`, `fullscreen`] },
-    })
-    const hidden = [
-      `.fps-section`,
-      `.image-status`,
-      `.fullscreen-button`,
-      `.neb-export-toggle`,
-    ]
-    for (const selector of hidden) {
-      expect(viewer.querySelector(selector)).toBeNull()
-    }
-    expect(viewer.querySelector(`.step-section`)).not.toBeNull()
-  })
+  test.each([
+    [{ export_formats: [] }, []],
+    [{}, [`export-pane` as const]],
+  ])(
+    `applies shared control visibility names; %j plus hidden %j drops the export pane`,
+    async (props, names) => {
+      const viewer = await mount_viewer({
+        paths: direct_path,
+        ...props,
+        show_controls: { mode: `always`, hidden: [`fps`, `energy`, `fullscreen`, ...names] },
+      })
+      const hidden = [
+        `.fps-section`,
+        `.image-status`,
+        `.fullscreen-button`,
+        `.neb-export-toggle`,
+      ]
+      for (const selector of hidden) {
+        expect(viewer.querySelector(selector)).toBeNull()
+      }
+      expect(viewer.querySelector(`.step-section`)).not.toBeNull()
+    },
+  )
 
   // A host that cannot fullscreen an element turns the toggle, its `f` shortcut and a bound
   // fullscreen flag off for every viewer at once.
@@ -624,7 +630,7 @@ describe(`NebViewer`, () => {
     expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
     state.show_controls = false
     await tick()
-    expect(button.style.display).toBe(`none`)
+    expect(button.hidden).toBe(true)
     await document.exitFullscreen()
     await tick()
     expect(state.fullscreen).toBe(false)

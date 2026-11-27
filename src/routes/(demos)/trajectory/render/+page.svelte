@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Trajectory, type TrajectoryViewerController } from '#lib/trajectory/index.js'
-  import type { StructureOptions } from '#lib/structure/index.js'
+  import { Trajectory, type TrajectoryViewerController } from '#lib/trajectory/index'
+  import type { StructureOptions } from '#lib/structure/index'
   import { tick } from 'svelte'
 
   let controller = $state.raw<TrajectoryViewerController>()

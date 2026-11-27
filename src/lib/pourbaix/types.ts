@@ -1,4 +1,4 @@
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 
 // One species of a metal–water system
 export interface PourbaixEntry {

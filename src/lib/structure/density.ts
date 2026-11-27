@@ -1,14 +1,14 @@
 // Worker-safe composition and density helpers. Kept outside the component barrel so
 // trajectory parsing can extract density without loading Svelte components in a Web Worker.
-import { AMU_PER_A3_TO_G_PER_CM3 } from '#lib/constants.js'
-import { display_idx } from '#lib/labels.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import * as math from '#lib/math.js'
-import type { Vec3 } from '#lib/math.js'
-import type { ElementSymbol } from '#lib/element/types.js'
+import { AMU_PER_A3_TO_G_PER_CM3 } from '#lib/constants'
+import { display_idx } from '#lib/labels'
+import { element_by_symbol } from '#lib/element/data'
+import * as math from '#lib/math'
+import type { Vec3 } from '#lib/math'
+import type { ElementSymbol } from '#lib/element/types'
 import type { AnyStructure, Crystal } from './index'
 import { is_image_site, numeric_sites, site_count, snapshot_topologies } from './site'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
+import { element_from_atomic_number } from '#lib/element/helpers'
 
 const topology_counts = new WeakMap<object, Partial<Record<ElementSymbol, number>>>()
 

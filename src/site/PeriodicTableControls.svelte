@@ -1,13 +1,13 @@
 <script lang="ts">
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { track_settings } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls'
   // Docs playground for the periodic table's CSS custom properties: every control writes one
   // variable onto the document root while mounted, so all tables on the page follow it. Only
   // the tile font color is bindable (ElementTile's text_color prop, passed through by the demo).
-  import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
-  import type { ElementCategory } from '#lib/element/index.js'
-  import { colors, selected } from '#lib/state.svelte.js'
+  import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index'
+  import type { ElementCategory } from '#lib/element/index'
+  import { colors, selected } from '#lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   const defaults = {
@@ -260,6 +260,7 @@
     --ctrl-label-w: 10em;
     --ctrl-value-w: 4.2em;
     --settings-row-gap: 0.6em;
+    --settings-pack-min: 100%; /* the lone checkbox row's long label needs the full width */
   }
   .settings-card :global(h4) {
     margin: 0 0 0.8em 0;
@@ -300,6 +301,7 @@
     --ctrl-cols: minmax(0, 1fr) auto 0;
   }
   .category-colors :global(.settings-section > label) {
+    grid-column: auto;
     text-transform: capitalize;
     transition: background-color 0.2s;
   }

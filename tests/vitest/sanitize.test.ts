@@ -1,12 +1,10 @@
 import {
-  compact_formula,
-  sanitize_compact_formula,
   sanitize_formula,
   sanitize_html,
   sanitize_html_ssr,
   sanitize_svg,
-} from '#lib/sanitize.js'
-import type * as Sanitize from '#lib/sanitize.js'
+} from '#lib/sanitize'
+import type * as Sanitize from '#lib/sanitize'
 import DOMPurify from 'dompurify'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
@@ -201,7 +199,7 @@ describe(`sanitize_html`, () => {
       default: () => ({ sanitize: sanitize_spy, addHook: () => {} }),
     }))
     try {
-      const { sanitize_html: fresh_sanitize } = await import(`#lib/sanitize.js`)
+      const { sanitize_html: fresh_sanitize } = await import(`#lib/sanitize`)
       for (const input of [...inert_inputs, ...inert_links]) {
         expect(fresh_sanitize(input)).toBe(input)
       }
@@ -234,26 +232,6 @@ describe(`sanitize_formula`, () => {
   test(`strips XSS injected via formula string`, () => {
     assertNoXss(sanitize_formula(`<script>alert(1)</script>`))
     assertNoXss(sanitize_formula(`Fe<img src=x onerror=alert(1)>2O3`))
-  })
-})
-
-describe(`compact formula helpers`, () => {
-  test.each([
-    [`Ac6 U2`, `Ac6U2`, `Ac<sub>6</sub>U<sub>2</sub>`],
-    [`Ca Ti O3`, `CaTiO3`, `CaTiO<sub>3</sub>`],
-    [``, ``, ``],
-    [`   `, ``, ``],
-    [`Fe\t2\nO\r3`, `Fe2O3`, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [`Li  2  O`, `Li2O`, `Li<sub>2</sub>O`],
-  ])(`compacts and sanitizes "%s"`, (formula, compact, html) => {
-    expect(compact_formula(formula)).toBe(compact)
-    expect(sanitize_compact_formula(formula)).toBe(html)
-  })
-
-  test(`strips XSS with embedded whitespace`, () => {
-    const result = sanitize_compact_formula(`Fe<script> alert(1) </script>2O3`)
-    expect(result).not.toContain(`<script`)
-    expect(result).not.toContain(`alert`)
   })
 })
 
@@ -291,7 +269,7 @@ const without_browser_dom = async <T>(
     // @ts-expect-error - SSR simulation
     globalThis.window = undefined
     vi.resetModules()
-    return await run(await import(`#lib/sanitize.js`))
+    return await run(await import(`#lib/sanitize`))
   } finally {
     globalThis.window = win
     vi.resetModules()

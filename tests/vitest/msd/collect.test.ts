@@ -1,5 +1,5 @@
-import { compute_msd } from '#lib/msd/compute-msd.js'
-import { collect_msd_positions } from '#lib/msd/collect.js'
+import { compute_msd } from '#lib/msd/compute-msd'
+import { collect_msd_positions } from '#lib/msd/collect'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
 import type {
@@ -7,9 +7,9 @@ import type {
   ParseProgress,
   TrajectoryPositionStream,
   TrajectoryRun,
-} from '#lib/trajectory/index.js'
-import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis.js'
-import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+} from '#lib/trajectory/index'
+import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
@@ -160,14 +160,20 @@ describe(`MSD components`, () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Å²/fs`))
     expect(button.disabled).toBe(false)
     expect(document.body.textContent).toContain(`2 fs per collected frame`)
-    // the plot's reset on withdrawn positions must not wipe the pane's error in their shared slot
+    // the plot's reset on withdrawn positions must not wipe the pane's error in their shared slot.
+    // A new stride: the same frames again would reuse the finished sweep without reading
     vi.spyOn(run, `collect_positions`).mockRejectedValueOnce(new Error(`recollect failed`))
+    const stride_input = doc_query<HTMLInputElement>(`input[aria-label="Frame stride"]`)
+    stride_input.value = `2`
+    stride_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
     button.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain(`recollect failed`))
   })
 
-  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with compute_msd's unwrapped copy
-  it(`budgets compute_msd's unwrapped copy of wrapped cell positions`, async () => {
+  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with compute_msd's unwrapped copy (the
+  // estimate's 2 buffers); the hint budgets VACF's 3 so one sweep can serve both panes
+  it(`budgets compute_msd's unwrapped copy and hints VACF's stride`, async () => {
     const run = trajectory_from_frames(
       Array.from({ length: 20 }, (_, idx) => make_frame(idx, [[0, 0, 0]], { box_length: 5 })),
     )
@@ -178,6 +184,7 @@ describe(`MSD components`, () => {
       }),
     )
     await tick()
-    expect(document.body.textContent).toContain(`needs ≥ 2`)
+    expect(document.body.textContent).toContain(`needs ≥ 3`)
+    expect(document.body.textContent).toContain(`≈ 916 MiB`) // 20 frames x 1M atoms x 2 x 24 B
   })
 })

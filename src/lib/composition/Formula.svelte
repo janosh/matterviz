@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { ColorSchemeName } from '#lib/colors/index.js'
-  import { ELEMENT_COLOR_SCHEMES, perceived_brightness } from '#lib/colors/index.js'
-  import type { ElementSymbol } from '#lib/element/index.js'
-  import { element_by_symbol } from '#lib/element/index.js'
+  import type { ColorSchemeName } from '#lib/colors/index'
+  import { ELEMENT_COLOR_SCHEMES, perceived_brightness } from '#lib/colors/index'
+  import type { ElementSymbol } from '#lib/element/index'
+  import { element_by_symbol } from '#lib/element/index'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import type { TooltipSide } from '#lib/plot/core/decorations/tooltip.js'
-  import { beside_rect } from '#lib/plot/core/decorations/tooltip.js'
-  import type { Rect } from '#lib/plot/core/layout.js'
+  import type { TooltipSide } from '#lib/plot/core/decorations/tooltip'
+  import { beside_rect } from '#lib/plot/core/decorations/tooltip'
+  import type { Rect } from '#lib/plot/core/layout'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     AMOUNT_FORMAT,

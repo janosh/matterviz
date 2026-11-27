@@ -1,49 +1,49 @@
 <script lang="ts">
-  import { sanitize_html } from '#lib/sanitize.js'
+  import { sanitize_html } from '#lib/sanitize'
   import { clamp, html_to_text } from 'svelte-widgets/utils'
-  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'
-  import type { BarStyle, HistogramHandlerProps } from '#lib/plot/index.js'
-  import { HistogramControls } from '#lib/plot/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
+  import { csv_source } from '#lib/plot/core/utils/chart-export'
+  import { format_value_or_num, zero_if_negligible } from '#lib/labels'
+  import type { BarStyle, HistogramHandlerProps } from '#lib/plot/index'
+  import { HistogramControls } from '#lib/plot/index'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
-  import { normalize_marginals } from '#lib/plot/core/marginals.js'
-  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals'
+  import { normalize_marginals } from '#lib/plot/core/marginals'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils'
   import {
     create_cartesian_frame,
     has_controls_row,
-  } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
-  import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  } from '#lib/plot/core/cartesian-frame.svelte'
+  import { resolve_plot_display } from '#lib/plot/core/display.svelte'
+  import { build_legend_items } from '#lib/plot/core/data-transform'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
-  } from '#lib/plot/core/utils/series-visibility.js'
-  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  } from '#lib/plot/core/utils/series-visibility'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index'
   import {
     accumulate_extent,
     create_axis_scales,
     empty_extent,
     nice_range_from_extent,
-  } from '#lib/plot/core/scales.js'
+  } from '#lib/plot/core/scales'
   import type {
     AxisConfig,
     BasePlotProps,
     CartesianPlotProps,
     PlotConfig,
-  } from '#lib/plot/core/types.js'
+  } from '#lib/plot/core/types'
   import type {
     BinnedSeries,
     HistogramBin,
     HistogramNormalize,
     HistogramSeries,
-  } from '#lib/plot/histogram/histogram.js'
+  } from '#lib/plot/histogram/histogram'
   import {
     bin_transform,
     compute_count_range,
@@ -51,26 +51,19 @@
     compute_histogram_counts,
     histogram_series_color,
     log_safe_range,
-  } from '#lib/plot/histogram/histogram.js'
+  } from '#lib/plot/histogram/histogram'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
-  import { DEFAULTS } from '#lib/settings.js'
+  import { DEFAULTS } from '#lib/settings'
   import { untrack, type Snippet } from 'svelte'
-  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Vec2 } from '#lib/math.js'
-  import {
-    chain_callbacks,
-    is_activation_key,
-    overlaps_rect,
-    type PixelRect,
-    vec2_equal,
-  } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
+  import type { Vec2 } from '#lib/math'
+  import { is_activation_key, overlaps_rect, vec2_equal } from '#lib/plot/core/interactions'
+  import { mark_keys, roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { bar_path } from '#lib/plot/core/svg.js'
-  import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import { unique_id } from '#lib/plot/core/utils.js'
+  import { bar_path } from '#lib/plot/core/svg'
+  import { resolve_pattern } from '#lib/plot/core/patterns'
 
   let {
     series: series_in = [],
@@ -100,7 +93,7 @@
     hovered = $bindable(false),
     on_bar_click,
     on_bar_hover,
-    selected_bins = $bindable([]),
+    selection = $bindable([]),
     on_select,
     view = $bindable(),
     ref_lines = [],
@@ -108,11 +101,9 @@
     on_ref_line_hover,
     show_controls,
     controls_open = $bindable(false),
-    on_series_toggle,
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
     children,
     header_controls,
     controls_extra,
@@ -124,7 +115,7 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     BasePlotProps &
-    CartesianPlotProps & {
+    CartesianPlotProps<HistogramHandlerProps> & {
       // Distributions to bin, each a list of sample `values` with optional weights, label and color
       series: readonly HistogramSeries[]
       // Number of equal-width bins over the x domain (geometric on a log axis)
@@ -150,17 +141,8 @@
       on_bar_hover?: (
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      // Bindable: the bins the last Alt+drag rect touched, which the chart outlines. Indices
-      // name bins of the current binning, so a re-bin (pan/zoom, new samples) empties it.
-      selected_bins?: { series_idx: number; bin_idx: number }[]
-      // Fires on every Alt+drag, including one that selected nothing
-      on_select?: (selection: {
-        bins: (HistogramHandlerProps & { bin_idx: number })[]
-        rect: PixelRect
-      }) => void
-      // Called with the series index after a legend click toggles that series
-      on_series_toggle?: (series_idx: number) => void
     } = $props()
+  const uid = $props.id()
 
   const legend_vis = create_legend_visibility<HistogramSeries>(
     () => series,
@@ -256,6 +238,7 @@
         scale_type: axis.scale_type ?? `linear`,
         y_limit: log_safe_range(axis),
         range_padding,
+        nice: axis.nice,
       })
     return { y: range_for(final_y_axis, `y`), y2: range_for(final_y2_axis, `y2`) }
   }
@@ -267,6 +250,7 @@
         axis.range ?? [null, null],
         axis.scale_type ?? `linear`,
         range_padding,
+        { nice: axis.nice },
       )
     return {
       x: nice_for(axis_data.x1_extent, final_x_axis),
@@ -306,7 +290,7 @@
   )
 
   const frame = create_cartesian_frame({
-    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
+    controls_row: () => has_controls_row(show_controls),
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
     auto_ranges: () => auto_ranges,
     facet_ranges: () => intrinsic_ranges,
@@ -342,18 +326,16 @@
         return hist.bins.flatMap((bin, bin_idx) => {
           const x_span: Vec2 = [x_scale(bin.x0), x_scale(bin.x1)]
           const hit = bin.count && overlaps_rect(rect, x_span, [baseline, y_scale(bin.value)])
-          return hit ? [{ ...bar_data(hist, bin), bin_idx }] : []
+          return hit ? [bar_data(hist, bin_idx)] : []
         })
       })
-      selected_bins = picked.map(({ series_idx, bin_idx }) => ({ series_idx, bin_idx }))
-      on_select?.({ bins: picked, rect })
+      selection = picked.map(({ series_idx, bin_idx }) => ({ series_idx, point_idx: bin_idx }))
+      on_select?.({ items: picked, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    clip_id_prefix: `histogram-clip`,
+    clip_path_id: `histogram-clip-${uid}`,
   })
-  const selected_keys = $derived(
-    new Set(selected_bins.map((sel) => roving_key(sel.series_idx, sel.bin_idx))),
-  )
+  const selected_keys = $derived(mark_keys(selection))
 
   // Bars grow from zero, or from the range floor when zero is off-axis (log, pinned range)
   const bar_foot = ([lower, upper]: Vec2): number =>
@@ -404,10 +386,13 @@
     return count_over(coord_x, coord_x_2)
   })
   let histogram_bins = $derived(display_bins(current_counts))
-  let selected_counts = untrack(() => current_counts) // the binning selected_bins index
+  // The binning selection indexes. No bins (before layout, at zero size, all series hidden)
+  // is no re-bin, so a preset selection names bins of the first real binning
+  let selected_counts = untrack(() => current_counts)
   $effect.pre(() => {
-    if (current_counts !== selected_counts && untrack(() => selected_bins.length))
-      selected_bins = []
+    if (current_counts.length === 0) return
+    const rebinned = selected_counts.length > 0 && current_counts !== selected_counts
+    if (rebinned && untrack(() => selection.length)) selection = []
     selected_counts = current_counts
   })
 
@@ -428,7 +413,7 @@
 
   // Per-series pattern tiles (null: plain fill), derived from the series, not the bins, so
   // rebinning pan/zoom frames don't re-resolve tiles and re-diff the <defs>
-  const pattern_uid = unique_id(`histogram`)
+  const pattern_uid = `histogram-${uid}`
   let hist_patterns = $derived(
     series.map((series_data, series_idx) =>
       series_data.pattern
@@ -437,12 +422,10 @@
     ),
   )
 
-  // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height.
-  // The center is the edges' scale-space midpoint, where the bar is drawn (log [10, 100]: 31.6)
-  const bar_data = (
-    hist: BinnedSeries,
-    { x0: coord_x_0, x1: coord_x_1, count, value }: HistogramBin,
-  ) => {
+  // Handler payload for a bar. Its x, the bin center, is the edges' scale-space midpoint,
+  // where the bar is drawn (log [10, 100]: 31.6)
+  const bar_data = (hist: BinnedSeries, bin_idx: number) => {
+    const { x0: coord_x_0, x1: coord_x_1, count, value } = hist.bins[bin_idx]
     const active_x_axis = hist.x_axis ?? `x`
     const active_y_axis = hist.y_axis ?? `y`
     const bin_x_axis = active_x_axis === `x2` ? final_x2_axis : final_x_axis
@@ -451,15 +434,13 @@
     const [pos_0, pos_1] = [fwd(coord_x_0), fwd(coord_x_1)]
     const center = inv(zero_if_negligible((pos_0 + pos_1) / 2, pos_1 - pos_0))
     return {
-      value: center,
+      bin_idx,
       count,
-      property: hist.label,
       active_x_axis,
       active_y_axis,
       x: center,
       y: value,
       series_idx: hist.series_idx,
-      metadata: null,
       label: hist.label,
       x_axis: bin_x_axis,
       x2_axis: final_x2_axis,
@@ -483,7 +464,7 @@
     const hist = histogram_bins.find((binned) => binned.series_idx === key.series_idx)
     const bin = hist?.bins[key.bin_idx]
     // an empty bin draws no bar, so an emptied one's tooltip closes like a removed series'
-    return hist && bin?.count ? bar_data(hist, bin) : null
+    return hist && bin?.count ? bar_data(hist, key.bin_idx) : null
   }
   const hover = create_mark_hover({
     key: ({ series_idx, bin_idx }: BinKey) => `${series_idx}:${bin_idx}`,
@@ -497,7 +478,7 @@
     (hist: BinnedSeries, bin_idx: number) => (evt: MouseEvent | FocusEvent) => {
       hovered = true
       hover.set({ series_idx: hist.series_idx, bin_idx })
-      on_bar_hover?.({ ...bar_data(hist, hist.bins[bin_idx]), event: evt })
+      on_bar_hover?.({ ...bar_data(hist, bin_idx), event: evt })
     }
   const handle_bar_click =
     (hist: BinnedSeries, bin_idx: number) => (event: MouseEvent | KeyboardEvent) => {
@@ -505,7 +486,7 @@
         if (!is_activation_key(event)) return
         event.preventDefault()
       }
-      on_bar_click?.({ ...bar_data(hist, hist.bins[bin_idx]), event })
+      on_bar_click?.({ ...bar_data(hist, bin_idx), event })
       // mouse clicks pin through the frame, which also sees clicks on empty space
       if (event instanceof KeyboardEvent) hover.toggle_pin() // focus is the keyboard's hover
     }
@@ -537,7 +518,6 @@
   css_var_fallbacks={{ 'svg-max-height': `100%` }}
   aria_label="Histogram"
   bind:fullscreen
-  {fullscreen_toggle}
   {show_controls}
   require_size={false}
   marginals={resolved_marginals}
@@ -661,10 +641,10 @@
 
   {#snippet overlays()}
     {#if hover_info && (hovered || hover.pin.value) && tooltip !== false}
-      {@const { value, count, y: coord_y } = hover_info}
+      {@const { x: center, count, y: coord_y } = hover_info}
       <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
-        x={frame.scales[hover_info.active_x_axis](value)}
+        x={frame.scales[hover_info.active_x_axis](center)}
         y={frame.scales[hover_info.active_y_axis](coord_y)}
         avoid_cursor={false}
         offset={{ x: 5, y: -10 }}
@@ -681,7 +661,7 @@
             <TooltipValue
               label={hover_info.x_axis.label || `Value`}
               unit={hover_info.x_axis.unit}
-              value={format_value_or_num(value, hover_info.x_axis.format)}
+              value={format_value_or_num(center, hover_info.x_axis.format)}
             />
           </div>
           <div>Count: {format_value_or_num(count, count_format)}</div>
@@ -693,7 +673,7 @@
               />
             </div>
           {/if}
-          {#if mode === `overlay`}<div>{@html sanitize_html(hover_info.property)}</div>{/if}
+          {#if mode === `overlay`}<div>{@html sanitize_html(hover_info.label)}</div>{/if}
         {/if}
       </PlotTooltip>
     {/if}
@@ -703,7 +683,7 @@
       {legend}
       series_data={legend_data}
       active_series_idx={hover_info?.series_idx ?? frame.hovered_series_idx}
-      on_toggle={chain_callbacks(legend_vis.on_toggle, on_series_toggle)}
+      on_toggle={legend_vis.on_toggle}
       on_group_toggle={legend_vis.on_group_toggle}
       on_double_click={legend_vis.on_double_click}
     />

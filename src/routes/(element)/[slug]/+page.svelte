@@ -7,17 +7,17 @@
     ElementHeading,
     ElementPhoto,
     ElementTile,
-  } from '#lib/element/index.js'
-  import type { ChemicalElement } from '#lib/element/index.js'
-  import { ColorScaleSelect, ElementScatter } from '#lib/plot/index.js'
-  import { PeriodicTable, PropertySelect } from '#lib/periodic-table/index.js'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { ELEM_PROPERTY_LABELS } from '#lib/labels.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import { selected } from '#lib/state.svelte.js'
+  } from '#lib/element/index'
+  import type { ChemicalElement } from '#lib/element/index'
+  import { ColorScaleSelect, ElementScatter } from '#lib/plot/index'
+  import { PeriodicTable, PropertySelect } from '#lib/periodic-table/index'
+  import type { D3InterpolateName } from '#lib/colors/index'
+  import { ELEM_PROPERTY_LABELS } from '#lib/labels'
+  import { sanitize_html } from '#lib/sanitize'
+  import { selected } from '#lib/state.svelte'
   import pkg from '#root/package.json'
-  import { normalize_static_url } from '#site/state.svelte.js'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import { normalize_static_url } from '#site/state.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { error } from '@sveltejs/kit'
   import Icon from 'svelte-widgets/Icon.svelte'
   import PrevNext from 'svelte-widgets/PrevNext.svelte'
@@ -155,7 +155,7 @@
 <p>{@html sanitize_html(element.summary)}</p>
 
 <section class="flex-wrap">
-  <LazyDemo label="Periodic table" height="180px">
+  <LazyMount label="Periodic table" height="180px">
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
       show_photo={false}
@@ -164,7 +164,7 @@
       links="name"
       active_element={element}
     />
-  </LazyDemo>
+  </LazyMount>
 
   <table>
     <thead>
@@ -193,7 +193,7 @@
     </tbody>
   </table>
 
-  <LazyDemo label="Electron shells" height="300px">
+  <LazyMount label="Electron shells" height="300px">
     <BohrAtom
       symbol={element.symbol}
       shells={element.shells}
@@ -203,7 +203,7 @@
       highlight_shell={active_shell}
       onclick={() => (orbiting = !orbiting)}
     />
-  </LazyDemo>
+  </LazyMount>
 </section>
 
 <section class="properties">
@@ -276,7 +276,7 @@
     gap: 1em;
     place-items: center;
     place-content: center space-around;
-    > :global(.lazy-demo) {
+    > :global(.lazy-mount) {
       width: 100%;
       max-width: 300px;
     }

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/index.js'
-  import type { ConvexHullEntry, HullModel, PhaseData } from '#lib/convex-hull/index.js'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/index'
+  import type { ConvexHullEntry, HullModel, PhaseData } from '#lib/convex-hull/index'
+  import type { D3InterpolateName } from '#lib/colors/index'
 
   const elements_by_dim = {
     '2d': [`Li`, `O`],

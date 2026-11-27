@@ -1,4 +1,4 @@
-import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
+import { pick_pane_orientation } from '#lib/layout/pane-orientation'
 import { expect, test } from 'vite-plus/test'
 
 // Unmeasured (0 or negative) sizes split side by side; when only one split leaves panes of at

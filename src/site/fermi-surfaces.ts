@@ -1,7 +1,7 @@
-import type { FileInfo, FileTypePaint } from '#lib/io/index.js'
-import type { ElectronEnergyUnit } from '#lib/spectral/types.js'
-import { file_type_paint } from '#lib/io/file-type-paint.js'
-import { fixture_ext, site_file_info } from '#site/imports.js'
+import type { FileInfo, FileTypePaint } from '#lib/io/index'
+import type { ElectronEnergyUnit } from '#lib/spectral/types'
+import { file_type_paint } from '#lib/io/file-type-paint'
+import { fixture_ext, site_file_info } from '#site/imports'
 
 // The static symlink serves these fixtures at /fermi-surfaces/<name>.
 const fermi_file_modules = import.meta.glob(
@@ -30,11 +30,11 @@ export const FERMI_FILE_ENERGY_UNITS: Record<string, ElectronEnergyUnit> = {
   'pb.bxsf.gz': `eV`,
 }
 
-// Picker category + icon per base format (.json files are assumed IFermi format)
-const CATEGORY_BY_EXT: Record<string, { category: string; category_icon: string }> = {
-  bxsf: { category: `BXSF`, category_icon: `🔷` },
-  frmsf: { category: `FRMSF`, category_icon: `🔶` },
-  json: { category: `IFermi`, category_icon: `🌐` },
+// Picker category per base format (.json files are assumed IFermi format)
+const CATEGORY_BY_EXT: Record<string, string> = {
+  bxsf: `BXSF`,
+  frmsf: `FRMSF`,
+  json: `IFermi`,
 }
 
 export const fermi_surface_files: FileInfo[] = Object.keys(fermi_file_modules)
@@ -42,9 +42,9 @@ export const fermi_surface_files: FileInfo[] = Object.keys(fermi_file_modules)
     const file = site_file_info(path, { type: fixture_ext(path) })
     const category =
       file.type === `frmsf` && FRMSF_COLOR_DATA_FILES.has(file.name)
-        ? { category: `FRMSF Color`, category_icon: `🎨` }
-        : (CATEGORY_BY_EXT[file.type ?? ``] ?? { category: `Unknown`, category_icon: `📄` })
-    return { ...file, ...category }
+        ? `FRMSF Color`
+        : (CATEGORY_BY_EXT[file.type ?? ``] ?? `Unknown`)
+    return { ...file, category }
   })
   .toSorted((file_a, file_b) => file_a.name.localeCompare(file_b.name))
 

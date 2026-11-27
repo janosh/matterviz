@@ -1,6 +1,6 @@
 // Export pymatgen electronic band structure files for demos
 // Glob handles both .json (dev) and .json.gz (production)
-import { normalize_band_structure } from '#lib/spectral/index.js'
+import { normalize_band_structure } from '#lib/spectral/index'
 
 const imports = import.meta.glob<unknown>([`./*-bands.json`, `./*-bands.json.gz`], {
   eager: true,

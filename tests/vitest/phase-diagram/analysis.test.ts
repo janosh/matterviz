@@ -4,11 +4,11 @@ import {
   gibbs_curves,
   lower_hull,
   phase_disagreement,
-} from '#lib/phase-diagram/analysis.js'
-import type { BinaryPhaseDiagram, GibbsEnergyGrid } from '#lib/phase-diagram/types.js'
+} from '#lib/phase-diagram/analysis'
+import type { BinaryPhaseDiagram, GibbsEnergyGrid } from '#lib/phase-diagram/types'
 import { describe, expect, test } from 'vite-plus/test'
-import { find_region_at } from '#lib/phase-diagram/utils.js'
-import { binary_diagrams } from '#site/phase-diagrams.js'
+import { find_region_at } from '#lib/phase-diagram/utils'
+import { binary_diagrams } from '#site/phase-diagrams'
 import { eutectic, pts, shifted_eutectic } from './fixtures/test-data'
 
 // Lens-shaped α + L field over a liquid: the liquidus runs (0, 1000) → (1, 600), the solidus

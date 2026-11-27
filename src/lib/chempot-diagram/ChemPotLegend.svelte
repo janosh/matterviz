@@ -2,7 +2,7 @@
   // Colour legend shared by ChemPotDiagram2D and ChemPotDiagram3D: a colour bar for the
   // continuous modes, one swatch per element count for arity mode, nothing for `none`.
   // The caller positions it (absolute) through `style`.
-  import { ColorBar } from '#lib/plot/index.js'
+  import { ColorBar } from '#lib/plot/index'
   import type { HTMLAttributes } from 'svelte/elements'
   import { ARITY_COLORS, arity_legend_labels } from './color'
   import type { ChemPotColorMode, ChemPotDiagramConfig } from './types'

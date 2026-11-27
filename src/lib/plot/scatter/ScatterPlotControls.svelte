@@ -2,17 +2,17 @@
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
-  import { css_color_to_hex } from '#lib/colors/index.js'
-  import { shown_point_style, series_text } from '#lib/plot/core/data-transform.js'
+  import { css_color_to_hex } from '#lib/colors/index'
+  import { shown_point_style, series_text } from '#lib/plot/core/data-transform'
   import PlotControls from '#lib/plot/core/components/PlotControls.svelte'
   import type {
     DataSeries,
     PlotConfig,
     PlotControlsProps,
     StyleOverrides,
-  } from '#lib/plot/core/types.js'
-  import { has_marker } from '#lib/plot/core/types.js'
-  import { DEFAULTS } from '#lib/settings.js'
+  } from '#lib/plot/core/types'
+  import { has_marker } from '#lib/plot/core/types'
+  import { DEFAULTS } from '#lib/settings'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
 

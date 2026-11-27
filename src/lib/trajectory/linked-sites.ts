@@ -1,7 +1,7 @@
-import { nearest_value_idx } from '#lib/math.js'
-import type { StructureIdSweep } from '#lib/structure-id/collect.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { site_count } from '#lib/structure/site.js'
+import { nearest_value_idx } from '#lib/math'
+import type { StructureIdSweep } from '#lib/structure-id/collect'
+import type { AnyStructure } from '#lib/structure/index'
+import { site_count } from '#lib/structure/site'
 import type { TrajectoryFrame } from './index'
 
 // The source atom behind each site of a render sample (huge runs preview every n-th atom),

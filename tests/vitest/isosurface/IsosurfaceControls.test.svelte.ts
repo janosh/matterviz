@@ -1,16 +1,13 @@
-import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
+import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings'
 import IsosurfaceControls from '#lib/isosurface/IsosurfaceControls.svelte'
 import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
-import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
-import {
-  auto_isosurface_settings,
-  DEFAULT_ISOSURFACE_SETTINGS,
-} from '#lib/isosurface/types.js'
+import { create_volume_slice_settings } from '#lib/isosurface/slice-settings'
+import { auto_isosurface_settings, DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
   VolumetricData,
-} from '#lib/isosurface/types.js'
+} from '#lib/isosurface/types'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vite-plus/test'
 import {

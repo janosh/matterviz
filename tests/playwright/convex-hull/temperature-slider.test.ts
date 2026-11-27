@@ -9,7 +9,7 @@ test.describe(`Temperature-dependent free energies`, () => {
     })
     // synthetic data loads immediately once the section mounts
     await expect(page.locator(`.temp-grid`)).toBeVisible({ timeout: 30_000 })
-    await page.locator(`.temp-grid > .lazy-demo`).last().scrollIntoViewIfNeeded()
+    await page.locator(`.temp-grid > .lazy-mount`).last().scrollIntoViewIfNeeded()
   })
 
   const marker_positions = (diagram: Locator) => () =>

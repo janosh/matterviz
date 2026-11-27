@@ -1,6 +1,6 @@
-import type { ChemicalElement } from '#lib/element/types.js'
-import type { Vec3 } from '#lib/math.js'
-import { normalize_unicode_minus } from '#lib/utils.js'
+import type { ChemicalElement } from '#lib/element/types'
+import type { Vec3 } from '#lib/math'
+import { normalize_unicode_minus } from '#lib/utils'
 import { DEFAULT_FMT, default_spec, format_num } from 'svelte-widgets/format'
 import {
   type SymbolType,
@@ -20,7 +20,7 @@ import {
 } from 'd3-shape'
 import { timeFormat } from 'd3-time-format'
 
-export { ELEM_SYMBOLS } from '#lib/element/types.js'
+export { ELEM_SYMBOLS } from '#lib/element/types'
 
 // A value within a millionth of `magnitude` (the data's largest |value|) as exactly 0, so
 // floating noise (a density's 1e-125 vacuum, a fixed atom's 1e-17 force) reads 0 rather than

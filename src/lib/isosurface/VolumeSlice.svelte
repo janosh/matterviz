@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { resolve_computed_color } from '#lib/colors/index.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { resolve_computed_color } from '#lib/colors/index'
+  import type { Vec2 } from '#lib/math'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
-  import type { ColorScale } from '#lib/plot/core/types.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales'
+  import type { ColorScale } from '#lib/plot/core/types'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { SliceResult } from './slice'

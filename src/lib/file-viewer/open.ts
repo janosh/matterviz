@@ -1,8 +1,8 @@
-import { classify_payload, content_byte_size, is_empty_content } from '#lib/io/decompress.js'
-import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
-import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
-import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
-import { basename_from_url, fetch_payload } from '#lib/io/url-drop.js'
+import { classify_payload, content_byte_size, is_empty_content } from '#lib/io/decompress'
+import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index'
+import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils'
+import { basename_from_url, fetch_payload } from '#lib/io/url-drop'
 import { parse_in_worker, ParseWorkerError } from './parse-in-worker'
 import { HostFileError } from './host-protocol'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
@@ -78,12 +78,14 @@ export const acquire_material = async (
   source: MaterialSource,
   signal?: AbortSignal,
   keep_blob = true,
+  on_download_percent?: (percent: number) => void,
 ): Promise<MaterialPayload> => {
   if (typeof source === `string` || source instanceof URL) {
     const { content: data, ...payload } = await fetch_payload(
       String(source),
       keep_blob,
       signal,
+      on_download_percent,
     )
     return { data, ...payload }
   }
@@ -137,7 +139,19 @@ export async function open_material(
   signal?.throwIfAborted()
   let payload: MaterialPayload
   try {
-    payload = await acquire_material(source, signal)
+    payload = await acquire_material(
+      source,
+      signal,
+      true,
+      on_progress &&
+        ((current) =>
+          // the full body still inflates and classifies before parse progress takes over
+          on_progress({
+            current,
+            total: 100,
+            stage: current < 100 ? `Downloading…` : `Reading…`,
+          })),
+    )
   } catch (error) {
     throw new MaterialOpenError(
       to_error(error).message,

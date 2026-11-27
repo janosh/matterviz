@@ -1,21 +1,18 @@
-import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
-import * as math from '#lib/math.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import { full_data_extractor } from '#lib/trajectory/extract.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
+import { EV_PER_A3_TO_GPA } from '#lib/constants'
+import * as math from '#lib/math'
+import type { TrajectoryFrame } from '#lib/trajectory/index'
+import { full_data_extractor } from '#lib/trajectory/extract'
+import { open_trajectory } from '#lib/trajectory/open'
 import {
   VaspoutElectronicOnlyError,
   parse_vaspout_h5_file,
-} from '#lib/trajectory/parse/vaspout-h5.js'
-import { expand_ion_types } from '#lib/trajectory/helpers.js'
-import { with_h5_file } from '#lib/trajectory/parse/h5-utils.js'
-import { electronic_band_gap } from '#lib/spectral/helpers.js'
-import {
-  line_mode_labels,
-  read_vaspout_bands,
-} from '#lib/trajectory/parse/vaspout-electronic.js'
-import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
-import { is_trajectory_file } from '#lib/trajectory/format-detect.js'
+} from '#lib/trajectory/parse/vaspout-h5'
+import { expand_ion_types } from '#lib/trajectory/helpers'
+import { with_h5_file } from '#lib/trajectory/parse/h5-utils'
+import { electronic_band_gap } from '#lib/spectral/helpers'
+import { line_mode_labels, read_vaspout_bands } from '#lib/trajectory/parse/vaspout-electronic'
+import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic'
+import { is_trajectory_file } from '#lib/trajectory/format-detect'
 import type * as h5wasm from 'h5wasm'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { rejection_of } from '../setup'

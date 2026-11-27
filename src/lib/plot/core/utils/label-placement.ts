@@ -1,17 +1,17 @@
-import { array_extent, array_max, type Point2D } from '#lib/math.js'
-import type { FacetAxis } from '#lib/plot/core/facets.js'
-import type { PlotScaleFn } from '#lib/plot/core/scales.js'
-import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import { array_extent, array_max, type Point2D } from '#lib/math'
+import type { FacetAxis } from '#lib/plot/core/facets'
+import type { PlotScaleFn } from '#lib/plot/core/scales'
+import type { FontSpec } from '#lib/plot/core/text-metrics'
 import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
   resolve_font_size_css,
-} from '#lib/plot/core/text-metrics.js'
+} from '#lib/plot/core/text-metrics'
 import type {
   InternalPoint,
   LabelPlacementConfig,
   LabelPlacementWeights,
-} from '#lib/plot/core/types.js'
+} from '#lib/plot/core/types'
 
 // Defaults merged under a user's label_placement_config. 1000 anneal sweeps per label halve the
 // solve of 2000 for a slightly looser fit; pass sa_iterations: 2000 for the tightest layout.

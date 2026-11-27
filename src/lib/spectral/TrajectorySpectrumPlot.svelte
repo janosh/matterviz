@@ -5,10 +5,11 @@
     DataSeries,
     FacetPanel,
     FacetPanelContext,
-  } from '#lib/plot/index.js'
-  import { PLOT_COLORS } from '#lib/colors/index.js'
-  import { array_extent } from '#lib/math.js'
-  import { FacetGrid, ScatterPlot } from '#lib/plot/index.js'
+  } from '#lib/plot/index'
+  import { PLOT_COLORS } from '#lib/colors/index'
+  import { hide_controls } from '#lib/controls'
+  import { array_extent } from '#lib/math'
+  import { FacetGrid, ScatterPlot } from '#lib/plot/index'
   import { frequency_unit_label } from './frequency-units'
   import type {
     RamanChannel,
@@ -33,7 +34,7 @@
     selected_peak_idx?: number
     show_summary?: boolean
     frequency_range?: [number, number]
-  } & Omit<ScatterPlotOptions, `ref_lines` | `fullscreen` | `fullscreen_toggle`> = $props()
+  } & Omit<ScatterPlotOptions, `ref_lines` | `fullscreen`> = $props()
 
   interface SpectrumPanelDatum {
     kind: `ir` | `raman` | `vdos`
@@ -154,7 +155,7 @@
   <ScatterPlot
     {...rest}
     legend={spectroscopy_legend}
-    {show_controls}
+    show_controls={hide_controls(show_controls, `fullscreen`)}
     {series}
     on_point_click={(event) => {
       const peak_idx = event.metadata?.peak_idx
@@ -174,7 +175,6 @@
     }}
     styles={{ show_lines: true, show_points: true, ...rest.styles }}
     {facet_layout}
-    fullscreen_toggle={false}
     style="height: 100%; min-height: 0"
   />
 {/snippet}

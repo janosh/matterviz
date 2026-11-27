@@ -1,11 +1,11 @@
-import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
-import * as svg_paths from '#lib/plot/core/svg.js'
-import type { InternalPoint } from '#lib/plot/core/types.js'
+import * as svg_paths from '#lib/plot/core/svg'
+import type { InternalPoint } from '#lib/plot/core/types'
 import { flushSync, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {
@@ -15,7 +15,9 @@ import {
   mount_sized,
   plot_svg,
   pointer,
+  resize_element,
   svg_rect,
+  trigger_resize_observer,
   translate_of,
 } from '../setup'
 
@@ -98,9 +100,9 @@ describe(`alt+drag rect selection`, () => {
     await drag(svg, { x: 60, y: 40 }, { x: 380, y: 240 }, { altKey: true })
 
     expect(on_select).toHaveBeenCalledOnce()
-    const [{ points, rect }] = on_select.mock.calls[0]
-    expect(points.length).toBeGreaterThan(0)
-    for (const { point_id, point_idx } of points as InternalPoint[])
+    const [{ items, rect }] = on_select.mock.calls[0]
+    expect(items.length).toBeGreaterThan(0)
+    for (const { point_id, point_idx } of items as InternalPoint[])
       expect(point_id).toBe(series[0].point_ids[point_idx])
     expect(rect).toEqual({ x: [60, 380], y: [40, 240] })
     // Alt+drag must not also zoom - markers stay exactly where they were
@@ -113,7 +115,7 @@ describe(`alt+drag rect selection`, () => {
     // Top-left corner of the plot area, above every point in the series
     const svg = await mount_scatter({ on_select, y_axis: { range: [0, 100] } })
     await drag(svg, { x: 60, y: 40 }, { x: 120, y: 70 }, { altKey: true })
-    expect(on_select).toHaveBeenCalledWith(expect.objectContaining({ points: [] }))
+    expect(on_select).toHaveBeenCalledWith(expect.objectContaining({ items: [] }))
   })
 
   // Every mark chart offers selection, so the rect's mode follows the modifier alone
@@ -124,7 +126,8 @@ describe(`alt+drag rect selection`, () => {
     expect(await drag(svg, { x: 60, y: 40 }, to)).toBe(`zoom`)
   })
 
-  // As ScatterPlot's points: a rect over empty plot area reports an empty selection too
+  // As ScatterPlot's points: a rect over empty plot area reports an empty selection too. All
+  // charts share one `selection` shape and `on_select({ items, rect })` payload
   test.each([
     [`bars`, 3, mount_bar],
     [`bins`, 3, mount_hist],
@@ -136,17 +139,20 @@ describe(`alt+drag rect selection`, () => {
   ] as const)(`alt+drag selects the %s the rect touches`, async (key, n_marks, mount_plot) => {
     const on_select = vi.fn()
     // y pinned for headroom above every mark
-    const svg = await mount_plot({ y_axis: { range: [0, 10] }, on_select })
+    const selection = [{ series_idx: 0, point_idx: 0 }]
+    const svg = await mount_plot({ y_axis: { range: [0, 10] }, on_select, selection })
     const clip = clip_rect(svg)
     const ticks = () => [...svg.querySelectorAll(`.tick`)].map((label) => label.textContent)
     const n_selected = () => svg.querySelectorAll(`.selected-mark`).length
+    // the preset selection's first mark survives layout (bins: the first binning isn't a re-bin)
+    expect(n_selected()).toBe(1)
     const ticks_before = ticks()
     const [left, top] = [clip.x + 1, clip.y + 1]
     const [right, bottom] = [clip.x + clip.width - 1, clip.y + clip.height] // on the baseline
     // selects from the top left to `to_x`, `to_y`: [n marks reported, n marks outlined]
     const select = async (to_y: number, to_x = right) => {
       await drag(svg, { x: left, y: top }, { x: to_x, y: to_y }, { altKey: true })
-      return [on_select.mock.lastCall?.[0][key].length, n_selected()]
+      return [on_select.mock.lastCall?.[0].items.length, n_selected()]
     }
     expect(await select(bottom)).toEqual([n_marks, n_marks])
     const rect = { x: [left, right], y: [top, bottom] }
@@ -159,6 +165,18 @@ describe(`alt+drag rect selection`, () => {
     // bin indices name bins of one binning: a zoom re-bins, which drops the selection
     if (key !== `bins`) return
     expect(await select(bottom)).toEqual([n_marks, n_marks])
+    // a container collapsing to zero size draws no bins but doesn't re-bin (svg stays mounted)
+    const root = svg.closest<HTMLElement>(`.plot-frame`)
+    if (!root) throw new Error(`no .plot-frame around the svg`)
+    for (const [width, height] of [
+      [0, 0],
+      [400, 300],
+    ]) {
+      await resize_element(root, width, height)
+      trigger_resize_observer(root)
+      await tick()
+    }
+    expect(n_selected()).toBe(n_marks)
     await drag(svg, { x: left + 100, y: top }, { x: right - 100, y: bottom })
     expect(n_selected()).toBe(0)
   })

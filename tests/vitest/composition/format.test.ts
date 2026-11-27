@@ -3,8 +3,8 @@ import {
   format_oxi_state,
   get_alphabetical_formula,
   get_electro_neg_formula,
-} from '#lib/composition/format.js'
-import { parse_formula } from '#lib/composition/parse.js'
+} from '#lib/composition/format'
+import { parse_formula } from '#lib/composition/parse'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`get_alphabetical_formula`, () => {

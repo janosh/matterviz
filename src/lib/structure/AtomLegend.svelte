@@ -4,27 +4,27 @@
     contrast_text_color,
     perceived_brightness,
     resolve_backdrop,
-  } from '#lib/colors/index.js'
-  import type { CompositionType } from '#lib/composition/index.js'
-  import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
+  } from '#lib/colors/index'
+  import type { CompositionType } from '#lib/composition/index'
+  import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { ChevronCollapse, ChevronExpand, Close } from 'svelte-widgets/icons'
-  import { display_idx, ELEM_SYMBOLS } from '#lib/labels.js'
-  import { ColorBar } from '#lib/plot/index.js'
-  import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import type { AnyStructure } from '#lib/structure/index.js'
-  import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
-  import { element_radius, site_base_radius } from '#lib/structure/index.js'
-  import type { AtomColorMode } from '#lib/settings.js'
-  import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-properties.js'
+  import { display_idx, ELEM_SYMBOLS } from '#lib/labels'
+  import { ColorBar } from '#lib/plot/index'
+  import { resolve_color_scale } from '#lib/plot/core/scales'
+  import type { AnyStructure } from '#lib/structure/index'
+  import { get_element_palette } from '#lib/structure/element-palette.svelte'
+  import { element_radius, site_base_radius } from '#lib/structure/index'
+  import type { AtomColorMode } from '#lib/settings'
+  import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-properties'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
     get_atom_color_mode_options,
     next_atom_color_config,
     structure_has_selective_dynamics,
-  } from '#lib/structure/atom-properties.js'
-  import type { SymmetryDataset } from '#lib/symmetry/index.js'
+  } from '#lib/structure/atom-properties'
+  import type { SymmetryDataset } from '#lib/symmetry/index'
   import { type Snippet, untrack } from 'svelte'
   import {
     anchored_popover,
@@ -680,6 +680,10 @@
   .element-legend sub {
     font-size: 0.85em;
     margin: 0 0 0 -2pt;
+  }
+  /* the amount subscript drops below the baseline, onto the chip's bottom edge without this */
+  .element-legend label:has(sub) {
+    padding-bottom: 2pt;
   }
   .element-legend label.remapped {
     outline: 2px dashed var(--accent-color, #4a90d9);

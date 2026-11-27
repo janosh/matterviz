@@ -1,11 +1,11 @@
 // Three.js scene → STL / OBJ+MTL / GLB download, shared by the 3D viewers. The exporters are
 // lazy-imported so viewers that never export don't ship them.
-import { AtomInstances } from '#lib/structure/atom-instances.js'
-import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
-import { BondMesh } from '#lib/structure/bond-mesh.js'
-import { download } from 'svelte-widgets/browser'
-import type { FileSaver } from '#lib/io/file-export.svelte.js'
-import { clamp01 } from '#lib/utils.js'
+import { AtomInstances } from '#lib/structure/atom-instances'
+import { ArrowMesh } from '#lib/structure/arrow-mesh'
+import { BondMesh } from '#lib/structure/bond-mesh'
+import { BROWSER_DOWNLOADS, type FileDestination } from '#lib/io/export'
+import type { FileExportContext } from 'svelte-widgets/browser'
+import { clamp01 } from '#lib/utils'
 import { to_error } from 'svelte-widgets/utils'
 import type { InstancedMesh, Material, Object3D } from 'three/webgpu'
 import {
@@ -229,28 +229,41 @@ export const model_export_items = (
   formats.map((format) => ({
     label: format.toUpperCase(),
     hint: MODEL_HINTS[format],
-    on_download: ({ filename, save }: { filename: string; save: FileSaver }) => {
+    save_as_reason: format === `obj` ? OBJ_SAVE_AS_REASON : undefined,
+    on_download: (context: FileExportContext) => {
       const model = get_model()
-      return model && export_scene_as(model, format, filename, save)
+      return model && export_scene_as(model, format, context.filename, context)
     },
   }))
 
-// Download `scene` as `<basename>.<format>` (OBJ plus a companion `.mtl` of material colors,
-// GLB as binary glTF), instanced meshes expanded first. Rejects on exporter errors.
+// Why export panes disable OBJ under Save As (export_scene_as also refuses it)
+export const OBJ_SAVE_AS_REASON = `OBJ writes two files (.obj and .mtl), which one Save As dialog can't name: choose a folder or browser downloads`
+
+// Save `scene` as `<basename>.<format>` (OBJ plus a companion `.mtl` of material colors,
+// GLB as binary glTF), instanced meshes expanded first, each file opened before it is
+// encoded. Rejects on exporter errors, and OBJ with Save As before any dialog: the second
+// file's dialog would lack the click's user activation, and a picked file has no siblings.
 export async function export_scene_as(
   scene: Object3D,
   format: SceneExportFormat,
   basename: string,
-  save: FileSaver = download,
+  { open, destination }: FileDestination = BROWSER_DOWNLOADS,
 ): Promise<void> {
-  const export_root = convert_instanced_meshes_to_regular(scene)
+  if (format === `obj` && destination === `save-as`) throw new Error(OBJ_SAVE_AS_REASON)
+  // files open before the instanced meshes expand, while the click's activation is fresh
   if (format === `stl`) {
+    const write = await open(`${basename}.stl`, `application/octet-stream`)
+    const export_root = convert_instanced_meshes_to_regular(scene)
     const { STLExporter } = await import(`three/examples/jsm/exporters/STLExporter.js`)
     const result = new STLExporter().parse(export_root, { binary: true })
     // Binary STL returns DataView, convert to ArrayBuffer for Blob
-    const buffer = result instanceof DataView ? result.buffer : result
-    await save(buffer, `${basename}.stl`, `application/octet-stream`)
+    await write(result instanceof DataView ? result.buffer : result)
   } else if (format === `obj`) {
+    const mtl_filename = `${basename}.mtl`
+    // both open first, so a folder refuses either existing name before anything is written
+    const write_obj = await open(`${basename}.obj`, `text/plain`)
+    const write_mtl = await open(mtl_filename, `text/plain`)
+    const export_root = convert_instanced_meshes_to_regular(scene)
     const { OBJExporter } = await import(`three/examples/jsm/exporters/OBJExporter.js`)
     // OBJExporter writes `usemtl` for named materials only, so every Threlte-made (unnamed)
     // one exported without its color: the clone gets a named copy per distinct material
@@ -264,16 +277,17 @@ export async function export_scene_as(
       named_copies.set(object.material, copy)
       object.material = copy
     })
-    const mtl_filename = `${basename}.mtl`
     // Material library reference goes at the top of the OBJ file
     const obj_content = `mtllib ${mtl_filename}\n${new OBJExporter().parse(export_root)}`
-    await save(obj_content, `${basename}.obj`, `text/plain`)
+    await write_obj(obj_content)
     // Small delay to prevent some browsers from blocking rapid successive downloads as
     // potential abuse. A more robust solution might be to zip both files together.
     const mtl_content = generate_mtl_content(export_root)
     await new Promise((resolve) => setTimeout(resolve, 100))
-    await save(mtl_content, mtl_filename, `text/plain`)
+    await write_mtl(mtl_content)
   } else if (format === `glb`) {
+    const write = await open(`${basename}.glb`, `model/gltf-binary`)
+    const export_root = convert_instanced_meshes_to_regular(scene)
     const { GLTFExporter } = await import(`three/examples/jsm/exporters/GLTFExporter.js`)
     const buffer = await new GLTFExporter()
       .parseAsync(export_root, { binary: true })
@@ -282,6 +296,6 @@ export async function export_scene_as(
       })
     if (!(buffer instanceof ArrayBuffer))
       throw new TypeError(`GLB export returned ${typeof buffer} instead of ArrayBuffer`)
-    await save(buffer, `${basename}.glb`, `model/gltf-binary`)
+    await write(buffer)
   } else throw new Error(`Unsupported scene export format: ${format}`)
 }

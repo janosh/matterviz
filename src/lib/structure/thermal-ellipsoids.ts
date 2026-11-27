@@ -1,7 +1,7 @@
 // Anisotropic displacement parameters (ADPs): the Cartesian U tensor parse_cif stores per site
 // (site.properties[ADP_KEY], Å²) and the thermal ellipsoid it draws at a probability level
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { det_3x3, is_finite_matrix3x3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math'
+import { det_3x3, is_finite_matrix3x3 } from '#lib/math'
 import type { Site } from './index'
 
 // Site property holding the Cartesian mean-square displacement tensor U (Å², symmetric 3x3)

@@ -2,19 +2,19 @@
 // Single source of truth for the quantile math used by BoxPlot.svelte.
 
 import { ascending } from 'd3-array'
-import type { Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math'
 import {
   array_extent,
   mean as mean_of,
   mulberry32,
   quantile_unordered,
   sample_std,
-} from '#lib/math.js'
-import { dodge, type DodgeSide } from '#lib/plot/core/dodge.js'
-import type { FillPattern } from '#lib/plot/core/patterns.js'
-import type { HandlerProps, NumericColumn } from '#lib/plot/core/types.js'
-import { DEFAULTS } from '#lib/settings.js'
-import { clamp01 } from '#lib/utils.js'
+} from '#lib/math'
+import { dodge, type DodgeSide } from '#lib/plot/core/dodge'
+import type { FillPattern } from '#lib/plot/core/patterns'
+import type { HandlerProps, NumericColumn } from '#lib/plot/core/types'
+import { DEFAULTS } from '#lib/settings'
+import { clamp01 } from '#lib/utils'
 
 // === Box plot types ===
 // How box plot whiskers are computed from a raw distribution
@@ -66,7 +66,6 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
 export interface BoxHandlerProps<
   Metadata = Record<string, unknown>,
 > extends HandlerProps<Metadata> {
-  box_idx: number
   stats: BoxStats
   color: string
   category_label?: string

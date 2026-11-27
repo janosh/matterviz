@@ -1,4 +1,4 @@
-import { link_source_mentions, source_href, source_location } from '#site/source-links.js'
+import { link_source_mentions, source_href, source_location } from '#site/source-links'
 import { ref } from 'virtual:source-symbols'
 import { describe, expect, it } from 'vite-plus/test'
 

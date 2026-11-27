@@ -1,38 +1,39 @@
 <script lang="ts">
-  import { is_finite_number } from '#lib/utils.js'
+  import { is_finite_number } from '#lib/utils'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import { join_hover_link, TooltipValue } from '#lib/tooltip/index.js'
+  import { join_hover_link, TooltipValue } from '#lib/tooltip/index'
   import { band_hover_qpoint } from './band-path-link.svelte'
-  import { track_settings } from '#lib/controls.js'
-  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
+  import { track_settings } from '#lib/controls'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index'
   import type BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
-  import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types.js'
-  import { HIGHLIGHT, is_dark_mode, plot_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types'
+  import { HIGHLIGHT, plot_color, resolve_backdrop } from '#lib/colors/index'
+  import { is_dark_mode } from 'svelte-widgets/theme-core'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { array_max, in_range, reciprocal_lattice } from '#lib/math.js'
-  import { sanitize_html } from '#lib/sanitize.js'
-  import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+  import { array_max, in_range, reciprocal_lattice } from '#lib/math'
+  import { sanitize_html } from '#lib/sanitize'
+  import type { Matrix3x3, Vec2, Vec3 } from '#lib/math'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {
     AxisConfig,
     DataSeries,
     FillRegion,
     UserContentProps,
-  } from '#lib/plot/core/types.js'
-  import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
-  import { plot_area_line } from '#lib/plot/core/layout.js'
-  import { measure_text_width } from '#lib/plot/core/tick-layout.js'
-  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
-  import * as helpers from '#lib/spectral/helpers.js'
+  } from '#lib/plot/core/types'
+  import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types'
+  import { plot_area_line } from '#lib/plot/core/layout'
+  import { measure_text_width } from '#lib/plot/core/tick-layout'
+  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics'
+  import * as helpers from '#lib/spectral/helpers'
   import {
     convert_frequencies,
     canonical_frequency_unit,
     spectral_value_label,
-  } from '#lib/spectral/frequency-units.js'
+  } from '#lib/spectral/frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import {
     mode_value_markers,
@@ -51,8 +52,8 @@
     PathMode,
     QPoint,
     RibbonConfig,
-  } from '#lib/spectral/types.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  } from '#lib/spectral/types'
+  import type { Crystal } from '#lib/structure/index'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

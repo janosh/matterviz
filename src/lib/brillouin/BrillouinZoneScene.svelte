@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { HIGHLIGHT } from '#lib/colors/index.js'
-  import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
-  import { scene_interactivity, scene_key_walk, scene_pointer } from '#lib/scene/index.js'
-  import type { SceneControlProps, TapEvent, ThreltePointerEvent } from '#lib/scene/index.js'
-  import { DEFAULTS } from '#lib/settings.js'
-  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { HIGHLIGHT } from '#lib/colors/index'
+  import type { Point2D, Vec2, Vec3 } from '#lib/math'
+  import { scene_interactivity, scene_key_walk, scene_pointer } from '#lib/scene/index'
+  import type { SceneControlProps, TapEvent, ThreltePointerEvent } from '#lib/scene/index'
+  import { DEFAULTS } from '#lib/settings'
+  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte'
   import { T } from '@threlte/core'
   import {
     bz_fit_extent,

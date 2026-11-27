@@ -22,12 +22,12 @@
     margin: 0;
   }
   dt {
-    color: var(--text-muted);
+    color: var(--text-color-muted);
   }
   dd {
     margin: 0;
     min-width: 0;
     overflow-wrap: anywhere; /* long JSON readouts must not widen the page */
-    font-family: monospace;
+    font-family: var(--font-mono);
   }
 </style>

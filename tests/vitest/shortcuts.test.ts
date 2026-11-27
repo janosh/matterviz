@@ -2,24 +2,19 @@ import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import ShortcutsList from 'svelte-widgets/ShortcutsList.svelte'
 import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
-import type * as camera_reset from '#lib/scene/camera-reset.js'
-import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
-import {
-  format_shortcut_keys,
-  SHORTCUTS,
-  shortcut_attrs,
-  shortcut_entries,
-  shortcuts_for,
-  viewer_keys,
-} from '#lib/shortcuts.js'
-import type { Shortcut, ShortcutScope } from '#lib/shortcuts.js'
+import type * as camera_reset from '#lib/scene/camera-reset'
+import { reset_scene_cameras } from '#lib/scene/camera-reset'
+import { SHORTCUTS, shortcut_entries, shortcuts_for } from '#lib/shortcuts'
+import type { ShortcutScope } from '#lib/shortcuts'
+import { format_shortcut_keys, shortcut_attrs } from 'svelte-widgets/shortcuts'
+import type { Shortcut } from 'svelte-widgets/shortcuts'
 import { type Component, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { fire, keydown } from './setup'
 
 const { fullscreen: full, close, reset_camera, wheel_zoom, hover_walk, info_pane } = SHORTCUTS
 
-vi.mock(`#lib/scene/camera-reset.js`, async (original) => ({
+vi.mock(`#lib/scene/camera-reset`, async (original) => ({
   ...(await original<typeof camera_reset>()),
   reset_scene_cameras: vi.fn(() => true),
 }))
@@ -55,11 +50,11 @@ describe(`shortcut registry`, () => {
   })
 
   test(`buttons take aria-keyshortcuts and a title hint from the registry`, () => {
-    expect(shortcut_attrs(`reset_camera`)).toEqual({
+    expect(shortcut_attrs(SHORTCUTS.reset_camera)).toEqual({
       'aria-keyshortcuts': `R`,
       title: `Reset camera (R)`,
     })
-    expect(shortcut_attrs(`view_mode`, `Plot-only`).title).toBe(`Plot-only (V / ⇧+V)`)
+    expect(shortcut_attrs(SHORTCUTS.view_mode, `Plot-only`).title).toBe(`Plot-only (V / ⇧+V)`)
   })
 
   test(`shortcuts_for lists each matching entry once, in registry order`, () => {
@@ -78,47 +73,6 @@ describe(`shortcut registry`, () => {
       expect(keys.filter((key, idx) => keys.indexOf(key) !== idx)).toEqual([])
     },
   )
-})
-
-describe(`viewer_keys`, () => {
-  // Keys reach the viewer under the pointer (window keydown) or with focus inside it
-  test.each([
-    [`hovered plain key`, `x`, {}, `hover`, true],
-    [`focused plain key`, `x`, {}, `focus`, true],
-    [`uppercase letter`, `X`, {}, `hover`, true],
-    [`Shift+letter`, `X`, { shiftKey: true }, `hover`, false],
-    [`Shift+letter under Caps Lock`, `x`, { shiftKey: true }, `hover`, false],
-    [`unhovered viewer`, `x`, {}, `none`, false],
-    [`Ctrl chord`, `x`, { ctrlKey: true }, `hover`, false],
-    [`autorepeat`, `x`, { repeat: true }, `hover`, false],
-    [`unbound key`, `y`, {}, `hover`, false],
-  ] as const)(`%s`, async (_name, key, init, via, handled) => {
-    const root = create_root()
-    const button = document.createElement(`button`)
-    root.append(button)
-    const action = vi.fn()
-    const detach = viewer_keys(() => ({ x: action }))(root)
-    if (via === `hover`) root.dispatchEvent(new PointerEvent(`pointerenter`))
-    const event = key_event(key, init)
-    await fire(via === `focus` ? button : globalThis, event)
-    expect(action).toHaveBeenCalledTimes(handled ? 1 : 0)
-    expect(event.defaultPrevented).toBe(handled)
-    detach()
-  })
-
-  test(`typing in a field is left alone and an action returning false keeps the key`, async () => {
-    const root = create_root()
-    const input = document.createElement(`input`)
-    root.append(input)
-    const action = vi.fn(() => false)
-    viewer_keys(() => ({ x: action, Escape: action }))(root)
-    await press(`x`, {}, input)
-    expect(action).not.toHaveBeenCalled()
-    const escape = key_event(`Escape`)
-    await fire(root, escape)
-    expect(action).toHaveBeenCalledOnce()
-    expect(escape.defaultPrevented).toBe(false)
-  })
 })
 
 describe(`shortcut_entries in ShortcutsList`, () => {

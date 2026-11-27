@@ -1,5 +1,5 @@
-import type { Point2D } from '#lib/math.js'
-import { assert_non_negative } from '#lib/math.js'
+import type { Point2D } from '#lib/math'
+import { assert_non_negative } from '#lib/math'
 
 // Uniform-grid spatial index for nearest-point picking in screen pixels. Items are sorted by
 // their cell's packed integer key (a stable radix sort, so each cell lists its items in input

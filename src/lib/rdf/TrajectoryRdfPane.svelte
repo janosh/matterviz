@@ -3,12 +3,12 @@
   // Frames are analysed one at a time (see compute-trajectory-rdf.ts), so the shared pane's
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
   import { format_num } from 'svelte-widgets/format'
-  import { cell_heights } from '#lib/math.js'
-  import type { ViewerPaneOptions } from '#lib/overlays/index.js'
-  import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
-  import type { TrajectoryRun } from '#lib/trajectory/index.js'
-  import type { AnalysisCollectOptions } from '#lib/trajectory/analysis.js'
-  import { positive_int, sweep_progress, window_sweep_size } from '#lib/trajectory/analysis.js'
+  import { cell_heights } from '#lib/math'
+  import type { ViewerPaneOptions } from '#lib/overlays/index'
+  import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation'
+  import type { TrajectoryRun } from '#lib/trajectory/index'
+  import type { AnalysisCollectOptions } from '#lib/trajectory/analysis'
+  import { positive_int, sweep_progress, window_sweep_size } from '#lib/trajectory/analysis'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import type { FrameRdfOptions } from './compute-rdf'

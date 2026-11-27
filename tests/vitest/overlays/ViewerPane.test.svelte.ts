@@ -1,4 +1,4 @@
-import type { ShowControlsProp } from '#lib/controls.js'
+import type { ShowControlsProp } from '#lib/controls'
 import ControlPane from '#lib/overlays/ControlPane.svelte'
 import ViewerPane from '#lib/overlays/ViewerPane.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -26,11 +26,12 @@ test.each([
     const container = document.createElement(`div`)
     container.style.cssText = `position: relative; container-type: inline-size`
     document.body.append(container)
-    vi.spyOn(container, `getBoundingClientRect`).mockReturnValue(
-      new DOMRect(100, 100, 800, 500),
+    let container_width = 800
+    vi.spyOn(container, `getBoundingClientRect`).mockImplementation(
+      () => new DOMRect(100, 100, container_width, 500),
     )
     Object.defineProperties(container, {
-      clientWidth: { value: 800 },
+      clientWidth: { get: () => container_width },
       offsetWidth: { value: 800 },
       offsetHeight: { value: 500 },
     })
@@ -104,6 +105,14 @@ test.each([
     await fire(toggle)
     await fire(toggle)
     expect(pane.style.left).toBe(manual_left)
+    // a viewer narrowing under it (a sidebar docking), even while it's closed, pulls it inside
+    await fire(toggle)
+    container_width = 600
+    await fire(toggle)
+    await tick()
+    expect(control_tab.getBoundingClientRect().right).toBeLessThanOrEqual(696)
+    expect(pane.getBoundingClientRect().left).toBeGreaterThanOrEqual(104)
+    ;[container_width, pane.style.left] = [800, manual_left]
 
     // A different viewer entering fullscreen must not reposition this pane.
     const other_viewer = document.createElement(`div`)
@@ -115,6 +124,7 @@ test.each([
 
     // Fullscreen may belong to an outer viewer, as with Structure inside Trajectory.
     await document.body.requestFullscreen()
+    trigger_resize_observer(container)
     await vi.waitFor(() => {
       const { left, top } = pane.getBoundingClientRect()
       expect([left, top]).toEqual([fullscreen_left, fullscreen_top])
@@ -145,10 +155,12 @@ test.each([
     origin = 100
     vi.mocked(container.getBoundingClientRect).mockReturnValue(new DOMRect(100, 100, 800, 500))
     const corrected = [pane.style.left, pane.style.top]
+    container_width = 600 // leaving fullscreen narrows the viewer without pulling the pane in
     await document.exitFullscreen()
     trigger_resize_observer(container)
     await tick()
     expect([pane.style.left, pane.style.top]).toEqual(corrected)
+    container_width = 800
     expect(pane.querySelector(`.reset-button`)).not.toBeNull()
     pane.style.left = `2000px`
     trigger_resize_observer(pane)

@@ -1,7 +1,7 @@
 // Shared types and defaults for the heterointerface builder. Everything here reaches the
 // package root through `export *`, hence the INTERFACE_ prefix on the defaults.
-import type { Vec2, Vec3 } from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
+import type { Vec2, Vec3 } from '#lib/math'
+import type { Crystal } from '#lib/structure/index'
 
 // 2×2 matrix stored as rows. Integer-valued for in-plane supercell transforms, real for strain.
 export type Matrix2x2 = [Vec2, Vec2]

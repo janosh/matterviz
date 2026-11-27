@@ -1,26 +1,26 @@
 // Turn raw thermodynamic entries into the planner's working phase set: one lowest-energy phase
 // per formula, gas species at their chemical potentials for the requested conditions, elemental
 // references at 0 eV/atom, and atom-fraction vectors over a shared element list.
-import type { CompositionType } from '#lib/composition/index.js'
-import { get_electro_neg_formula } from '#lib/composition/format.js'
-import { parse_composition } from '#lib/composition/parse.js'
-import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
+import type { CompositionType } from '#lib/composition/index'
+import { get_electro_neg_formula } from '#lib/composition/format'
+import { parse_composition } from '#lib/composition/parse'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce'
 import {
   compute_gas_chemical_potential,
   GAS_STOICHIOMETRY,
   get_default_gas_provider,
-} from '#lib/convex-hull/gas-thermodynamics.js'
+} from '#lib/convex-hull/gas-thermodynamics'
 import {
   compute_e_form_per_atom,
   e_above_hull_distances,
   find_lowest_energy_unary_refs,
   lowest_energy_mixture,
   normalize_hull_composition_keys,
-} from '#lib/convex-hull/thermodynamics.js'
-import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
-import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import type { ElementSymbol } from '#lib/element/types.js'
+} from '#lib/convex-hull/thermodynamics'
+import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types'
+import type { GasSpecies, PhaseData } from '#lib/convex-hull/types'
+import { element_by_symbol } from '#lib/element/data'
+import type { ElementSymbol } from '#lib/element/types'
 import { lookup_precursor_info } from './precursor-library'
 import type { PhaseRef, SynthesisConditions } from './types'
 
