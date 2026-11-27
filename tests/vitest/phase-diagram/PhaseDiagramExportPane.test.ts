@@ -1,4 +1,4 @@
-import { canvas_sources, svg_sources } from '#lib/io/export'
+import { canvas_sources, figure_sources } from '#lib/io/export'
 import PhaseDiagramExportPane from '#lib/phase-diagram/PhaseDiagramExportPane.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -8,7 +8,7 @@ import { eutectic as mock_phase_data } from './fixtures/test-data'
 type PaneProps = ComponentProps<typeof PhaseDiagramExportPane>
 // `wrapper` stands in for the viewer: its diagram SVG is what the image sources serialize
 const mount_pane = ({ wrapper, ...rest }: PaneProps & { wrapper?: HTMLDivElement }) => {
-  const image_sources = svg_sources(() => wrapper?.querySelector(`svg`))
+  const image_sources = figure_sources(() => wrapper?.querySelector(`svg`))
   const props = { export_pane_open: true, image_sources, ...rest }
   return mount(PhaseDiagramExportPane, { target: document.body, props })
 }

@@ -216,7 +216,7 @@
     place-items: center;
     margin: 0;
     pointer-events: none;
-    color: var(--text-muted, currentColor);
+    color: var(--text-color-muted, currentColor);
     font-size: 0.9em;
   }
 </style>

@@ -52,6 +52,9 @@ export interface ExportItem {
   disabled?: boolean
   // Visible, accessible explanation for disabled download/copy buttons.
   disabled_reason?: string
+  // Disables only the download button while the pane's destination is Save As, with this
+  // reason (formats writing several files, which one Save As dialog can't name)
+  save_as_reason?: string
   // Click handler for the ⬇ download button (omit to hide the button)
   on_download?: (context: ExportPaneContext) => unknown
   // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return

@@ -2006,7 +2006,7 @@
           {#if plot_loading}
             <Spinner
               text="Sampling trajectory plot data..."
-              style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
+              style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-color-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
             />
           {:else if plot_type === `time-series`}
             {#snippet series_tooltip({
@@ -2070,7 +2070,7 @@
               {#snippet controls_extra(config)}
                 <small
                   class="distribution-coverage"
-                  style="color: var(--text-muted, currentColor)"
+                  style="color: var(--text-color-muted, currentColor)"
                   title="Each sample counts one frame with a finite property value; counts are not time-weighted."
                 >
                   Frames with values: {format_num(distribution_count, `,.0f`)} / {format_num(

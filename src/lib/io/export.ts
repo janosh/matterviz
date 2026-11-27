@@ -259,7 +259,7 @@ const require_element = <El>(element: El | null | undefined, kind: string): El =
 
 // SVG and PNG sources for a live figure (an SVG chart or an HTML element laid out as one),
 // looked up per export since it may re-mount
-export const svg_sources = (
+export const figure_sources = (
   get_figure: () => SVGElement | HTMLElement | null | undefined,
 ): ExportSources => ({
   png: (png_dpi) =>

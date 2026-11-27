@@ -10,7 +10,7 @@
   import { PlotTooltip, SankeyControls } from '#lib/plot/index'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
-  import { json_source, svg_sources } from '#lib/io/export'
+  import { json_source, figure_sources } from '#lib/io/export'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import {
     closest_data_idx,
@@ -314,7 +314,7 @@
   // Data as laid out (after small-link bucketing): links as a source/target/value table,
   // or the whole graph as JSON
   const export_sources = {
-    ...svg_sources(() => svg_element),
+    ...figure_sources(() => svg_element),
     csv: csv_source(() => ({
       header: [`source`, `target`, `value`],
       rows: layout.links.map(({ source, target, value }) => [

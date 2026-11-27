@@ -3,7 +3,7 @@
 // ranges and obstacles and read back scales/pad/ticks. Creates $effects, so call it during
 // component init. Render the returned state with CartesianFrame.svelte.
 
-import { clamp, get_uuid } from 'svelte-widgets/utils'
+import { clamp } from 'svelte-widgets/utils'
 import {
   normalize_show_controls,
   shows_fullscreen_toggle,
@@ -145,8 +145,8 @@ interface CartesianFrameOptions {
   tick_override?: (axis: FacetAxis) => number[] | undefined
   // Axis configs used only to measure tick labels (e.g. category names, not slot indices)
   measured_axes?: () => PerAxis<AxisConfig>
-  // Prefix of the generated clip-path id
-  clip_id_prefix?: string
+  // Unique clip-path id, from the component's $props.id()
+  clip_path_id: string
 }
 
 export type CartesianFrame = ReturnType<typeof create_cartesian_frame>
@@ -176,7 +176,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const legend_collapsed_groups = $derived(
     opts.legend()?.collapsed_groups ?? own_collapsed_groups,
   )
-  const clip_path_id = `${opts.clip_id_prefix ?? `plot-clip`}-${get_uuid()}`
+  const { clip_path_id } = opts
 
   // `initial` is the reset target, `current` the live view gestures edit. They must never
   // share a Vec2 or an in-place edit would rewrite the reset target (hence snapshot_ranges).

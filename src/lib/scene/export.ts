@@ -229,11 +229,15 @@ export const model_export_items = (
   formats.map((format) => ({
     label: format.toUpperCase(),
     hint: MODEL_HINTS[format],
+    save_as_reason: format === `obj` ? OBJ_SAVE_AS_REASON : undefined,
     on_download: (context: FileExportContext) => {
       const model = get_model()
       return model && export_scene_as(model, format, context.filename, context)
     },
   }))
+
+// Why export panes disable OBJ under Save As (export_scene_as also refuses it)
+export const OBJ_SAVE_AS_REASON = `OBJ writes two files (.obj and .mtl), which one Save As dialog can't name: choose a folder or browser downloads`
 
 // Save `scene` as `<basename>.<format>` (OBJ plus a companion `.mtl` of material colors,
 // GLB as binary glTF), instanced meshes expanded first, each file opened before it is
@@ -245,10 +249,7 @@ export async function export_scene_as(
   basename: string,
   { open, destination }: FileDestination = BROWSER_DOWNLOADS,
 ): Promise<void> {
-  if (format === `obj` && destination === `save-as`)
-    throw new Error(
-      `OBJ writes two files (${basename}.obj and ${basename}.mtl), which one Save As dialog can't name: choose a folder or browser downloads`,
-    )
+  if (format === `obj` && destination === `save-as`) throw new Error(OBJ_SAVE_AS_REASON)
   // files open before the instanced meshes expand, while the click's activation is fresh
   if (format === `stl`) {
     const write = await open(`${basename}.stl`, `application/octet-stream`)

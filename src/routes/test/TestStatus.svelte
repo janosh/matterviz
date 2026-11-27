@@ -22,7 +22,7 @@
     margin: 0;
   }
   dt {
-    color: var(--text-muted);
+    color: var(--text-color-muted);
   }
   dd {
     margin: 0;

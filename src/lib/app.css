@@ -23,8 +23,6 @@
   --error-btn-bg-hover: light-dark(#b91c1c, #991b1b);
   --error-border: 1px solid light-dark(#fca5a5, #dc2626);
   --text-color-muted: light-dark(#6b7280, #9ca3af);
-  /* old name still read by matterviz components (svelte-widgets reads only --text-color-muted) */
-  --text-muted: var(--text-color-muted);
   --main-max-width: 1100px;
   /* a font list, not bare `monospace`, which browsers size off 13px instead of the parent's size */
   --font-mono: ui-monospace, Menlo, Consolas, monospace;

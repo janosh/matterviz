@@ -26,7 +26,7 @@
       data?: unknown
       // Appended to the filename, e.g. phase-diagram-Al-Cu
       components?: readonly string[]
-      // The live figure's serializers, see svg_sources and canvas_sources
+      // The live figure's serializers, see figure_sources and canvas_sources
       image_sources?: ExportSources
       filename?: string
       png_dpi?: number

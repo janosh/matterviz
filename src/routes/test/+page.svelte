@@ -17,6 +17,6 @@
 <style>
   h1 + p {
     text-align: center;
-    color: var(--text-muted);
+    color: var(--text-color-muted);
   }
 </style>

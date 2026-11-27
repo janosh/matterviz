@@ -1,6 +1,6 @@
 <script lang="ts">
   import { sanitize_html } from '#lib/sanitize'
-  import { clamp, get_uuid, html_to_text } from 'svelte-widgets/utils'
+  import { clamp, html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels'
@@ -142,6 +142,7 @@
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
     } = $props()
+  const uid = $props.id()
 
   const legend_vis = create_legend_visibility<HistogramSeries>(
     () => series,
@@ -332,7 +333,7 @@
       on_select?.({ items: picked, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    clip_id_prefix: `histogram-clip`,
+    clip_path_id: `histogram-clip-${uid}`,
   })
   const selected_keys = $derived(mark_keys(selection))
 
@@ -412,7 +413,7 @@
 
   // Per-series pattern tiles (null: plain fill), derived from the series, not the bins, so
   // rebinning pan/zoom frames don't re-resolve tiles and re-diff the <defs>
-  const pattern_uid = `histogram-${get_uuid()}`
+  const pattern_uid = `histogram-${uid}`
   let hist_patterns = $derived(
     series.map((series_data, series_idx) =>
       series_data.pattern

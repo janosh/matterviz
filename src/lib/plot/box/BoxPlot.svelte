@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { sanitize_html } from '#lib/sanitize'
-  import { get_uuid, html_to_text } from 'svelte-widgets/utils'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import { parse_axis_label, format_value_or_num } from '#lib/labels'
@@ -222,6 +222,7 @@
         data: (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
     } = $props()
+  const uid = $props.id()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
@@ -289,7 +290,7 @@
       on_select?.({ items: boxes, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    clip_id_prefix: `box-clip`,
+    clip_path_id: `box-clip-${uid}`,
   })
   const selected_keys = $derived(mark_keys(selection))
 
@@ -298,7 +299,7 @@
   // Unlabeled boxes are numbered from 1 alike in slot ticks, legend, aria-labels and export
   const default_box_label = (idx: number): string => `Box ${idx + 1}`
   // Per-series hatch/texture tiles over the box/violin fill (null: plain), ids per instance
-  const pattern_uid = `box-${get_uuid()}`
+  const pattern_uid = `box-${uid}`
   let series_patterns = $derived(
     series.map((srs, idx) =>
       srs.pattern ? resolve_pattern(srs.pattern, box_color(idx), pattern_uid) : null,

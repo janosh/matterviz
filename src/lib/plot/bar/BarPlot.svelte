@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { clamp, get_uuid } from 'svelte-widgets/utils'
+  import { clamp } from 'svelte-widgets/utils'
   import { plot_color } from '#lib/colors/index'
   import { sanitize_html } from '#lib/sanitize'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
@@ -196,6 +196,7 @@
         data: (LineMarkerHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
     } = $props()
+  const uid = $props.id()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
@@ -278,7 +279,7 @@
       on_select?.({ items: bars, rect })
     },
     view: { get: () => view, set: (next) => (view = next) },
-    clip_id_prefix: `chart-clip`,
+    clip_path_id: `chart-clip-${uid}`,
   })
   const selected_keys = $derived(mark_keys(selection))
 
@@ -334,7 +335,7 @@
 
   // Per-series hatch/texture tiles resolved against the bar color (null: plain fill); ids
   // are scoped to this instance so several bar plots on a page never share <pattern>s
-  const pattern_uid = `bar-${get_uuid()}`
+  const pattern_uid = `bar-${uid}`
   let series_patterns = $derived(
     internal_series.map((srs) =>
       srs.pattern && srs.render_mode !== `line`

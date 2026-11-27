@@ -264,7 +264,7 @@
   }
   .settings-explorer summary {
     cursor: pointer;
-    color: var(--text-muted, #666);
+    color: var(--text-color-muted, #666);
   }
   .settings-explorer table {
     margin-top: 1ex;

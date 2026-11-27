@@ -104,7 +104,7 @@ describe(`export_scene_as`, () => {
   // .mtl fails before the .obj is written.
   it.each([
     [`xyz` as `stl`, `downloads`, `Unsupported scene export format: xyz`, 0],
-    [`obj`, `save-as`, `OBJ writes two files (test.obj and test.mtl)`, 0],
+    [`obj`, `save-as`, `OBJ writes two files (.obj and .mtl)`, 0],
     [`obj`, {} as FileSystemDirectoryHandle, `test.mtl already exists`, 2],
   ] as const)(
     `rejects %s to %o before writing`,

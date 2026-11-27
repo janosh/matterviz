@@ -1548,10 +1548,10 @@
     left: 50%;
     translate: -50%;
     pointer-events: none;
-    color: var(--text-muted, currentColor);
+    color: var(--text-color-muted, currentColor);
     font-size: 0.8em;
   }
   .frame-status small {
-    color: var(--text-muted, currentColor);
+    color: var(--text-color-muted, currentColor);
   }
 </style>

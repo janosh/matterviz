@@ -2,7 +2,7 @@
 // hover/tooltip, legend muting, coloring, color-bar layout, keyboard). Each chart supplies
 // its projection via the `visible`, `node_center` and `legend_points` hooks.
 
-import { svg_sources, type ExportSources } from '#lib/io/export'
+import { figure_sources, type ExportSources } from '#lib/io/export'
 import { is_modifier_chord } from 'svelte-widgets/shortcuts'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import { closest_data_idx, is_activation_key, pointer_pos } from '#lib/plot/core/interactions'
@@ -444,7 +444,7 @@ export class HierarchyChartState<
 
   // Figure plus one CSV row per node (root excluded), labelled by its full path
   export_sources: ExportSources = {
-    ...svg_sources(() => this.svg_element),
+    ...figure_sources(() => this.svg_element),
     csv: csv_source(() => ({
       header: [`path`, `depth`, `value`, `fraction`],
       rows: this.arcs

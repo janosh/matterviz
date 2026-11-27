@@ -115,7 +115,13 @@
           {#each section.items as item, item_idx (item.label)}
             {@const copy_key = `${sec_idx}-${item_idx}`}
             <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
-            {@const why = item.disabled ? item.disabled_reason : undefined}
+            {@const save_as_blocked =
+              Boolean(item.save_as_reason) && state.destination === `save-as`}
+            {@const why = item.disabled
+              ? item.disabled_reason
+              : save_as_blocked
+                ? item.save_as_reason
+                : undefined}
             {@const hint_id = why ? `${pane_id}-${copy_key}-hint` : undefined}
             {@const why_suffix = why ? ` — ${why}` : ``}
             <span class="export-item" class:disabled={item.disabled}>
@@ -125,7 +131,7 @@
                   type="button"
                   onclick={() =>
                     state.run((context) => item.on_download?.({ ...context, png_dpi }))}
-                  disabled={busy || state.disabled || item.disabled}
+                  disabled={busy || state.disabled || item.disabled || save_as_blocked}
                   aria-label={`Download ${item.label}`}
                   aria-describedby={hint_id}
                   title={`Download ${item.label}${

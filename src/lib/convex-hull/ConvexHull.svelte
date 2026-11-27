@@ -13,7 +13,7 @@
   import { Reset } from 'svelte-widgets/icons'
   import { ViewerChrome } from '#lib/layout/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { json_source, svg_sources, type ExportSources } from '#lib/io/export'
+  import { json_source, figure_sources, type ExportSources } from '#lib/io/export'
   import {
     csv_source,
     export_filename as chart_filename,
@@ -339,7 +339,7 @@
     }))
   const export_sources = $derived<ExportSources>({
     ...(dim === 2
-      ? svg_sources(() => wrapper?.querySelector<SVGSVGElement>(`:scope > svg`))
+      ? figure_sources(() => wrapper?.querySelector<SVGSVGElement>(`:scope > svg`))
       : {
           png: (png_dpi) => {
             if (!renderer) throw new Error(`Convex hull canvas has not rendered yet`)

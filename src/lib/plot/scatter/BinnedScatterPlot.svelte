@@ -194,6 +194,7 @@
       // Layout context a FacetGrid passes to a child plot so panels share padding and axis ranges
       facet_layout?: FacetLayoutContext
     } = $props()
+  const uid = $props.id()
 
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let label_measure_root = $state<HTMLDivElement>()
@@ -272,7 +273,7 @@
     pan: () => pan,
     facet_layout: () => facet_layout,
     tick_counts: { x: 7, y: 5 },
-    clip_id_prefix: `binned-scatter-plot-area`,
+    clip_path_id: `binned-scatter-plot-area-${uid}`,
   })
   const width = $derived(frame.width)
   const height = $derived(frame.height)

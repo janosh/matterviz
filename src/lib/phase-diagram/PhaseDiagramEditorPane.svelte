@@ -95,7 +95,7 @@
     }
   }
   .placeholder {
-    color: var(--text-muted, #888);
+    color: var(--text-color-muted, #888);
     font-style: italic;
     text-align: center;
     padding: 20px;

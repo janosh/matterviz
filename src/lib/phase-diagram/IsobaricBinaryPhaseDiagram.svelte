@@ -26,14 +26,13 @@
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import type { LegendConfig, LegendItem } from '#lib/plot/core/types'
   import { error_bar_path } from '#lib/plot/core/error-bars'
-  import { get_uuid } from 'svelte-widgets/utils'
   import { viewer_keys } from 'svelte-widgets/attachments'
   import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import { svg_sources, type ExportProps } from '#lib/io/export'
+  import { figure_sources, type ExportProps } from '#lib/io/export'
   import { compute_isopleth, phase_disagreement } from './analysis'
   import {
     BOUNDARY_STYLES,
@@ -248,6 +247,7 @@
       // Extra content rendered over the diagram, given its pixel size and fullscreen state.
       children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
     } = $props()
+  const uid = $props.id()
 
   // Keep calculations safe while the template renders the missing-data state
   const placeholder: BinaryPhaseDiagram = {
@@ -271,7 +271,7 @@
   // Instance-unique prefix for gradient ids, so two diagrams on one page never
   // cross-reference each other's gradients (first-in-document wins, with that instance's
   // pixel coords)
-  const gradient_uid = `pd-gradient-${get_uuid()}`
+  const gradient_uid = `pd-gradient-${uid}`
   const plot_clip = `url(#${gradient_uid}-plot-area)`
 
   // Editor edits and dropped files override the data prop until it changes, which also
@@ -1361,7 +1361,7 @@
           bind:png_dpi
           {data}
           components={data.components}
-          image_sources={svg_sources(() =>
+          image_sources={figure_sources(() =>
             // looked up per export: the SVG re-mounts when the diagram is cleared and reloaded
             wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`),
           )}

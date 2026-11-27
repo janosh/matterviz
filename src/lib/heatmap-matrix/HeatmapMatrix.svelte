@@ -8,7 +8,7 @@
   import {
     json_source,
     run_export,
-    svg_sources,
+    figure_sources,
     type ExportProps,
     type ExportSources,
   } from '#lib/io/export'
@@ -725,7 +725,7 @@
       vis_y.map((y_idx) => vis_x.map((x_idx) => get_value(x_idx, y_idx))),
     )
   const export_sources: ExportSources = {
-    ...svg_sources(() => matrix_el),
+    ...figure_sources(() => matrix_el),
     // explicit header: object key order would put integer-like labels ("1", "10") first
     csv: () =>
       rows_to_csv(visible_rows(), [

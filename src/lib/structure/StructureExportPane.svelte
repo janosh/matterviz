@@ -6,7 +6,7 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { export_canvas_as_png } from '#lib/io/export'
   import { DEFAULT_PNG_DPI, observe_canvas_presence } from 'svelte-widgets/figure-export'
-  import { export_scene_as } from '#lib/scene/index'
+  import { export_scene_as, OBJ_SAVE_AS_REASON } from '#lib/scene/index'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import type { AnyStructure } from '#lib/structure/index'
   import type { SymmetryDataset } from '#lib/symmetry/analyze'
@@ -159,6 +159,7 @@
             items: model_3d_formats.map(({ label, format, hint }) => ({
               label,
               hint,
+              save_as_reason: format === `obj` ? OBJ_SAVE_AS_REASON : undefined,
               disabled: !scene,
               disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
               on_download: (context: FileExportContext) =>

@@ -204,7 +204,7 @@
       </div>
     {/each}
   {:else}
-    <p style="text-align: center; color: var(--text-muted, #666)">
+    <p style="text-align: center; color: var(--text-color-muted, #666)">
       Load a structure above to see layout examples
     </p>
   {/if}
@@ -233,7 +233,7 @@
       padding: 2em;
       background: var(--surface-bg, #f5f5f5);
       border-radius: 8pt;
-      color: var(--text-muted, #666);
+      color: var(--text-color-muted, #666);
     }
   }
   .loading-placeholder {

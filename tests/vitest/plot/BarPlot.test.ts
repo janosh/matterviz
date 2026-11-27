@@ -455,7 +455,7 @@ describe(`BarPlot`, () => {
       const plot = await mount_sized_bar_plot({ series: [{ x: [1], y: [5] }] })
       ids.push(plot.querySelector(`clipPath`)?.id)
     }
-    expect(ids[0]).toMatch(/^chart-clip-[\da-f-]{36}$/)
+    expect(ids[0]).toMatch(/^chart-clip-c\d+$/)
     expect(ids[0]).not.toBe(ids[1])
   })
 

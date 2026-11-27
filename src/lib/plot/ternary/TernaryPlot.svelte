@@ -40,7 +40,7 @@
   import type { Sides } from '#lib/plot/core/layout'
   import { observe_size } from '#lib/plot/core/utils'
   import { csv_source, export_filename } from '#lib/plot/core/utils/chart-export'
-  import { svg_sources } from '#lib/io/export'
+  import { figure_sources } from '#lib/io/export'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart'
   import { roving_key } from '#lib/plot/core/utils/roving-focus'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
@@ -490,7 +490,7 @@
   ] as const
 
   const export_sources = {
-    ...svg_sources(() => svg_element),
+    ...figure_sources(() => svg_element),
     csv: csv_source(() => ({
       header: [`series`, ...labels, `color_value`],
       rows: visible_points.map((point) => [

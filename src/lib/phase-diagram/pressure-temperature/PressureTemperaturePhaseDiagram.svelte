@@ -173,6 +173,7 @@
       // Extra controls-pane content above the built-in sections
       controls_extra?: Snippet
     } = $props()
+  const uid = $props.id()
 
   const BOUNDARY_HIT_PX = 6
   // Largest end-joining gap (fraction of the plot) traced regions pass without a warning
@@ -320,7 +321,7 @@
     ref_lines: () => [],
     pan: () => pan,
     facet_layout: () => undefined,
-    clip_id_prefix: `pt-clip`,
+    clip_path_id: `pt-clip-${uid}`,
   })
   const no_marginals = normalize_marginals(false)
   const data_to_px = $derived.by(() => {

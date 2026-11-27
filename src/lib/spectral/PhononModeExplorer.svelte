@@ -907,7 +907,7 @@ under its open panes -->
     }
     .character,
     .sparse {
-      color: var(--text-muted, #6b7280);
+      color: var(--text-color-muted, #6b7280);
       font-size: 0.9em;
     }
   }

@@ -22,7 +22,7 @@
   import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
   import type { UserContentProps } from '#lib/plot/core/types'
-  import { svg_sources, type ExportProps, type ExportSources } from '#lib/io/export'
+  import { figure_sources, type ExportProps, type ExportSources } from '#lib/io/export'
   import { chart_export_filename } from '#lib/plot/core/utils/chart-export'
   import { html_to_text } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
@@ -223,7 +223,7 @@
       {controls_toggle_props}
       {header_controls}
       export_pane={{
-        sources: { ...svg_sources(() => frame.svg_element), ...export_sources },
+        sources: { ...figure_sources(() => frame.svg_element), ...export_sources },
         export_formats,
         on_export,
         filename: export_filename ?? chart_export_filename(frame),

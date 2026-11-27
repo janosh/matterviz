@@ -331,6 +331,7 @@
       // Extra invisible SVG radius around interactive markers, in screen pixels.
       point_hit_padding?: number
     } = $props()
+  const uid = $props.id()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
@@ -575,7 +576,7 @@
       if (inside_svg) update_tooltip_point(coords.x, coords.y)
       else tooltip_point = null
     },
-    clip_id_prefix: `plot-area-clip`,
+    clip_path_id: `plot-area-clip-${uid}`,
   })
 
   // Short aliases for the frame values the marks, axes and overlays read most
