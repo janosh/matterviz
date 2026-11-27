@@ -47,7 +47,7 @@
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
   import { reset_scene_cameras } from '#lib/scene/camera-reset'
   import { viewer_keys } from 'svelte-widgets/attachments'
-  import { canvas_overlay_png_blob } from '#lib/io/export'
+  import { canvas_figure } from '#lib/io/export'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
@@ -244,11 +244,11 @@
   // on top; CSV lists the visible points
   const export_sources = {
     png: (png_dpi: number) =>
-      canvas_overlay_png_blob(
-        wrapper?.querySelector(`canvas`),
-        [...(wrapper?.querySelectorAll<HTMLElement>(`[data-export-overlay]`) ?? [])],
-        png_dpi,
-      ),
+      canvas_figure(wrapper?.querySelector(`canvas`), {
+        format: `png`,
+        dpi: png_dpi,
+        overlays: [...(wrapper?.querySelectorAll<HTMLElement>(`[data-export-overlay]`) ?? [])],
+      }),
     csv: csv_source(() =>
       series_to_csv_rows(
         series.flatMap((srs, idx) =>

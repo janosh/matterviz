@@ -1,26 +1,15 @@
 import { DEFAULT_VIDEO_RESOLUTION } from '#lib/constants'
+import { download, type DownloadData, type FileExportContext } from 'svelte-widgets/browser'
 import {
-  blob_to_data_url,
-  download,
-  type DownloadData,
-  type FileSaver,
-} from 'svelte-widgets/browser'
-import {
-  encode_canvas_png,
   DEFAULT_PNG_DPI,
   dpi_to_scale,
+  encode_canvas_png,
+  export_figure,
   export_timeout_ms,
-  overlay_to_svg,
-  paint_png_blob,
-  svg_el,
-  SVG_NS,
-  svg_to_png_blob,
-  svg_to_string,
-  with_svg_image,
-  with_timeout,
+  type CanvasFigureOptions,
 } from 'svelte-widgets/figure-export'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
-import { abortable, clamp, to_error } from 'svelte-widgets/utils'
+import { abortable, clamp, to_error, with_timeout } from 'svelte-widgets/utils'
 // three.js and the scene camera helpers are imported dynamically where GPU canvases need
 // them: every 2D plot imports this module for SVG/PNG export, and static imports put
 // three.js in each plot page's initial bundle
@@ -89,24 +78,12 @@ export async function canvas_to_png_blob(
   png_dpi = DEFAULT_PNG_DPI,
   supersample = PNG_SUPERSAMPLE,
 ): Promise<Blob> {
+  const renderer = renderer_registry.get(canvas)
+  // a 2D canvas: its export painter or its pixels scaled, as figure exports draw it
+  if (!renderer) return export_figure(canvas, { format: `png`, dpi: png_dpi })
   const scale = dpi_to_scale(png_dpi)
   // the DPI the scale realizes, after dpi_to_scale's clamping
   const export_dpi = scale * 72
-  const renderer = renderer_registry.get(canvas)
-
-  if (!renderer) {
-    const width = Math.max(1, Math.round((canvas.clientWidth || canvas.width) * scale))
-    const height = Math.max(1, Math.round((canvas.clientHeight || canvas.height) * scale))
-    if (width === canvas.width && height === canvas.height)
-      return encode_canvas_png(canvas, export_dpi)
-    return paint_png_blob(
-      width,
-      height,
-      1,
-      (ctx) => ctx.drawImage(canvas, 0, 0, width, height),
-      export_dpi,
-    )
-  }
 
   const [{ Vector2 }, { depth_cues, render_scene }] = await Promise.all([
     import('three/webgpu'),
@@ -139,17 +116,13 @@ export async function canvas_to_png_blob(
       // downscale the encoded render: drawing the GPU canvas itself into a 2D context reads
       // back blank under software WebGPU (CI's SwiftShader), while its toBlob is reliable
       const bitmap = await createImageBitmap(rendered)
-      return await paint_png_blob(
-        width,
-        height,
-        1,
-        (ctx) => {
-          ctx.imageSmoothingQuality = `high`
-          ctx.drawImage(bitmap, 0, 0, width, height)
-          bitmap.close()
-        },
-        export_dpi,
-      )
+      const target = Object.assign(document.createElement(`canvas`), { width, height })
+      const ctx = target.getContext(`2d`)
+      if (!ctx) throw new Error(`Canvas 2D context not available`)
+      ctx.imageSmoothingQuality = `high`
+      ctx.drawImage(bitmap, 0, 0, width, height)
+      bitmap.close()
+      return await encode_canvas_png(target, export_dpi)
     } finally {
       if (cue) cue.shown.value = 1
       if (resize)
@@ -173,19 +146,24 @@ async function lock_capture(renderer: WebGPURenderer): Promise<() => void> {
   return () => turn.resolve(undefined)
 }
 
-// Export a canvas as PNG named `<basename>-<dpi>dpi.png` (triggers browser download)
+// Where an export writes its files: an export pane's FileExportContext (see its `open`), or
+// browser downloads for exports run outside one
+export type FileDestination = Omit<FileExportContext, `filename`>
+export const BROWSER_DOWNLOADS: FileDestination = {
+  destination: `downloads`,
+  open: async (filename, mime) => async (data) => download(data, filename, mime),
+}
+
+// Export a canvas as PNG named `<basename>-<dpi>dpi.png`
 export async function export_canvas_as_png(
   canvas: HTMLCanvasElement,
   filename: string,
   png_dpi = DEFAULT_PNG_DPI,
-  save: FileSaver = download,
+  { open }: FileDestination = BROWSER_DOWNLOADS,
 ): Promise<void> {
   const basename = filename.replace(/\.png$/i, ``)
-  await save(
-    await canvas_to_png_blob(canvas, png_dpi),
-    `${basename}-${Math.round(png_dpi)}dpi.png`,
-    `image/png`,
-  )
+  const write = await open(`${basename}-${Math.round(png_dpi)}dpi.png`, `image/png`)
+  await write(await canvas_to_png_blob(canvas, png_dpi))
 }
 
 // === Export model ===
@@ -221,21 +199,27 @@ export interface ExportProps {
   export_formats?: readonly ExportFormat[]
   // Default base name of exported files; the pane appends each format's extension
   export_filename?: string
-  // Receives each serialized file instead of the default save (downloads or chosen folder)
+  // Receives each serialized file instead of the default save to the pane's destination. The
+  // data is encoded before this runs, so a Save As `open` here may come after the click's
+  // user activation has lapsed (about 5 s in Chromium) and be refused
   on_export?: (format: ExportFormat, context: ExportContext) => void | Promise<void>
 }
 
-// Serialize one format and save it, or hand it to on_export
+// Serialize one format and save it, or hand it to on_export. Without on_export the file opens
+// first, so the destination is checked (or a Save As dialog answered) before encoding.
 export async function run_export(
   format: ExportFormat,
   source: ExportSource,
   context: ExportPaneContext,
   on_export?: ExportProps[`on_export`],
 ): Promise<void> {
-  const data = await source(context.png_dpi)
   const mime = EXPORT_MIME[format]
-  if (on_export) return on_export(format, { ...context, data, mime })
-  return context.save(data, `${context.filename}.${format}`, mime)
+  if (on_export) {
+    const data = await source(context.png_dpi)
+    return on_export(format, { ...context, data, mime })
+  }
+  const write = await context.open(`${context.filename}.${format}`, mime)
+  await write(await source(context.png_dpi))
 }
 
 // Pane sections for the offered sources: an Image section (PNG, SVG) and a Data section
@@ -273,10 +257,15 @@ const require_element = <El>(element: El | null | undefined, kind: string): El =
   return element
 }
 
-// SVG and PNG sources for a live SVG figure, looked up per export since it may re-mount
-export const svg_sources = (get_svg: () => SVGElement | null | undefined): ExportSources => ({
-  png: (png_dpi) => svg_to_png_blob(require_element(get_svg(), `SVG`), png_dpi),
-  svg: () => svg_to_string(require_element(get_svg(), `SVG`)),
+// SVG and PNG sources for a live figure (an SVG chart or an HTML element laid out as one),
+// looked up per export since it may re-mount
+export const svg_sources = (
+  get_figure: () => SVGElement | HTMLElement | null | undefined,
+): ExportSources => ({
+  png: (png_dpi) =>
+    export_figure(require_element(get_figure(), `figure`), { format: `png`, dpi: png_dpi }),
+  svg: async () =>
+    (await export_figure(require_element(get_figure(), `figure`), { format: `svg` })).text(),
 })
 
 // PNG source for a live canvas (2D or GPU-rendered)
@@ -291,74 +280,17 @@ export const json_source =
   () =>
     JSON.stringify(get_data(), null, 2)
 
-// A canvas's on-screen box, refused while it has none for overlays to sit on
-const laid_out_rect = (canvas: HTMLCanvasElement): DOMRect => {
-  const rect = canvas.getBoundingClientRect()
-  if (!(rect.width > 0 && rect.height > 0))
-    throw new Error(`Cannot export a canvas that has not been laid out (zero size)`)
-  return rect
-}
-
-// SVG counterpart of canvas_overlay_png_blob: the canvas frame (encoded, since a presented
-// WebGPU canvas reads back blank) as an embedded image with `overlays` redrawn as vector SVG
-export async function canvas_overlay_svg(
+// A live canvas (re-rendered at the export DPI, see canvas_to_png_blob) with `overlays` laid
+// over it: canvases stacked on it (annotation layers) as they are, HTML (legends, color bars,
+// scene labels) redrawn on top at its on-screen position, as vector SVG in SVG exports
+export const canvas_figure = async (
   canvas: HTMLCanvasElement | null | undefined,
-  overlays: readonly HTMLElement[],
-): Promise<SVGSVGElement> {
-  const source = require_element(canvas, `canvas`)
-  const origin = laid_out_rect(source)
-  const { width, height } = origin
-  const href = await blob_to_data_url(await canvas_to_png_blob(source))
-  const svg = svg_el(`svg`, {
-    xmlns: SVG_NS,
-    width,
-    height,
-    viewBox: `0 0 ${width} ${height}`,
+  options: Omit<CanvasFigureOptions, `render_frame`>,
+): Promise<Blob> =>
+  export_figure(require_element(canvas, `canvas`), {
+    ...options,
+    render_frame: canvas_to_png_blob,
   })
-  svg.append(svg_el(`image`, { href, x: 0, y: 0, width, height }))
-  for (const overlay of overlays) svg.append(overlay_to_svg(overlay, origin))
-  return svg as SVGSVGElement
-}
-
-// PNG of a live canvas (re-rendered at `png_dpi`, see canvas_to_png_blob) with `overlays` laid
-// over it: canvases stacked on it (annotation layers) are painted as they are, HTML (legends,
-// color bars, scene labels) is redrawn on top at its on-screen position, through the same
-// overlay redraw as SVG chart exports
-export async function canvas_overlay_png_blob(
-  canvas: HTMLCanvasElement | null | undefined,
-  overlays: readonly HTMLElement[],
-  png_dpi = DEFAULT_PNG_DPI,
-): Promise<Blob> {
-  const source = require_element(canvas, `canvas`)
-  const frame_blob = await canvas_to_png_blob(source, png_dpi)
-  if (overlays.length === 0) return frame_blob
-  const origin = laid_out_rect(source)
-  const { width, height } = origin
-  const scale = dpi_to_scale(png_dpi)
-  // sized in export pixels so the overlay rasterizes as crisply as the re-rendered frame
-  const svg = svg_el(`svg`, {
-    xmlns: SVG_NS,
-    width: Math.round(width * scale),
-    height: Math.round(height * scale),
-    viewBox: `0 0 ${width} ${height}`,
-  })
-  const layers = overlays.filter(
-    (overlay): overlay is HTMLCanvasElement => overlay instanceof HTMLCanvasElement,
-  )
-  for (const overlay of overlays)
-    if (!(overlay instanceof HTMLCanvasElement)) svg.append(overlay_to_svg(overlay, origin))
-  const markup = new XMLSerializer().serializeToString(svg)
-  const frame = await createImageBitmap(frame_blob)
-  try {
-    return await with_svg_image(markup, width * height * scale ** 2, (img) =>
-      paint_png_blob(width, height, scale, (ctx) => {
-        for (const layer of [frame, ...layers, img]) ctx.drawImage(layer, 0, 0, width, height)
-      }),
-    )
-  } finally {
-    frame.close()
-  }
-}
 
 // Bitrate target (bits/s) for AV1 exports without an explicit `bitrate`, clamped to
 // [1, 200] Mbps. A pixel-rate heuristic: actual sizes vary by scene.

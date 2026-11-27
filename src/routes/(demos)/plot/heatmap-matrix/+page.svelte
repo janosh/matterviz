@@ -131,8 +131,9 @@
       (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
         payload.x_range[1]
       }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-    on_export={async (format, { data, mime, filename, save }) => {
-      await save(data, `${filename}.${format}`, mime)
+    on_export={async (format, { data, mime, filename, open }) => {
+      const write = await open(`${filename}.${format}`, mime)
+      await write(data)
       last_export_status = `Exported ${format.toUpperCase()}`
     }}
     on_click={(cell: CellContext) => (clicked_cell = cell)}

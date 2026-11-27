@@ -21,7 +21,7 @@ import {
   WULFF_DEFAULTS,
 } from 'matterviz'
 import { is_binary_envelope, series_from_binary } from 'matterviz/io'
-import { html_to_svg, svg_to_string } from 'svelte-widgets/figure-export'
+import { export_figure } from 'svelte-widgets/figure-export'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
 import { type Component, mount, unmount } from 'svelte'
@@ -985,7 +985,7 @@ const render: Render = async (props) => {
 // Standalone SVG file content of a rendered widget, through the same serializer as the in-app
 // SVG export: HTML figures redrawn as SVG, else the largest <svg> (under 20px: an icon). Throws
 // for a chart-sized (50px+) canvas outside that SVG (3D viewers, canvas charts): no vector form.
-export function export_svg(element: HTMLElement, png_dpi?: number): string {
+export async function export_svg(element: HTMLElement, png_dpi?: number): Promise<string> {
   const widget_type = rendered_types.get(element)
   if (!widget_type) throw new Error(`No rendered MatterViz widget to export`)
   const { html_figure } = WIDGETS[widget_type]
@@ -1008,10 +1008,12 @@ export function export_svg(element: HTMLElement, png_dpi?: number): string {
       `MatterViz ${widget_type} renders ${content}, which has no vector form: export PNG or PDF instead`,
     )
   }
-  return svg_to_string(
-    figure instanceof SVGElement ? figure : html_to_svg(figure as HTMLElement),
-    png_dpi,
-  )
+  // querySelector types it as a bare Element
+  if (!(figure instanceof SVGElement || figure instanceof HTMLElement))
+    throw new Error(
+      `MatterViz ${widget_type} figure <${figure.localName}> is neither SVG nor HTML`,
+    )
+  return (await export_figure(figure, { format: `svg`, dpi: png_dpi })).text()
 }
 
 export default { render }

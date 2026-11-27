@@ -43,7 +43,7 @@ import {
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte'
 import { srgb_parser } from '#lib/plot/scatter-3d/instance-tween.svelte'
-import { canvas_overlay_png_blob } from '#lib/io/export'
+import { canvas_figure } from '#lib/io/export'
 import type * as colors from '#lib/colors/index'
 import { tooltip_paint } from '#lib/colors/index'
 import {
@@ -77,7 +77,7 @@ vi.mock(`#lib/colors/index`, async (import_original) => {
 // jsdom has no WebGPU canvas to rasterize; the export test checks what the PNG composites
 vi.mock(`#lib/io/export`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
-  canvas_overlay_png_blob: vi.fn(async () => new Blob([`png`], { type: `image/png` })),
+  canvas_figure: vi.fn(async () => new Blob([`png`], { type: `image/png` })),
 }))
 vi.mock(`$app/state`, () => ({
   page: {
@@ -858,11 +858,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
     on_export.mockClear()
     const png = await export_via_pane(on_export, `PNG`, plot)
     expect(png.data).toBeInstanceOf(Blob)
-    expect(canvas_overlay_png_blob).toHaveBeenCalledExactlyOnceWith(
-      canvas,
-      [query(plot, `.colorbar`), query(plot, `.legend`)],
-      expect.any(Number),
-    )
+    expect(canvas_figure).toHaveBeenCalledExactlyOnceWith(canvas, {
+      format: `png`,
+      dpi: expect.any(Number),
+      overlays: [query(plot, `.colorbar`), query(plot, `.legend`)],
+    })
   })
 
   test.each([

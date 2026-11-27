@@ -94,7 +94,7 @@ test(`SVG snapshot of the canvas, its overlay labels and the view settings`, asy
   })
   canvas.toBlob = (callback: BlobCallback) => callback(png_blob())
   const svg = await chempot_svg_string(wrapper, { elements: [`Li`, `O`] })
-  expect(svg).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?><svg /)
+  expect(svg).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?>\n<svg /)
   expect(svg).toContain(`<image href="data:image/png;base64,iVBORw0KGgo`)
   const doc = new DOMParser().parseFromString(svg, `image/svg+xml`)
   expect([...doc.querySelectorAll(`text`)].map(({ textContent }) => textContent)).toEqual([

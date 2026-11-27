@@ -106,7 +106,9 @@ describe(`PhaseDiagramExportPane`, () => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
     mount_pane({ data: mock_phase_data, wrapper: empty_wrapper, on_export })
     await click_export(`SVG`)
-    await vi.waitFor(() => expect(doc_query(`[role="alert"]`).textContent).toContain(`No SVG`))
+    await vi.waitFor(() =>
+      expect(doc_query(`[role="alert"]`).textContent).toContain(`No figure`),
+    )
     expect(on_export).not.toHaveBeenCalled()
   })
 

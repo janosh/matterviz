@@ -944,16 +944,14 @@
         {
           label: `View`,
           hint: `Camera and display settings as JSON`,
-          on_download: ({ filename, save }) =>
-            save(
+          on_download: async ({ filename, open }) =>
+            (await open(`${filename}-view.json`, `application/json`))(
               JSON.stringify(current_view_settings(), null, 2),
-              `${filename}-view.json`,
-              `application/json`,
             ),
         },
         {
           label: `GLB`,
-          on_download: ({ filename, save }) =>
+          on_download: (context) =>
             export_glb_file(
               {
                 hull_geometry: colored_hull_geometry,
@@ -962,8 +960,8 @@
                 formula_meshes: formula_mesh_data,
                 formula_edges: formula_edge_data,
               },
-              filename,
-              save,
+              context.filename,
+              context,
             ),
         },
       ],

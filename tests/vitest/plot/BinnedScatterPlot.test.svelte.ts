@@ -5,7 +5,7 @@ import { rects_overlap, type Rect } from '#lib/plot/core/layout'
 import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types'
 import type { BinnedDensityConfig } from '#lib/plot/scatter/binned-scatter-types'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
-import { svg_to_string } from 'svelte-widgets/figure-export'
+import { export_figure } from 'svelte-widgets/figure-export'
 import { plot_color } from '#lib/colors/index'
 import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
@@ -698,7 +698,7 @@ describe(`BinnedScatterPlot`, () => {
       return `data:image/png;base64,${btoa(`${this.width}x${this.height}`)}`
     })
     const exported = new DOMParser().parseFromString(
-      svg_to_string(plot_svg()),
+      await (await export_figure(plot_svg(), { format: `svg` })).text(),
       `image/svg+xml`,
     )
     expect(

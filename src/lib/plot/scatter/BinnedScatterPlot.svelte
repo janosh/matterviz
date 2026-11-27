@@ -71,7 +71,7 @@
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types'
   import type { Obstacle } from '#lib/plot/core/decorations/index'
   import { attach_canvas, prepare_canvas } from '#lib/plot/core/utils'
-  import { canvas_painters } from 'svelte-widgets/figure-export'
+  import { set_export_painter } from 'svelte-widgets/figure-export'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import type { ExportProps } from '#lib/io/export'
   import {
@@ -629,7 +629,8 @@
   }
 
   // Density bins clip to the plot area; range-filtered points keep whole glyphs at the edges.
-  // Registered per canvas as its export painter, so exports redraw at the export pixel ratio
+  // Registered per canvas as its export painter, so exports redraw at the export pixel ratio;
+  // returns the registration's cleanup for the effect that paints
   const paint = (
     node: HTMLCanvasElement | undefined,
     draw: (ctx: CanvasRenderingContext2D) => void,
@@ -650,8 +651,8 @@
       draw(ctx)
       ctx.restore()
     }
-    if (node) canvas_painters.set(node, paint_at)
     paint_at(node)
+    return node ? set_export_painter(node, paint_at) : undefined
   }
 
   // Canvases live in <foreignObject>s so they sit in SVG paint order (under the axes)

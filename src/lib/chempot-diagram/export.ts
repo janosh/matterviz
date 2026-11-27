@@ -1,7 +1,6 @@
 // HTML overlay label helpers for the 3D chemical potential diagram: tick label occlusion and
 // composited PNG/SVG snapshots (plus GLB export)
-import { canvas_overlay_png_blob, canvas_overlay_svg } from '#lib/io/export'
-import type { FileSaver } from 'svelte-widgets/browser'
+import { canvas_figure, type FileDestination } from '#lib/io/export'
 import { pad_rect, rects_overlap } from '#lib/plot/core/layout'
 import type { ColorScale } from '#lib/plot/core/types'
 import { export_scene_as } from '#lib/scene/index'
@@ -65,19 +64,24 @@ export function occlude_tick_labels(wrapper: HTMLElement): boolean {
   return occluded.includes(true)
 }
 
-// The 3D canvas and its HTML overlay labels (tick, axis and domain labels)
-const canvas_and_labels = (wrapper: HTMLElement | undefined) =>
-  [
-    wrapper?.querySelector(`canvas`),
-    [
+// The 3D canvas (re-rendered at the export DPI) with its HTML overlay labels (tick, axis and
+// domain labels) drawn on top
+const chempot_figure = (
+  wrapper: HTMLElement | undefined,
+  format: `png` | `svg`,
+  png_dpi?: number,
+): Promise<Blob> =>
+  canvas_figure(wrapper?.querySelector(`canvas`), {
+    format,
+    dpi: png_dpi,
+    overlays: [
       ...(wrapper?.querySelectorAll<HTMLElement>(`.tick-label, .axis-label, .domain-label`) ??
         []),
     ],
-  ] as const
+  })
 
-// The 3D canvas (re-rendered at `png_dpi`) with the HTML overlay labels drawn on top
 export const chempot_png_blob = (wrapper: HTMLElement | undefined, png_dpi: number) =>
-  canvas_overlay_png_blob(...canvas_and_labels(wrapper), png_dpi)
+  chempot_figure(wrapper, `png`, png_dpi)
 
 // SVG snapshot: the rendered canvas as an embedded image, overlay labels as real text nodes
 // and the view settings as metadata
@@ -85,11 +89,12 @@ export async function chempot_svg_string(
   wrapper: HTMLElement | undefined,
   view_settings: Record<string, unknown>,
 ): Promise<string> {
-  const svg = await canvas_overlay_svg(...canvas_and_labels(wrapper))
-  const metadata = document.createElementNS(svg.namespaceURI, `metadata`)
+  const markup = await (await chempot_figure(wrapper, `svg`)).text()
+  const doc = new DOMParser().parseFromString(markup, `image/svg+xml`)
+  const metadata = doc.createElementNS(doc.documentElement.namespaceURI, `metadata`)
   metadata.textContent = JSON.stringify(view_settings)
-  svg.prepend(metadata)
-  return `<?xml version="1.0" encoding="UTF-8"?>${new XMLSerializer().serializeToString(svg)}`
+  doc.documentElement.prepend(metadata)
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(doc.documentElement)}`
 }
 
 interface ChemPotGlbParts {
@@ -104,7 +109,7 @@ interface ChemPotGlbParts {
 export function export_glb_file(
   parts: ChemPotGlbParts,
   basename: string,
-  save: FileSaver,
+  files: FileDestination,
 ): Promise<void> {
   const { hull_geometry, hull_opacity, edge_geometry, formula_meshes, formula_edges } = parts
   const export_root = new THREE.Group()
@@ -124,5 +129,5 @@ export function export_glb_file(
   for (const { geometry, color } of formula_meshes)
     add_mesh(geometry, { color: new THREE.Color(color), opacity: 0.13 })
   for (const { geometry, color } of formula_edges) add_lines(geometry, new THREE.Color(color))
-  return export_scene_as(export_root, `glb`, basename, save)
+  return export_scene_as(export_root, `glb`, basename, files)
 }

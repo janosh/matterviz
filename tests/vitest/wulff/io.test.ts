@@ -146,18 +146,23 @@ describe(`STL and GLB export`, () => {
       shape.families.map(() => `red`),
     )
     const saved = new Map<string, ArrayBuffer>()
-    const save = (data: unknown, filename: string) =>
+    const open = async (filename: string) => async (data: unknown) =>
       void saved.set(filename, data as ArrayBuffer)
     // the export pane's items: none saves while there's no model
     expect(
-      model_export_items(() => undefined, [`stl`])[0].on_download({ filename: `x`, save }),
+      model_export_items(() => undefined, [`stl`])[0].on_download({
+        filename: `x`,
+        destination: `downloads`,
+        open,
+      }),
     ).toBeUndefined()
     const items = model_export_items(() => model, [`stl`, `glb`])
     expect(items.map(({ label, hint }) => [label, hint])).toEqual([
       [`STL`, `3D printing`],
       [`GLB`, `web/AR`],
     ])
-    for (const { on_download } of items) await on_download({ filename: `shape`, save })
+    for (const { on_download } of items)
+      await on_download({ filename: `shape`, destination: `downloads`, open })
     expect(saved.size).toBe(2)
     const glb = new Uint8Array(saved.get(`shape.glb`) ?? new ArrayBuffer(0))
     expect(String.fromCharCode(...glb.subarray(0, 4))).toBe(`glTF`)

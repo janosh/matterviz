@@ -321,8 +321,8 @@
     void copy_view_state_text(serialize_current_view_state(), `viewer-settings`)
   const export_state = new FileExportState(() => `matterviz-view-settings`)
   const download_view_state = () =>
-    export_state.run(({ filename, save }) =>
-      save(serialize_current_view_state(), `${filename}.json`, `application/json`),
+    export_state.run(async ({ filename, open }) =>
+      (await open(`${filename}.json`, `application/json`))(serialize_current_view_state()),
     )
 
   const import_view_state = async (event: Event): Promise<void> => {

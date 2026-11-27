@@ -986,7 +986,7 @@ test.describe(`Trajectory Component`, () => {
         expect(decoded.height).toBe(expected_size.height)
         // A valid container holding only a blank frame is still a broken trajectory export.
         expect(decoded.color_span).toBeGreaterThan(40)
-        await pane.getByRole(`button`, { name: `Choose export folder`, exact: true }).click()
+        await pane.getByRole(`button`, { name: `Choose folder…`, exact: true }).click()
         await expect(pane.locator(`.folder-name`)).toHaveText(`chosen-exports/`)
         await export_button.click()
         await expect(export_button).toBeEnabled()

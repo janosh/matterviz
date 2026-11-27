@@ -1,5 +1,5 @@
 import {
-  canvas_overlay_png_blob,
+  canvas_figure,
   canvas_to_png_blob,
   export_canvas_as_png,
   export_sections,
@@ -71,14 +71,21 @@ const read_png = async (blob: Blob) => {
   return { chunks, dpi }
 }
 
+// own properties shadow the prototype's element accessors; the prototype makes exports treat
+// it as the canvas it stands in for
 const make_mock_canvas = (
   toBlob_impl?: (callback_fn: BlobCallback) => void,
 ): HTMLCanvasElement =>
-  ({
-    toBlob: vi.fn(toBlob_impl ?? ((callback_fn: BlobCallback) => callback_fn(png_blob()))),
-    width: 800,
-    height: 600,
-  }) as unknown as HTMLCanvasElement
+  Object.setPrototypeOf(
+    {
+      toBlob: vi.fn(toBlob_impl ?? ((callback_fn: BlobCallback) => callback_fn(png_blob()))),
+      width: 800,
+      height: 600,
+      clientWidth: 0,
+      clientHeight: 0,
+    },
+    HTMLCanvasElement.prototype,
+  ) as HTMLCanvasElement
 
 function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => void) {
   const renderer = {
@@ -502,16 +509,17 @@ const parse_svg = (markup: string): Element =>
   new DOMParser().parseFromString(markup, `image/svg+xml`).documentElement
 
 describe(`export_sections`, () => {
+  const png_source = vi.fn(async (png_dpi: number) => new Blob([`${png_dpi}`]))
   const sources: ExportSources = {
-    png: vi.fn(async (png_dpi: number) => new Blob([`${png_dpi}`])),
+    png: png_source,
     svg: () => `<svg/>`,
     csv: () => `a,b`,
     json: () => `{}`,
   }
-  const context = (save = vi.fn()) => ({
+  const context = (open = vi.fn()) => ({
     filename: `chart`,
-    save,
-    prepare: vi.fn(),
+    destination: `downloads` as const,
+    open,
     png_dpi: 300,
   })
   const labels = (sections: ReturnType<typeof export_sections>) =>
@@ -546,10 +554,18 @@ describe(`export_sections`, () => {
   ] as const)(`%s saves %s as %s`, async (format, filename, mime) => {
     const items = export_sections(sources).flatMap((section) => section.items)
     const item = items.find((entry) => entry.label === format.toUpperCase())
-    const save = vi.fn()
-    await item?.on_download?.(context(save))
-    expect(save).toHaveBeenCalledExactlyOnceWith(expect.anything(), filename, mime)
-    if (format === `png`) expect(sources.png).toHaveBeenCalledWith(300) // the pane's DPI
+    const write = vi.fn()
+    const open = vi.fn(async () => write)
+    await item?.on_download?.(context(open))
+    expect(open).toHaveBeenCalledExactlyOnceWith(filename, mime)
+    expect(write).toHaveBeenCalledExactlyOnceWith(expect.anything())
+    if (format === `png`) {
+      expect(png_source).toHaveBeenCalledWith(300) // the pane's DPI
+      // the file opens (a Save As dialog answered) before anything is encoded
+      expect(open.mock.invocationCallOrder[0]).toBeLessThan(
+        png_source.mock.invocationCallOrder.at(-1) ?? 0,
+      )
+    }
     expect(item?.show_dpi).toBe(format === `png`)
     expect(Boolean(item?.copy_text)).toBe(format !== `png`)
   })
@@ -557,9 +573,9 @@ describe(`export_sections`, () => {
   test(`on_export receives the serialized file instead of the default save`, async () => {
     const on_export = vi.fn()
     const [section] = export_sections(sources, { export_formats: [`csv`], on_export })
-    const save = vi.fn()
-    await section.items[0].on_download?.(context(save))
-    expect(save).not.toHaveBeenCalled()
+    const open = vi.fn()
+    await section.items[0].on_download?.(context(open))
+    expect(open).not.toHaveBeenCalled()
     expect(on_export).toHaveBeenCalledExactlyOnceWith(
       `csv`,
       expect.objectContaining({
@@ -573,7 +589,7 @@ describe(`export_sections`, () => {
 })
 
 // 3D charts lay HTML legends/color bars over a GPU canvas; the PNG redraws them on the frame
-test(`canvas_overlay_png_blob draws the overlays' SVG redraw over the canvas frame`, async () => {
+test(`canvas_figure draws the overlays' SVG redraw over the canvas frame`, async () => {
   const canvas = Object.assign(make_mock_canvas(), {
     clientWidth: 800,
     clientHeight: 600,
@@ -592,7 +608,9 @@ test(`canvas_overlay_png_blob draws the overlays' SVG redraw over the canvas fra
   const images = mock_image(`load`)
   const offscreen = mock_offscreen_canvas()
 
-  expect(await canvas_overlay_png_blob(canvas, [legend], 72)).toBeInstanceOf(Blob)
+  expect(
+    await canvas_figure(canvas, { format: `png`, dpi: 72, overlays: [legend] }),
+  ).toBeInstanceOf(Blob)
   const { drawImage } = offscreen.getContext.mock.results[0].value as {
     drawImage: ReturnType<typeof vi.fn>
   }
@@ -606,11 +624,12 @@ test(`canvas_overlay_png_blob draws the overlays' SVG redraw over the canvas fra
 })
 
 // Without overlays the canvas frame passes through as is; overlays on a canvas that has not
-// been laid out have no geometry to sit on and are refused
+// been laid out have no geometry to sit on and are refused, as is a canvas not yet rendered
 test.each([
   [`no overlays`, 0, 800, null],
   [`an unlaid-out canvas`, 1, 0, `has not been laid out (zero size)`],
-])(`canvas_overlay_png_blob with %s`, async (_label, n_overlays, size, error) => {
+  [`no canvas`, 0, 800, `No canvas to export yet`],
+])(`canvas_figure with %s`, async (label, n_overlays, size, error) => {
   const canvas = Object.assign(
     make_mock_canvas((callback) => callback(png_blob())),
     {
@@ -620,10 +639,24 @@ test.each([
   const bitmap_spy = vi.fn()
   vi.stubGlobal(`createImageBitmap`, bitmap_spy)
   const overlays = Array.from({ length: n_overlays }, () => document.createElement(`div`))
-  const result = canvas_overlay_png_blob(canvas, overlays, 72)
+  const result = canvas_figure(label === `no canvas` ? null : canvas, {
+    format: `png`,
+    dpi: 72,
+    overlays,
+  })
   if (error) await expect(result).rejects.toThrow(error)
   else expect((await read_png(await result)).dpi).toBeCloseTo(72, 1)
   expect(bitmap_spy).not.toHaveBeenCalled()
+})
+
+// GPU canvases read back blank once presented, so the frame is canvas_to_png_blob's re-render
+test(`canvas_figure takes a GPU canvas's frame from a re-render of its scene`, async () => {
+  const { canvas, renderer } = make_canvas_with_renderer()
+  const view = { scene: {} as Scene, camera: {} as Camera }
+  scene_registry.set(canvas, view)
+  const png = await canvas_figure(canvas, { format: `png`, dpi: 72 })
+  expect((await read_png(png)).dpi).toBeCloseTo(72, 1)
+  expect(renderer.render).toHaveBeenCalledWith(view.scene, view.camera)
 })
 
 test.each([

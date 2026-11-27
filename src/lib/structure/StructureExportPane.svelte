@@ -102,10 +102,12 @@
               {
                 label: `Export prediction`,
                 hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
-                on_download: ({ filename, save }: FileExportContext) => {
+                on_download: async ({ filename, open }: FileExportContext) => {
                   const content = prediction_text()
                   if (content)
-                    return save(content, `${filename}-prediction.json`, `application/json`)
+                    await (
+                      await open(`${filename}-prediction.json`, `application/json`)
+                    )(content)
                 },
                 copy_text: prediction_text,
               },
@@ -123,8 +125,12 @@
             hint,
             disabled: Boolean(disabled_reason),
             disabled_reason,
-            on_download: ({ filename, save }: FileExportContext) =>
-              structure && save(to_str(structure, sym_data), `${filename}.${ext}`, mime),
+            on_download: async ({ filename, open }: FileExportContext) => {
+              if (structure)
+                await (
+                  await open(`${filename}.${ext}`, mime)
+                )(to_str(structure, sym_data))
+            },
             copy_text: () => (structure ? to_str(structure, sym_data) : null),
           }
         },
@@ -138,10 +144,10 @@
           disabled: !has_canvas,
           disabled_reason: has_canvas ? undefined : `Waiting for the 3D view to render`,
           show_dpi: true,
-          on_download: ({ filename, save }: FileExportContext) => {
+          on_download: (context: FileExportContext) => {
             const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
             if (!canvas) throw new Error(`Canvas element not found for PNG export`)
-            return export_canvas_as_png(canvas, filename, png_dpi, save)
+            return export_canvas_as_png(canvas, context.filename, png_dpi, context)
           },
         },
       ],
@@ -155,8 +161,8 @@
               hint,
               disabled: !scene,
               disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
-              on_download: ({ filename, save }: FileExportContext) =>
-                scene && export_scene_as(scene, format, filename, save),
+              on_download: (context: FileExportContext) =>
+                scene && export_scene_as(scene, format, context.filename, context),
             })),
           },
         ]

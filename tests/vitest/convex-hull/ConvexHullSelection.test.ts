@@ -327,6 +327,19 @@ describe(`convex hull replacement state`, () => {
       `${chem_sys} & Ehull`,
     )
     // the canvas hull redraws into a fresh 2x canvas rather than upscaling the screen bitmap
+    const live_canvas = target.querySelector(`canvas[tabindex="0"]`)
+    const drawn_from: unknown[] = []
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(function (
+      this: HTMLCanvasElement,
+    ) {
+      const ctx = make_canvas_context(this)
+      return new Proxy(ctx, {
+        get: (proxied, prop) =>
+          prop === `drawImage`
+            ? (source: unknown) => void drawn_from.push(source)
+            : Reflect.get(proxied, prop),
+      })
+    })
     const sizes: number[][] = []
     vi.spyOn(HTMLCanvasElement.prototype, `toBlob`).mockImplementation(function (
       this: HTMLCanvasElement,
@@ -340,6 +353,7 @@ describe(`convex hull replacement state`, () => {
     await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
     expect(on_export.mock.calls[0][1].data).toBeInstanceOf(Blob)
     expect(sizes).toEqual([[1600, 1200]]) // 2x the unmeasured canvas's 800x600 CSS size
+    expect(drawn_from).not.toContain(live_canvas)
   })
 
   const submit_probe = async (text: string) => {

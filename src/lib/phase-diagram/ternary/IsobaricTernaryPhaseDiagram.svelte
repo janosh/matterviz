@@ -20,11 +20,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { file_drop_zone } from '#lib/io/file-drop'
   import { as_text } from '#lib/io/decompress'
-  import {
-    canvas_overlay_png_blob,
-    type ExportProps,
-    type ExportSources,
-  } from '#lib/io/export'
+  import { canvas_figure, type ExportProps, type ExportSources } from '#lib/io/export'
   import type { FileLoadCallback } from '#lib/io/types'
   import { ViewerChrome } from '#lib/layout/index'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
@@ -388,10 +384,13 @@
     png: (dpi) => {
       const panel = wrapper?.querySelector(`.section-panel`)
       const overlays = `canvas.pulse-overlay, :is(.tick-label, .axis-label, .phase-label)`
-      return canvas_overlay_png_blob(
+      return canvas_figure(
         panel?.querySelector<HTMLCanvasElement>(`canvas:not(.pulse-overlay)`),
-        [...(panel?.querySelectorAll<HTMLElement>(overlays) ?? [])],
-        dpi,
+        {
+          format: `png`,
+          dpi,
+          overlays: [...(panel?.querySelectorAll<HTMLElement>(overlays) ?? [])],
+        },
       )
     },
   }

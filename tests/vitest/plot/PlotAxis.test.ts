@@ -1,5 +1,5 @@
 import PlotAxis from '#lib/plot/core/components/PlotAxis.svelte'
-import { svg_to_string } from 'svelte-widgets/figure-export'
+import { export_figure } from 'svelte-widgets/figure-export'
 import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
@@ -359,7 +359,10 @@ describe(`PlotAxis`, () => {
       expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PopoverSelect trigger
       const static_label = query(svg, `text[data-export-only]`)
       expect(static_label.getAttribute(`display`)).toBe(`none`)
-      const exported = new DOMParser().parseFromString(svg_to_string(svg), `image/svg+xml`)
+      const exported = new DOMParser().parseFromString(
+        await (await export_figure(svg, { format: `svg` })).text(),
+        `image/svg+xml`,
+      )
       expect(exported.querySelector(`foreignObject`)).toBeNull()
       const exported_label = exported.querySelector(`text.axis-label`)
       expect(exported_label?.textContent).toContain(expected)

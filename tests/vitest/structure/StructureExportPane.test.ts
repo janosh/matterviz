@@ -309,7 +309,7 @@ describe(`StructureExportPane`, () => {
         slice_canvas,
         `charge-density-slice`,
         144,
-        expect.any(Function),
+        expect.objectContaining({ destination: `downloads`, open: expect.any(Function) }),
       )
     })
     expect(document.body.textContent).not.toContain(`Export as 3D model`)
@@ -330,7 +330,7 @@ describe(`StructureExportPane`, () => {
           mock_scene,
           format,
           `structure-basename`,
-          expect.any(Function),
+          expect.objectContaining({ destination: `downloads`, open: expect.any(Function) }),
         ),
       )
       expect(export_funcs.create_structure_filename).toHaveBeenCalledWith(simple_structure)
@@ -385,20 +385,23 @@ describe(`StructureExportPane`, () => {
 
   test.each([`Download`, `Copy`])(
     `a throwing serializer on %s is logged, not thrown from the click handler`,
-    (action) => {
+    async (action) => {
       vi.mocked(export_funcs.STRUCT_TEXT_FORMATS.cif.to_str).mockImplementationOnce(() => {
         throw new Error(`serializer exploded`)
       })
       const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
       mount_pane({ structure: simple_structure })
       expect(() => get_button(`${action} CIF`).click()).not.toThrow()
-      expect(console_error_spy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          action === `Download`
-            ? `Export structure-basename failed`
-            : `Failed to copy CIF to clipboard`,
+      // a download serializes once its file is open, after the click handler returned
+      await vi.waitFor(() =>
+        expect(console_error_spy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            action === `Download`
+              ? `Export structure-basename failed`
+              : `Failed to copy CIF to clipboard`,
+          ),
+          expect.any(Error),
         ),
-        expect.any(Error),
       )
       console_error_spy.mockRestore()
     },
@@ -435,7 +438,7 @@ describe(`StructureExportPane`, () => {
         wrapper_div.querySelector(`canvas`),
         `structure-basename`,
         props.png_dpi ?? 144,
-        expect.any(Function),
+        expect.objectContaining({ destination: `downloads`, open: expect.any(Function) }),
       )
     })
   })

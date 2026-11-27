@@ -354,11 +354,9 @@
               type="button"
               disabled={frames.length < 2 || path_export.disabled}
               onclick={() =>
-                path_export.run(({ filename, save }) =>
-                  save(
+                path_export.run(async ({ filename, open }) =>
+                  (await open(`${filename}.json`, `application/json`))(
                     JSON.stringify(flight, null, 2),
-                    `${filename}.json`,
-                    `application/json`,
                   ),
                 )}>Save path</button
             >

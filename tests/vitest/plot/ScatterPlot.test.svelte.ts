@@ -1,5 +1,5 @@
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import { svg_to_string } from 'svelte-widgets/figure-export'
+import { export_figure } from 'svelte-widgets/figure-export'
 import type { Vec2 } from '#lib/math'
 import type {
   AxisConfig,
@@ -378,7 +378,10 @@ describe(`ScatterPlot`, () => {
     vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(rect)
     const svg = plot_svg(plot)
     const live_markup = svg.outerHTML
-    const doc = new DOMParser().parseFromString(svg_to_string(svg), `image/svg+xml`)
+    const doc = new DOMParser().parseFromString(
+      await (await export_figure(svg, { format: `svg` })).text(),
+      `image/svg+xml`,
+    )
     const texts = [...doc.querySelectorAll(`text`)].map((el) => el.textContent)
     expect(texts).toEqual(expect.arrayContaining([`AlphaSeries`, `BetaSeries`, `CbarTitle`]))
     // legend marker glyphs come along, and the color bar's gradient becomes an SVG gradient
@@ -1091,14 +1094,16 @@ describe(`ScatterPlot`, () => {
       ])
       expect(canvas.style.width).toBe(`400px`)
       // export repaints the markers on a fresh canvas at 2x via the registered painter
-      vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockReturnValue(
-        `data:image/png;base64,cGxvdA==`,
-      )
+      vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockImplementation(function (
+        this: HTMLCanvasElement,
+      ) {
+        return `data:image/png;base64,${btoa(`${this.width}x${this.height}`)}`
+      })
       const exported = new DOMParser().parseFromString(
-        svg_to_string(plot_svg(overlaid)),
+        await (await export_figure(plot_svg(overlaid), { format: `svg` })).text(),
         `image/svg+xml`,
       )
-      const image = query(exported, `image[href="data:image/png;base64,cGxvdA=="]`)
+      const image = query(exported, `image[href="data:image/png;base64,${btoa(`800x600`)}"]`)
       expect(
         query(exported, `g[clip-path] path`).compareDocumentPosition(image) &
           Node.DOCUMENT_POSITION_FOLLOWING,

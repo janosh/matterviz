@@ -9,7 +9,11 @@
   import type { VideoFormat } from '#lib/io/export'
   import { export_trajectory_video, is_video_export_supported } from '#lib/io/export'
   import { observe_canvas_presence } from 'svelte-widgets/figure-export'
-  import { FileExportState, type FileExportContext } from 'svelte-widgets/browser'
+  import {
+    ExportCancelledError,
+    FileExportState,
+    type FileExportContext,
+  } from 'svelte-widgets/browser'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportItem, ExportSection } from '#lib/io/types'
   import { display_idx, from_display_idx } from '#lib/labels'
@@ -181,7 +185,8 @@
       controller.signal.throwIfAborted()
       return result
     } catch (error) {
-      if (!controller.signal.aborted) {
+      // a dismissed Save As dialog cancels like the cancel button does
+      if (!controller.signal.aborted && !(error instanceof ExportCancelledError)) {
         console.error(`Trajectory ${label} export failed:`, error)
         export_error = to_error(error).message
       }
@@ -215,10 +220,10 @@
   ): ExportItem => ({
     ...item,
     disabled: data_export_disabled || Boolean(item.disabled_reason),
-    on_download: ({ filename: basename, prepare }) =>
+    on_download: ({ filename: basename, open }) =>
       run_export(item.label, async (signal) => {
-        const save = await prepare(`${basename}${suffix}`, signal)
-        await save(await serialize(signal, basename), mime)
+        const write = await open(`${basename}${suffix}`, mime, signal)
+        await write(await serialize(signal, basename))
       }),
   })
 
@@ -241,7 +246,7 @@
     const frame_count = video_frame_count
     await run_export(format.toUpperCase(), async (signal) => {
       const output_name = `${context.filename}.${format}`
-      const save = await context.prepare(output_name, signal)
+      const write = await context.open(output_name, `video/${format}`, signal)
       // The viewer pauses playback here, before a lazy frame read can take over.
       await on_step_change(original_step)
       await export_trajectory_video(canvas, output_name, {
@@ -253,7 +258,7 @@
         bitrate: bitrate_mbps * 1e6,
         camera_flight: flight,
         signal,
-        on_save: (blob) => save(blob, blob.type),
+        on_save: write,
         on_progress: (progress) => {
           if (running) running.progress = progress
         },

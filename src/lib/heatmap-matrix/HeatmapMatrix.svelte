@@ -2,7 +2,7 @@
   import type { VirtualScroll } from 'svelte-widgets/table'
   import { with_defaults } from 'svelte-widgets/utils'
   import { FileExportState } from 'svelte-widgets/browser'
-  import { DEFAULT_PNG_DPI, html_to_svg } from 'svelte-widgets/figure-export'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import {
@@ -725,7 +725,7 @@
       vis_y.map((y_idx) => vis_x.map((x_idx) => get_value(x_idx, y_idx))),
     )
   const export_sources: ExportSources = {
-    ...svg_sources(() => matrix_el && html_to_svg(matrix_el)),
+    ...svg_sources(() => matrix_el),
     // explicit header: object key order would put integer-like labels ("1", "10") first
     csv: () =>
       rows_to_csv(visible_rows(), [

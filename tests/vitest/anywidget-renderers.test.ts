@@ -966,16 +966,16 @@ describe(`export_svg`, () => {
     chart.setAttribute(`viewBox`, `0 0 200 100`)
     chart.setAttribute(`aria-label`, `Bar chart`)
     const { dispose, exported } = await render_with({}, [icon, chart])
-    const markup = exported()
+    const markup = await exported()
     expect(markup.startsWith(`<?xml version="1.0" encoding="UTF-8"?>\n<svg`)).toBe(true)
-    // sized, rounded and stripped of interaction attributes by svg_to_string, the accessible
+    // sized, rounded and stripped of interaction attributes by export_figure, the accessible
     // name kept as a <title>
     expect(markup).toContain(`width="200"`)
     expect(markup).toContain(`cx="1.23"`)
     expect(markup).not.toMatch(/icon|data-idx|aria-label/)
     expect(markup).toContain(`<title>Bar chart</title>`)
     dispose()
-    expect(exported).toThrow(`No rendered MatterViz widget`)
+    await expect(exported()).rejects.toThrow(`No rendered MatterViz widget`)
   })
 
   test(`HTML figures are redrawn as SVG`, async () => {
@@ -988,8 +988,9 @@ describe(`export_svg`, () => {
       grid,
     ])
     // the grid's own frame, with the inset redrawn inside it
-    expect(exported()).toContain(`viewBox="0 0 300 200"`)
-    expect(exported().match(/<svg/g)).toHaveLength(2)
+    const markup = await exported()
+    expect(markup).toContain(`viewBox="0 0 300 200"`)
+    expect(markup.match(/<svg/g)).toHaveLength(2)
   })
 
   test(`heatmap_matrix exports the matrix grid, not the open controls pane's grid section`, async () => {
@@ -1001,7 +1002,7 @@ describe(`export_svg`, () => {
     heatmap.classList.add(`heatmap`)
     const { html_figure } = WIDGETS.heatmap_matrix
     const { exported } = await render_with({ html_figure }, [heatmap])
-    expect(exported()).toContain(`viewBox="0 0 300 200"`)
+    expect(await exported()).toContain(`viewBox="0 0 300 200"`)
   })
 
   // the build entry (index.ts) lazy-loads anywidget.ts so anywidget's 2 s _esm import timeout
@@ -1053,7 +1054,8 @@ describe(`export_svg`, () => {
     ],
   ])(`%s`, async (_label, spec_extra, nodes, message) => {
     const { exported } = await render_with(spec_extra, nodes())
-    if (message) expect(exported).toThrow(`MatterViz export_probe renders ${message}`)
-    else expect(exported()).toContain(`<svg`)
+    if (message)
+      await expect(exported()).rejects.toThrow(`MatterViz export_probe renders ${message}`)
+    else expect(await exported()).toContain(`<svg`)
   })
 })

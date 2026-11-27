@@ -923,6 +923,60 @@ describe(`TrajectoryExportPane property export`, () => {
     expect(exported.map(({ step }) => step)).toEqual([0, 5])
   })
 
+  // with Save As, the dialog opens before any frame is serialized; dismissing it cancels the
+  // export like the cancel button, without an error, and a picked file gets the extXYZ
+  test.each([`dismissed`, `picked`] as const)(`Save As dialog %s`, async (outcome) => {
+    const written: string[] = []
+    const picker = vi.fn(async () => {
+      if (outcome === `dismissed`) throw new DOMException(`Aborted`, `AbortError`)
+      return {
+        createWritable: async () =>
+          new WritableStream<Uint8Array>({
+            write: (chunk) => void written.push(new TextDecoder().decode(chunk)),
+          }),
+      }
+    })
+    vi.stubGlobal(`showSaveFilePicker`, picker)
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const read_frame = vi.spyOn(trajectory, `read_frame`)
+    open_pane({ run: trajectory })
+    const ask = await vi.waitFor(() => {
+      const found = [...document.querySelectorAll(`input[type="radio"]`)].find(
+        (radio) => radio.parentElement?.textContent?.trim() === `Ask each time`,
+      )
+      if (!(found instanceof HTMLInputElement)) throw new TypeError(`Save As radio not ready`)
+      return found
+    })
+    ask.click()
+    await click(`Download extXYZ`)
+    await vi.waitFor(() => expect(picker).toHaveBeenCalledOnce())
+    expect(picker).toHaveBeenCalledWith(
+      expect.objectContaining({ suggestedName: `run.extxyz` }),
+    )
+    if (outcome === `picked`)
+      await vi.waitFor(() =>
+        expect(parse_exported_frames(written.join(``)).map(({ step }) => step)).toEqual([
+          0, 5, 9,
+        ]),
+      )
+    else {
+      // a macrotask drains the dismissal's rejection chain, then the DOM catches up
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await tick()
+    }
+    expect(document.querySelector(`.error-message`)?.textContent?.trim() ?? ``).toBe(``)
+    expect(error_spy).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+    // no frame is read before the dialog is answered
+    if (outcome === `dismissed`) expect(read_frame).not.toHaveBeenCalled()
+    else
+      expect(picker.mock.invocationCallOrder[0]).toBeLessThan(
+        read_frame.mock.invocationCallOrder[0],
+      )
+    error_spy.mockRestore()
+    read_frame.mockRestore()
+  })
+
   // Inputs show 1-based frames, and a newly loaded run (even one of the same length) starts
   // from its full range instead of inheriting the previous run's start
   test.each([3, 5])(`frame range resets on swapping in a %i-frame run`, async (next_count) => {
