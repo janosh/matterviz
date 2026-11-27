@@ -1,5 +1,5 @@
 // Parsers for phonopy mode data (frequencies + eigenvectors) and Born effective charges,
-// separate from `#lib/structure/parse.ts`, which discards the per-mode blocks.
+// separate from `#lib/structure/parse`, which discards the per-mode blocks.
 // Eigenvectors (phonopy convention) are of the mass-weighted dynamical matrix with
 // sum |e|^2 == 1; atom kappa moves by u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes
 // that weighting: consumers needing displacements divide by sqrt(mass) themselves.
