@@ -1,6 +1,13 @@
-// Docs-site icons for overview-page tiles that svelte-widgets' generic glyphs (panel layouts, a
-// plain DOS curve) can't tell apart. Same 24x24 viewBox and stroke style as svelte-widgets/icons.
+// Overview pages: their cards, plus icons for tiles that svelte-widgets' generic glyphs (panel
+// layouts, a plain DOS curve) can't tell apart, in the same 24x24 stroke style
+import type { Subpage } from 'svelte-widgets'
 import type { IconData } from 'svelte-widgets/icons'
+
+// One [href, label, icon, description] row per card, so each page's list reads a line per card
+export const to_subpages = (
+  rows: [href: string, label: string, icon: IconData, description: string][],
+): Subpage[] =>
+  rows.map(([href, label, icon, description]) => ({ href, label, icon, description }))
 
 const glyph = (markup: string): IconData => ({
   viewBox: `0 0 24 24`,
