@@ -282,7 +282,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/trajectory/render': [`Trajectory`],
 }
 
-// Components a demo page's generated prop tables (src/site/PropsTable.svelte) document, from
+// Components a demo page's generated prop tables (the (demos) layout) document, from
 // its route id: the PAGE_COMPONENTS entry, else the PascalCased last segment
 export const page_components = (route_id: string): string[] => {
   const parts = route_id.split(`/`).filter((part) => !part.startsWith(`(`)) // drop (group) segments

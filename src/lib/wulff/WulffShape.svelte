@@ -30,7 +30,9 @@
     wheel_zoom_gate,
     webgpu_available,
   } from '#lib/scene/index'
-  import { shortcut_attrs, viewer_keys } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { shortcut_attrs } from 'svelte-widgets/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import type { Crystal } from '#lib/structure/index'
   import { point_group_rotations } from '#lib/symmetry/index'
   import { structure_symmetry } from '#lib/symmetry/structure-symmetry.svelte'
@@ -236,7 +238,7 @@
         pane_name="Wulff shape info"
         class_prefix="wulff-info"
         closed_icon={InformationOutline}
-        toggle_props={shortcut_attrs(`info_pane`)}
+        toggle_props={shortcut_attrs(SHORTCUTS.info_pane)}
         shortcut_scopes={[`viewer`, `camera`]}
       >
         <InfoPaneCards cards={info_cards} empty_label="Wulff shape info" />

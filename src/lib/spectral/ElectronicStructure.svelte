@@ -50,7 +50,8 @@
     type Matrix3x3,
     type Vec2,
   } from '#lib/math'
-  import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { viewer_keydown } from 'svelte-widgets/attachments'
   import { ToolbarMenu } from '#lib/overlays/index'
   import { link_orbits } from '#lib/scene/orbit-link.svelte'
   import type { Crystal } from '#lib/structure/index'
@@ -1332,6 +1333,7 @@
               ...phonon_props.dos_props,
               show_controls: pane_controls(phonon_props.dos_props?.show_controls),
             }}
+            bz_props={{ ...phonon_props.bz_props, allow_file_drop: false }}
             band_structs={spectra.band_structs ?? {}}
             doses={spectra.doses ?? {}}
             a2f={spectra.a2f}

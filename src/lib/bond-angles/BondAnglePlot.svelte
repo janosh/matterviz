@@ -8,8 +8,7 @@
   } from '#lib/plot/core/structure-input'
   import type { StructureEntry } from '#lib/plot/core/structure-input'
   import type { BarHandlerProps } from '#lib/plot/core/types'
-  import { memo_by_identity } from '#lib/utils'
-  import { to_error, value_key } from 'svelte-widgets/utils'
+  import { memo_by_identity, to_error, value_key } from 'svelte-widgets/utils'
   import {
     bin_bond_angles,
     bond_angle_bin_sites,

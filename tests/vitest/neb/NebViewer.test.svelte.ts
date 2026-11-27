@@ -624,7 +624,7 @@ describe(`NebViewer`, () => {
     expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
     state.show_controls = false
     await tick()
-    expect(button.style.display).toBe(`none`)
+    expect(button.hidden).toBe(true)
     await document.exitFullscreen()
     await tick()
     expect(state.fullscreen).toBe(false)

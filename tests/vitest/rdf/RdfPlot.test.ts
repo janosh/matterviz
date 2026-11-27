@@ -122,7 +122,7 @@ describe(`RdfPlot`, () => {
   ] as const)(`empty state %#`, async (props, message, accepts_drag) => {
     const plot = await mount_sized_rdf_plot(props)
     expect(plot.textContent).toContain(message)
-    plot.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    plot.dispatchEvent(create_drop_event([], { type: `dragenter` }))
     await tick()
     expect(plot.classList.contains(`dragover`)).toBe(accepts_drag)
   })

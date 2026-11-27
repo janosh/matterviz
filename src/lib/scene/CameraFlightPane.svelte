@@ -2,8 +2,8 @@
   import { format_num } from 'svelte-widgets/format'
   import { wait_for_renderer, renderer_registry, scene_registry } from '#lib/io/export'
   import { render_scene } from './lighting'
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte'
+  import ExportDestination from 'svelte-widgets/ExportDestination.svelte'
+  import { FileExportState } from 'svelte-widgets/browser'
   import { display_idx } from '#lib/labels'
   import { ViewerPane, type PaneProps } from '#lib/overlays/index'
   import { clamp, to_error } from 'svelte-widgets/utils'
@@ -392,9 +392,11 @@
                 if (dragged_view !== null) event.preventDefault()
               }}
               ondrop={(event) => {
+                // a file dragged in from outside belongs to the enclosing viewer's drop zone
+                if (dragged_view === null) return
                 event.preventDefault()
                 event.stopPropagation()
-                if (dragged_view !== null) move_view(dragged_view, idx)
+                move_view(dragged_view, idx)
                 dragged_view = null
               }}
               ondragend={() => (dragged_view = null)}

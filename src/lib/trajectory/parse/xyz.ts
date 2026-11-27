@@ -15,7 +15,8 @@ import {
   type Matrix3x3,
   transpose_3x3,
 } from '#lib/math'
-import { parse_leading_num, yield_turn } from '#lib/utils'
+import { parse_leading_num } from '#lib/utils'
+import { yield_turn } from 'svelte-widgets/utils'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared'
 import type { Pbc } from '#lib/structure/pbc'
 import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers'

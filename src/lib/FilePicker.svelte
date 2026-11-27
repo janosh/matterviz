@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { contrast_text_color, css_var_names, resolve_backdrop } from '#lib/colors/index'
-  import { watch_theme_changes } from '#lib/theme/index'
+  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index'
+  import { css_var_names, watch_theme_changes } from 'svelte-widgets/theme-core'
   import FormulaText from '#lib/composition/FormulaText.svelte'
   import type { FileInfo, FileTypePaint } from '#lib/io/index'
   import {
@@ -124,6 +124,8 @@
     }
     event.dataTransfer?.setData(`application/json`, JSON.stringify(payload))
     event.dataTransfer?.setData(`text/plain`, url)
+    // what drop zones (svelte-widgets' file_drop on_urls) read as a link drop
+    event.dataTransfer?.setData(`text/uri-list`, url)
     on_drag_start?.(file, event)
   }
 </script>

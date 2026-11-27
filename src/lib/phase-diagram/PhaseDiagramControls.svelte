@@ -157,7 +157,7 @@
   toggle_title="Phase diagram"
   {...rest}
 >
-  <h4 style="margin: 0 0 8pt 0">{title}</h4>
+  <h4 style="margin: 0 0 2pt">{title}</h4>
 
   {@render children?.({ controls_open })}
 
@@ -395,10 +395,8 @@
     --ctrl-label-w: 8.5em;
     --ctrl-value-w: 5.5em;
   }
-  :global(.phase-diagram-controls-pane h4) {
-    margin: 6pt 0 2pt !important;
-  }
-  :global(.phase-diagram-controls-pane h4:first-of-type) {
-    margin-top: 0 !important;
+  /* section titles: specific enough to beat SettingsSection's own margin without !important */
+  :global(.phase-diagram-controls-pane .settings-section-heading h4) {
+    margin: 0 0 2pt;
   }
 </style>

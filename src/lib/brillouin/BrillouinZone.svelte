@@ -2,7 +2,7 @@
   import { InformationOutline } from 'svelte-widgets/icons'
   import { format_num } from 'svelte-widgets/format'
   import type { MaterialSource } from '#lib/file-viewer/open'
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
@@ -46,7 +46,9 @@
   import { type HighSymmKPath, high_symmetry_kpath, kpath_to_k_path_data } from './kpath'
   import { det_3x3, dot, inverse_3x3, reciprocal_lattice, transpose_3x3 } from '#lib/math'
   import { clamp, to_error } from 'svelte-widgets/utils'
-  import { shortcut_attrs, viewer_keys } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { shortcut_attrs } from 'svelte-widgets/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { reset_scene_cameras } from '#lib/scene/camera-reset'
   import type { SceneControlProps } from '#lib/scene/props.svelte'
   import type {
@@ -512,7 +514,7 @@
           pane_name="Brillouin zone info"
           class_prefix="bz-info"
           closed_icon={InformationOutline}
-          toggle_props={shortcut_attrs(`info_pane`)}
+          toggle_props={shortcut_attrs(SHORTCUTS.info_pane)}
           shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
         >
           <InfoPaneCards cards={info_cards} empty_label="Brillouin zone info" />

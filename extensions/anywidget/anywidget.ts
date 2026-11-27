@@ -20,12 +20,8 @@ import {
   volume_from_json,
   WULFF_DEFAULTS,
 } from 'matterviz'
-import {
-  html_to_svg,
-  is_binary_envelope,
-  series_from_binary,
-  svg_to_string,
-} from 'matterviz/io'
+import { is_binary_envelope, series_from_binary } from 'matterviz/io'
+import { html_to_svg, svg_to_string } from 'svelte-widgets/figure-export'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
 import { type Component, mount, unmount } from 'svelte'

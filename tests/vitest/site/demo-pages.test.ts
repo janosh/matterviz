@@ -245,7 +245,7 @@ test(`a failed symmetry analysis is reported instead of an endless spinner`, asy
 // picks were looked up in structure_map (plain .json only), so CIF/POSCAR clicks did nothing
 test.each([`.cif`, `.poscar`])(`picking a %s fixture loads it into the BZ viewer`, (ext) => {
   mount(BrillouinZonePage, { target: document.body })
-  flushSync() // attach the LazyDemo observers
+  flushSync() // attach the LazyMount observers
   trigger_intersection(doc_query(`[aria-label="Try Your Own Structure"]`), true)
   flushSync()
   const item = find_el<HTMLElement>(`.try-own .file-item`, (el) =>
@@ -302,13 +302,13 @@ test(`the host-tool demo offers no predicted trajectory for a molecule`, () => {
   expect(find_el(`button`, is_show)?.disabled).toBe(true)
 })
 
-// LazyDemo labels name their regions: repeats ("Highlighted Entries" thrice) left screen
+// LazyMount labels name their regions: repeats ("Highlighted Entries" thrice) left screen
 // readers' landmark lists ambiguous. Literal labels are scanned in every route, labels built
 // in loops checked on mounted pages ("brillouin zone" per BZ example, two "Density" tables)
-test(`no route repeats a literal LazyDemo label`, () => {
+test(`no route repeats a literal LazyMount label`, () => {
   for (const file of globSync(`src/routes/**/*.{svelte,md}`)) {
     const labels = [
-      ...readFileSync(file, `utf8`).matchAll(/<LazyDemo\b[^<]*?\slabel="(?<label>[^"{]+)"/g),
+      ...readFileSync(file, `utf8`).matchAll(/<LazyMount\b[^<]*?\slabel="(?<label>[^"{]+)"/g),
     ]
     expect(
       labels.length - new Set(labels.map((match) => match.groups?.label)).size,

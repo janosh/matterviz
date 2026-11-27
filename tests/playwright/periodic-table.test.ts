@@ -36,11 +36,11 @@ test.describe(`Periodic Table`, () => {
 
     const auto_grid = page.locator(`.table-grid`).first()
     const auto_tables = auto_grid.locator(`.periodic-table`)
-    // LazyDemo's "loaded" rule was scoped to its own children, so it never matched a demo's
+    // LazyMount's "loaded" rule was scoped to its own children, so it never matched a demo's
     // root and every loaded demo kept the 500px placeholder height, leaving gaps under short
     // tables. Checked before the width loop below restyles these tables.
     await test.step(`a loaded lazy demo shrinks to its content`, async () => {
-      const demo = auto_grid.locator(`.lazy-demo`).first()
+      const demo = auto_grid.locator(`.lazy-mount`).first()
       // re-scroll until it loads: a scroll before hydration reaches no IntersectionObserver
       await expect(async () => {
         await demo.scrollIntoViewIfNeeded()
@@ -103,7 +103,7 @@ test.describe(`Periodic Table`, () => {
   // span.value used to out-specify the multi-value rules, so long labels (H density
   // 0.0000899) never shrank and spilled past the tile edge
   test(`multi-value labels stay inside their tiles across widths`, async ({ page }) => {
-    // the multi-value demo is a LazyDemo below the default 720px fold, so open it in view
+    // the multi-value demo is a LazyMount below the default 720px fold, so open it in view
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(`/periodic-table`)
     const labels = page.locator(`.multi-value`)

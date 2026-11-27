@@ -74,6 +74,8 @@
     hidden_columns = $bindable(),
     // Show a running row number column.
     show_row_numbers = $bindable(false),
+    // Zebra-stripe rows by index (DataTable's `striped`), which stays right under virtualization
+    striped = true,
     // Inline style for the table root; combined with the heatmap CSS variables.
     style,
     ...rest
@@ -246,6 +248,7 @@
 <DataTable
   {...rest}
   {data}
+  {striped}
   bind:sort
   bind:column_order
   bind:column_prefs

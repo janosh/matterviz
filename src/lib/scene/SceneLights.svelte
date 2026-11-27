@@ -8,7 +8,7 @@
   // none at the nearest point along the view axis to a `depth_cue` fraction at the farthest.
   import type { Vec3 } from '#lib/math'
   import { DEFAULTS } from '#lib/settings'
-  import { watch_theme_changes } from '#lib/theme/index'
+  import { watch_theme_changes } from 'svelte-widgets/theme-core'
   import { T, useTask, useThrelte } from '@threlte/core'
   import {
     create_depth_cue,

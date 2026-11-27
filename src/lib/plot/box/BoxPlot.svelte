@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { sanitize_html } from '#lib/sanitize'
-  import { html_to_text } from 'svelte-widgets/utils'
+  import { get_uuid, html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import { parse_axis_label, format_value_or_num } from '#lib/labels'
@@ -41,7 +41,7 @@
   import { normalize_marginals } from '#lib/plot/core/marginals'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index'
   import { plot_color, resolve_computed_color } from '#lib/colors/index'
-  import { resolve_color_token } from '#lib/colors/backdrop.svelte'
+  import { resolve_color_token } from 'svelte-widgets/theme-core'
   import { build_legend_items } from '#lib/plot/core/data-transform'
   import {
     box_point_offsets,
@@ -84,7 +84,6 @@
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '#lib/plot/core/svg'
   import { resolve_pattern } from '#lib/plot/core/patterns'
-  import { unique_id } from '#lib/plot/core/utils'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
 
   // Box style props
@@ -306,7 +305,7 @@
   // Unlabeled boxes are numbered from 1 alike in slot ticks, legend, aria-labels and export
   const default_box_label = (idx: number): string => `Box ${idx + 1}`
   // Per-series hatch/texture tiles over the box/violin fill (null: plain), ids per instance
-  const pattern_uid = unique_id(`box`)
+  const pattern_uid = `box-${get_uuid()}`
   let series_patterns = $derived(
     series.map((srs, idx) =>
       srs.pattern ? resolve_pattern(srs.pattern, box_color(idx), pattern_uid) : null,

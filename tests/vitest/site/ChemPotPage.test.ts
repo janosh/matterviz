@@ -42,7 +42,7 @@ test.each([`empty`, `failed`])(`chemical potential data load: %s`, async (outcom
   const component = mount(Page, { target: document.body })
   try {
     flushSync()
-    const regions = [...document.querySelectorAll(`.lazy-demo`)]
+    const regions = [...document.querySelectorAll(`.lazy-mount`)]
     // every diagram's region was named "Chemical potential diagram"
     const names = new Set(regions.map((region) => region.getAttribute(`aria-label`)))
     expect(names.size).toBe(regions.length)

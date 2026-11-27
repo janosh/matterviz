@@ -23,7 +23,7 @@
   --error-btn-bg-hover: light-dark(#b91c1c, #991b1b);
   --error-border: 1px solid light-dark(#fca5a5, #dc2626);
   --text-color-muted: light-dark(#6b7280, #9ca3af);
-  /* svelte-widgets names (SubpageGrid reads both) */
+  /* old name still read by matterviz components (svelte-widgets reads only --text-color-muted) */
   --text-muted: var(--text-color-muted);
   --main-max-width: 1100px;
   /* a font list, not bare `monospace`, which browsers size off 13px instead of the parent's size */
@@ -118,6 +118,7 @@
    naturally regardless of layer ordering. */
 :root {
   --theme-transition-duration: 0.3s;
+  --table-stripe-bg: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);
   --max-text-width: 50em;
 
   --sms-max-width: 20em;
@@ -141,9 +142,7 @@
   --menu-option-hover-bg: light-dark(#ececef, #3a3d45);
   --menu-option-selected-color: light-dark(#2563eb, #6ea8ff);
 
-  /* DraggablePane chrome. svelte-widgets sets --pane-bg from --page-bg but does not set
-     color; without a paired ink token, a light pane inherits a host's light --text-color
-     (or an inline VS Code foreground) and becomes unreadable. */
+  /* DraggablePane chrome: its text takes --pane-color, paired with the --pane-bg surface */
   --pane-bg: var(--page-bg);
   --pane-color: var(--text-color);
 
@@ -186,9 +185,6 @@
 .draggable-pane {
   /* own compositing layer, or WKWebView paints the canvas over this */
   will-change: transform;
-  /* Pair ink with the pane surface (see --pane-bg/--pane-color above). */
-  color: var(--pane-color);
-  background: var(--pane-bg);
 }
 .hover-visible:has(.draggable-pane.pane-open) {
   opacity: 1;
@@ -198,9 +194,7 @@
    the viewer would never appear. Keep them shown there; !important beats the hashed
    component selectors that hide them. */
 @media (hover: none) {
-  .hover-visible,
-  .header-controls,
-  .pane-toggle {
+  .hover-visible {
     opacity: 1 !important;
     pointer-events: auto !important;
   }
@@ -222,7 +216,8 @@
     }
   }
 }
-.draggable-pane h4 {
+/* :where() so SettingsSection's own title margin (0) wins whatever order stylesheets load in */
+.draggable-pane :where(h4) {
   margin: var(--pane-h4-margin, 2pt 0);
   font-size: var(--pane-h4-font-size, 0.95em);
 }
@@ -366,32 +361,10 @@
   :where(.settings-section.grid > :is(label, .setting) > input[type='checkbox']) {
   margin: 0;
 }
-/* A label and a lone checkbox don't need a full row: runs of them pack into columns, box first,
-   while every other row still spans the section. A reset button keeps a row packed (no jump on
-   toggle); shown descriptions need the width, so those rows span again. */
-.draggable-pane :where(.settings-section.grid) {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5em), 1fr));
-  column-gap: 8pt;
-  > * {
-    grid-column: 1 / -1;
-  }
-}
-.draggable-pane
-  .settings-section.grid
-  > :is(label, .setting):has(
-    > input[type='checkbox']:nth-child(2),
-    > .ctrl-pair:nth-child(2) > input[type='checkbox']:only-child
-  ):not(:has(> :nth-child(3):not(.setting-reset-button))) {
-  grid-column: auto;
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: flex-end;
-  gap: 5pt;
-}
 /* ColorInput's legend renders above its swatch, costing a row. Floated, it is an ordinary
-   first cell: beside the color, or in the label track in grid sections. Compact style rows
-   keep it on top, where it stacks beside a slider instead of wrapping under it. */
-.draggable-pane :not(.style-row) > fieldset:has(> legend + .controls) {
+   first item beside the color (grid sections put it in their label track themselves). Compact
+   style rows keep it on top, where it stacks beside a slider instead of wrapping under it. */
+.draggable-pane :not(.style-row, .settings-section.grid) > fieldset:has(> legend + .controls) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -401,24 +374,15 @@
     margin: 0;
     padding: 0;
   }
-  /* picker swatch and hex field as tall as the pane's other fields, not 2em of label text */
-  .controls > .swatch {
+}
+/* picker swatch and hex field as tall as the pane's other fields, not 2em of label text */
+.draggable-pane :not(.style-row) > fieldset > .controls {
+  > .swatch {
     width: 1.6em;
     height: 1.6em;
   }
-  input[type='text'] {
+  > input[type='text'] {
     font-size: var(--pane-input-font-size, 0.85em);
-  }
-}
-.draggable-pane .settings-section.grid > fieldset:has(> legend + .controls) {
-  display: grid;
-  grid-template-columns: var(
-    --ctrl-cols,
-    var(--ctrl-label-w, 8.5em) var(--ctrl-value-w, 4em) minmax(0, 1fr)
-  );
-  column-gap: var(--ctrl-gap, 7pt);
-  > :not(legend) {
-    grid-column: 2 / -1;
   }
 }
 /* Opt-in .color-grid sections pack their color pickers into columns where two fit side by
@@ -428,11 +392,6 @@
   > fieldset:has(> legend + .controls) {
     grid-column: auto;
     grid-template-columns: 5.9em minmax(0, 1fr);
-    > legend {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
   }
 }
 .draggable-pane .pane-row {
@@ -846,8 +805,10 @@
     border-block: 1px solid var(--border-color, gray);
     padding: 3pt 12pt;
   }
-  tbody tr:nth-child(odd) {
-    background: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);
+  /* DataTables stripe themselves by row index (HeatmapTable defaults `striped` on), since a
+     virtualized one's spacer rows flip :nth-child parity as it scrolls */
+  :where(:not(.data-table) > tbody) > tr:nth-child(odd) {
+    background: var(--table-stripe-bg);
   }
   :where(ul.selected > li button, button.remove-all) {
     background-color: transparent !important;

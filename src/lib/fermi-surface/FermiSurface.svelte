@@ -48,7 +48,7 @@
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from 'svelte-widgets/utils'
   import { can_create_worker } from 'svelte-widgets/worker-client'
-  import { viewer_keys } from '#lib/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { mark_pin } from '#lib/tooltip/pin.svelte'
   import { reset_scene_cameras } from '#lib/scene/camera-reset'
   import type {

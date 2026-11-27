@@ -740,13 +740,19 @@ describe(`convex hull replacement state`, () => {
     await vi.waitFor(() => expect(wrapper.requestFullscreen).toHaveBeenCalledOnce())
   })
 
+  // dropEffect none on dragover keeps the browser from firing drop (and navigating to the
+  // file); a drop that still arrives came via an enclosing drop zone, which gets to handle it
   test.each([`2d`, `3d`, `4d`] as const)(
-    `disabled %s drops still prevent browser navigation`,
+    `disabled %s hull refuses file drags and leaves drops to enclosing zones`,
     async (dim) => {
       await mount_harness({ dim, allow_file_drop: false })
-      const event = new DragEvent(`drop`, { bubbles: true, cancelable: true })
-      doc_query(`.convex-hull-${dim}`).dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
+      const hull = doc_query(`.convex-hull-${dim}`)
+      const over = create_drop_event([], { type: `dragover` })
+      hull.dispatchEvent(over)
+      expect([over.defaultPrevented, over.dataTransfer?.dropEffect]).toEqual([true, `none`])
+      const drop = create_drop_event([new File([`x`], `x.json`)])
+      hull.dispatchEvent(drop)
+      expect(drop.defaultPrevented).toBe(false)
     },
   )
 

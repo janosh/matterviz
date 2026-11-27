@@ -9,6 +9,7 @@ import TooltipValue from '#lib/tooltip/TooltipValue.svelte'
 import { hover_tooltip } from '#lib/tooltip/hover.svelte'
 import { TooltipPin } from '#lib/tooltip/pin.svelte'
 import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip'
+import { escape_layer } from 'svelte-widgets/attachments'
 import { color as d3_color } from 'd3-color'
 import {
   type Component,
@@ -180,6 +181,43 @@ describe(`PlotTooltip`, () => {
     flushSync()
     expect(doc_query(`.plot-tooltip`).classList.contains(`pinned`)).toBe(false)
   })
+
+  // Shown inside an enclosing surface's Escape layer (a dropdown, a dialog; focus also tests
+  // a `while_focused` one, which re-claims on focusin), the tooltip is the newest layer: the
+  // first Escape hides only it, still reaching the mark prevented; the next reaches the surface
+  test.each([`hover`, `focus`] as const)(
+    `hover_tooltip shown on %s: Escape hides it before an older escape layer`,
+    (shown_on) => {
+      const surface = document.createElement(`div`)
+      const mark = document.createElement(`span`)
+      mark.tabIndex = 0
+      surface.append(mark)
+      document.body.append(surface)
+      onTestFinished(() => surface.remove())
+      const outer_layer = vi.fn(() => true)
+      const while_focused = shown_on === `focus` ? surface : undefined
+      onTestFinished(escape_layer(outer_layer, { while_focused }))
+      const cleanup = $effect.root(() => {
+        $effect(() => hover_tooltip(make_children())(mark))
+      })
+      onTestFinished(cleanup)
+      flushSync()
+      if (shown_on === `hover`) mark.dispatchEvent(new PointerEvent(`pointerenter`))
+      else mark.focus()
+      flushSync()
+      expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+      const mark_keys = vi.fn((event: KeyboardEvent) => event.defaultPrevented)
+      mark.addEventListener(`keydown`, mark_keys)
+      const press = () =>
+        mark.dispatchEvent(keydown(`Escape`, { bubbles: true, cancelable: true }))
+      press()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+      expect(outer_layer).not.toHaveBeenCalled()
+      expect(mark_keys.mock.results).toEqual([{ type: `return`, value: true }])
+      press()
+      expect(outer_layer).toHaveBeenCalledOnce()
+    },
+  )
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
     body_var(`--series-color`, `white`)

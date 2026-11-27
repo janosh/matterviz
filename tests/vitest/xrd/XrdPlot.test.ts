@@ -81,13 +81,13 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
   const component = mount(Page, { target: document.body })
   try {
     flushSync()
-    for (const region of document.querySelectorAll(`.lazy-demo`))
+    for (const region of document.querySelectorAll(`.lazy-mount`))
       trigger_intersection(region, false)
     await tick()
     expect(compute).not.toHaveBeenCalled()
     expect(saed).not.toHaveBeenCalled()
     const show = async (label: string) => {
-      const region = document.querySelector(`.lazy-demo[aria-label="${label}"]`)
+      const region = document.querySelector(`.lazy-mount[aria-label="${label}"]`)
       if (!region) throw new Error(`Missing ${label} demo`)
       trigger_intersection(region, true)
       await tick()
@@ -611,10 +611,10 @@ describe(`XrdPlot`, () => {
 
     const bar_plot = query(target, `.bar-plot`)
     expect(bar_plot.classList.contains(`dragover`)).toBe(false)
-    for (const event_type of [`dragover`, `dragleave`]) {
-      bar_plot.dispatchEvent(new DragEvent(event_type, { bubbles: true, cancelable: true }))
+    for (const type of [`dragenter`, `dragleave`]) {
+      bar_plot.dispatchEvent(create_drop_event([], { type }))
       await tick()
-      expect(bar_plot.classList.contains(`dragover`)).toBe(event_type === `dragover`)
+      expect(bar_plot.classList.contains(`dragover`)).toBe(type === `dragenter`)
     }
   })
 

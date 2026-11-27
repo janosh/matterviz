@@ -28,7 +28,7 @@
   import { Structure } from '#lib/structure/index'
   import { collect_parse_warnings } from '#lib/trajectory/parse/shared'
   import { clamp, to_error } from 'svelte-widgets/utils'
-  import { viewer_keydown } from '#lib/shortcuts'
+  import { viewer_keydown } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import type {

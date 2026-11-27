@@ -3,7 +3,7 @@
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import SettingsSearch from 'svelte-widgets/SettingsSearch.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
-  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { create_clipboard_feedback, FileExportState } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import { SHORTCUTS } from '#lib/shortcuts'
   import { numeric_sites, snapshot_topologies } from './site'
@@ -28,8 +28,7 @@
   import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types'
   import { capitalize } from '#lib/labels'
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte'
+  import ExportDestination from 'svelte-widgets/ExportDestination.svelte'
   import type { Vec3 } from '#lib/math'
   import { to_degrees, to_radians } from '#lib/math'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
@@ -1837,12 +1836,14 @@
   :global(.controls-pane .settings-group > summary) {
     min-height: 1.8em;
     box-sizing: border-box;
-    padding: 2pt;
   }
   :global(.controls-pane h4) {
-    margin: 0 0 2pt !important;
     font-size: 0.95em;
     opacity: 0.75;
+  }
+  /* section titles: specific enough to beat SettingsSection's own margin without !important */
+  :global(.controls-pane .settings-section-heading h4) {
+    margin: 0 0 2pt;
   }
   /* as tall as the 1.8em search trigger, which it leaves room for on the right */
   .pane-toolbar {

@@ -1,6 +1,5 @@
 import type { AnyStructure } from '#lib'
 import { Check, Copy } from 'svelte-widgets/icons'
-import { download } from 'svelte-widgets/browser'
 import app_css from '#lib/app.css?inline'
 import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export'
 import type { CameraFlight } from '#lib/scene/camera-flight'
@@ -16,7 +15,7 @@ import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
 import type { Scene, WebGPURenderer } from 'three/webgpu'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, mock_canvas_context, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 
@@ -26,10 +25,11 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
     props: { export_pane_open: true, ...props },
   })
 
-vi.mock(`svelte-widgets/browser`, async (import_original) => ({
-  ...(await import_original<Record<string, unknown>>()),
-  download: vi.fn(),
-}))
+// Saves reach `download`'s global hook (the one VS Code webviews install), also from inside
+// svelte-widgets' FileExportState, which a module mock of svelte-widgets/browser can't reach
+const download = vi.fn()
+beforeEach(() => vi.stubGlobal(`download`, download))
+afterEach(() => void vi.unstubAllGlobals())
 
 // what each mocked serializer returns
 const mock_contents = vi.hoisted(() => ({

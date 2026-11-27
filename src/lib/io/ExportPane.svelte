@@ -1,8 +1,7 @@
 <script lang="ts">
   import { clamp } from 'svelte-widgets/utils'
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
-  import ExportDestination from './ExportDestination.svelte'
-  import { FileExportState } from './file-export.svelte'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
+  import ExportDestination from 'svelte-widgets/ExportDestination.svelte'
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
   import { ViewerPane } from '#lib/overlays/index'
   import type { ExportItem, ExportSection } from './types'
@@ -12,7 +11,7 @@
   import Popover from 'svelte-widgets/Popover.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Check, Copy, Download } from 'svelte-widgets/icons'
-  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { create_clipboard_feedback, FileExportState } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // mdi:export-variant is not included in svelte-widgets' generated icon set.

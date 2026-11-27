@@ -1,5 +1,5 @@
 // ElectronicStructure: one viewer fusing a crystal, its Fermi surface, bands and DOS, linked
-import type * as backdrop from '#lib/colors/backdrop.svelte'
+import type * as theme_core from 'svelte-widgets/theme-core'
 import { sheet_color } from '#lib/fermi-surface/constants'
 import type FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types'
@@ -139,8 +139,8 @@ vi.mock(`#lib/spectral/Dos.svelte`, (original) =>
 )
 // the nodes CSS colour tokens are resolved on, for three.js (which parses no var())
 const resolved = vi.hoisted(() => [] as { node: Element; value: string }[])
-vi.mock(`#lib/colors/backdrop.svelte`, async (original) => {
-  const actual = await original<typeof backdrop>()
+vi.mock(`svelte-widgets/theme-core`, async (original) => {
+  const actual = await original<typeof theme_core>()
   return {
     ...actual,
     resolve_color_token: (node: Element, value: string) => {

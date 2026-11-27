@@ -20,6 +20,7 @@ import {
 } from '#lib/settings/viewer-state'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility'
 import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility'
+import { extract_prop_docs } from 'svelte-widgets/prop-docs/vite-plugin'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vite-plus/test'
@@ -596,7 +597,11 @@ test(`settings builder groups structure props`, () => {
   expect(props.scene_props).toEqual(DEFAULTS.structure)
   expect(props.scene_props).not.toBe(DEFAULTS.structure) // embedders mutate scene_props
   expect(props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
-  expect(props.show_trajectory_lines).toBe(DEFAULTS.structure.show_trajectory_lines)
+  // Keys outside Structure's $props() (show_trajectory_lines, which belongs in scene_props)
+  // fall into ...rest and land on the wrapper div as HTML attributes
+  const { Structure } = extract_prop_docs([`src/lib/structure/Structure.svelte`])
+  const declared = new Set(Structure.props.map(({ name }) => name))
+  expect(Object.keys(props).filter((key) => !declared.has(key))).toEqual([])
 })
 
 describe(`Structure viewer state serialization`, () => {

@@ -4,7 +4,6 @@
 // the energy as mu and isolates the band's sheet (click again for all). Band lines take their
 // sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands and the 3D
 // k-path. Without a band grid only the k-path link remains. ElectronicStructure hosts it.
-import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte'
 import type { Matrix3x3, Vec2 } from '#lib/math'
 import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types'
 import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte'
@@ -16,7 +15,11 @@ import {
   resolve_spin_mode,
 } from '#lib/spectral/helpers'
 import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types'
-import { watch_theme_changes } from '#lib/theme/index'
+import {
+  css_var_names,
+  resolve_color_token,
+  watch_theme_changes,
+} from 'svelte-widgets/theme-core'
 import { resolve_color_property, sheet_color } from './constants'
 import type { BandGridJson } from './parse'
 import type { BandGridData, ColorProperty, FermiHoverData, SpinChannel } from './types'

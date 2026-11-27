@@ -3,7 +3,8 @@
   import { get_convex_hull_defaults } from '#lib/settings'
   import { untrack } from 'svelte'
   import { normalize_show_controls } from '#lib/controls'
-  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { shortcut_attrs } from 'svelte-widgets/shortcuts'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
@@ -420,7 +421,7 @@
         type="button"
         onclick={() => reset_all(context?.reset_camera)}
         {...dim === 2
-          ? shortcut_attrs(`hull_reset`)
+          ? shortcut_attrs(SHORTCUTS.hull_reset)
           : { title: SHORTCUTS.hull_reset.description }}
       >
         <Icon icon={Reset} />

@@ -22,7 +22,7 @@
     Structure,
   } from 'matterviz'
   import { onMount } from 'svelte'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { to_error } from 'svelte-widgets/utils'
 
   let structure = $state<AnyStructure | undefined>()
@@ -243,7 +243,7 @@
   atoms toward the background.
 </p>
 <div class="render-modes bleed-1400">
-  <LazyDemo label="Caffeine LUMO render modes" height="var(--struct-height)">
+  <LazyMount label="Caffeine LUMO render modes" height="var(--struct-height)">
     {#if gallery_error}
       <p class="demo-error-message" role="alert">
         {gallery_error}
@@ -272,7 +272,7 @@
         }}
       />
     {/if}
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <style>
@@ -282,12 +282,12 @@
   }
   /* Give every row space when the six panes wrap to two or one per row. */
   @container (width < 904px) {
-    .render-modes > :global(.lazy-demo) {
+    .render-modes > :global(.lazy-mount) {
       --struct-height: 780px;
     }
   }
   @container (width < 603px) {
-    .render-modes > :global(.lazy-demo) {
+    .render-modes > :global(.lazy-mount) {
       --struct-height: 1560px;
     }
   }

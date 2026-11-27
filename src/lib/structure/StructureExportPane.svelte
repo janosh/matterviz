@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte'
+  import { FileExportState, type FileExportContext } from 'svelte-widgets/browser'
 
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
   import type { ExportSection } from '#lib/io/index'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { export_canvas_as_png, observe_canvas_presence } from '#lib/io/export'
+  import { export_canvas_as_png } from '#lib/io/export'
+  import { DEFAULT_PNG_DPI, observe_canvas_presence } from 'svelte-widgets/figure-export'
   import { export_scene_as } from '#lib/scene/index'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import type { AnyStructure } from '#lib/structure/index'

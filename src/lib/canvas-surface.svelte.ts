@@ -2,7 +2,7 @@
 // repaint requests into one animation frame. An optional transparent overlay canvas stacked
 // over the base is sized alongside it and repainted on every scheduled frame, so cheap
 // animations (pulsing markers) don't trigger the expensive base repaint.
-import { is_dark_mode, watch_dark_mode } from '#lib/colors/index'
+import { is_dark_mode, watch_dark_mode } from 'svelte-widgets/theme-core'
 import type { CanvasFrame as BaseCanvasFrame } from 'svelte-widgets/canvas'
 import { create_canvas_surface as create_surface } from 'svelte-widgets/canvas'
 

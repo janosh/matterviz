@@ -446,6 +446,19 @@ describe(`BarPlot`, () => {
     expect(label_x + width).toBeLessThanOrEqual(clip_right + 1e-9)
   })
 
+  // plain-http pages have no crypto.randomUUID, which made every plot throw on mount
+  test(`mounts with unique clip and pattern ids without crypto.randomUUID`, async () => {
+    vi.stubGlobal(`crypto`, {})
+    onTestFinished(() => void vi.unstubAllGlobals())
+    const ids: (string | undefined)[] = []
+    for (const _ of [1, 2]) {
+      const plot = await mount_sized_bar_plot({ series: [{ x: [1], y: [5] }] })
+      ids.push(plot.querySelector(`clipPath`)?.id)
+    }
+    expect(ids[0]).toMatch(/^chart-clip-[\da-f-]{36}$/)
+    expect(ids[0]).not.toBe(ids[1])
+  })
+
   test(`rotates vertical bar labels outward`, async () => {
     const plot = await mount_sized_bar_plot({
       series: [{ x: [1], y: [5], labels: [`Material 1`] }],

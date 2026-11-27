@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { ElementSymbol } from '#lib'
   import type { Matrix3x3, Vec3 } from '#lib/math'
   import { compute_lattice_params, scale } from '#lib/math'
@@ -115,15 +115,15 @@
 
 <div class="bleed-1400">
   <h2 id="element-pair-rdfs">Element-Pair RDFs</h2>
-  <LazyDemo label="Element-Pair RDFs">
+  <LazyMount label="Element-Pair RDFs">
     {@render structure_rdf(structures[`Al₂Lu`], `element_pairs`, cutoff, n_bins)}
-  </LazyDemo>
+  </LazyMount>
 
   <div class="demo-pairs">
     <section>
       <h2 id="full-rdf">Full RDF</h2>
       <p>All atom pairs pooled into one g(r), regardless of which elements they join.</p>
-      <LazyDemo label="Full RDF">
+      <LazyMount label="Full RDF">
         <RdfPlot
           structures={structures[`Al₂Lu`]}
           mode="full"
@@ -131,7 +131,7 @@
           {n_bins}
           style="height: 500px"
         />
-      </LazyDemo>
+      </LazyMount>
     </section>
 
     <section>
@@ -141,7 +141,7 @@
         Faber–Ziman weights, so the curve depends on the probe and follows −4πrρ₀ below the
         closest approach.
       </p>
-      <LazyDemo label="Pair Distribution Function G(r)">
+      <LazyMount label="Pair Distribution Function G(r)">
         <PdfPlot
           {structures}
           bind:quantity={pdf_quantity}
@@ -150,7 +150,7 @@
           bind:n_bins={pdf_bins}
           style="height: 500px"
         />
-      </LazyDemo>
+      </LazyMount>
     </section>
   </div>
 
@@ -160,7 +160,7 @@
       >coh</sub
     >, while the Ni–Ni shell stays positive.
   </p>
-  <LazyDemo label="Negative Scattering Length: NiH" class="demo-2col">
+  <LazyMount label="Negative Scattering Length: NiH" class="demo-2col">
     <Structure structure={nickel_hydride} />
     <PdfPlot
       structures={nickel_hydride}
@@ -169,12 +169,12 @@
       show_partials
       style="height: 100%"
     />
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="complex-bi₂zr₂o₈">Complex: Bi₂Zr₂O₈</h2>
-  <LazyDemo label="Complex: Bi₂Zr₂O₈">
+  <LazyMount label="Complex: Bi₂Zr₂O₈">
     {@render structure_rdf(structures[`Bi₂Zr₂O₈`], `element_pairs`, cutoff, n_bins)}
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="compare-structures">Compare Structures</h2>
   <div class="demo-controls">
@@ -208,7 +208,7 @@
     >
   </div>
 
-  <LazyDemo label="Compare Structures">
+  <LazyMount label="Compare Structures">
     <RdfPlot
       structures={Object.fromEntries(selected.map((key) => [key, structures[key]]))}
       {mode}
@@ -216,7 +216,7 @@
       {n_bins}
       style="height: 500px"
     />
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="amorphous-structure">Amorphous Structure</h2>
 
@@ -237,15 +237,15 @@
     >
   </div>
 
-  <LazyDemo label="Amorphous Structure">
+  <LazyMount label="Amorphous Structure">
     {@render structure_rdf(amorphous, amorphous_mode, 10, 100)}
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="try-your-own-structure">Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
-  <LazyDemo label="Try Your Own Structure">
+  <LazyMount label="Try Your Own Structure">
     <RdfPlot mode="element_pairs" allow_file_drop cutoff={7} style="height: 500px" />
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <style>

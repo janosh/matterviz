@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { Crystal } from '#lib'
   import type { FileInfo } from '#lib/io/index'
   import FilePicker from '#lib/FilePicker.svelte'
@@ -10,7 +10,6 @@
   import type { Matrix3x3, Vec3 } from '#lib/math'
   import type { LatticePlane } from '#lib/structure/index'
   import { Structure } from '#lib/structure/index'
-  import { memo_by_identity } from '#lib/utils'
   import type { RadiationKey, SaedSpot, XrdOptions, XrdPattern, XrdPeak } from '#lib/xrd/index'
   import {
     compute_saed_pattern_async,
@@ -25,7 +24,7 @@
   } from '#lib/xrd/index'
   import { SvelteMap } from 'svelte/reactivity'
   import { structure_map, structures } from '#site/structures'
-  import { to_error } from 'svelte-widgets/utils'
+  import { memo_by_identity, to_error } from 'svelte-widgets/utils'
   import { fixture_ext, site_file_info } from '#site/imports'
   import StructurePicker, { formula_for } from '../../StructurePicker.svelte'
   import StructureTiles from '../../StructureTiles.svelte'
@@ -253,7 +252,7 @@
     </small>
   </div>
   <section class="demo-2col">
-    <LazyDemo label="xrd" height="600px">
+    <LazyMount label="xrd" height="600px">
       <XrdPlot
         patterns={computed.pattern
           ? [{ label: `${compute_id} ${formula_for(compute_id)}`, pattern: computed.pattern }]
@@ -265,7 +264,7 @@
         bind:selected_peak
       />
       {#if computed.error}<p>Compute error: {computed.error}</p>{/if}
-    </LazyDemo>
+    </LazyMount>
     {#if computed_struct}
       <Structure
         structure={computed_struct}
@@ -297,7 +296,7 @@
     <label><input type="checkbox" bind:checked={show_neutron} /> Neutron</label>
     <label><input type="checkbox" bind:checked={show_electron} /> Electron</label>
   </div>
-  <LazyDemo label="X-ray vs neutron vs electron" height="420px">
+  <LazyMount label="X-ray vs neutron vs electron" height="420px">
     {#each radiation_overlay.errors as message (message)}
       <p class="error">{message}</p>
     {/each}
@@ -307,7 +306,7 @@
       hkl_format="compact"
       style="height: 420px"
     />
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="electron-diffraction-saed">Electron diffraction (SAED)</h2>
   <p>
@@ -334,7 +333,7 @@
       <button onclick={() => (zone_axis = [...preset])}>[{preset.join(``)}]</button>
     {/each}
   </div>
-  <LazyDemo label="Electron diffraction" height="520px">
+  <LazyMount label="Electron diffraction" height="520px">
     {#if saed.error}
       <p class="error">SAED error: {saed.error}</p>
     {:else if saed.pattern}
@@ -367,11 +366,11 @@
         stand edge-on to the beam for zero-order (ZOLZ) spots; click to pin.
       </p>
     {/if}
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="overlay-multiple-structures">Overlay multiple structures</h2>
   <StructurePicker bind:selected={selected_ids} />
-  <LazyDemo label="Overlay multiple structures" height="400px" class="demo-2col">
+  <LazyMount label="Overlay multiple structures" height="400px" class="demo-2col">
     <XrdPlot
       patterns={selected_patterns}
       annotate_peaks={3}
@@ -389,7 +388,7 @@
         />
       {/snippet}
     </StructureTiles>
-  </LazyDemo>
+  </LazyMount>
 
   <h2 id="xrd-file-drop-demo">XRD File Drop Demo</h2>
   <p>
@@ -409,9 +408,9 @@
       file_type_paints={xrd_file_paints}
       show_category_filters
     />
-    <LazyDemo label="XRD File Drop Demo">
+    <LazyMount label="XRD File Drop Demo">
       <XrdPlot patterns={[]} annotate_peaks={5} hkl_format="compact" style="height: 500px" />
-    </LazyDemo>
+    </LazyMount>
   </section>
 </div>
 

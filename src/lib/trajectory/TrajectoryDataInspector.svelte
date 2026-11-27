@@ -402,17 +402,11 @@ so a closed inspector builds no tables -->
 </DockedSidebar>
 
 <style>
-  /* Smaller text than the page's, so the narrow sidebar fits more of each table. Clearer zebra
-     stripes, layered over the opaque sticky column's background too */
+  /* Smaller text than the page's, so the narrow sidebar fits more of each table, and clearer
+     zebra stripes (HeatmapTable stripes by row index, pinned cells included) */
   :global(.trajectory-data-inspector-sidebar) {
     font-size: 0.85em;
-    --inspector-stripe: color-mix(in srgb, var(--text-color, CanvasText) 7%, transparent);
-    --table-sticky-cell-odd-bg:
-      linear-gradient(var(--inspector-stripe), var(--inspector-stripe)),
-      var(--table-sticky-cell-bg);
-  }
-  :global(.trajectory-data-inspector-sidebar tbody tr:nth-child(odd)) {
-    background: var(--inspector-stripe);
+    --table-stripe-bg: color-mix(in srgb, var(--text-color, CanvasText) 7%, transparent);
   }
   .unit {
     font-size: 0.8em;

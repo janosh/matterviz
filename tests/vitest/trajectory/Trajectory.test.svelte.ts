@@ -1745,7 +1745,7 @@ describe(`events`, () => {
     expect(document.fullscreenElement).toBe(doc_query(`.trajectory`))
     props.show_controls = false
     await tick()
-    expect(doc_query<HTMLButtonElement>(`.fullscreen-button`).style.display).toBe(`none`)
+    expect(doc_query<HTMLButtonElement>(`.fullscreen-button`).hidden).toBe(true)
     await document.exitFullscreen()
     await tick()
     expect(props.fullscreen).toBe(false)

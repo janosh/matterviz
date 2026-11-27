@@ -1,12 +1,5 @@
 import type { TweenOptions } from 'svelte/motion'
 
-// Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Returns a
-// fresh id on every call; callers should store it in a const (e.g. `const id = unique_id('foo')`)
-// so it stays stable across re-renders. Pass a prefix for a readable `prefix-<uuid>`, or omit it
-// when the caller adds its own prefix.
-export const unique_id = (prefix = ``): string =>
-  prefix ? `${prefix}-${crypto.randomUUID()}` : crypto.randomUUID()
-
 // Path-morph (interpolatePath) tweening scales poorly with many simultaneously morphing
 // <path> elements (band structures with 100+ bands) or a single very long line. Disable
 // the morph above these budgets unless the caller explicitly opts into a tween.
@@ -54,14 +47,6 @@ export const attach_canvas =
       canvas.remove()
     }
   }
-
-// Repaints a foreignObject canvas onto another canvas at a given pixel ratio. Charts register
-// one per canvas so SVG/PNG export embeds the marks at export resolution, not as an
-// upscaled screen bitmap.
-export const canvas_painters = new WeakMap<
-  HTMLCanvasElement,
-  (target: HTMLCanvasElement, pixel_ratio: number) => void
->()
 
 // Round fractional CSS sizes/DPR to the nearest physical pixel, keeping tiny canvases valid.
 // Assign dimensions only when changed: writing them resets the bitmap and context state.

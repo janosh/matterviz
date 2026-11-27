@@ -6,7 +6,6 @@ import {
   pick_contrast_color,
 } from 'svelte-widgets/attachments'
 import type { ColorSchemeName } from '#lib/constants'
-import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index'
 import { clamp01 } from '#lib/utils'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
@@ -237,28 +236,6 @@ export const contrast_color_memo = (
     }
     return contrast
   }
-}
-
-// Whether `element` renders in the dark scheme: its computed color-scheme, which every
-// light-dark() token around it resolves against. `normal`/`light dark` mean nothing was
-// declared, so the OS preference decides.
-export function is_dark_mode(
-  element: Element | undefined = globalThis.document?.documentElement,
-): boolean {
-  return element !== undefined && (nearest_declared(element) ?? get_system_mode()) === `dark`
-}
-
-// Call `on_change` whenever the scheme `element` renders in may have changed: a theme class,
-// data-theme or inline color-scheme on it or any ancestor (apply_theme_to_dom on the root, a
-// shadow host's for embedded widgets), or the OS preference. Not on subscribe — callers
-// subscribe inside effects whose callback writes state, and a synchronous first call would
-// re-trigger that effect. Read is_dark_mode(element) for the initial value. Returns the cleanup.
-export function watch_dark_mode(
-  on_change: (dark: boolean) => void,
-  element: Element | undefined = globalThis.document?.documentElement,
-): () => void {
-  if (!element) return () => {} // No-op in SSR
-  return watch_theme_changes(element, () => on_change(is_dark_mode(element)))
 }
 
 // Convert a CSS color string to hex format for use with <input type="color">.

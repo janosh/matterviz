@@ -11,7 +11,7 @@ import type { ElementSymbol } from '#lib/element/index'
 import { open_material } from '#lib/file-viewer/open'
 import { raw_file_drop_zone } from '#lib/io/index'
 import type { AnyStructure } from '#lib/structure/index'
-import { viewer_keys } from '#lib/shortcuts'
+import { viewer_keys } from 'svelte-widgets/attachments'
 import { createAttachmentKey } from 'svelte/attachments'
 import * as draw from './canvas-draw'
 import {

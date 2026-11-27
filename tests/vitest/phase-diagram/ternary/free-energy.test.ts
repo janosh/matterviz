@@ -144,6 +144,21 @@ describe(`build_free_energy_model`, () => {
         mode: `sisso`,
       }).dg_form(900)
     expect(sisso_at_900(undefined)).toBeCloseTo(sisso_at_900(-4.5 - refs), 10)
+    // ...including a synthetic corner (no Co entry) at 0 eV, which used to throw "No E_form"
+    const licoo2_at_900 = (e_form_per_atom?: number) =>
+      phase_energy(
+        [
+          lithium,
+          oxygen_2,
+          make_phase({ Li: 1, Co: 1, O: 2 }, -5, { volume_per_atom: 9, e_form_per_atom }),
+        ],
+        { mode: `sisso` },
+        2,
+      ).dg_form(900)
+    expect(licoo2_at_900(undefined)).toBeCloseTo(
+      licoo2_at_900(-5 - (-1.9 / 4 + -2.45 / 2)),
+      10,
+    )
   })
 
   test(`gas atmosphere shifts the oxygen reference`, () => {

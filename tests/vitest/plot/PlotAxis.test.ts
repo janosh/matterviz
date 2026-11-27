@@ -1,5 +1,5 @@
 import PlotAxis from '#lib/plot/core/components/PlotAxis.svelte'
-import { svg_to_string } from '#lib/io/export'
+import { svg_to_string } from 'svelte-widgets/figure-export'
 import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,

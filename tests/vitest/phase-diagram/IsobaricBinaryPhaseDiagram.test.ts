@@ -967,7 +967,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // allow_file_drop=false ignores the drop and never shows the drop highlight
     const disabled = await mount_diagram({ allow_file_drop: false })
-    disabled.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    disabled.dispatchEvent(create_drop_event([], { type: `dragenter` }))
     expect(disabled.classList.contains(`dragover`)).toBe(false)
     await drop(empty_svg(), disabled)
     await tick()

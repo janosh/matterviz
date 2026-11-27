@@ -1,6 +1,7 @@
 <script lang="ts">
   import { is_plain_object } from 'svelte-widgets/utils'
   import { format_num } from 'svelte-widgets/format'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { is_color, resolve_backdrop } from '#lib/colors/index'
   import type {
@@ -24,7 +25,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index'
   import { TooltipPin } from '#lib/tooltip/pin.svelte'
-  import { viewer_keys } from '#lib/shortcuts'
   import type { HTMLAttributes, SVGAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '#lib/heatmap-matrix/index'
   import type { ScaleContext } from './index'

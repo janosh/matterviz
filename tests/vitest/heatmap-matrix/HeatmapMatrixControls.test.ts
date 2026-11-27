@@ -1,10 +1,9 @@
 import type { ElementAxisOrderingKey } from '#lib/heatmap-matrix/index'
 import * as heatmap from '#lib/heatmap-matrix/index'
-import * as file_io from 'svelte-widgets/browser'
 import { ELEMENT_ORDERINGS, ORDERING_LABELS } from '#lib/heatmap-matrix/index'
 import HeatmapMatrixControls from '#lib/heatmap-matrix/HeatmapMatrixControls.svelte'
 import { mount, tick, type ComponentProps } from 'svelte'
-import { describe, expect, test, vi } from 'vite-plus/test'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   click_export,
@@ -140,7 +139,10 @@ describe(`HeatmapMatrixControls`, () => {
       expect(labels(pane_idx)).toEqual([`Co`])
       expect(labels(1 - pane_idx)).toEqual(unchanged)
     }
-    const download = vi.spyOn(file_io, `download`).mockImplementation(() => {})
+    // download's global hook also catches saves made inside svelte-widgets' FileExportState
+    const download = vi.fn()
+    vi.stubGlobal(`download`, download)
+    onTestFinished(() => void vi.unstubAllGlobals())
     // the demo's on_export saves each file itself; the first heatmap's pane serves its matrix
     for (const format of [`CSV`, `JSON`]) {
       await click_export(format, matrices[0])

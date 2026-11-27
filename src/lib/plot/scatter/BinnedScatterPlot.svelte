@@ -70,7 +70,8 @@
   } from '#lib/plot/core/types'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types'
   import type { Obstacle } from '#lib/plot/core/decorations/index'
-  import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils'
+  import { attach_canvas, prepare_canvas } from '#lib/plot/core/utils'
+  import { canvas_painters } from 'svelte-widgets/figure-export'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import type { ExportProps } from '#lib/io/export'
   import {

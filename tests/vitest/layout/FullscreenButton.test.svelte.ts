@@ -45,15 +45,16 @@ describe(`FullscreenButton`, () => {
     const { state, on_change, button } = mount_button()
     const view_box = () => button.querySelector(`svg`)?.getAttribute(`viewBox`)
     expect(button.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(button.title).toBe(`Enter fullscreen (F)`)
-    expect(button.getAttribute(`aria-keyshortcuts`)).toBe(`F`)
+    // no wrapper, so no key to advertise
+    expect(button.title).toBe(`Enter fullscreen`)
+    expect(button.hasAttribute(`aria-keyshortcuts`)).toBe(false)
     const enter_view_box = view_box()
     button.click()
     flushSync()
     await tick()
     expect(state.fullscreen).toBe(true)
     expect(button.getAttribute(`aria-pressed`)).toBe(`true`)
-    expect(button.title).toBe(`Exit fullscreen (F)`)
+    expect(button.title).toBe(`Exit fullscreen`)
     expect(view_box()).not.toBe(enter_view_box) // the icon swaps to the exit glyph
     button.click()
     flushSync()
@@ -89,7 +90,6 @@ describe(`FullscreenButton`, () => {
     state.hidden = true
     flushSync()
     expect(button.hidden).toBe(true)
-    expect(button.style.display).toBe(`none`)
     wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
     await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
     expect(state.fullscreen).toBe(true)
@@ -129,7 +129,7 @@ describe(`FullscreenButton`, () => {
         await vi.waitFor(() => expect(document.fullscreenElement).toBe(plot))
         state[key] = false
         flushSync()
-        expect(button()?.style.display).toBe(`none`)
+        expect(button()?.hidden).toBe(true)
         await document.exitFullscreen()
         flushSync()
         expect(state.fullscreen).toBe(false)
@@ -165,36 +165,18 @@ describe(`FullscreenButton`, () => {
     expect(exit_fullscreen).not.toHaveBeenCalled()
   })
 
-  // `f` is the one fullscreen shortcut across every viewer, claimed only while the pointer
-  // is over that viewer. Chords stay with the browser, notably Cmd/Ctrl+F for find-in-page.
-  test.each([
-    [`plain f toggles`, { key: `f` }, true],
-    [`Cmd+F stays find-in-page`, { key: `f`, metaKey: true }, false],
-    [`Ctrl+F stays find-in-page`, { key: `f`, ctrlKey: true }, false],
-    [`Alt+F is left alone`, { key: `f`, altKey: true }, false],
-    [`an autorepeat does not re-toggle`, { key: `f`, repeat: true }, false],
-    [`other keys are ignored`, { key: `g` }, false],
-    [`f outside the viewer is ignored`, { key: `f` }, false, false],
-  ])(`%s`, async (_name, init, toggles, hovered = true) => {
+  // `f` (svelte-widgets' hotkey, tested there) is the one fullscreen shortcut of every viewer
+  test(`plain f fullscreens the hovered viewer and flashes its button`, async () => {
     const wrapper = create_wrapper()
     const { state, button } = mount_button(wrapper)
-    if (hovered) wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
-    await fire(globalThis, new KeyboardEvent(`keydown`, init))
-    expect(state.fullscreen).toBe(toggles)
-    expect(button.style.boxShadow.includes(`1px`)).toBe(toggles)
-  })
-
-  // A Structure inside a Trajectory is hovered at the same time as its host, so both would
-  // fullscreen their own root on one press. The inner viewer defers; its button still works.
-  test(`a viewer nested in another leaves f to the outer one`, async () => {
-    const outer = create_wrapper()
-    const inner = create_wrapper(outer)
-    const host = mount_button(outer)
-    const nested = mount_button(inner)
-
-    for (const node of [outer, inner]) node.dispatchEvent(new PointerEvent(`pointerenter`))
+    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
     await fire(globalThis, new KeyboardEvent(`keydown`, { key: `f` }))
-    expect([host.state.fullscreen, nested.state.fullscreen]).toEqual([true, false])
+    expect(state.fullscreen).toBe(true)
+    expect(button.style.boxShadow).toContain(`1px`)
+    expect([button.title, button.getAttribute(`aria-keyshortcuts`)]).toEqual([
+      `Exit fullscreen (F)`,
+      `F`,
+    ])
   })
 })
 

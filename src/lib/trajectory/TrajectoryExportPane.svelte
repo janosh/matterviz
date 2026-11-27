@@ -7,12 +7,9 @@
   import { track_settings } from '#lib/controls'
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index'
   import type { VideoFormat } from '#lib/io/export'
-  import {
-    export_trajectory_video,
-    is_video_export_supported,
-    observe_canvas_presence,
-  } from '#lib/io/export'
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte'
+  import { export_trajectory_video, is_video_export_supported } from '#lib/io/export'
+  import { observe_canvas_presence } from 'svelte-widgets/figure-export'
+  import { FileExportState, type FileExportContext } from 'svelte-widgets/browser'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportItem, ExportSection } from '#lib/io/types'
   import { display_idx, from_display_idx } from '#lib/labels'
@@ -33,8 +30,7 @@
     trajectory_export_basename,
   } from '#lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { abortable } from '#lib/utils'
-  import { clamp, to_error } from 'svelte-widgets/utils'
+  import { abortable, clamp, to_error } from 'svelte-widgets/utils'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'

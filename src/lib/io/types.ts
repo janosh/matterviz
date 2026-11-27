@@ -1,5 +1,5 @@
 import type { TrajectorySource } from '#lib/trajectory/index'
-import type { FileExportContext } from './file-export.svelte'
+import type { FileExportContext } from 'svelte-widgets/browser'
 
 export interface FileInfo {
   name: string

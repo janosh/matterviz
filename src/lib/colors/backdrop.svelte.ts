@@ -1,6 +1,6 @@
 import { is_concrete_color, is_opaque_color } from '#lib/colors/index'
-import { watch_theme_changes } from '#lib/theme/index'
 import { get_bg_color } from 'svelte-widgets/attachments'
+import { resolve_color_token, watch_theme_changes } from 'svelte-widgets/theme-core'
 
 const DEFAULT_BACKDROP_VAR = `--page-bg`
 
@@ -17,13 +17,6 @@ interface ColorOptions {
 }
 
 type CssColorOptions = ColorOptions & { css_var?: string | readonly string[] }
-
-// Custom property names a CSS value reads (`var(--a, var(--b, red))` -> --a, --b), so a color
-// read can watch exactly the inline variables it depends on (see watch_theme_changes)
-export const css_var_names = (value: string): string[] =>
-  [...value.matchAll(/var\(\s*(?<name>--[\w-]+)/g)].flatMap(({ groups }) =>
-    groups?.name ? [groups.name] : [],
-  )
 
 const resolve_live_color = (
   get_node: () => Element | null | undefined,
@@ -57,21 +50,6 @@ const resolve_live_color = (
       return override_color ?? color
     },
   }
-}
-
-// A token defined as a color function (`--page-bg: light-dark(...)`, var(), color-mix()) computes
-// to that literal string, not a color. Resolve it as a probe's `color`: the probe inherits the
-// node's color-scheme, which picks the light-dark() branch. Rejected values stay as they are.
-export const resolve_color_token = (node: Element, value: string): string => {
-  if (!value || is_concrete_color(value)) return value
-  const probe = document.createElement(`span`)
-  probe.style.color = value
-  if (!probe.style.color) return value
-  const host = node instanceof HTMLElement ? node : (node.parentElement ?? document.body)
-  host.append(probe)
-  const color = getComputedStyle(probe).color
-  probe.remove()
-  return color || value
 }
 
 // Live CSS color token on `node`, re-read after theme and ancestor-attribute changes.

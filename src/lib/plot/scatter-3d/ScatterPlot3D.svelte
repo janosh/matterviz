@@ -46,7 +46,7 @@
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
   import { reset_scene_cameras } from '#lib/scene/camera-reset'
-  import { viewer_keys } from '#lib/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { canvas_overlay_png_blob } from '#lib/io/export'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'

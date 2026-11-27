@@ -3,7 +3,6 @@ import type { Crystal } from '#lib/structure/index'
 import app_css from '#lib/app.css?inline'
 import type { Vec3 } from '#lib/math'
 import { parse_poscar, parse_xyz } from '#lib/structure/parse'
-import { download } from 'svelte-widgets/browser'
 import * as io_export from '#lib/io/export'
 import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory'
@@ -24,15 +23,15 @@ import { create_warning_collector } from '#lib/trajectory/parse/shared'
 import { unzipSync } from 'fflate'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
-import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, reset_section, set_input } from '../setup'
 import { max_abs_error } from '../numeric-helpers'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
-vi.mock(`svelte-widgets/browser`, async (import_original) => ({
-  ...(await import_original<Record<string, unknown>>()),
-  download: vi.fn(),
-}))
+// Saves reach `download`'s global hook (the one VS Code webviews install), also from inside
+// svelte-widgets' FileExportState, which a module mock of svelte-widgets/browser can't reach
+const download = vi.fn()
+beforeEach(() => vi.stubGlobal(`download`, download))
 vi.mock(`#lib/io/export`, async (import_original) => ({
   ...(await import_original<typeof io_export>()),
   export_trajectory_video: vi.fn().mockResolvedValue(undefined),

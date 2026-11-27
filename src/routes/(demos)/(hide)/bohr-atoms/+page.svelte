@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { BohrAtom, element_data } from 'matterviz/element'
 
   let orbital_period = $state(2)
@@ -46,9 +46,9 @@
       <strong>
         <a href={name.toLowerCase()}>{number}</a>
       </strong>
-      <LazyDemo label={name} height="auto" style="aspect-ratio: 1">
+      <LazyMount label={name} height="auto" style="aspect-ratio: 1">
         <BohrAtom {shells} {symbol} {name} {orbital_period} --border-radius="1ex" />
-      </LazyDemo>
+      </LazyMount>
     </li>
   {/each}
 </ol>

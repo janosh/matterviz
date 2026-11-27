@@ -260,6 +260,7 @@
     --ctrl-label-w: 10em;
     --ctrl-value-w: 4.2em;
     --settings-row-gap: 0.6em;
+    --settings-pack-min: 100%; /* the lone checkbox row's long label needs the full width */
   }
   .settings-card :global(h4) {
     margin: 0 0 0.8em 0;
@@ -300,6 +301,7 @@
     --ctrl-cols: minmax(0, 1fr) auto 0;
   }
   .category-colors :global(.settings-section > label) {
+    grid-column: auto;
     text-transform: capitalize;
     transition: background-color 0.2s;
   }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { Crystal } from '#lib'
   import { SETTINGS_CONFIG } from '#lib/settings'
   import type { CoordinationSplitMode } from '#lib/coordination/index'
@@ -79,7 +79,7 @@
 
   <section class="demo-2col">
     {#if single_struct}
-      <LazyDemo label="Single Structure">
+      <LazyMount label="Single Structure">
         <CoordinationBarPlot
           structures={single_struct}
           strategy={single_strategy}
@@ -88,7 +88,7 @@
           on_sites_hover={(highlights) =>
             (single_highlight = highlights?.[0]?.site_indices ?? [])}
         />
-      </LazyDemo>
+      </LazyMount>
       <Structure
         structure={single_struct}
         bind:highlighted_sites={single_highlight}
@@ -112,7 +112,7 @@
 
   <StructurePicker bind:selected={selected_ids} />
 
-  <LazyDemo label="Multiple Structures Overlay" height="400px">
+  <LazyMount label="Multiple Structures Overlay" height="400px">
     <section class="multi-structure-layout" style="height: 400px">
       <CoordinationBarPlot
         structures={selected_structures}
@@ -135,7 +135,7 @@
         {/snippet}
       </StructureTiles>
     </section>
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <style>

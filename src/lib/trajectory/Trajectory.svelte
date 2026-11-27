@@ -48,7 +48,8 @@
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
   import { FullscreenButton } from '#lib/layout/index'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation'
-  import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
+  import { shortcut_title } from 'svelte-widgets/shortcuts'
   import { ToolbarMenu } from '#lib/overlays/index'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
@@ -98,7 +99,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { getAbortSignal, tick as flush_updates, untrack } from 'svelte'
-  import { tooltip } from 'svelte-widgets/attachments'
+  import { tooltip, viewer_keydown } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type {
@@ -1793,7 +1794,7 @@
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
               label={shortcut_title(
-                `view_mode`,
+                SHORTCUTS.view_mode,
                 `${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`,
               )}
               class="view-mode-dropdown-wrapper"

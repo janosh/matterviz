@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { sanitize_html } from '#lib/sanitize'
   import CodeBlock from 'svelte-widgets/CodeBlock.svelte'
   import { ScatterPlot } from '#lib'
@@ -534,7 +534,7 @@ const { series: cleaned, quality } = clean_series(series, config)
     {/if}
   </div>
 
-  <LazyDemo label="Single Series Cleaning" height="400px">
+  <LazyMount label="Single Series Cleaning" height="400px">
     <ScatterPlot
       series={plot_series}
       {ref_lines}
@@ -548,7 +548,7 @@ const { series: cleaned, quality } = clean_series(series, config)
         x: {coord_x.toFixed(1)}, y: {Number.isFinite(coord_y) ? coord_y.toFixed(2) : `NaN`}
       {/snippet}
     </ScatterPlot>
-  </LazyDemo>
+  </LazyMount>
 
   <CodeBlock
     code={live_code}
@@ -575,7 +575,7 @@ const { series: cleaned, quality } = clean_series(series, config)
   <div class="multi-series-grid bleed-1400">
     <div>
       <h3 id="raw-data-nan-positions-marked">Raw Data (NaN positions marked)</h3>
-      <LazyDemo label="Raw Data (NaN positions marked)" height="280px">
+      <LazyMount label="Raw Data (NaN positions marked)" height="280px">
         {@const {
           x: time,
           y_arrays: [temperature, pressure],
@@ -591,11 +591,11 @@ const { series: cleaned, quality } = clean_series(series, config)
           y_axis={{ label: `Value` }}
           style="height: 280px"
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
     <div>
       <h3 id="cleaned-series-aligned">Cleaned (series aligned)</h3>
-      <LazyDemo label="Cleaned (series aligned)" height="280px">
+      <LazyMount label="Cleaned (series aligned)" height="280px">
         <ScatterPlot
           series={multi_series_cleaned.cleaned_y.map((y_vals, idx) =>
             line_series(
@@ -609,7 +609,7 @@ const { series: cleaned, quality } = clean_series(series, config)
           y_axis={{ label: `Value` }}
           style="height: 280px"
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
   </div>
 </section>
@@ -629,7 +629,7 @@ const { series: cleaned, quality } = clean_series(series, config)
   <div class="multi-series-grid bleed-1400">
     <div>
       <h3 id="raw-data-nan-positions-marked-1">Raw Data (NaN positions marked)</h3>
-      <LazyDemo label="Raw trajectory (NaN positions marked)" height="300px">
+      <LazyMount label="Raw trajectory (NaN positions marked)" height="300px">
         <ScatterPlot
           series={[
             line_series(finite_points(xyz_data.x, xyz_data.y), `Trajectory`, `#e74c3c`),
@@ -644,18 +644,18 @@ const { series: cleaned, quality } = clean_series(series, config)
           y_axis={{ label: `Y position` }}
           style="height: 300px"
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
     <div>
       <h3 id="cleaned-nan-points-removed">Cleaned (NaN points removed)</h3>
-      <LazyDemo label="Cleaned (NaN points removed)" height="300px">
+      <LazyMount label="Cleaned (NaN points removed)" height="300px">
         <ScatterPlot
           series={[line_series(xyz_cleaned, `Cleaned trajectory`, `#27ae60`)]}
           x_axis={{ label: `X position` }}
           y_axis={{ label: `Y position` }}
           style="height: 300px"
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
   </div>
 </section>

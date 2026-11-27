@@ -247,7 +247,7 @@ test.describe(`Trajectory Component`, () => {
     })
     await empty_trajectory.evaluate((target, url) => {
       const transfer = new DataTransfer()
-      transfer.setData(`application/json`, JSON.stringify({ url }))
+      transfer.setData(`text/uri-list`, url)
       target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
     }, source_url)
 
@@ -1123,6 +1123,19 @@ test.describe(`Trajectory Component`, () => {
       const slider_box = await require_bbox(trajectory_viewer.locator(`.slider-container`))
       const fps_box = await require_bbox(trajectory_viewer.locator(`.fps-section`))
       expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(fps_box.x + 1)
+      // Narrower still, the step section starts a row below the transport buttons rather
+      // than squeezing the slider (SequenceControls' content-sized basis)
+      await trajectory_viewer.evaluate((element) => {
+        element.style.width = `360px`
+      })
+      await expect(async () => {
+        const nav_box = await require_bbox(trajectory_viewer.locator(`.nav-section`))
+        const narrow_slider = await require_bbox(
+          trajectory_viewer.locator(`.slider-container`),
+        )
+        expect(narrow_slider.y).toBeGreaterThanOrEqual(nav_box.y + nav_box.height)
+        expect(narrow_slider.width).toBeGreaterThanOrEqual(100)
+      }).toPass()
     })
 
     test(`viewer surface contrasts the page and hover controls overlay it`, async ({

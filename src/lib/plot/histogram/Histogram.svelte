@@ -1,6 +1,6 @@
 <script lang="ts">
   import { sanitize_html } from '#lib/sanitize'
-  import { clamp, html_to_text } from 'svelte-widgets/utils'
+  import { clamp, get_uuid, html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
   import { csv_source } from '#lib/plot/core/utils/chart-export'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels'
@@ -70,7 +70,6 @@
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg'
   import { resolve_pattern } from '#lib/plot/core/patterns'
-  import { unique_id } from '#lib/plot/core/utils'
 
   let {
     series: series_in = [],
@@ -428,7 +427,7 @@
 
   // Per-series pattern tiles (null: plain fill), derived from the series, not the bins, so
   // rebinning pan/zoom frames don't re-resolve tiles and re-diff the <defs>
-  const pattern_uid = unique_id(`histogram`)
+  const pattern_uid = `histogram-${get_uuid()}`
   let hist_patterns = $derived(
     series.map((series_data, series_idx) =>
       series_data.pattern

@@ -18,7 +18,6 @@ import {
 import { interpolate_energy_at_temperature } from '#lib/convex-hull/helpers'
 import {
   absolute_energy_per_atom,
-  compute_e_form_per_atom,
   entry_has_temp_data,
   find_lowest_energy_unary_refs,
   has_absolute_energy,
@@ -352,10 +351,15 @@ export function build_free_energy_model(
       }
       const volume = get_volume_per_atom(entry) ?? NaN
       const reduced_mass = sisso_reduced_mass(fractions) ?? NaN
-      // unary_refs covers every element (synthetic zero-energy refs were filled in above)
-      const dh_form = entry.e_form_per_atom ?? compute_e_form_per_atom(entry, unary_refs)
-      if (dh_form === null)
-        throw new Error(`No E_form for ${entry.entry_id ?? JSON.stringify(entry.composition)}`)
+      // On the references' absolute scale, where synthetic and E_form-only references sit at
+      // their e_form_per_atom (get_energy_per_atom has no energy for them)
+      const dh_form =
+        entry.e_form_per_atom ??
+        static_energy(entry) -
+          fractions.reduce(
+            (sum, [element, frac]) => sum + frac * static_energy(unary_refs[element]),
+            0,
+          )
       return {
         source,
         t_range: SISSO_T_RANGE,

@@ -2,7 +2,8 @@
 // path, keeping dense scatter plots efficient.
 
 import { type D3SymbolName, symbol_map } from '#lib/labels'
-import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils'
+import { attach_canvas, prepare_canvas } from '#lib/plot/core/utils'
+import { canvas_painters } from 'svelte-widgets/figure-export'
 import { clamp01 } from '#lib/utils'
 import { parse_color } from 'svelte-widgets/attachments'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'

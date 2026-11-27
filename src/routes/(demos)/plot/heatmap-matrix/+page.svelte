@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import type { ChemicalElement, ElementSymbol } from '#lib/element/index'
   import type {
     AxisItem,
@@ -111,7 +111,7 @@
   all ~10k cells are mounted.
 </p>
 
-<LazyDemo
+<LazyMount
   label="Element Pair Electronegativity Difference"
   class="bleed-1400 scroll-container heatmap-controls-anchor"
 >
@@ -137,7 +137,7 @@
     }}
     on_click={(cell: CellContext) => (clicked_cell = cell)}
   />
-</LazyDemo>
+</LazyMount>
 {#if clicked_cell}
   <div class="click-info">
     Clicked: <strong>{clicked_cell.x_item.label}</strong> &ndash;
@@ -171,7 +171,7 @@
       Demonstrates switchable <code>symmetric</code> modes and a custom <code>tooltip</code> snippet.
     </p>
 
-    <LazyDemo label="Symmetric Subset with Custom Tooltip" class="heatmap-controls-anchor">
+    <LazyMount label="Symmetric Subset with Custom Tooltip" class="heatmap-controls-anchor">
       <HeatmapMatrix
         x_items={small_axis}
         y_items={small_axis}
@@ -199,7 +199,7 @@
       {#if dblclick_info}
         <p style="margin-top: 0.5em; font-size: 0.9em">Last double-click: {dblclick_info}</p>
       {/if}
-    </LazyDemo>
+    </LazyMount>
   </section>
 
   <!-- Demo 3: Arbitrary non-element axes -->
@@ -212,7 +212,7 @@
       a custom cell snippet that renders the value inside each tile.
     </p>
 
-    <LazyDemo label="Arbitrary Axis Items">
+    <LazyMount label="Arbitrary Axis Items">
       <HeatmapMatrix
         x_items={property_bins}
         y_items={property_bins}
@@ -229,7 +229,7 @@
           {/if}
         {/snippet}
       </HeatmapMatrix>
-    </LazyDemo>
+    </LazyMount>
   </section>
 </div>
 
@@ -252,7 +252,7 @@
     font-size: 0.85em;
   }
   /* the full 118x118 matrix scrolls sideways instead of widening the page */
-  :global(.lazy-demo.scroll-container) {
+  :global(.lazy-mount.scroll-container) {
     overflow: auto hidden;
     margin-block: 1em;
   }

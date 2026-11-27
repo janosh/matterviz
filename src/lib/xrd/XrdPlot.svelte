@@ -565,16 +565,6 @@
     width: 100%;
     height: 100%;
   }
-  /* Hide controls toggle by default, show on hover */
-  .xrd-plot-container :global(.pane-toggle) {
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-  .xrd-plot-container:hover :global(.pane-toggle),
-  .xrd-plot-container :global(.pane-toggle:focus-visible),
-  .xrd-plot-container :global(.pane-toggle[aria-expanded='true']) {
-    opacity: 1;
-  }
   .toggle {
     display: flex;
     align-items: center;

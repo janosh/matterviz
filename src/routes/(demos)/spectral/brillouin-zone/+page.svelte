@@ -1,7 +1,7 @@
 <script lang="ts">
   import { url_selection } from '#site/state.svelte'
   import { format_num } from 'svelte-widgets/format'
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { BrillouinZone } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import type { Crystal } from '#lib/structure/index'
@@ -72,9 +72,9 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <LazyDemo label="{label}: {description}">
+      <LazyMount label="{label}: {description}">
         <BrillouinZone {structure} {surface_opacity} show_ibz {default_k_path} />
-      </LazyDemo>
+      </LazyMount>
     </div>
   {/each}
 </div>
@@ -92,7 +92,7 @@
     on_click={({ name }) => (picked.value = name)}
     style="max-width: 600px; margin-inline: auto"
   />
-  <LazyDemo label="Try Your Own Structure" height="450px">
+  <LazyMount label="Try Your Own Structure" height="450px">
     <BrillouinZone
       bind:structure={dropped_structure}
       {surface_opacity}
@@ -101,7 +101,7 @@
       allow_file_drop
       style="height: 450px"
     />
-  </LazyDemo>
+  </LazyMount>
 </div>
 
 <h2 id="higher-order-brillouin-zones" style="margin-block: 3em 1em">
@@ -114,7 +114,7 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <LazyDemo label="{label}: {description}">
+      <LazyMount label="{label}: {description}">
         <BrillouinZone
           {structure}
           {surface_opacity}
@@ -123,7 +123,7 @@
           show_controls
           allow_file_drop
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
   {/each}
 </div>

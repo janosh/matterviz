@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import { DEFAULTS } from '#lib/settings'
   import type { AnyStructure, Molecule } from '#lib/structure/index'
   import { Structure } from '#lib/structure/index'
@@ -204,13 +204,13 @@
   not treated as a coordination environment.
 </p>
 
-<LazyDemo label="Molecular polyhedra" height="400px">
+<LazyMount label="Molecular polyhedra" height="400px">
   <Structure
     structure={sf6}
     scene_props={sf6_scene_props}
     style="height: 400px; max-width: 600px; margin-inline: auto"
   />
-</LazyDemo>
+</LazyMount>
 
 <style>
   nav {

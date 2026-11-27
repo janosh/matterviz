@@ -1,23 +1,11 @@
-import { forward_window_keydown } from 'svelte-widgets/attachments'
-import { on } from 'svelte/events'
-import {
-  format_shortcut,
-  is_editable_event_target,
-  is_modifier_chord,
-} from 'svelte-widgets/shortcuts'
+import { shortcut_entries as entries_of, shortcuts_in_scopes } from 'svelte-widgets/shortcuts'
+import type { Shortcut } from 'svelte-widgets/shortcuts'
 import type { ShortcutEntry } from 'svelte-widgets'
 
 // One registry of the keyboard shortcuts viewers handle. Each viewer lists its scopes' entries
 // at the bottom of its info (or settings) pane (ShortcutsList), and buttons with a shortcut take
 // their aria-keyshortcuts and title hint from here, so the list and the hints cannot drift apart.
-
-export type Shortcut = {
-  keys: string // aria-keyshortcuts value: space-separated alternatives of `+`-joined chords
-  label?: string // shown instead of the formatted keys (a key range like 0-9)
-  description: string
-  // viewer: every viewer with a ShortcutsList, camera: 3D viewers, sequence: playback
-  scopes: readonly string[]
-}
+// Scopes: viewer = every viewer with a ShortcutsList, camera = 3D viewers, sequence = playback.
 
 // oxfmt-ignore
 export const SHORTCUTS = {
@@ -71,81 +59,17 @@ export const SHORTCUTS = {
 export type ShortcutId = keyof typeof SHORTCUTS
 export type ShortcutScope = (typeof SHORTCUTS)[ShortcutId]['scopes'][number]
 
-// Human-readable keys of a shortcut: `Home Control+ArrowLeft` -> `Home / Ctrl+←`
-export const format_shortcut_keys = ({ keys, label }: Shortcut): string =>
-  label ??
-  keys
-    .split(` `)
-    .map((chord) => format_shortcut(chord).join(`+`))
-    .join(` / `)
-
 // ShortcutsList rows for a viewer's scopes; `F` only where the host can go fullscreen
 export const shortcut_entries = (
   scopes: readonly ShortcutScope[],
   fullscreen: boolean,
 ): ShortcutEntry[] =>
-  shortcuts_for(scopes)
-    .filter((shortcut) => fullscreen || shortcut !== SHORTCUTS.fullscreen)
-    .map(({ keys, label, description }: Shortcut) => ({
-      keys: keys.split(` `),
-      label: description,
-      keys_label: label,
-    }))
-
-// `Reset camera (R)`: a button's title naming its shortcut
-export const shortcut_title = (id: ShortcutId, label?: string): string => {
-  const shortcut: Shortcut = SHORTCUTS[id]
-  return `${label ?? shortcut.description} (${format_shortcut_keys(shortcut)})`
-}
-
-// aria-keyshortcuts plus title hint, spread onto the button that does what the key does
-export const shortcut_attrs = (id: ShortcutId, label?: string) => ({
-  'aria-keyshortcuts': SHORTCUTS[id].keys,
-  title: shortcut_title(id, label),
-})
+  entries_of(
+    shortcuts_for(scopes).filter(
+      (shortcut) => fullscreen || shortcut !== SHORTCUTS.fullscreen,
+    ),
+  )
 
 // Registry entries of the given scopes, in registry order
-export const shortcuts_for = (scopes: Iterable<ShortcutScope>): Shortcut[] => {
-  const wanted = new Set<string>(scopes)
-  return Object.values(SHORTCUTS).filter((shortcut: Shortcut) =>
-    shortcut.scopes.some((scope) => wanted.has(scope)),
-  )
-}
-
-type KeydownHandler = (event: KeyboardEvent) => boolean
-
-// Keydowns of one viewer, from focus inside it or the page's while the pointer is over it, so
-// only that viewer reacts. `handle` returning true prevents the default and keeps an enclosing
-// viewer from acting on the key (the root runs before the window pass, which then skips the
-// prevented key). `hover_handle` narrows what the pointer alone may trigger.
-export const viewer_keydown =
-  (handle: KeydownHandler, hover_handle: KeydownHandler = handle) =>
-  (node: HTMLElement) => {
-    // `on`, not addEventListener: descendants' delegated onkeydown handlers run first, so
-    // one that handles (prevents) or stops a key keeps it from the viewer
-    const off = on(node, `keydown`, (event) => {
-      if (!event.defaultPrevented && !event.isComposing && handle(event))
-        event.preventDefault()
-    })
-    const detach = forward_window_keydown({ handle: hover_handle })(node)
-    return () => {
-      off()
-      detach?.()
-    }
-  }
-
-// Plain-key shortcuts of one viewer (see viewer_keydown). Chords stay the browser's (Cmd/Ctrl+R
-// reloads), typing and autorepeat are ignored. Keys are matched lowercased for letters (so Caps
-// Lock still works) and by `event.key` otherwise (`Escape`, `+`). Shift+letter is a different
-// shortcut (Shift+V, Shift+A), never the plain letter's. An action returning false had nothing
-// to do, which leaves the key to the host.
-export const viewer_keys = (bindings: () => Partial<Record<string, () => unknown>>) =>
-  viewer_keydown((event) => {
-    if (event.repeat || is_modifier_chord(event) || is_editable_event_target(event.target))
-      return false
-    const { key, shiftKey } = event
-    const letter = key.length === 1 && key.toLowerCase() !== key.toUpperCase()
-    if (letter && shiftKey) return false
-    const action = bindings()[letter ? key.toLowerCase() : key]
-    return action !== undefined && action() !== false
-  })
+export const shortcuts_for = (scopes: Iterable<ShortcutScope>): Shortcut[] =>
+  shortcuts_in_scopes(Object.values(SHORTCUTS), scopes)

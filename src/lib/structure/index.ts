@@ -8,7 +8,8 @@ import type { CameraProjection } from '#lib/settings'
 import type { StructureSettings } from './settings'
 import type { Pbc } from './pbc'
 import { numeric_sites } from './site'
-import { shortcut_title } from '#lib/shortcuts'
+import { SHORTCUTS } from '#lib/shortcuts'
+import { shortcut_title } from 'svelte-widgets/shortcuts'
 
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
@@ -228,7 +229,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 | null {
 
 export * from './vectors'
 
-export const RESET_VIEW_TITLE = `${shortcut_title(`reset_camera`, `Reset view`)} or double-click`
+export const RESET_VIEW_TITLE = `${shortcut_title(SHORTCUTS.reset_camera, `Reset view`)} or double-click`
 
 // Payload of Structure's file, fullscreen and camera callbacks; each emitter fills what it knows
 export interface StructureHandlerData extends FileLoadData {

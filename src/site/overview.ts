@@ -2,6 +2,7 @@
 // layouts, a plain DOS curve) can't tell apart, in the same 24x24 stroke style
 import type { Subpage } from 'svelte-widgets'
 import type { IconData } from 'svelte-widgets/icons'
+import { markup_icon } from 'svelte-widgets/icons/builders'
 
 // One [href, label, icon, description] row per card, so each page's list reads a line per card
 export const to_subpages = (
@@ -9,11 +10,7 @@ export const to_subpages = (
 ): Subpage[] =>
   rows.map(([href, label, icon, description]) => ({ href, label, icon, description }))
 
-const glyph = (markup: string): IconData => ({
-  viewBox: `0 0 24 24`,
-  markup,
-  stroke: `currentColor`,
-})
+const glyph = (markup: string) => markup_icon(markup, { stroke: `currentColor` })
 // two bands across the gap on the left, the DOS on its side to the right sharing their energy axis
 export const BandsDosIcon = glyph(
   `<g fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M2 4q5 8 10 0"/><path d="M2 20q5-8 10 0"/><line x1="15" y1="2" x2="15" y2="22" stroke-width="1" opacity="0.4"/><path d="M15 3q9 4.5 0 9q8 4.5 0 9" fill="currentColor" fill-opacity="0.2"/></g>`,

@@ -14,7 +14,7 @@
     wheel_zoom_surface,
   } from '#lib/scene/index'
   import { Canvas, T } from '@threlte/core'
-  import { dpi_to_scale, paint_png_blob } from '#lib/io/export'
+  import { dpi_to_scale, paint_png_blob } from 'svelte-widgets/figure-export'
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'

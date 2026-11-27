@@ -1,5 +1,5 @@
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import { svg_to_string } from '#lib/io/export'
+import { svg_to_string } from 'svelte-widgets/figure-export'
 import type { Vec2 } from '#lib/math'
 import type {
   AxisConfig,

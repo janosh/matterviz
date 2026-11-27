@@ -2,7 +2,7 @@
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { clamp } from 'svelte-widgets/utils'
   import { create_delayed_flag } from 'svelte-widgets/effects'
-  import { viewer_keys } from '#lib/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/formula-markup'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'

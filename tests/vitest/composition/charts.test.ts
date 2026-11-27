@@ -56,7 +56,7 @@ describe(`shared segment helpers`, () => {
       mark.dispatchEvent(new Event(`pointerleave`))
       flushSync()
       expect(document.querySelector(`.plot-tooltip`)).toBeNull()
-      mark.dispatchEvent(new FocusEvent(`focus`))
+      mark.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
       flushSync()
       expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
       document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))

@@ -3,7 +3,7 @@ import { host } from '#lib/host'
 import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout'
 import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts'
 import type { ShortcutScope } from '#lib/shortcuts'
-import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
+import type { ComponentDoc } from 'svelte-widgets'
 import { is_plain_object } from 'svelte-widgets/utils'
 import { to_worker_error, type WorkerError } from 'svelte-widgets/worker-serve'
 import { readFileSync, statSync } from 'node:fs'
@@ -805,17 +805,19 @@ export const mount_in_test = <Props extends object>(
 // FermiSurface, XrdPlot and the phase diagrams. `dataTransfer` must go on via
 // defineProperty: it is a getter on the DragEvent prototype, so assignment silently no-ops.
 // Empty `items` means "no entry API", i.e. treat the drop as a flat file list. `text_plain`
-// simulates the path payload an OS/IDE drag carries alongside the file itself.
+// simulates the path payload an OS/IDE drag carries alongside the file itself. Pass
+// `type: 'dragenter'` for the hover state.
 export const create_drop_event = (
   files: File | File[],
-  { text_plain = `` }: { text_plain?: string } = {},
+  { text_plain = ``, type = `drop` }: { text_plain?: string; type?: string } = {},
 ): DragEvent => {
-  const drag_event = new DragEvent(`drop`, { bubbles: true })
+  const drag_event = new DragEvent(type, { bubbles: true, cancelable: true })
   Object.defineProperty(drag_event, `dataTransfer`, {
     value: {
+      types: [`Files`],
       files: Array.isArray(files) ? files : [files],
       items: [],
-      getData: (type: string) => (type === `text/plain` ? text_plain : ``),
+      getData: (format: string) => (format === `text/plain` ? text_plain : ``),
     },
   })
   return drag_event

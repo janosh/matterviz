@@ -3,10 +3,10 @@ import { is_concrete_color, perceived_brightness } from '#lib/colors/index'
 import type { ThemeType } from '#lib/theme/index'
 import {
   declared_color_scheme,
-  get_system_mode,
   nearest_declared,
+  system_scheme,
   watch_theme_changes,
-} from '#lib/theme/index'
+} from 'svelte-widgets/theme-core'
 
 declare global {
   var jupyterlab:
@@ -56,7 +56,7 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
 
   // Nothing declared: the OS preference. A page that merely styles its body dark has not
   // stated a theme, so its colours are not sniffed.
-  return get_system_mode()
+  return system_scheme()
 }
 
 // Report the widget's host theme now and whenever it changes — the theme attributes of <html>,

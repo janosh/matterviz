@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { clamp } from 'svelte-widgets/utils'
+  import { clamp, get_uuid } from 'svelte-widgets/utils'
   import { plot_color } from '#lib/colors/index'
   import { sanitize_html } from '#lib/sanitize'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index'
@@ -79,7 +79,6 @@
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg'
   import { resolve_pattern } from '#lib/plot/core/patterns'
-  import { unique_id } from '#lib/plot/core/utils'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import {
     bar_width_at,
@@ -349,7 +348,7 @@
 
   // Per-series hatch/texture tiles resolved against the bar color (null: plain fill); ids
   // are scoped to this instance so several bar plots on a page never share <pattern>s
-  const pattern_uid = unique_id(`bar`)
+  const pattern_uid = `bar-${get_uuid()}`
   let series_patterns = $derived(
     internal_series.map((srs) =>
       srs.pattern && srs.render_mode !== `line`

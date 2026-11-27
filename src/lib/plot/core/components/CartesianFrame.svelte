@@ -27,7 +27,7 @@
   import { html_to_text } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
-  import { viewer_keys } from '#lib/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
 
   // Public CSS knobs every Cartesian chart exposes (`--histogram-bg`, `--barplot-bg`, …),
   // mapped onto the frame's own variables so this stylesheet isn't duplicated per chart

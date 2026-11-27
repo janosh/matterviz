@@ -259,7 +259,9 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   test(`a failed SVG drop shows an error banner left of the corner buttons`, async ({
     page,
   }) => {
-    const { diagram } = get_diagram_elements(page)
+    // a diagram outside the page's drop zone, which owns drops onto the one inside it
+    const diagram = page.locator(`div.binary-phase-diagram`).nth(1)
+    await diagram.scrollIntoViewIfNeeded()
     await drop_file(page, diagram, `<svg><unclosed`, `bad.svg`, `image/svg+xml`)
     // the card, not its alert live region, which StatusMessage renders without a box
     const banner = diagram.locator(`[role="alert"] .status-message`)

@@ -1,36 +1,7 @@
-import { is_plain_object, to_error, value_key } from 'svelte-widgets/utils'
+import { is_plain_object } from 'svelte-widgets/utils'
 
 // A finite number (not NaN or ±Infinity), narrowing an unknown value's type
 export const is_finite_number = (value: unknown): value is number => Number.isFinite(value)
-
-// Deep copy of the arrays and plain objects in `value`, the only things Svelte proxies (typed
-// arrays, maps and class instances are kept as they are). $state.snapshot does the same but
-// passes every number through structuredClone, which tripled the copy of 100k sites.
-export const plain_copy = <Value>(value: Value): Value => {
-  if (typeof value !== `object` || value === null) return value
-  if (Array.isArray(value)) {
-    const copy: unknown[] = Array(value.length)
-    for (let idx = 0; idx < value.length; idx++) copy[idx] = plain_copy(value[idx])
-    return copy as Value
-  }
-  if (!is_plain_object(value)) return value
-  const copy: Record<string, unknown> = {}
-  // Not Object.keys: it runs a proxy's getOwnPropertyDescriptor trap per key (~11% slower)
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== `string`) continue
-    const nested = plain_copy(Reflect.get(value, key))
-    // assigning `__proto__` (an own key after JSON.parse) would set the copy's prototype
-    if (key === `__proto__`)
-      Object.defineProperty(copy, key, {
-        value: nested,
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      })
-    else copy[key] = nested
-  }
-  return copy as Value
-}
 
 // JSON value kinds for input validation: each kind's test and the phrase its errors use
 export const JSON_KINDS = {
@@ -42,16 +13,6 @@ export const JSON_KINDS = {
 } as const satisfies Record<string, readonly [(value: unknown) => boolean, string]>
 
 // Clamp a number to the [0, 1] range.
-// 32-bit FNV-1a hash
-export function hash_string(text: string): number {
-  let hash = 0x811c9dc5
-  for (let idx = 0; idx < text.length; idx++) {
-    hash ^= text.charCodeAt(idx)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return hash >>> 0
-}
-
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
 
 // Calls `report` once with each whole percent (at most `cap`) a growing 0-1 fraction reaches
@@ -62,8 +23,6 @@ export const whole_percent_reporter = (report: (percent: number) => void, cap = 
     if (percent > last) report((last = percent))
   }
 }
-
-// Tag-stripping, entity-decoding plain text of HTML (SSR-safe), shared with svelte-widgets
 
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
 export const normalize_unicode_minus = (value: string): string => value.replaceAll(`−`, `-`)
@@ -81,57 +40,6 @@ export const parse_num_token = (token: string): number =>
 export const parse_leading_num = (line: string): number =>
   parse_num_token(line.trim().split(/\s+/)[0])
 
-// Release the caller even when a frame reader or consumer ignores cancellation.
-export async function abortable<Value>(
-  task: () => Value | Promise<Value>,
-  signal: AbortSignal,
-): Promise<Value> {
-  signal.throwIfAborted()
-  const stopped = Promise.withResolvers<never>()
-  const abort = () => stopped.reject(to_error(signal.reason))
-  signal.addEventListener(`abort`, abort, { once: true })
-  try {
-    return await Promise.race([Promise.resolve().then(task), stopped.promise])
-  } finally {
-    signal.removeEventListener(`abort`, abort)
-  }
-}
-
-// Keeps returning the first of a run of value-equal arguments (by value_key), so a caller that
-// rebuilds an equal options object on every read hands its consumers one identity
-export function same_while_equal<T>(): (value: T) => T {
-  let last: { key: string; value: T } | undefined
-  return (value) => {
-    const key = value_key(value)
-    if (last?.key !== key) last = { key, value }
-    return last.value
-  }
-}
-
-// Memo of a computation per input object and options key: the latest result is kept with
-// the object (a WeakMap, so it goes when the object does) and reused while `key` repeats, so
-// a list analysed entry by entry recomputes only its new members. By identity: an object
-// edited in place keeps its stale result, pass a new one. A rejected promise is not kept.
-export function memo_by_identity<Result>(): (
-  target: object,
-  key: string,
-  compute: () => Result,
-) => Result {
-  const cache = new WeakMap<object, { key: string; result: Result }>()
-  return (target, key, compute) => {
-    const cached = cache.get(target)
-    if (cached?.key === key) return cached.result
-    const result = compute()
-    cache.set(target, { key, result })
-    if (result instanceof Promise) {
-      result.catch(() => {
-        if (cache.get(target)?.result === result) cache.delete(target)
-      })
-    }
-    return result
-  }
-}
-
 // Append `item`, or drop every copy of it when already present; keeps insertion order
 export const toggle_item = <T>(items: readonly T[], item: T): T[] =>
   items.includes(item) ? items.filter((entry) => entry !== item) : [...items, item]
@@ -144,19 +52,6 @@ export const first_duplicate = <Item>(
   const seen = new Set()
   return items.find((item) => seen.size === seen.add(key_of(item)).size)
 }
-
-// Yield one event-loop turn via a message task: setTimeout(0) is clamped to 4 ms once timers
-// nest, which in a long chunked scan leaves the main thread idle for much of its budget.
-export const yield_turn = (): Promise<void> =>
-  new Promise((resolve) => {
-    const { port1, port2 } = new MessageChannel()
-    port1.addEventListener(`message`, () => {
-      port1.close() // closing one end closes the channel
-      resolve()
-    })
-    port1.start() // addEventListener (unlike onmessage) does not start the port
-    port2.postMessage(null)
-  })
 
 // Plain loop, not Uint8Array.from(str, cb): the callback form walks the iterator protocol and
 // measured 1058 ms against 35 ms on a 30 MB payload (every VS Code payload arrives base64)

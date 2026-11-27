@@ -571,7 +571,9 @@ describe(`BondAnglePlot`, () => {
     )
     await tick()
     expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
-    expect(container?.querySelector(`svg`)).toBeNull()
+    // no plot: the only svg left is StatusMessage's dismiss icon
+    const svgs = [...(container?.querySelectorAll(`svg`) ?? [])]
+    expect(svgs.filter((svg) => !svg.closest(`button`))).toEqual([])
   })
 
   // neighbor_query throws on a non-finite position; an unguarded compute derived would take

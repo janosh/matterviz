@@ -11,7 +11,7 @@
   } from '#lib/plot/core/structure-input'
   import type { StructureEntry } from '#lib/plot/core/structure-input'
   import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types'
-  import { memo_by_identity } from '#lib/utils'
+  import { memo_by_identity } from 'svelte-widgets/utils'
   import { compute_coordination_nums, coordination_bar_sites } from './compute-coordination'
   import type { CoordinationSplitMode } from './index'
 

@@ -2,7 +2,7 @@
   import { create_flash } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import { add_alpha } from '#lib/colors/index'
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -26,8 +26,8 @@
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import type { LegendConfig, LegendItem } from '#lib/plot/core/types'
   import { error_bar_path } from '#lib/plot/core/error-bars'
-  import { unique_id } from '#lib/plot/core/utils'
-  import { viewer_keys } from '#lib/shortcuts'
+  import { get_uuid } from 'svelte-widgets/utils'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { TooltipPin } from '#lib/tooltip/pin.svelte'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
@@ -274,7 +274,7 @@
   // Instance-unique prefix for gradient ids, so two diagrams on one page never
   // cross-reference each other's gradients (first-in-document wins, with that instance's
   // pixel coords)
-  const gradient_uid = unique_id(`pd-gradient`)
+  const gradient_uid = `pd-gradient-${get_uuid()}`
   const plot_clip = `url(#${gradient_uid}-plot-area)`
 
   // Editor edits and dropped files override the data prop until it changes, which also

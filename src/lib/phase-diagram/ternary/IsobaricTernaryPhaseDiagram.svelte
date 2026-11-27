@@ -5,9 +5,10 @@
   // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
   // pin (its assemblage follows T), click the pin again or press Escape to drop it.
   import { format_num } from 'svelte-widgets/format'
-  import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index'
+  import { resolve_css_color } from '#lib/colors/index'
+  import { is_dark_mode, watch_dark_mode } from 'svelte-widgets/theme-core'
   import { get_electro_neg_formula } from '#lib/composition/index'
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -30,7 +31,6 @@
   import type { Vec2 } from '#lib/math'
   import { PlotTooltip } from '#lib/plot/index'
   import { sanitize_html } from '#lib/sanitize'
-  import { viewer_keydown } from '#lib/shortcuts'
   import {
     create_renderer,
     key_walk_root,
@@ -44,7 +44,7 @@
   import type { TooltipProp } from '#lib/tooltip/index'
   import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
+  import { tooltip as attach_tooltip, viewer_keydown } from 'svelte-widgets/attachments'
   import PhaseDiagramExportPane from '../PhaseDiagramExportPane.svelte'
   import { compute_ternary_phase_diagram_async } from './async-compute.svelte'
   import {

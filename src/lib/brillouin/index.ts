@@ -17,6 +17,7 @@ export type BrillouinZoneOptions = Pick<
   ComponentProps<typeof BrillouinZone>,
   | 'class'
   | 'style'
+  | 'allow_file_drop'
   | 'bz_order'
   | 'controls_open'
   | 'info_pane_open'

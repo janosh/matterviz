@@ -1,18 +1,17 @@
 <script lang="ts">
   import type { VirtualScroll } from 'svelte-widgets/table'
   import { with_defaults } from 'svelte-widgets/utils'
-  import { FileExportState } from '#lib/io/file-export.svelte'
+  import { FileExportState } from 'svelte-widgets/browser'
+  import { DEFAULT_PNG_DPI, html_to_svg } from 'svelte-widgets/figure-export'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import {
-    html_to_svg,
     json_source,
     run_export,
     svg_sources,
     type ExportProps,
     type ExportSources,
   } from '#lib/io/export'
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
   import { normalize_show_controls } from '#lib/controls'
 
   import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index'

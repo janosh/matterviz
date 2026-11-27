@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
   import type { AnyStructure, StructureSettings } from '#lib/structure/index'
@@ -187,7 +187,7 @@
     {#each layout_examples as { id, title, layout, height, style }, idx (id)}
       <div class="example-section">
         <h3 {id}>{title}</h3>
-        <LazyDemo label={title} {height} class={layout}>
+        <LazyMount label={title} {height} class={layout}>
           <SymmetryStats
             sym_data={layout_viewers[idx]?.analysis.sym_data ?? null}
             bind:settings={layout_sym_settings[idx]}
@@ -200,7 +200,7 @@
             bind:symmetry_settings={layout_sym_settings[idx]}
             {style}
           />
-        </LazyDemo>
+        </LazyMount>
       </div>
     {/each}
   {:else}

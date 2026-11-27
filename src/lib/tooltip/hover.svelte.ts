@@ -2,6 +2,7 @@ import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
 import { mount, unmount, untrack, type Snippet } from 'svelte'
 import type { Attachment } from 'svelte/attachments'
 import { on } from 'svelte/events'
+import { escape_layer } from 'svelte-widgets/attachments'
 import { TooltipPin } from './pin.svelte'
 
 // One pinned hover_tooltip on the page: these marks belong to no viewer with its own pin
@@ -44,14 +45,17 @@ export const hover_tooltip =
       host.style.colorScheme = getComputedStyle(node).colorScheme
       document.body.append(host)
       const component = mount(PlotTooltip, { target: host, props })
-      const off_key = on(document, `keydown`, (event) => {
-        if (event.key !== `Escape`) return
-        event.preventDefault() // spent on this tooltip, so an enclosing popup stays open
+      // The newest Escape layer, so an enclosing dropdown or pane waits for the next press.
+      // Not `consume`: a focused input elsewhere still gets the key (prevented, so a popup or
+      // native <dialog> stays open).
+      const off_key = escape_layer((event) => {
+        event.preventDefault()
         // stays hidden until the next enter or focus, pinned or not
         hovered = false
         focused = false
         pin.unpin()
         hide()
+        return true
       })
       // while pinned, a press outside the mark and its tooltip unpins
       const off_press = on(document, `pointerdown`, ({ target }) => {
@@ -91,13 +95,15 @@ export const hover_tooltip =
         hovered = false
         sync()
       }),
-      on(node, `focus`, () => {
+      // focusin, not focus: it fires after an enclosing escape_layer's while_focused claim,
+      // so the tooltip's layer lands above it
+      on(node, `focusin`, () => {
         focused = true
         const bounds = node.getBoundingClientRect()
         set_anchor(bounds.right, bounds.top)
         sync()
       }),
-      on(node, `blur`, () => {
+      on(node, `focusout`, () => {
         focused = false
         sync()
       }),

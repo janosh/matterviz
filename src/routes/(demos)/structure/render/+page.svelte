@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
   import { open_material, type MaterialSource } from '#lib/file-viewer/open'
   import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types'
-  import { canvas_to_png_blob, set_png_dpi } from '#lib/io/export'
+  import { canvas_to_png_blob } from '#lib/io/export'
+  import { DEFAULT_PNG_DPI, set_png_dpi } from 'svelte-widgets/figure-export'
   import {
     apply_structure_material,
     Structure,

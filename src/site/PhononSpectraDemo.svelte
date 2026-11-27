@@ -25,7 +25,7 @@
 
   // Fetch only the picked material's fixtures (one per method). The last loaded material
   // stays on screen until the next one arrives, and nothing renders before the first, so the
-  // LazyDemo wrapper keeps its height while this demo's data loads.
+  // LazyMount wrapper keeps its height while this demo's data loads.
   type Shown = {
     band_structs: Record<string, PhononBandStructure>
     doses: Record<string, PhononDos>

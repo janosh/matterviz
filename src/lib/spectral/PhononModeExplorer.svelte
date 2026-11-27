@@ -1,7 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
-  import { same_while_equal } from '#lib/utils'
+  import { clamp, html_to_text, same_while_equal, to_error } from 'svelte-widgets/utils'
   import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -23,9 +22,13 @@
     type ResolvedPolyhedraOptions,
   } from '#lib/structure/polyhedra'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import {
+    is_editable_event_target,
+    is_modifier_chord,
+    shortcut_attrs,
+  } from 'svelte-widgets/shortcuts'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { shortcut_attrs } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
   import type { ComponentProps } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
   import { on } from 'svelte/events'
@@ -524,7 +527,7 @@ under its open panes -->
     type="button"
     class="step-mode"
     aria-label={label}
-    {...shortcut_attrs(`phonon_mode`, `${label} with an eigenvector`)}
+    {...shortcut_attrs(SHORTCUTS.phonon_mode, `${label} with an eigenvector`)}
     disabled={!selection ||
       animatable_mode_indices.at(direction === 1 ? -1 : 0) === selection.mode_idx}
     onclick={() => step_mode(direction)}>{direction === 1 ? `›` : `‹`}</button
@@ -540,7 +543,7 @@ under its open panes -->
           >q-point
           <select
             aria-label="q-point"
-            {...shortcut_attrs(`phonon_qpoint`, `q-point`)}
+            {...shortcut_attrs(SHORTCUTS.phonon_qpoint, `q-point`)}
             value={selection?.qpoint_idx ?? 0}
             onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
           >

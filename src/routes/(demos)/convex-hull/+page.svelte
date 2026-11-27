@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
   import { url_selection } from '#site/state.svelte'
   import { sanitize_html } from '#lib/sanitize'
@@ -354,13 +354,13 @@
 
   <section class="demo-section">
     <h2 id="ternary-chemical-systems">Ternary Chemical Systems</h2>
-    <LazyDemo label="Ternary Chemical Systems">
+    <LazyMount label="Ternary Chemical Systems">
       <div class="hull-grid">
         {#each ternary_examples as { title, entries } (title)}
           <ConvexHull {entries} controls={{ title }} />
         {/each}
       </div>
-    </LazyDemo>
+    </LazyMount>
   </section>
 
   <section class="demo-section">
@@ -369,9 +369,9 @@
     <div class="hull-grid quaternary-grid">
       {#each Object.entries(quaternary_files) as [path, loader] (path)}
         {@const title = hull_system_name(path)}
-        <LazyDemo label={title}>
+        <LazyMount label={title}>
           {#await loader()}
-            <p role="status">Loading {title}…</p>
+            <p role="status" data-lazy-placeholder>Loading {title}…</p>
           {:then { default: entries }}
             <ConvexHull
               entries={entries_map.get(path) ?? entries}
@@ -381,7 +381,7 @@
           {:catch error}
             <p role="alert">Failed to load {title}: {String(error)}</p>
           {/await}
-        </LazyDemo>
+        </LazyMount>
       {/each}
     </div>
   </section>
@@ -391,9 +391,9 @@
     <div class="hull-grid binary-grid">
       {#each binary_examples as { title, entries } (title)}
         {#if entries.length}
-          <LazyDemo label={title}>
+          <LazyMount label={title}>
             <ConvexHull {entries} controls={{ title }} style="height: 500px" />
-          </LazyDemo>
+          </LazyMount>
         {/if}
       {/each}
     </div>
@@ -407,7 +407,7 @@
       phases; the built-in info pane follows the plot’s visibility threshold.
     </p>
     {@render feature_list(stats_features)}
-    <LazyDemo label="Statistics Panel">
+    <LazyMount label="Statistics Panel">
       <div class="hull-grid" style="--cols: 2fr 1fr; align-items: start">
         <ConvexHull
           entries={na_fe_o_entries}
@@ -428,11 +428,11 @@
           />
         {/if}
       </div>
-    </LazyDemo>
+    </LazyMount>
 
     <h3 id="side-by-side-layout">Side-by-Side Layout</h3>
     {@render feature_list(side_by_side_features)}
-    <LazyDemo label="Side-by-Side Layout">
+    <LazyMount label="Side-by-Side Layout">
       <div class="hull-grid" style="--cols: minmax(0, 1fr) minmax(0, 2fr); align-items: start">
         <ConvexHull
           entries={li_co_ni_o_data}
@@ -450,14 +450,14 @@
           />
         {/if}
       </div>
-    </LazyDemo>
+    </LazyMount>
   </section>
 
   <section class="demo-section">
     <h2 id="highlighted-entries">Highlighted Entries</h2>
     {@render feature_list(highlighted_features)}
     <div class="hull-grid three-col highlight-grid">
-      <LazyDemo label="Fe-O highlighted entries">
+      <LazyMount label="Fe-O highlighted entries">
         <ConvexHull
           entries={binary_examples[1]?.entries ?? []}
           controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
@@ -469,8 +469,8 @@
             pulse_speed: 4,
           }}
         />
-      </LazyDemo>
-      <LazyDemo label="Na-Fe-O highlighted entries">
+      </LazyMount>
+      <LazyMount label="Na-Fe-O highlighted entries">
         <ConvexHull
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
@@ -482,15 +482,15 @@
             pulse_speed: 3,
           }}
         />
-      </LazyDemo>
-      <LazyDemo label="Li-Co-Ni-O highlighted entries">
+      </LazyMount>
+      <LazyMount label="Li-Co-Ni-O highlighted entries">
         <ConvexHull
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
           highlighted_entries={highlighted_li_co_ni_o}
           highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
         />
-      </LazyDemo>
+      </LazyMount>
     </div>
   </section>
 
@@ -501,7 +501,7 @@
       Synthetic orderings are assigned by entry-ID hash. Missing pure-element references are
       added with E<sub>form</sub> = 0 eV/atom.
     </p>
-    <LazyDemo label="Magnetic States & Custom Categories">
+    <LazyMount label="Magnetic States & Custom Categories">
       <div class="hull-grid">
         <div>
           <div class="marker-legend">
@@ -524,7 +524,7 @@
           />
         </div>
       </div>
-    </LazyDemo>
+    </LazyMount>
   </section>
 
   <section class="demo-section">
@@ -532,9 +532,9 @@
     {@render feature_list(temp_features)}
     <div class="hull-grid three-col temp-grid">
       {#each temp_demos as [system, entries, style] (system)}
-        <LazyDemo label="{system} with G(T)">
+        <LazyMount label="{system} with G(T)">
           <ConvexHull {entries} controls={{ title: `${system} with G(T)` }} {style} />
-        </LazyDemo>
+        </LazyMount>
       {/each}
     </div>
   </section>
@@ -552,7 +552,7 @@
     </div>
     <div class="hull-grid gas-grid">
       {#each gas_demos as [system, entries, style] (system)}
-        <LazyDemo label="{system} gas atmosphere">
+        <LazyMount label="{system} gas atmosphere">
           <ConvexHull
             {entries}
             controls={{ title: `${system} with ${selected_demo_gas} Pressure` }}
@@ -560,7 +560,7 @@
             bind:gas_pressures={gas_demo_pressures}
             {style}
           />
-        </LazyDemo>
+        </LazyMount>
       {/each}
     </div>
   </section>
@@ -573,9 +573,9 @@
       class="quinary-stats-controls"
       style="margin-bottom: 1em"
     />
-    <LazyDemo label="Quinary statistics">
+    <LazyMount label="Quinary statistics">
       {#await quinary_files[selected_quinary_path.value]()}
-        <p role="status">Loading quinary data…</p>
+        <p role="status" data-lazy-placeholder>Loading quinary data…</p>
       {:then { default: entries }}
         {@const quinary_model = process_hull_for_stats(entries)}
         {#if quinary_model}
@@ -588,7 +588,7 @@
       {:catch error}
         <p role="alert">Failed to load {selected_quinary_path.value}: {String(error)}</p>
       {/await}
-    </LazyDemo>
+    </LazyMount>
   </section>
 </div>
 

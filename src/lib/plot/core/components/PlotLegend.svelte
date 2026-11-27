@@ -14,9 +14,8 @@
   } from '#lib/plot/core/decorations/tracks'
   import type { FillPattern } from '#lib/plot/core/patterns'
   import { resolve_pattern } from '#lib/plot/core/patterns'
-  import { unique_id } from '#lib/plot/core/utils'
   import { sanitize_html } from '#lib/sanitize'
-  import { html_to_text } from 'svelte-widgets/utils'
+  import { get_uuid, html_to_text } from 'svelte-widgets/utils'
   import {
     symbol as d3_symbol,
     symbolAsterisk,
@@ -29,7 +28,7 @@
   import { SvelteSet } from 'svelte/reactivity'
 
   // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
-  const instance_id = unique_id()
+  const instance_id = get_uuid()
   // d3 symbols with no interior: the plot paints them by stroke, a fill would be invisible
   const open_symbols = new Set([symbolPlus, symbolTimes, symbolAsterisk])
   // Swatch-sized copy of a series' hatch/texture (half the plot's tile so a 12px box shows

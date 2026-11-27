@@ -24,13 +24,11 @@
     z-index: 5;
     pointer-events: none;
     overflow-wrap: anywhere;
-    /* descendant, not child: each card sits in StatusMessage's live region, a display:
-       contents box. Doubled class: StatusMessage's own type padding ties a single-class rule
-       and wins on load order */
-    :global(.status-message.status-message) {
+    --status-message-font-size: 0.8rem;
+    --status-message-padding: 0.3rem 0.6rem;
+    /* descendant, not child: each card sits in StatusMessage's display: contents live region */
+    :global(.status-message) {
       pointer-events: auto;
-      font-size: 0.8rem;
-      padding: 0.3rem 0.6rem;
     }
   }
 </style>

@@ -407,12 +407,12 @@ test.describe(`Structure Component Tests`, () => {
     )
     try {
       await page.reload({ waitUntil: `commit` })
-      await expect(fullscreen_root).not.toHaveAttribute(`data-mv-fullscreen-root`, ``)
+      await expect(fullscreen_root).not.toHaveAttribute(`data-fullscreen-hotkey`)
       await structure_div.hover()
     } finally {
       scripts_ready.resolve(undefined)
     }
-    await expect(fullscreen_root).toHaveAttribute(`data-mv-fullscreen-root`, ``)
+    await expect(fullscreen_root).toHaveAttribute(`data-fullscreen-hotkey`)
     await structure_div.click()
     // a handled key is the one the viewer preventDefaults
     const handles = (init: Parameters<typeof dispatch_cancelable_keydown>[1]) =>

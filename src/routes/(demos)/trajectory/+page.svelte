@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '#site/LazyDemo.svelte'
+  import LazyMount from 'svelte-widgets/LazyMount.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
   import { url_selection } from '#site/state.svelte'
   import { trajectory_files } from '#site/trajectories'
@@ -56,13 +56,13 @@
 
 <div class="full-bleed traj-pair">
   {#each traj_pair as [label, filename] (filename)}
-    <LazyDemo {label} height="600px">
+    <LazyMount {label} height="600px">
       <Trajectory
         source="/trajectories/{filename}"
         style={viewer_style}
         on_file_load={handle_file_load}
       />
-    </LazyDemo>
+    </LazyMount>
   {/each}
 </div>
 
@@ -75,7 +75,7 @@
   joins the plot. Rigid drift is removed by default: the mean shift, plus the best-fit rotation for
   a non-periodic cluster like this one.
 </p>
-<LazyDemo label="Gold cluster displacements" height="600px" class="full-bleed">
+<LazyMount label="Gold cluster displacements" height="600px" class="full-bleed">
   <Trajectory
     source="/trajectories/flame-gold-cluster-55-atoms.h5"
     bind:diff_reference={
@@ -85,14 +85,14 @@
     style={viewer_style}
     on_file_load={handle_file_load}
   />
-</LazyDemo>
+</LazyMount>
 
 <h2 id="bindable-visible_properties">Bindable <code>visible_properties</code></h2>
 <p>Legend toggles update the bound list of displayed trajectory properties.</p>
 <strong class="bound-props">
   bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
 </strong>
-<LazyDemo
+<LazyMount
   label="Bindable visible_properties"
   height="600px"
   class="full-bleed"
@@ -104,8 +104,8 @@
     style={viewer_style}
     on_file_load={handle_file_load}
   />
-</LazyDemo>
-<LazyDemo
+</LazyMount>
+<LazyMount
   label="Growing silver cluster trajectory"
   height="600px"
   class="full-bleed"
@@ -116,14 +116,14 @@
     style={viewer_style}
     on_file_load={handle_file_load}
   />
-</LazyDemo>
-<LazyDemo label="Load a trajectory" height="600px" class="full-bleed" style="margin-top: 5em">
+</LazyMount>
+<LazyMount label="Load a trajectory" height="600px" class="full-bleed" style="margin-top: 5em">
   <Trajectory
     style={viewer_style}
     on_file_load={handle_file_load}
     loading_options={lammps_loading_options}
   />
-</LazyDemo>
+</LazyMount>
 
 <p class="demo-note">Drag any of these trajectory files onto a viewer above to load them:</p>
 

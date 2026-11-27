@@ -34,7 +34,7 @@
   import { DEFAULTS } from '#lib/settings'
   import { to_error } from 'svelte-widgets/utils'
   import { TooltipPin } from '#lib/tooltip/pin.svelte'
-  import { viewer_keys } from '#lib/shortcuts'
+  import { viewer_keys } from 'svelte-widgets/attachments'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'

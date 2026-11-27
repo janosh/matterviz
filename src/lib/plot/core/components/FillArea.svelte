@@ -14,13 +14,13 @@
   import { resolve_pattern } from '#lib/plot/core/patterns'
   import type { FillGradient, FillHandlerEvent, FillRegion } from '#lib/plot/core/types'
   import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte'
-  import { unique_id } from '#lib/plot/core/utils'
+  import { get_uuid } from 'svelte-widgets/utils'
 
   let {
     region,
     region_idx,
     is_first_segment = true,
-    defs_id = unique_id(`fill`),
+    defs_id = `fill-${get_uuid()}`,
     path,
     clip_path_id,
     x_scale_fn,

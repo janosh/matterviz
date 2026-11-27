@@ -1,7 +1,7 @@
 <script lang="ts">
   import { numeric_sites, get_site, site_count } from './site'
   import type { ColorScale } from '#lib/plot/core/types'
-  import { resolve_color_token } from '#lib/colors/backdrop.svelte'
+  import { resolve_color_token } from 'svelte-widgets/theme-core'
   import { HIGHLIGHT } from '#lib/colors/index'
   import type { ElementSymbol } from '#lib/element/index'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
@@ -82,7 +82,7 @@
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
   import * as measure from '#lib/structure/measure'
   import { is_crystal } from '#lib/structure/validation'
-  import { clamp, to_error } from 'svelte-widgets/utils'
+  import { clamp, same_while_equal, to_error } from 'svelte-widgets/utils'
   import { merge_split_partial_sites } from './partial-occupancy'
   import {
     bond_menu_position,
@@ -131,7 +131,6 @@
     polyhedra_options_from,
     type ResolvedPolyhedraOptions,
   } from './polyhedra'
-  import { same_while_equal } from '#lib/utils'
   import { find_drawn_completion_sites, shift_bonds_by_unwrap } from './pbc'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {

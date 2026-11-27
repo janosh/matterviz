@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
-  import { SHORTCUTS, shortcut_attrs, viewer_keydown } from '#lib/shortcuts'
+  import { SHORTCUTS } from '#lib/shortcuts'
   import {
     get_image_source_idx,
     is_image_site,
@@ -11,7 +11,7 @@
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '#lib/colors/index'
   import { rgb } from 'd3-color'
-  import { DEFAULT_PNG_DPI } from '#lib/constants'
+  import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls'
   import type { ElementSymbol } from '#lib/element/index'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
@@ -37,7 +37,7 @@
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { parse_warnings_notice } from '#lib/labels'
   import { chain_handlers, clamp, to_error } from 'svelte-widgets/utils'
-  import { is_editable_event_target } from 'svelte-widgets/shortcuts'
+  import { is_editable_event_target, shortcut_attrs } from 'svelte-widgets/shortcuts'
   import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index'
   import { set_isosurface_error_handler } from '#lib/isosurface/context'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice'
@@ -92,7 +92,7 @@
   import type { TooltipProp } from '#lib/tooltip/index'
   import { join_hover_link } from '#lib/tooltip/index'
   import { onDestroy, untrack } from 'svelte'
-  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
+  import { tooltip as attach_tooltip, viewer_keydown } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -1579,7 +1579,7 @@
                       type="button"
                       class={['view-mode-option', { selected: current_layout.mode === mode }]}
                       {...mode === `multi`
-                        ? shortcut_attrs(`multi_view`, label)
+                        ? shortcut_attrs(SHORTCUTS.multi_view, label)
                         : { title: label }}
                       aria-pressed={current_layout.mode === mode}
                       onclick={() => select_structure_layout(mode)}
@@ -1635,7 +1635,7 @@
                 wyckoff_positions={session.wyckoff_rows}
                 toggle_props={{
                   style: shortcut_flash.style(`info`),
-                  ...shortcut_attrs(`info_pane`),
+                  ...shortcut_attrs(SHORTCUTS.info_pane),
                 }}
                 shortcut_scopes={[
                   `viewer`,
@@ -1914,24 +1914,8 @@
   .structure-site-layout.docked-sidebar-row {
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
-    /* Viewer and sidebar read as one rounded box: outer corners take --struct-border-radius,
-       the edge they share stays square so no gap opens between them */
-    --docked-radius: var(--struct-border-radius, 0);
-    > .structure {
-      border-radius: var(--docked-radius) 0 0 var(--docked-radius);
-    }
-    > :global(.structure-site-sidebar) {
-      border-radius: 0 var(--docked-radius) var(--docked-radius) 0;
-    }
-    /* stacked: viewer on top, sidebar below */
-    &:global(.docked-sidebar-stacked) {
-      > .structure {
-        border-radius: var(--docked-radius) var(--docked-radius) 0 0;
-      }
-      > :global(.structure-site-sidebar) {
-        border-radius: 0 0 var(--docked-radius) var(--docked-radius);
-      }
-    }
+    /* viewer and sidebar read as one rounded box */
+    --docked-sidebar-radius: var(--struct-border-radius, 0);
   }
   /* The site table's toolbar (up to six 22px buttons, 142px) shares the header row, left of
      the close button; the gap keeps the title clear of it when the sidebar fits its content,
