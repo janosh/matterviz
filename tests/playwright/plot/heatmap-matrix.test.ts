@@ -100,10 +100,14 @@ test(`domain and normalization changes recolor cells without per-cell animations
       const colorbar = page.locator(`.heatmap .colorbar`).first()
       const contained = await colorbar.evaluate((node) => {
         const bounds = node.getBoundingClientRect()
-        return [...node.querySelectorAll(`.tick-label`)].every((label) => {
-          const tick_bounds = label.getBoundingClientRect()
-          return tick_bounds.left >= bounds.left && tick_bounds.right <= bounds.right
-        })
+        const ticks = [...node.querySelectorAll(`.tick-label`)].map((tick) =>
+          tick.getBoundingClientRect(),
+        )
+        // no ticks at all would pass every() vacuously
+        return (
+          ticks.length > 0 &&
+          ticks.every(({ left, right }) => left >= bounds.left && right <= bounds.right)
+        )
       })
       expect(contained).toBe(true)
     }

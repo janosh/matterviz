@@ -10,7 +10,7 @@ import { COMPONENTS } from '../../src/elements/components'
 import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
 import { renderer_stub, reset_stub } from './reactive-renderer-registry'
-import { library_prop_docs } from './setup'
+import { library_prop_docs, PROP_DOCS_TIMEOUT } from './setup'
 
 const component_name = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
 const { check_blob_workers, spectral_doc } = vi.hoisted(() => ({
@@ -167,25 +167,31 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
 // the custom elements define an accessor per prop, which shadows an HTMLElement member of that name
-test(`no widget prop binds defaulted data or shadows the DOM`, async () => {
-  const library_docs = await library_prop_docs()
-  // the registry shared with the custom elements: src/lib paths by widget_type
-  const docs = Object.values(COMPONENTS).map((path) => {
-    const doc = library_docs[component_name(path)]
-    if (!doc) throw new Error(`No prop docs for widget component src/lib/${path}.svelte`)
-    return [component_name(path), doc] as const
-  })
-  const defaulted = docs.flatMap(([component, { props }]) =>
-    props
-      .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
-      .map(({ name, default: init }) => `${component}.${name} = ${init}`),
-  )
-  expect(defaulted).toEqual([])
-  const names = docs.flatMap(([, { props }]) => props.map(({ name }) => name))
-  expect(new Set(names.filter((name) => name in HTMLElement.prototype))).toEqual(
-    new Set([`children`, `id`, `normalize`, `onkeydown`, `style`, `title`]),
-  )
-})
+test(
+  `no widget prop binds defaulted data or shadows the DOM`,
+  { timeout: PROP_DOCS_TIMEOUT },
+  async () => {
+    const library_docs = await library_prop_docs()
+    // the registry shared with the custom elements: src/lib paths by widget_type
+    const docs = Object.values(COMPONENTS).map((path) => {
+      const doc = library_docs[component_name(path)]
+      if (!doc) throw new Error(`No prop docs for widget component src/lib/${path}.svelte`)
+      return [component_name(path), doc] as const
+    })
+    const defaulted = docs.flatMap(([component, { props }]) =>
+      props
+        .filter(
+          ({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init,
+        )
+        .map(({ name, default: init }) => `${component}.${name} = ${init}`),
+    )
+    expect(defaulted).toEqual([])
+    const names = docs.flatMap(([, { props }]) => props.map(({ name }) => name))
+    expect(new Set(names.filter((name) => name in HTMLElement.prototype))).toEqual(
+      new Set([`children`, `id`, `normalize`, `onkeydown`, `style`, `title`]),
+    )
+  },
+)
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
 const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram

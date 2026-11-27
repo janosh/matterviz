@@ -1072,7 +1072,9 @@ export async function export_via_pane(
 }
 
 // Every src/lib component's prop docs via the test server's virtual:prop-docs, so the
-// whole-library extraction (seconds of TypeScript checking) runs once per test run
+// whole-library extraction (seconds of TypeScript checking) runs once per test run. Its first
+// caller pays for it: over 10 s on loaded CI runners, hence PROP_DOCS_TIMEOUT.
+export const PROP_DOCS_TIMEOUT = 60_000
 export const library_prop_docs = async (): Promise<Record<string, ComponentDoc>> => {
   const { default: loaders } = await import(`virtual:prop-docs`)
   const docs = await Promise.all(

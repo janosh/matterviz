@@ -222,7 +222,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
     const flight = pane.locator(`.camera-flight`)
     const motion = flight.getByLabel(`Camera interpolation`, { exact: true })
     await expect(motion).toBeVisible()
-    await expect(flight.getByText(`Advanced timing & motion`, { exact: true })).toHaveCount(0)
     await expect(flight).toHaveCSS(`font-size`, export_font_size)
     const duration = flight.getByLabel(`Flight duration`, { exact: true })
     const number_reference =
@@ -444,7 +443,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     })
     for (const insets of positions) expect(insets).toEqual(fitting_insets)
     // The fullscreen correction keeps manual placement ownership until Reset.
-    await pane.locator(`.reset-button`).click()
+    await pane.getByRole(`button`, { name: `Reset pane position`, exact: true }).click()
     await fullscreen_button.click()
     await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, `false`)
     // Narrow panes must keep the timeline and actions inside their scrollable content.

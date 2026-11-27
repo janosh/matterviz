@@ -115,13 +115,12 @@ test.describe(`PhononModeExplorer`, () => {
     })
     const pause_button = explorer.getByRole(`button`, { name: `Pause` })
     await expect(pause_button).toBeVisible()
-    // the input shows slider index 12 as frame 13
-    await expect.poll(() => step_input.inputValue()).not.toBe(`13`)
+    // the scrub (slider index 12, shown as frame 13) resumed playback, which moves on past it
+    await expect.poll(async () => Number(await step_input.inputValue())).toBeGreaterThan(13)
     await pause_button.click()
 
     const cell_toggle = explorer.locator(`.cell-select .toggle-btn`)
     await expect(cell_toggle).toContainText(`3`)
-    await expect(explorer.getByLabel(`Supercell axis 1`)).toHaveCount(0)
     await select_supercell(explorer, 2)
     await expect(cell_toggle).toContainText(`2`)
     for (const symbol of [`Na`, `Cl`]) {

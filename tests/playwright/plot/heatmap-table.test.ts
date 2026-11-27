@@ -66,7 +66,11 @@ test(`sticky column hides cells scrolling beneath it at fractional row offsets`,
       const top = header.bottom + 1
       return { x: cell.x + 2, y: top, width: cell.width - 5, height: view.bottom - top - 12 }
     }, offset)
-    await page.waitForTimeout(80) // let the compositor apply the new layout
+    // two frames: the layout change paints in the first, the screenshot reads the next
+    await page.evaluate(async () => {
+      for (let frame_idx = 0; frame_idx < 2; frame_idx++)
+        await new Promise(requestAnimationFrame)
+    })
     const png = await page.screenshot({ clip })
     expect(await count_magenta(png.toString(`base64`)), `offset ${offset}px`).toBe(0)
   }

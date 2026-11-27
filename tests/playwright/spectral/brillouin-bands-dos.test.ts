@@ -69,17 +69,13 @@ test.describe(
         const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
 
         const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
-        await expect(bands_svg).toBeVisible({ timeout: 10_000 })
-        await expect(bands_svg.locator(line_path_selector).first()).toBeVisible({
-          timeout: 5000,
-        })
-
         const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
-        await expect(dos_svg).toBeVisible({ timeout: 10_000 })
-        await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
-        await expect(dos_svg.locator(line_path_selector).first()).toBeVisible({
-          timeout: 5000,
-        })
+        for (const svg of [bands_svg, dos_svg]) {
+          await expect(svg.locator(line_path_selector).first()).toBeVisible({
+            timeout: 15_000,
+          })
+        }
+        await expect(dos_svg.locator(`g.y-axis`)).toBeVisible()
 
         const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
         expect(x_labels.join(``)).toMatch(/Γ|GAMMA/)
@@ -93,8 +89,7 @@ test.describe(
           .first()
           .locator(line_path_selector)
           .first()
-        const stroke = await first_path.evaluate((element) => getComputedStyle(element).stroke)
-        expect(stroke).toContain(`rgb(255, 0, 0)`)
+        await expect(first_path).toHaveCSS(`stroke`, /rgb\(255, 0, 0\)/)
       })
 
       // independent y-axes are checked more strictly in bands-and-dos.test.ts
@@ -110,7 +105,7 @@ test.describe(
         const legend = container.locator(`.legend`).first()
         await expect(legend).toBeVisible()
         expect(await legend.locator(`.legend-item`).count()).toBeGreaterThanOrEqual(2)
-        expect(await legend.textContent()).toContain(`DFT`)
+        await expect(legend).toContainText(`DFT`)
 
         const custom_overlay = container.locator(`.custom-overlay`)
         await expect(custom_overlay).toBeVisible()
@@ -136,8 +131,8 @@ test.describe(
     }) => {
       const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
       // plot control panes can extend beyond their grid cells
-      await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
-      await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
+      for (const plot of [bands_plot, dos_plot])
+        await expect(plot).toHaveCSS(`overflow`, `visible`)
 
       await expect(() => expect_same_clip_rows(bands_plot, dos_plot)).toPass({
         timeout: 30_000,

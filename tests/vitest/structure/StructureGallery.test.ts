@@ -119,6 +119,8 @@ describe(`StructureGallery`, () => {
   })
 
   test(`mounts the visible page plus overscan so scrolling reveals live cards`, async () => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    onTestFinished(() => void vi.useRealTimers())
     // 800px viewport / 202px stride = 4 whole cards, plus a partial card at
     // each edge, plus 3 overscan cards per side = 12.
     mount_gallery({ items: many_items, layout: `horizontal`, min_card_width: 180 })
@@ -137,7 +139,7 @@ describe(`StructureGallery`, () => {
     expect(card_labels()).toEqual(many_labels(5, 17))
     expect(live_cards()).toBe(7)
     // a slow scroll outlasts any fixed settle delay: only scrollend mounts the shells
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    vi.advanceTimersByTime(1000)
     expect(live_cards()).toBe(7)
     doc_query(`.structure-gallery-track`).dispatchEvent(new Event(`scrollend`))
     flushSync()
@@ -147,6 +149,8 @@ describe(`StructureGallery`, () => {
   // Safari before 26.2 never fires scrollend: there a pause in scroll events ends the scroll,
   // or the shells entering the window would never mount
   test(`mounts the shells after a scroll pause where scrollend is unsupported`, async () => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    onTestFinished(() => void vi.useRealTimers())
     let owner: object | null = window // happy-dom may define it on a prototype
     while (owner && !Object.hasOwn(owner, `onscrollend`)) owner = Object.getPrototypeOf(owner)
     if (!owner) throw new Error(`happy-dom no longer defines onscrollend`)
@@ -159,7 +163,7 @@ describe(`StructureGallery`, () => {
     mount_gallery({ items: many_items, layout: `horizontal`, min_card_width: 180 })
     scroll_track(1800, `scrollLeft`, false)
     expect(live_cards()).toBe(7)
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    vi.advanceTimersByTime(150) // the scroll-pause settle delay
     flushSync()
     expect(live_cards()).toBe(12)
   })

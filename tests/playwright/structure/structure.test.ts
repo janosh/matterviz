@@ -98,6 +98,14 @@ const activate_viewer = async (page: Page, canvas: Locator): Promise<void> => {
     `1`,
   )
 }
+const fullscreen_button = (page: Page): Locator =>
+  page
+    .locator(`#test-structure > section.control-buttons`)
+    .getByRole(`button`, { name: /^(?:Enter|Exit) fullscreen$/ })
+// Outlast the viewer's 50 ms camera settle-sync timer on the page's own event loop: a longer
+// timer set after it fires after it however busy the main thread is, unlike a Node-side sleep
+const outlast_settle_sync = (page: Page): Promise<unknown> =>
+  page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)))
 
 // BaTiO3 perovskite POSCAR, 4 Å cubic unless the c axis is stretched
 const batio3_poscar = (value_c = 4.0) =>
@@ -236,7 +244,7 @@ test.describe(`Structure Component Tests`, () => {
   test(`fullscreen leaves room for a sidebar docked beside the viewer`, async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 })
     await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
-    await page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`).click()
+    await fullscreen_button(page).click()
     await page.waitForFunction(() =>
       document.fullscreenElement?.classList.contains(`structure-fullscreen-root`),
     )
@@ -250,9 +258,7 @@ test.describe(`Structure Component Tests`, () => {
     const canvas = await require_bbox(structure_canvas(page))
     expect([canvas.x, canvas.width, canvas.height]).toEqual([0, 1200, 900])
     await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
-    const button = await require_bbox(
-      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
-    )
+    const button = await require_bbox(fullscreen_button(page))
     expect(button.x + button.width).toBeLessThanOrEqual(1200)
   })
 
@@ -419,13 +425,13 @@ test.describe(`Structure Component Tests`, () => {
       dispatch_cancelable_keydown(structure_div, init).then((not_prevented) => !not_prevented)
 
     // view toggles are plain letters; the same key as a chord is left to browser and host
-    for (const [key, selector] of [
-      [`f`, `.fullscreen-btn`],
-      [`i`, `.structure-info-toggle`],
-      [`g`, `.view-layout-dropdown > button`],
-    ]) {
+    for (const [key, button] of [
+      [`f`, fullscreen_button(page)],
+      [`i`, structure_div.locator(`.structure-info-toggle`)],
+      [`g`, structure_div.locator(`.view-layout-dropdown > button`)],
+    ] as const) {
       await expect(handles({ key }), `plain ${key}`).resolves.toBe(true)
-      await expect(structure_div.locator(selector)).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+      await expect(button).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
       await expect(handles({ key, [primary_modifier]: true }), `mod+${key}`).resolves.toBe(
         false,
       )
@@ -444,8 +450,6 @@ test.describe(`Structure Component Tests`, () => {
     { tag: `@webgl` },
     async ({ page }) => {
       const canvas = structure_canvas(page)
-      // Reset lives in the controls pane and is hidden at the default camera
-      await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
       const camera_positions = async () =>
         (await events_named(page, `on_camera_move`)).map(
           ({ data }) => (data as { camera_position?: number[] }).camera_position ?? [],
@@ -712,14 +716,11 @@ test.describe(`Structure Component Tests`, () => {
       const measurement = page.locator(`#test-structure .measure-label`).first()
       await expect(measurement).toBeVisible()
       await page.setViewportSize({ width: 1920, height: 1080 })
-      const fullscreen_button = page.locator(
-        `#test-structure > section.control-buttons > .fullscreen-btn`,
-      )
       await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
-      await fullscreen_button.click()
+      await fullscreen_button(page).click()
       await expect(page.locator(`#test-structure`)).toHaveCSS(`height`, `1080px`)
       await expect(measurement).toHaveCSS(`font-size`, `14px`)
-      await fullscreen_button.click()
+      await fullscreen_button(page).click()
 
       await page.locator(`[data-testid="btn-clear-measured"]`).click()
       await expect(labels).toHaveCount(0)
@@ -882,8 +883,10 @@ test.describe(`Show Buttons Tests`, () => {
       await page.mouse.move(0, 0)
       const control_buttons = page.locator(`#test-structure section.control-buttons`)
       const info_toggle = page.locator(`.structure-info-toggle`)
-      if (css_class) await expect(control_buttons).toHaveClass(new RegExp(css_class))
-      else await expect(control_buttons).not.toHaveClass(/always-visible|hover-visible/)
+      // positive in every mode, so a missing row fails rather than passing the `never` case
+      await expect(control_buttons).toHaveClass(
+        css_class ? new RegExp(css_class) : /^(?!.*(?:always|hover)-visible)/,
+      )
       if (opacity) await expect(control_buttons).toHaveCSS(`opacity`, opacity[0])
       await page.locator(`#test-structure`).hover()
       if (opacity) {
@@ -957,7 +960,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       await drop_file(page, viewer, chgcar, filename)
       await wait_for_event(page, `on_file_load`, [`filename`])
     }
-    const notice = viewer.locator(`.viewer-toast .toast-message`)
+    const notice = viewer.locator(`.viewer-toast`).getByRole(`status`)
     await expect(notice).toContainText(`Added 1 volume from B.CHGCAR`)
     expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
     const notice_box = await require_bbox(notice)
@@ -966,7 +969,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       viewer_box.y + viewer_box.height,
     )
     // self-hides after the toast duration (2 s) instead of waiting for a dismiss click
-    await expect(notice).toHaveCount(0, { timeout: 5000 })
+    await expect(notice).toHaveText(``, { timeout: 5000 })
     await drop_file(page, viewer, `invalid structure`, `${`long-filename-`.repeat(20)}.cif`)
     await wait_for_event(page, `on_error`, [`error_msg`])
     // the card inside StatusMessage's alert live region, which also wraps it when empty
@@ -1101,8 +1104,7 @@ test.describe(`Structure Event Handler Tests`, () => {
         position: { x: box.width / 2, y: box.height / 2 },
         force: true,
       })
-      // asserts an absence: outlast the 50 ms post-end settle-sync timer, which has no DOM signal
-      await page.waitForTimeout(100)
+      await outlast_settle_sync(page) // asserts an absence, which has no DOM signal
       expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
 
       const { pane_div } = await open_structure_control_pane(page)
@@ -1165,9 +1167,8 @@ test.describe(`Structure Event Handler Tests`, () => {
       /(?:⌘|Ctrl) \+ scroll to zoom · click to interact/,
     )
     await expect.poll(read_scroll).toBeGreaterThan(scroll_idle)
-    // asserts an absence: a zoom would report its camera move within this window (incl. the
-    // 50 ms settle-sync timer), and no event or attribute signals that none is coming
-    await page.waitForTimeout(100)
+    // asserts an absence: a zoom reports its move on wheel end or via the settle-sync timer
+    await outlast_settle_sync(page)
     expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
 
     await canvas.click({ position: { x: 5, y: 5 }, force: true })

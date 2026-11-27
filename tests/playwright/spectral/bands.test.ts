@@ -88,7 +88,9 @@ test.describe(`Bands Component Tests`, () => {
   test(`applies legend, phonon unit and highlight props; strict mode errors on path mismatch`, async ({
     page,
   }) => {
-    await expect(page.getByTestId(`no-legend-plot`).locator(`.legend`)).toBeHidden()
+    const no_legend = page.getByTestId(`no-legend-plot`)
+    await expect(band_paths(no_legend).first()).toBeVisible() // rendered, so a legend could show
+    await expect(no_legend.locator(`.legend`)).toBeHidden()
 
     const phonon_plot = page.getByTestId(`phonon-units-highlight-plot`)
     await expect(phonon_plot).toBeVisible()

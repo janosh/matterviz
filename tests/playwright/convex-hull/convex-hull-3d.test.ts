@@ -9,6 +9,7 @@ import {
   goto_perf_page,
   open_controls_pane,
   open_info_pane,
+  visible_count,
 } from './utils'
 
 const ternary_diagram = (page: Page) => page.locator(`.convex-hull-3d`).first()
@@ -91,15 +92,12 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
 
     // info pane stats show chemical system and counts
     const info = await open_info_pane(diagram)
-    await expect(info).toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     // the heading, not the shortcut list's "Toggle stability / energy coloring" below it
     await expect(info.getByRole(`heading`, { name: `Stability` })).toBeVisible()
 
     // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
-    const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
-    const unstable_match = unstable_text?.match(/(?<count>\d+)/)
-    expect(unstable_match ? Number(unstable_match[1]) : 0).toBeGreaterThan(0)
+    expect(await visible_count(info, `hull-visible-unstable`)).toBeGreaterThan(0)
   })
 
   test(`controls pane: scrollable content, pointer-events, drag isolation, camera inputs, hull face toggle, color modes and scale selector`, async ({
@@ -107,7 +105,6 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
   }) => {
     const diagram = ternary_diagram(page)
     const controls = await open_controls_pane(diagram)
-    await expect(controls).toBeVisible({ timeout: 10_000 })
 
     // Short viewports keep all controls reachable through scrolling.
     const content = controls.locator(`.pane-content`).first()

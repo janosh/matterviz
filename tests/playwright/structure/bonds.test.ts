@@ -836,7 +836,7 @@ test_without_errors(
     const pane = await open_settings_pane(page)
     await pane.locator(`[data-key="keep_molecules_whole"] input[type="checkbox"]`).check()
     await pane.locator(`[data-key="image_atom_completion"] select`).selectOption(`boundary`)
-    const notice = page.locator(`#test-structure .viewer-toast .toast-message`)
+    const notice = page.locator(`#test-structure .viewer-toast`)
     await expect(notice).toContainText(
       `Invalid pair_cutoffs bonding option pair_cutoffs: 'Cs-Cs' must be [min, max]`,
     )
@@ -844,7 +844,7 @@ test_without_errors(
     const max_input = pane.locator(`input[aria-label="Cs-Cs max (Å)"]`)
     await max_input.fill(`7`)
     await max_input.press(`Enter`)
-    await expect(notice).toHaveCount(0)
+    await expect(notice).not.toContainText(`Invalid pair_cutoffs`)
     await expect(canvas).toBeVisible()
   },
 )

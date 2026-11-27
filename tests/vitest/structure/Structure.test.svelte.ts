@@ -1169,6 +1169,7 @@ const shifted_trail = (input: AnyStructure) =>
 // The controls' trail toggle hides only the shown run's trail: the next run shows its own, and
 // the saved trail setting, which a relaxation must not turn on for later trajectories, stays.
 test(`a host run's trail toggle hides that run's trail without saving it`, async () => {
+  vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
   mock_gpu()
   clear_structure_view_state()
   const input = two_site_crystal()
@@ -1192,8 +1193,7 @@ test(`a host run's trail toggle hides that run's trail without saving it`, async
   expect(scene_stub.props?.trajectory_position_stream?.n_frames).toBe(3)
   publish(tool.start_run({ model: `test`, version: `2`, units: {}, settings: {} }))
   expect(scene_stub.props?.show_trajectory_lines).toBe(true)
-  // Past the controls' save debounce
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  vi.advanceTimersByTime(150) // past the controls' save debounce: a run's toggle saves nothing
   expect(load_structure_view_state()?.settings.structure.show_trajectory_lines ?? false).toBe(
     false,
   )

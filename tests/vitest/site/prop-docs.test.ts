@@ -6,7 +6,7 @@ import prop_docs from 'virtual:prop-docs'
 import { flushSync, mount } from 'svelte'
 import { globSync } from 'node:fs'
 import { describe, expect, test, vi } from 'vite-plus/test'
-import { doc_query, library_prop_docs } from '../setup'
+import { doc_query, library_prop_docs, PROP_DOCS_TIMEOUT } from '../setup'
 
 vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/property-filter` } } }))
 
@@ -37,25 +37,29 @@ describe(`PropsTable page mapping`, () => {
   })
 })
 
-test(`the demo layout loads the page component's props when opened`, async () => {
-  // the server's shared extraction, so the wait below covers only PropsTable's own fetch
-  await library_prop_docs()
-  mount(Layout, { target: document.body, props: {} })
-  const details = doc_query<HTMLDetailsElement>(`details.props-table`)
-  expect(details.querySelector(`summary`)?.textContent).toBe(`Props of PropertyFilter`)
-  details.open = true
-  details.dispatchEvent(new Event(`toggle`))
-  flushSync()
-  await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(13))
-  expect(details.querySelector(`.table-scroll`)?.classList.contains(`bleed-1400`)).toBe(true)
-  const label_row = [...details.querySelectorAll(`tbody tr`)].find((row) =>
-    row.children[1]?.textContent?.trim().startsWith(`label`),
-  )
-  expect([...(label_row?.children ?? [])].map((cell) => cell.textContent?.trim())).toEqual([
-    expect.any(String),
-    `label required`,
-    `string`,
-    ``,
-    `Label text (supports HTML)`,
-  ])
-})
+test(
+  `the demo layout loads the page component's props when opened`,
+  { timeout: PROP_DOCS_TIMEOUT },
+  async () => {
+    // the server's shared extraction, so the wait below covers only PropsTable's own fetch
+    await library_prop_docs()
+    mount(Layout, { target: document.body, props: {} })
+    const details = doc_query<HTMLDetailsElement>(`details.props-table`)
+    expect(details.querySelector(`summary`)?.textContent).toBe(`Props of PropertyFilter`)
+    details.open = true
+    details.dispatchEvent(new Event(`toggle`))
+    flushSync()
+    await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(13))
+    expect(details.querySelector(`.table-scroll`)?.classList.contains(`bleed-1400`)).toBe(true)
+    const label_row = [...details.querySelectorAll(`tbody tr`)].find((row) =>
+      row.children[1]?.textContent?.trim().startsWith(`label`),
+    )
+    expect([...(label_row?.children ?? [])].map((cell) => cell.textContent?.trim())).toEqual([
+      expect.any(String),
+      `label required`,
+      `string`,
+      ``,
+      `Label text (supports HTML)`,
+    ])
+  },
+)

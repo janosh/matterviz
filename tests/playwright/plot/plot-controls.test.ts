@@ -88,14 +88,14 @@ reset_cases.forEach(([route, section, label, value]) => {
     const pane = page.locator(`.draggable-pane:visible`).first()
     const row = pane.locator(`label`).filter({ hasText: label }).first()
     // Both grid and flow sections separate their stacked rows.
-    for (const settings_section of await pane
+    await expect(row).toBeVisible()
+    const gaps = await pane
       .locator(`.settings-section:not(.ctrl-line):not(.axis-fields)`)
-      .all()) {
-      const gap = await settings_section.evaluate(
-        (element) => getComputedStyle(element).rowGap,
+      .evaluateAll((nodes) =>
+        nodes.map((node) => Number(getComputedStyle(node).rowGap.slice(0, -2))),
       )
-      expect(Number(gap.slice(0, -2))).toBeGreaterThan(0)
-    }
+    expect(gaps.length).toBeGreaterThan(0) // an empty match would pass the loop vacuously
+    for (const gap of gaps) expect(gap).toBeGreaterThan(0)
     if (route === `box-plot`) await row.locator(`select`).selectOption(value)
     else await row.locator(`input[type=number]`).fill(value)
     const reset = pane.getByRole(`button`, {

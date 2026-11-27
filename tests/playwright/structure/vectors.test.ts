@@ -55,8 +55,8 @@ const inject_vectors = (page: Page, mode: `multi` | `single`) =>
     })),
   })
 
-const labels_with = (pane: Locator, text: string) =>
-  pane.locator(`label`).filter({ hasText: text })
+// rows carry their setting key; per-layer scale sliders are keyed `vector_scale:<key>`
+const row = (pane: Locator, key: string) => pane.locator(`[data-key="${key}"]`)
 
 test.describe(`Site Vectors`, { tag: `@webgl` }, () => {
   test(`single- and multi-vector structures get matching layer controls`, async ({ page }) => {
@@ -68,20 +68,18 @@ test.describe(`Site Vectors`, { tag: `@webgl` }, () => {
 
       const { pane_div } = await open_structure_control_pane(page)
       await expect(pane_div.getByRole(`region`, { name: /site vectors/i })).toBeVisible()
-      await expect(pane_div.locator(`[data-key="vector_config:force"]`)).toBeVisible()
-      await expect(pane_div.locator(`[data-key="vector_origin_gap"]`)).toHaveCount(0)
-      await expect(labels_with(pane_div, `force scale`)).toHaveCount(0)
+      await expect(row(pane_div, `vector_config:force`)).toBeVisible()
+      await expect(row(pane_div, `vector_scale`)).toBeVisible()
+      await expect(row(pane_div, `vector_origin_gap`)).toHaveCount(0)
+      await expect(pane_div.locator(`[data-key^="vector_scale:"]`)).toHaveCount(0)
     })
 
     await test.step(`multi vector keys: per-key layer toggles and scale sliders`, async () => {
       // the pane derives its vector rows from the structure, so the single-key rows go away
       await inject_vectors(page, `multi`)
       const { pane_div } = await open_structure_control_pane(page)
-      const section = pane_div.getByRole(`region`, { name: `Site Vectors`, exact: true })
-      await expect(labels_with(pane_div, `Global Scale`)).toBeVisible()
-      await expect(labels_with(pane_div, `Origin Gap`)).toBeVisible()
-      // per-key rows replace the single-key Color picker
-      await expect(section.locator(`label`).filter({ hasText: /^Color$/ })).toHaveCount(0)
+      await expect(row(pane_div, `vector_scale`)).toBeVisible()
+      await expect(row(pane_div, `vector_origin_gap`)).toBeVisible()
 
       // only magmom draws by default (magmoms outrank forces); hidden layers show no scale
       for (const [key, shown] of [
@@ -89,28 +87,25 @@ test.describe(`Site Vectors`, { tag: `@webgl` }, () => {
         [`force_MLFF`, false],
         [`magmom`, true],
       ] as const) {
-        const toggle = pane_div.locator(`[data-key="vector_config:${key}"]`)
+        const toggle = row(pane_div, `vector_config:${key}`)
         await expect(toggle.locator(`input[type="checkbox"]`)).toBeChecked({ checked: shown })
         await expect(toggle.locator(`input[type="color"]`)).toBeVisible()
-        // labelled like the toggles (hasText ignores case)
-        const scale = labels_with(pane_div, `${key.replaceAll(`_`, ` `)} scale`)
-        await (shown ? expect(scale).toBeVisible() : expect(scale).toHaveCount(0))
+        await expect(row(pane_div, `vector_scale:${key}`)).toHaveCount(shown ? 1 : 0)
       }
 
       // Showing, recoloring and hiding a layer each repaint its arrows.
+      const dft_toggle = row(pane_div, `vector_config:force_DFT`)
       await expect_canvas_changed_by(canvas, async () => {
-        await pane_div
-          .locator(`[data-key="vector_config:force_DFT"] input[type="checkbox"]`)
-          .click()
-        await expect(labels_with(pane_div, `force DFT scale`)).toBeVisible()
+        await dft_toggle.locator(`input[type="checkbox"]`).click()
+        await expect(row(pane_div, `vector_scale:force_DFT`)).toBeVisible()
       })
-      const magmom_toggle = pane_div.locator(`[data-key="vector_config:magmom"]`)
+      const magmom_toggle = row(pane_div, `vector_config:magmom`)
       await expect_canvas_changed_by(canvas, () =>
         magmom_toggle.locator(`input[type="color"]`).fill(`#00ff00`),
       )
       await expect_canvas_changed_by(canvas, async () => {
         await magmom_toggle.locator(`input[type="checkbox"]`).click()
-        await expect(labels_with(pane_div, `magmom scale`)).toBeHidden()
+        await expect(row(pane_div, `vector_scale:magmom`)).toHaveCount(0)
       })
     })
   })

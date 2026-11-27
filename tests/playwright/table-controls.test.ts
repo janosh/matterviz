@@ -105,7 +105,7 @@ test(`table search, pagination, selection and export use the visible data`, asyn
   await score_header.click()
   await expect(rows.first()).toContainText(`Beta`)
   await table.getByRole(`button`, { name: `Columns`, exact: true }).click()
-  const column_menu = page.locator(`.column-menu:popover-open`)
+  const column_menu = page.getByRole(`group`, { name: `Columns`, exact: true })
   await column_menu.getByLabel(`Score`, { exact: true }).uncheck()
   await expect(score_header).toHaveCount(0)
   await table
@@ -128,7 +128,7 @@ for (const first of [`columns`, `export`] as const) {
     const table = page.locator(`#table-controls`)
     const columns_btn = table.getByRole(`button`, { name: `Columns`, exact: true })
     const export_btn = table.locator(`button.export-toggle`)
-    const column_menu = page.locator(`.column-menu:popover-open`)
+    const column_menu = page.getByRole(`group`, { name: `Columns`, exact: true })
     const export_pane = table.getByRole(`textbox`, { name: `File name`, exact: true })
     const [open_first, open_second] =
       first === `columns` ? [columns_btn, export_btn] : [export_btn, columns_btn]

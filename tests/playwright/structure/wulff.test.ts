@@ -94,7 +94,7 @@ test(`the info pane's families table fills its card`, async ({ page }) => {
   await open(page, `/structure/wulff`)
   await page.locator(`canvas`).first().hover()
   await page.locator(`button.wulff-info-toggle`).first().click({ force: true })
-  const table = page.locator(`.draggable-pane table`).first()
+  const table = page.locator(`.wulff-info-pane table`).first()
   await expect(table).toBeVisible()
   const gap = await table.evaluate((el) => {
     const parent = el.parentElement as HTMLElement

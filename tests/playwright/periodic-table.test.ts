@@ -12,7 +12,7 @@ test.describe(`Periodic Table`, () => {
   const open_heatmap_select = async (page: Page) => {
     const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
     await expect(multiselect).toBeVisible({ timeout: 15_000 })
-    const option_list = multiselect.locator(`ul.options`)
+    const option_list = multiselect.getByRole(`listbox`)
     await expect(async () => {
       await multiselect.click({ force: true })
       await expect(option_list).toBeVisible({ timeout: 2000 })

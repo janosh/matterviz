@@ -61,12 +61,10 @@ test.describe(`XrdPlot Component Tests`, () => {
   test(`broadening toggles the rendered profile and resets to sticks`, async ({ page }) => {
     const plot = page.locator(`#single-pattern`)
     await plot.locator(`.control-pane-toggle`).click()
-    const pane = page.locator(`.draggable-pane:visible`).first()
+    const pane = plot.locator(`.control-pane`)
     await pane.getByLabel(`Simulate Broadening`, { exact: true }).click()
     await expect(plot.locator(`.scatter`)).toBeVisible()
     await expect(plot.locator(`.bar-plot`)).toHaveCount(0)
-    // Switching the renderer remounts the pane, so reopen it if it was closed.
-    if (!(await pane.isVisible())) await plot.locator(`.control-pane-toggle`).click()
     const reset = pane.getByRole(`button`, {
       name: `Reset broadening to defaults`,
       exact: true,

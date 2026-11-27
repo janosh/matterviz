@@ -116,12 +116,13 @@ test.describe(`Isosurface page`, () => {
 
     await test.step(`dragging exposes reset and close`, async () => {
       const tab = pane.locator(`.control-tab`)
+      const reset = tab.getByRole(`button`, { name: `Reset pane position`, exact: true })
       await expect(tab.locator(`.drag-handle`)).toBeVisible()
-      await expect(tab.locator(`.reset-button`)).not.toBeVisible()
+      await expect(reset).toBeHidden()
       await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
-      await expect(tab.locator(`.reset-button`)).toBeVisible()
-      await expect(tab.locator(`.close-button`)).toBeVisible()
-      await tab.locator(`.reset-button`).click()
+      await expect(reset).toBeVisible()
+      await expect(tab.getByRole(`button`, { name: `Close pane`, exact: true })).toBeVisible()
+      await reset.click()
       await expect(pane).toBeVisible()
     })
 

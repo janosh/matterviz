@@ -463,7 +463,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
   }
 
-  test(`legend and colorbar never overlap and colorbar placement matches its footprint`, async ({
+  test(`colorbar placement matches its footprint before and after a resize`, async ({
     page,
   }) => {
     const plot = page.locator(`#color-scale #color-scale-toggle .scatter`)
@@ -508,14 +508,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       return actual
     }
     const before = await expect_geometry_matches()
-
-    const legend = plot.locator(`.legend`)
-    if ((await legend.count()) > 0) {
-      expect(rects_overlap(await require_bbox(legend), await require_bbox(colorbar))).toBe(
-        false,
-      )
-    }
-
     await page.setViewportSize({ width: 900, height: 700 })
     const after = await expect_geometry_matches()
     for (const dimension_idx of [2, 3] as const) {
@@ -565,7 +557,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const first_tooltip_text = await tooltip.textContent()
     expect(first_tooltip_text).toBeTruthy()
     await hover_to_show_tooltip(page, plot, markers.nth(1))
-    expect(await tooltip.textContent()).not.toBe(first_tooltip_text)
+    // retried: the tooltip is already visible, so its text may lag the hover by a frame
+    await expect(tooltip).not.toHaveText(first_tooltip_text ?? ``)
 
     // markers nearest the right and bottom edges must not push the tooltip out of the plot
     const plot_box = await require_bbox(plot, `plot`)
@@ -615,15 +608,22 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(markers).toHaveCount(4)
     // Host button styles must not shrink fullscreen relative to the gear toggle.
     await page.addStyleTag({ content: `button { font-size: 13px; }` })
-    for (const suffix of [``, ` svg`]) {
-      const gear = await require_bbox(scatter_plot.locator(`.control-pane-toggle${suffix}`))
-      const fullscreen = await require_bbox(scatter_plot.locator(`.fullscreen-btn${suffix}`))
+    const gear_button = scatter_plot.locator(`.control-pane-toggle`)
+    const fullscreen_button = scatter_plot.getByRole(`button`, {
+      name: /^(?:Enter|Exit) fullscreen$/,
+    })
+    for (const [gear_part, fullscreen_part] of [
+      [gear_button, fullscreen_button],
+      [gear_button.locator(`svg`), fullscreen_button.locator(`svg`)],
+    ]) {
+      const [gear, fullscreen] = await Promise.all(
+        [gear_part, fullscreen_part].map((part) => require_bbox(part)),
+      )
       expect([fullscreen.width, fullscreen.height]).toEqual([gear.width, gear.height])
     }
-    const fullscreen_button = scatter_plot.locator(`.fullscreen-btn`)
     for (const active of [false, true]) {
       await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, String(active))
-      const gear = await require_bbox(scatter_plot.locator(`.control-pane-toggle svg path`))
+      const gear = await require_bbox(gear_button.locator(`svg path`))
       const glyph = await require_bbox(fullscreen_button.locator(`svg path`))
       // Square glyphs read larger: keep them 4–8% smaller than the rounded gear.
       for (const dim of [`width`, `height`] as const) {

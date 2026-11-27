@@ -1,7 +1,13 @@
 import { expect, type Locator, test } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types'
 import { get_chart_svg, measure_plot_area } from '../helpers'
-import { dom_click, goto_perf_page, visible_count } from './utils'
+import {
+  dom_click,
+  goto_perf_page,
+  open_controls_pane,
+  open_info_pane,
+  visible_count,
+} from './utils'
 
 // Synthetic client-side data (no fixture download), a single hull and no rAF pulse loops:
 // the heavy demo page starves protocol calls under load
@@ -66,8 +72,7 @@ test.describe(`ConvexHull2D on the performance page`, () => {
     await expect.poll(() => markers.count(), { timeout: 15000 }).toBeGreaterThan(0)
     const count_before = await markers.count()
 
-    await dom_click(pd2d.locator(`.legend-controls-btn`))
-    const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
+    const controls = await open_controls_pane(pd2d)
     await expect(controls.getByText(`Magnetic`, { exact: true })).toBeVisible()
 
     // One toggle per ordering present in data; swatch rendering is covered by
@@ -109,10 +114,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(pd2d.locator(`.colorbar`).first()).toBeAttached() // may start hidden
     await expect(pd2d.locator(`path[fill='none']`).first()).toBeVisible() // dashed hull lines
 
-    const info_btn = pd2d.locator(`.info-btn`)
-    await dom_click(info_btn)
-    await expect(info_btn).toHaveAttribute(`aria-expanded`, `true`)
-    const info = pd2d.locator(`.draggable-pane.convex-hull-info-pane`)
+    const info = await open_info_pane(pd2d)
     const widths = await info
       .getByTestId(`tip-click`)
       .locator(`span`)
@@ -122,10 +124,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     expect(value_width).toBeGreaterThan(label_width)
     const unstable_initial = await visible_unstable(info)
 
-    const controls_btn = pd2d.locator(`.legend-controls-btn`)
-    await dom_click(controls_btn)
-    await expect(controls_btn).toHaveAttribute(`aria-expanded`, `true`)
-    const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
+    const controls = await open_controls_pane(pd2d)
     await expect(controls.getByText(`Color mode`)).toBeVisible()
     await dom_click(controls.getByText(`Hull distance`, { exact: true }))
     await expect(controls.getByText(`Color scale`)).toBeVisible()
@@ -152,12 +151,9 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await number_input.fill(`0`)
     await number_input.blur() // fires the change handlers
 
-    await expect
-      .poll(() => visible_unstable(info), { message: `threshold 0` })
-      .toBeLessThanOrEqual(unstable_initial)
-    // lowering the threshold to 0 never adds markers
-    const count_after = await markers.count()
-    expect(count_after).toBeGreaterThan(0)
-    expect(count_after).toBeLessThanOrEqual(count_before)
+    // a 0 eV/atom threshold hides every unstable entry, leaving the hull's own markers
+    await expect.poll(() => visible_unstable(info), { message: `threshold 0` }).toBe(0)
+    await expect.poll(() => markers.count()).toBeLessThan(count_before)
+    expect(await markers.count()).toBeGreaterThan(0)
   })
 })
