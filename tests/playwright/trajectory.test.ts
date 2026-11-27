@@ -987,7 +987,7 @@ test.describe(`Trajectory Component`, () => {
         // A valid container holding only a blank frame is still a broken trajectory export.
         expect(decoded.color_span).toBeGreaterThan(40)
         await pane.getByRole(`button`, { name: `Choose folder…`, exact: true }).click()
-        await expect(pane.locator(`.folder-name`)).toHaveText(`chosen-exports/`)
+        await expect(pane.getByRole(`radio`, { name: `chosen-exports/` })).toBeChecked()
         await export_button.click()
         await expect(export_button).toBeEnabled()
         // StatusMessage keeps its alert region mounted; no error message may sit in it
