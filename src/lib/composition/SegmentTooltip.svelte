@@ -1,7 +1,7 @@
 <script lang="ts">
   import { format_num } from 'svelte-widgets/format'
   import { TooltipValue } from '#lib/tooltip/index'
-  import type { ChartSegment } from './chart'
+  import { type ChartSegment, segment_name } from './chart'
   import { format_amount } from './format'
 
   let { segment }: { segment: ChartSegment } = $props()
@@ -11,7 +11,7 @@
 </script>
 
 <TooltipValue
-  label={segment.element}
+  label={segment_name(segment)}
   value={shown_amount}
   unit={shown_amount === `1` ? `atom` : `atoms`}
 />

@@ -3,8 +3,10 @@ import type { CompositionType } from '#lib/composition/index'
 import BarChart from '#lib/composition/BarChart.svelte'
 import BubbleChart from '#lib/composition/BubbleChart.svelte'
 import {
+  CHARGE_RISE_EM,
   composition_segments,
   fit_font_scale,
+  segment_name,
   segment_suffix,
   segment_title,
 } from '#lib/composition/chart'
@@ -83,6 +85,61 @@ describe(`shared segment helpers`, () => {
     ])
     expect(segments[0].color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
     expect([`black`, `white`]).toContain(segments[0].text_color)
+  })
+
+  test(`composition_segments keeps species apart but colors them by element`, () => {
+    const segments = composition_segments(
+      { 'Fe2+': 1, 'Fe^3+': 1, 'Fe[3+]': 1, 'O2-': 4, Li: 0 },
+      `Jmol`,
+      { Fe: `/` },
+      `p`,
+    )
+    expect(segments.map((seg) => [seg.species, seg.element, seg.charge, seg.amount])).toEqual([
+      [`Fe2+`, `Fe`, `2+`, 1],
+      [`Fe3+`, `Fe`, `3+`, 2],
+      [`O2-`, `O`, `2-`, 4],
+    ])
+    expect(segments.map((seg) => seg.fraction)).toEqual([1 / 7, 2 / 7, 4 / 7])
+    expect(segments[0].color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+    expect(segments[1].color).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+    expect(segments[1].pattern).toBeDefined() // element patterns apply to every species
+    expect(segments.map(segment_name)).toEqual([`Fe²⁺`, `Fe³⁺`, `O²⁻`])
+    expect(segment_title(segments[2])).toBe(`O²⁻: 4 atoms (57.1%)`)
+    expect(() => composition_segments({ 'Fe2+3': 1 }, `Jmol`, {}, `p`)).toThrow(
+      `Invalid species, element symbol or atomic number: Fe2+3`,
+    )
+  })
+
+  test.each(CHARTS)(`%o labels species with superscript charges`, (chart, selector) => {
+    mount_chart(chart, { composition: { 'Fe2+': 1, 'Fe3+': 2, 'O2-': 4, Li: 1 } })
+    const marks = [...document.querySelectorAll(selector)]
+    expect(marks.map((mark) => mark.getAttribute(`aria-label`)?.split(`:`)[0])).toEqual([
+      `Fe²⁺`,
+      `Fe³⁺`,
+      `O²⁻`,
+      `Li`,
+    ])
+    expect(marks[0].getAttribute(`fill`)).toBe(marks[1].getAttribute(`fill`))
+    // label tspans: symbol, then the charge raised as superscript (charge-free Li has none)
+    const labels = [...document.querySelectorAll(`svg text`)].map((text) =>
+      [...text.querySelectorAll(`tspan`)].map((tspan) => tspan.textContent?.trim()),
+    )
+    expect(labels.map((tspans) => tspans.slice(0, 2))).toEqual([
+      [`Fe`, `2+`],
+      [`Fe`, `3+`],
+      [`O`, `2-`],
+      [`Li`, `1`],
+    ])
+    // tspans abut (whitespace would render as gaps); the amount drops back past the charge's
+    // rise onto the uncharged subscript line
+    const label = doc_query(`svg text`)
+    const tspans = [...label.querySelectorAll(`tspan`)]
+    expect(label.textContent).toBe(tspans.map((tspan) => tspan.textContent).join(``))
+    const [, charge, amount] = tspans
+    expect([charge.getAttribute(`dy`), amount.getAttribute(`dy`)]).toEqual([
+      `-${CHARGE_RISE_EM}em`,
+      `${0.75 + CHARGE_RISE_EM}em`,
+    ])
   })
 
   test(`composition_segments resolves per-element patterns and label contrast against the tile`, () => {
@@ -251,6 +308,54 @@ describe(`PieChart`, () => {
     },
   )
 
+  test.each([
+    // stainless steel: Mn, Si and C are thin slices clustered around 12 o'clock
+    { Mn: 2, Cr: 18, Fe: 70, Si: 1, Ni: 8, C: 1 },
+    // pushed runs that recentering would shift back into the run before them
+    { Fe: 2, O: 66, Li: 86, Mn: 71, Si: 57, C: 84, Ni: 1, Cr: 26, Co: 1 },
+    { Fe: 37, O: 3, Li: 3, Mn: 3, Si: 3, C: 3, Ni: 2, Cr: 3, Co: 1, Al: 2 },
+  ])(
+    `thin-slice labels of %j spread apart outside the rim, inside the viewBox vertically`,
+    async (composition) => {
+      const pie = mount_chart(PieChart, { composition, size: 200 })
+      const outer_radius = Math.max(
+        ...path_numbers(doc_query(`path.pie-segment`)).map(Math.abs),
+      )
+      expect(outer_radius).toBeLessThan(99.5) // shrunk to make room above
+      const total = Object.values(composition).reduce((sum, amount) => sum + amount, 0)
+      const thin_labels = Object.entries(composition)
+        .filter(([, amount]) => (amount / total) * 360 < 20) // PieChart's THIN_SLICE
+        .map(([element, amount]) => `${element}${amount}`)
+      const outside = [...document.querySelectorAll(`text`)].filter((label) =>
+        thin_labels.includes(label.textContent ?? ``),
+      )
+      expect(outside).toHaveLength(thin_labels.length)
+      const font = 16 * 1.1 // OUTSIDE_SCALE, as the layout estimates label boxes
+      const boxes = outside.map((label) => {
+        const [x, y] = [`x`, `y`].map((attr) => Number(label.getAttribute(attr)))
+        const half_width = ((label.textContent?.length ?? 0) * 0.6 * font) / 2
+        return { x, y, half_width }
+      })
+      for (const { x, y } of boxes) {
+        expect(y - font / 2).toBeGreaterThan(-1e-9) // clears content above the chart (top label sits flush)
+        expect(y + font / 2).toBeLessThan(200 + 1e-9) // and below it
+        expect(Math.hypot(x - 100, y - 100)).toBeGreaterThan(outer_radius)
+      }
+      for (const [idx, box] of boxes.entries()) {
+        for (const other of boxes.slice(idx + 1)) {
+          const apart_x = Math.abs(box.x - other.x) >= box.half_width + other.half_width
+          const apart_y = Math.abs(box.y - other.y) >= font
+          expect(apart_x || apart_y).toBe(true)
+        }
+      }
+      // hidden labels take no room: the same pie without labels keeps its full radius
+      await unmount(pie)
+      mount_chart(PieChart, { composition, size: 200, show_labels: false })
+      const hidden_pie_path = doc_query(`path.pie-segment`)
+      expect(Math.max(...path_numbers(hidden_pie_path).map(Math.abs))).toBe(99.5)
+    },
+  )
+
   test(`labels are plain SVG text (exportable) with element symbol and amount subscript`, () => {
     mount_chart(PieChart, { composition: { Fe: 2, O: 3 } })
     const [fe_label] = document.querySelectorAll(`text`)
@@ -262,6 +367,10 @@ describe(`PieChart`, () => {
       `400`,
     ])
     expect(document.querySelector(`foreignObject`)).toBeNull()
+    // no whitespace between the tspans (renders as a gap) and font-relative offsets, so the
+    // subscript drops below the symbol at any font_scale
+    expect(fe_label.textContent).toBe(`Fe2`)
+    expect([amount.getAttribute(`dx`), amount.getAttribute(`dy`)]).toEqual([`0.1em`, `0.75em`])
   })
 })
 
@@ -332,7 +441,10 @@ describe(`BarChart`, () => {
       show_percentages: true,
       show_amounts: true,
     })
-    expect(doc_query(`.bar-label .amount`).textContent?.trim()).toBe(`2=66.7%`)
+    const label = doc_query(`.bar-label`)
+    expect(label.textContent).toBe(`H2=66.7%`) // untrimmed: no gap before the subscript
+    const amount = doc_query(`.bar-label .amount`)
+    expect([amount.getAttribute(`dx`), amount.getAttribute(`dy`)]).toEqual([`0.1em`, `0.75em`])
   })
 
   test(`forwards style and class and handles empty compositions`, () => {

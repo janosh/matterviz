@@ -1,5 +1,7 @@
 import Composition from '#lib/composition/Composition.svelte'
-import { parse_composition } from '#lib/composition/parse'
+import { parse_species_composition } from '#lib/composition/parse'
+import { ELEMENT_COLOR_SCHEMES, ELEMENT_COLOR_SCHEME_NAMES } from '#lib/colors/index'
+import { rgb } from 'd3-color'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
@@ -42,16 +44,24 @@ describe(`Composition component`, () => {
     expect(container.querySelector(`text`)).toBeNull()
   })
 
-  test(`reports parsed composition`, async () => {
+  test.each([
+    [`H2O`, { H: 2, O: 1 }],
+    [`Fe2+Fe3+2O2-4`, { 'Fe2+': 1, 'Fe3+': 2, 'O2-': 4 }],
+    [
+      { 'Fe^2+': 1, 'O2-': 1 },
+      { 'Fe2+': 1, 'O2-': 1 },
+    ],
+  ])(`reports parsed composition of %j`, async (composition, expected) => {
     const on_parse = vi.fn()
-    mount_composition({ composition: `H2O`, on_parse })
+    mount_composition({ composition, on_parse })
     await tick()
-    expect(on_parse).toHaveBeenCalledWith({ H: 2, O: 1 })
+    expect(on_parse).toHaveBeenCalledWith(expected)
   })
 
   test.each([
     [`invalid`, `Unexpected character "i"`],
     [`Xx2O`, `Invalid element symbol: Xx`],
+    [{ 'Fe2+3': 1 }, `Invalid species, element symbol or atomic number: Fe2+3`],
   ])(`rejects invalid input %s`, (composition, error) => {
     expect(() => mount_composition({ composition })).toThrow(error)
   })
@@ -59,6 +69,7 @@ describe(`Composition component`, () => {
   test.each([
     [`O3Fe2`, `Fe2 O3`],
     [`Li0.123456Na0.876544Cl`, `Na0.876544 Li0.123456 Cl`],
+    [`O2-4Fe3+2Fe2+`, `Fe2+ Fe3+2 O2-4`],
   ])(`copies a precise plain-text formula for %s`, async (composition, expected) => {
     const write_text = vi.fn()
     vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
@@ -66,14 +77,14 @@ describe(`Composition component`, () => {
     await open_context_menu()
     click_menu_item(`Copy Formula`)
     expect(write_text).toHaveBeenCalledExactlyOnceWith(expected)
-    expect(parse_composition(write_text.mock.calls[0][0])).toEqual(
-      parse_composition(composition),
+    expect(parse_species_composition(write_text.mock.calls[0][0])).toEqual(
+      parse_species_composition(composition),
     )
     vi.unstubAllGlobals()
   })
 
   test(`right click opens the checked display modes, color schemes, and export options`, async () => {
-    mount_composition({ composition: `H2O` })
+    mount_composition({ composition: `Fe2+Fe3+2O2-4` })
     await open_context_menu()
     expect(doc_query(`.action-menu`)).toBeInstanceOf(HTMLElement)
     expect(doc_query(`.section-title`).textContent).toBe(`Display Mode`)
@@ -85,7 +96,19 @@ describe(`Composition component`, () => {
     ])
     const menu_options = document.querySelectorAll(`.action-menu button`)
     expect(menu_options.length).toBeGreaterThanOrEqual(12) // 3 display modes + 6 color schemes + 3 export options
-    expect([...menu_options].every((option) => option.querySelector(`svg`))).toBe(true)
+    // a distinct icon per action, swatches of the charted elements per color scheme
+    const icons = [...menu_options].map((option) => option.querySelector(`svg`)?.innerHTML)
+    const with_icon = icons.filter(Boolean)
+    expect(new Set(with_icon).size).toBe(with_icon.length)
+    const swatch_rows = [...document.querySelectorAll(`.action-menu .swatches`)]
+    expect(swatch_rows).toHaveLength(ELEMENT_COLOR_SCHEME_NAMES.length)
+    expect(with_icon.length + swatch_rows.length).toBe(menu_options.length)
+    const jmol_swatches = [...swatch_rows[1].children].map((span) =>
+      span instanceof HTMLElement ? span.style.background : null,
+    )
+    // one swatch per element: Fe2+ and Fe3+ share theirs
+    const { Fe, O } = ELEMENT_COLOR_SCHEMES.Jmol
+    expect(jmol_swatches.map((color) => color && rgb(color).formatHex())).toEqual([Fe, O])
 
     const option_texts = Array.from(menu_options).map((opt) => opt.textContent?.trim())
     const expected_options = [
@@ -103,18 +126,18 @@ describe(`Composition component`, () => {
   })
 
   test.each([`Copy Formula`, `Copy Data`])(
-    `reports clipboard rejection for %s`,
+    `shows clipboard rejection for %s`,
     async (label) => {
-      const error = new Error(`Clipboard permission denied`)
-      const report = vi.spyOn(console, `error`).mockImplementation(() => {})
       vi.stubGlobal(`navigator`, {
-        clipboard: { writeText: vi.fn().mockRejectedValue(error) },
+        clipboard: { writeText: vi.fn().mockRejectedValue(new Error(`denied`)) },
       })
       mount_composition({ composition: `H2O` })
       await open_context_menu()
       click_menu_item(label)
       await vi.waitFor(() =>
-        expect(report).toHaveBeenCalledExactlyOnceWith(`Export failed:`, error),
+        expect(document.querySelector(`.copy-toast[data-error]`)?.textContent).toBe(
+          `Copy failed`,
+        ),
       )
       vi.unstubAllGlobals()
     },

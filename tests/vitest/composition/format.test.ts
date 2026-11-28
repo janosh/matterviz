@@ -3,8 +3,9 @@ import {
   format_oxi_state,
   get_alphabetical_formula,
   get_electro_neg_formula,
+  get_species_formula,
 } from '#lib/composition/format'
-import { parse_formula } from '#lib/composition/parse'
+import { parse_formula, parse_species_composition } from '#lib/composition/parse'
 import { describe, expect, test } from 'vite-plus/test'
 
 describe(`get_alphabetical_formula`, () => {
@@ -111,6 +112,30 @@ describe(`formula functions handle structure objects`, () => {
     [`electro_neg`, get_electro_neg_formula],
   ] as const)(`%s formula from Fe2O3 structure`, (_name, format) => {
     expect(format(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
+  })
+})
+
+describe(`get_species_formula`, () => {
+  test.each([
+    [{ O: 3, Fe: 2 }, `Fe2 O3`],
+    [{ 'O2-': 4, 'Fe3+': 2, 'Fe2+': 1 }, `Fe2+ Fe3+2 O2-4`],
+    [{ 'Cl-': 1, 'Na+': 1 }, `Na+ Cl-`],
+    [{ 'O2-': 1.5, Fe: 1, Li: 0 }, `Fe O2-1.5`],
+    [{ 'O2-': 5, 'Fe2.5+': 2 }, `Fe2.5+2 O2-5`],
+    // caret where H4+ would read as four H+ or Fe7+ as seven Fe+
+    [{ 'H4+': 2, 'O2-': 1 }, `H^4+2 O2-`],
+    [{ 'Fe7+': 1 }, `Fe^7+`],
+  ])(`%j -> %s, which parses back`, (composition, expected) => {
+    const formula = get_species_formula(composition)
+    expect(formula).toBe(expected)
+    expect(parse_species_composition(formula)).toEqual(parse_species_composition(composition))
+  })
+
+  test(`matches get_electro_neg_formula for charge-free input`, () => {
+    const composition = { Li: 1, Fe: 1, P: 1, O: 4 }
+    expect(get_species_formula(composition, { delim: `` })).toBe(
+      get_electro_neg_formula(composition, { plain_text: true, delim: `` }),
+    )
   })
 })
 

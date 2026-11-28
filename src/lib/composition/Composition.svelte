@@ -1,29 +1,31 @@
 <script lang="ts">
   import ExportPane from '#lib/io/ExportPane.svelte'
 
-  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants'
-  import type { CompositionType } from '#lib/composition/index'
+  import { ELEMENT_COLOR_SCHEMES, ELEMENT_COLOR_SCHEME_NAMES } from '#lib/colors/index'
   import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
+  import { copy_text } from 'svelte-widgets/browser'
   import type { CmdAction, CmdSection, IconData } from 'svelte-widgets'
   import {
-    Circle,
-    ColorPalette,
-    Copy,
+    BarPlot,
+    Braces,
+    BubblePlot,
     Download,
-    Graph,
-    ScatterPlot,
+    Molecule,
+    PieChart as PieIcon,
   } from 'svelte-widgets/icons'
   import { figure_sources } from '#lib/io/export'
-  import type { CompositionChartProps } from './chart'
+  import { type CompositionChartProps, MISSING_ELEMENT_COLOR } from './chart'
   import BarChart from './BarChart.svelte'
   import BubbleChart from './BubbleChart.svelte'
-  import { get_electro_neg_formula } from './format'
-  import { parse_composition } from './parse'
+  import { get_species_formula } from './format'
+  import type { SpeciesComposition } from './parse'
+  import { parse_species_composition, parse_species_key } from './parse'
   import PieChart from './PieChart.svelte'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
-  type CompositionAction = CmdAction & { icon: IconData }
+  // color schemes show swatches of the charted elements in place of an icon
+  type CompositionAction = CmdAction & { icon?: IconData; swatches?: string[] }
   let {
     composition,
     mode = $bindable(`pie`),
@@ -31,58 +33,53 @@
     color_scheme = $bindable(`Vesta`),
     ...rest
   }: Omit<CompositionChartProps, `composition` | `svg_node`> & {
-    // Chemical formula string (parsed) or element -> amount record to chart.
-    composition: string | CompositionType
+    // Formula string (parsed, charges like Fe2+O2- kept) or amounts keyed by element or
+    // species ({ Fe: 2, O: 3 }, { 'Fe2+': 1, 'O2-': 1 }) to chart.
+    composition: string | SpeciesComposition
     // Chart type: `pie`, `bubble` or `bar`. Bindable, also changed from the context menu.
     mode?: CompositionChartMode
-    // Called with the parsed composition whenever it changes.
-    on_parse?: (composition: CompositionType) => void
+    // Called with the parsed composition (canonical species keys) whenever it changes.
+    on_parse?: (composition: SpeciesComposition) => void
   } = $props()
 
   let svg_node = $state<SVGSVGElement | null>(null)
 
   let Component = $derived({ pie: PieChart, bubble: BubbleChart, bar: BarChart }[mode])
-  let parsed = $derived(parse_composition(composition))
+  let parsed = $derived(parse_species_composition(composition))
   $effect(() => on_parse?.(parsed))
 
   let context_menu_at = $state<{ x: number; y: number } | null>(null)
   let export_pane_open = $state(false)
 
-  async function copy_text(text: string) {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (error) {
-      console.error(`Export failed:`, error)
-    }
-  }
-
   const mode_actions = (
     [
-      [`pie`, Circle, `Pie Chart`],
-      [`bubble`, ScatterPlot, `Bubble Chart`],
-      [`bar`, Graph, `Bar Chart`],
+      [`pie`, PieIcon, `Pie Chart`],
+      [`bubble`, BubblePlot, `Bubble Chart`],
+      [`bar`, BarPlot, `Bar Chart`],
     ] as const
   ).map(([id, icon, label]) => ({ id, icon, label, action: () => (mode = id) }))
 
-  const color_scheme_actions = ELEMENT_COLOR_SCHEME_NAMES.map((identifier) => ({
-    id: identifier,
-    icon: ColorPalette,
-    label: identifier,
-    action: () => (color_scheme = identifier),
-  }))
+  const color_scheme_actions = $derived(
+    ELEMENT_COLOR_SCHEME_NAMES.map((identifier) => ({
+      id: identifier,
+      // one swatch per element: Fe2+ and Fe3+ share a color
+      swatches: [...new Set(Object.keys(parsed).map((key) => parse_species_key(key).element))]
+        .slice(0, 4)
+        .map((elem) => ELEMENT_COLOR_SCHEMES[identifier][elem] ?? MISSING_ELEMENT_COLOR),
+      label: identifier,
+      action: () => (color_scheme = identifier),
+    })),
+  )
 
   const export_actions = (
     [
       [
         `copy_formula`,
-        Copy,
+        Molecule,
         `Copy Formula`,
-        () =>
-          copy_text(
-            get_electro_neg_formula(parsed, { plain_text: true, amount_format: `.12~g` }),
-          ),
+        () => copy_text(get_species_formula(parsed, { amount_format: `.12~g` })),
       ],
-      [`copy_data`, Copy, `Copy Data`, () => copy_text(JSON.stringify(parsed, null, 2))],
+      [`copy_data`, Braces, `Copy Data`, () => copy_text(JSON.stringify(parsed, null, 2))],
       [
         `export_files`,
         Download,
@@ -130,14 +127,35 @@ path below, which has no pointer position to read -->
     class={[`composition`, rest.class]}
   />
   {#snippet item({ action })}
-    <Icon icon={action.icon} />
+    {#if action.icon}
+      <Icon icon={action.icon} />
+    {:else if action.swatches}
+      <span class="swatches">
+        {#each action.swatches as color, idx (idx)}
+          <span style:background={color}></span>
+        {/each}
+      </span>
+    {/if}
     {action.label}
   {/snippet}
 </ActionMenu>
 
 <ExportPane
   bind:export_pane_open
-  filename={get_electro_neg_formula(parsed, { plain_text: true, delim: `` })}
+  filename={get_species_formula(parsed, { delim: `` })}
   toggle_props={{ style: `display: none` }}
   sources={figure_sources(() => svg_node)}
 />
+
+<style>
+  .swatches {
+    display: inline-flex;
+    width: 1em; /* as wide as the icons above, so labels line up */
+    height: 1em;
+    border-radius: 2px;
+    overflow: hidden;
+    span {
+      flex: 1;
+    }
+  }
+</style>

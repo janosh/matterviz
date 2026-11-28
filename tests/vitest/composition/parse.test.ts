@@ -8,6 +8,9 @@ import {
   parse_formula,
   parse_formula_with_oxidation,
   parse_formula_with_wildcards,
+  parse_species_composition,
+  parse_species_key,
+  type SpeciesComposition,
 } from '#lib/composition/parse'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -252,6 +255,111 @@ describe(`parse_composition`, () => {
     [{ H: NaN }, `Invalid amount for H: NaN`],
   ] as [string | Record<string, number>, string][])(`throws for %j`, (input, error) => {
     expect(() => parse_composition(input)).toThrow(error)
+  })
+})
+
+describe(`parse_species_composition`, () => {
+  test.each([
+    // charge-free input matches parse_composition
+    [`Fe2O3`, { Fe: 2, O: 3 }],
+    [
+      { Fe: 2, O: 3, N: 0 },
+      { Fe: 2, O: 3 },
+    ],
+    [
+      { 26: 2, 8: 3 },
+      { O: 3, Fe: 2 },
+    ], // integer keys iterate in ascending order
+    [`H0`, {}],
+    [``, {}],
+    // species dicts in every key notation, canonicalized to pymatgen's str(Species)
+    [
+      { 'Fe2+': 1, 'Fe^2+': 1, 'Fe[2+]': 1, 'Fe²⁺': 1, 'Fe²⁻': 1 },
+      { 'Fe2+': 4, 'Fe2-': 1 },
+    ],
+    [`{"Fe2+": 1, "O2-": 1}`, { 'Fe2+': 1, 'O2-': 1 }],
+    [`{Fe3+: 2, O2-: 3, Fe[2+]: 1}`, { 'Fe3+': 2, 'O2-': 3, 'Fe2+': 1 }], // relaxed JSON
+    [`{Fe²⁺: 1, O²⁻: 1}`, { 'Fe2+': 1, 'O2-': 1 }],
+    [{ ' 26 ': 1 }, { Fe: 1 }],
+    // formula strings: digits before a sign are the charge, after it the count
+    [`Fe2+O2-`, { 'Fe2+': 1, 'O2-': 1 }],
+    [`Fe3+2O2-3`, { 'Fe3+': 2, 'O2-': 3 }],
+    [`Na+Cl-`, { 'Na+': 1, 'Cl-': 1 }],
+    [`Ca2+F-2`, { 'Ca2+': 1, 'F-': 2 }],
+    [`Fe3+ O2- 1.5`, { 'Fe3+': 1, 'O2-': 1.5 }],
+    [`Fe2+1 O2-1`, { 'Fe2+': 1, 'O2-': 1 }], // pymatgen Composition.formula
+    [`Fe2.5+2O2-5`, { 'Fe2.5+': 2, 'O2-': 5 }],
+    [`Fe^2.5+2O^2-5`, { 'Fe2.5+': 2, 'O2-': 5 }],
+    [`Fe2+O2−`, { 'Fe2+': 1, 'O2-': 1 }], // Unicode minus
+    [`Fe-O`, { 'Fe-': 1, O: 1 }],
+    [`Fe2+1e-05O2-`, { 'Fe2+': 0.00001, 'O2-': 1 }],
+    [`Fe2+·5H+2O2-`, { 'Fe2+': 1, 'H+': 10, 'O2-': 5 }],
+    [`Fe^3+2O^2-3`, { 'Fe3+': 2, 'O2-': 3 }],
+    [`Fe³⁺₂O²⁻₃`, { 'Fe3+': 2, 'O2-': 3 }],
+    [`LiFe2+P5+O2-4`, { Li: 1, 'Fe2+': 1, 'P5+': 1, 'O2-': 4 }],
+    // one element in two oxidation states stays two species, equal ones are summed
+    [`Fe2+Fe3+2O2-4`, { 'Fe2+': 1, 'Fe3+': 2, 'O2-': 4 }],
+    [`Fe2+O2-Fe2+`, { 'Fe2+': 2, 'O2-': 1 }],
+    // a digit before a sign must be an oxidation state the element takes, unless written as
+    // a count and caret charge; bare signs, 0+ and decimals have no count reading to clash with
+    [`NH4^+`, { N: 1, 'H+': 4 }],
+    [`Mn7+O2-4`, { 'Mn7+': 1, 'O2-': 4 }],
+    [`U+Fe0+`, { 'U+': 1, 'Fe0+': 1 }],
+    [`Xe2+F-2`, { 'Xe2+': 1, 'F-': 2 }], // pymatgen lists no states for noble gases
+  ] as [string | SpeciesComposition, SpeciesComposition][])(`%j -> %j`, (input, expected) => {
+    // canonical keys, in first-appearance order
+    expect(Object.entries(parse_species_composition(input))).toEqual(Object.entries(expected))
+  })
+
+  test.each([
+    { 'Fe2+': 1, 'Fe3+': 2, 'O2-': 4 },
+    { 'Na+': 1, 'Cl-': 1 },
+    { 'Fe2.5+': 2, 'Fe0+': 1, Fe: 1 },
+  ])(`canonical species object %j passes through unchanged`, (composition) => {
+    expect(Object.entries(parse_species_composition(composition))).toEqual(
+      Object.entries(composition),
+    )
+  })
+
+  test.each([`Xx2+`, `Fe2`, `Fe2+3`, `Fe++`, `fe2+`, `999`, `Fe+2`])(
+    `throws for species key %s`,
+    (key) => {
+      expect(() => parse_species_composition({ [key]: 1 })).toThrow(
+        `Invalid species, element symbol or atomic number: ${key}`,
+      )
+    },
+  )
+
+  test.each([
+    [{ 'Fe2+': NaN }, `Invalid amount for Fe2+: NaN`],
+    [`Xx2+O2-`, `Invalid element symbol: Xx`],
+    [`Fe2++O`, `Unexpected character "+"`],
+    [`Fe23+O`, `Unexpected character "+" at position 4 in formula "Fe23+O"`],
+    [`Fe2+O2-X`, `Invalid element symbol: X at position 8 in formula "Fe2+O2-X"`],
+    [`Ir^10+O^2-5`, `Unexpected character "^" at position 2 in formula "Ir^10+O^2-5"`],
+    [
+      `NH4+`,
+      `H has no 4+ oxidation state: write H4^+ for 4 H+ at position 4 in formula "NH4+"`,
+    ],
+    [
+      `SO4-2`,
+      `O has no 4- oxidation state: write O4^- for 4 O- at position 4 in formula "SO4-2"`,
+    ],
+    [`{"Fe2+": "one"}`, `Invalid amount for Fe2+: one`],
+  ] as [string | SpeciesComposition, string][])(`throws for %j`, (input, error) => {
+    expect(() => parse_species_composition(input)).toThrow(error)
+  })
+
+  test.each([
+    [`Fe`, { element: `Fe` }],
+    [`26`, { element: `Fe` }],
+    [`O2-`, { element: `O`, oxidation_state: -2 }],
+    [`Cl-`, { element: `Cl`, oxidation_state: -1 }],
+    [`Mn7+`, { element: `Mn`, oxidation_state: 7 }],
+    [`Fe2.5+`, { element: `Fe`, oxidation_state: 2.5 }],
+    [`S[2-]`, { element: `S`, oxidation_state: -2 }],
+  ])(`parse_species_key(%s) -> %j`, (key, expected) => {
+    expect(parse_species_key(key)).toEqual(expected)
   })
 })
 
