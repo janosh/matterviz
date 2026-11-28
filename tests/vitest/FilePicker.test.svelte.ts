@@ -1,7 +1,7 @@
 import FilePicker from '#lib/FilePicker.svelte'
 import type { FileInfo } from '#lib/io/index'
 import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-paint'
-import { color as d3_color } from 'd3-color'
+import { color as d3_color, rgb as d3_rgb } from 'd3-color'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, it, vi } from 'vite-plus/test'
@@ -72,20 +72,20 @@ describe(`FilePicker`, () => {
   // their lowercased name so they hit the lowercase paint keys (`poscar` is orange out of the
   // box, a caller-supplied `incar` paint is honoured), and an empty name falls back to `file`
   // with the grey fallback paint. An explicit FileInfo.type beats the extension.
-  const grey = `rgba(128, 128, 128, 0.08)`
+  const grey = `rgba(128, 128, 128, 0.2)`
   it.each([
-    [`compressed.cif.gz`, `CIF`, `rgba(100, 149, 237, 0.08)`],
-    [`data.json.gz`, `JSON`, `rgba(138, 43, 226, 0.08)`],
+    [`compressed.cif.gz`, `CIF`, `rgba(100, 149, 237, 0.2)`],
+    [`data.json.gz`, `JSON`, `rgba(138, 43, 226, 0.2)`],
     [`x.tar.xz`, `TAR`, grey],
     [`traj.h5.gz.zip`, `H5`, grey],
-    [`file.name.with.dots.xyz`, `XYZ`, `rgba(50, 205, 50, 0.08)`],
-    [`POSCAR`, `POSCAR`, `rgba(255, 140, 0, 0.08)`],
+    [`file.name.with.dots.xyz`, `XYZ`, `rgba(50, 205, 50, 0.2)`],
+    [`POSCAR`, `POSCAR`, `rgba(255, 140, 0, 0.2)`],
     [`CONTCAR.bz2`, `CONTCAR`, grey],
-    [`INCAR`, `INCAR`, `rgba(1, 2, 3, 0.08)`],
+    [`INCAR`, `INCAR`, `rgba(1, 2, 3, 0.2)`],
     [`README`, `README`, grey],
     [`edge case`, `EDGE CASE`, grey],
     [``, `FILE`, grey],
-    [`foo.custom`, `XYZ`, `rgba(50, 205, 50, 0.08)`, `xyz`],
+    [`foo.custom`, `XYZ`, `rgba(50, 205, 50, 0.2)`, `xyz`],
   ])(
     `infers the type of %j as %s painted %s`,
     (name, expected_type, expected_row_bg, type?) => {
@@ -95,7 +95,14 @@ describe(`FilePicker`, () => {
       }
       mount_picker({ files: [{ name, url: ``, type }], file_type_paints })
       expect(doc_query(`.file-item`).title).toBe(`Drag this ${expected_type} file`)
-      expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
+      const item = doc_query(`.file-item`)
+      expect(item.style.backgroundColor).toBe(expected_row_bg)
+      // the border carries the full badge color (alpha included), the row only a wash of it
+      const border = d3_color(item.style.getPropertyValue(`--file-type-color`))
+      expect([border?.formatHex(), border?.opacity]).toEqual([
+        d3_color(expected_row_bg)?.formatHex(),
+        name === `INCAR` ? 1 : 0.8,
+      ])
     },
   )
 
@@ -144,7 +151,7 @@ describe(`FilePicker`, () => {
     expect(d3_color(badges[0].style.backgroundColor)?.formatRgb()).toBe(`rgb(79, 195, 247)`)
     // row wash is a faded badge color. The old alpha-by-string-replace left non-rgba
     // spellings at full strength, painting the row the same color as its badge.
-    expect(doc_query(`.file-item`).style.backgroundColor).toBe(`rgba(79, 195, 247, 0.08)`)
+    expect(doc_query(`.file-item`).style.backgroundColor).toBe(`rgba(79, 195, 247, 0.2)`)
 
     paints.set(`chgcar`, file_type_paint(`#000000`))
     flushSync()
@@ -155,14 +162,54 @@ describe(`FilePicker`, () => {
   })
 
   it.each([
-    [`#4fc3f7`, `rgba(79, 195, 247, 0.08)`],
-    [`rgb(79, 195, 247)`, `rgba(79, 195, 247, 0.08)`],
-    [`rgba(79, 195, 247, 0.8)`, `rgba(79, 195, 247, 0.08)`],
-    [`red`, `rgba(255, 0, 0, 0.08)`],
-    [`hsl(120, 100%, 50%)`, `rgba(0, 255, 0, 0.08)`],
-    [`rgb(79 195 247)`, `rgba(79, 195, 247, 0.08)`],
+    [`#4fc3f7`, `rgba(79, 195, 247, 0.2)`],
+    [`rgb(79, 195, 247)`, `rgba(79, 195, 247, 0.2)`],
+    [`rgba(79, 195, 247, 0.8)`, `rgba(79, 195, 247, 0.2)`],
+    [`red`, `rgba(255, 0, 0, 0.2)`],
+    [`hsl(120, 100%, 50%)`, `rgba(0, 255, 0, 0.2)`],
+    [`rgb(79 195 247)`, `rgba(79, 195, 247, 0.2)`],
   ])(`file_type_paint(%s) fades the row to %s`, (badge, expected_item) => {
     expect(file_type_paint(badge)).toEqual({ badge, item: expected_item })
+  })
+  // file types the demo pages list side by side: their row borders (badge color over the page)
+  // must differ clearly. Before, PDB, MMCIF and LAMMPS rows all fell back to one grey
+  it.each([
+    [`cif`, `mmcif`, `pdb`, `xyz`, `poscar`, `json`, `yaml`, `lmp`],
+    [`hdf5`, `json`, `traj`, `xdatcar`, `xyz`],
+    [`chgcar`, `parchg`, `locpot`, `elfcar`, `cube`],
+    [`json`, `tdb`],
+  ])(`borders of co-listed types %s, ... stay OKLab distance >= 10 apart`, (...types) => {
+    const to_linear = (val: number) =>
+      (val /= 255) <= 0.04045 ? val / 12.92 : ((val + 0.055) / 1.055) ** 2.4
+    const oklab = (type: string, backdrop: number[]) => {
+      // composite the badge over the page, then sRGB -> linear -> OKLab
+      const { r, g, b, opacity } = d3_rgb(DEFAULT_FILE_TYPE_PAINTS[type].badge)
+      const [lr, lg, lb] = [r, g, b].map((val, idx) =>
+        to_linear(val * opacity + backdrop[idx] * (1 - opacity)),
+      )
+      const [lms_l, lms_m, lms_s] = [
+        [0.4122214708, 0.5363325363, 0.0514459929],
+        [0.2119034982, 0.6806995451, 0.1073969566],
+        [0.0883024619, 0.2817188376, 0.6299787005],
+      ].map(([wr, wg, wb]) => Math.cbrt(wr * lr + wg * lg + wb * lb))
+      return [
+        0.2104542553 * lms_l + 0.793617785 * lms_m - 0.0040720468 * lms_s,
+        1.9779984951 * lms_l - 2.428592205 * lms_m + 0.4505937099 * lms_s,
+        0.0259040371 * lms_l + 0.7827717662 * lms_m - 0.808675766 * lms_s,
+      ]
+    }
+    for (const backdrop of [
+      [24, 23, 28],
+      [255, 255, 255],
+    ]) {
+      for (const [idx, type_a] of types.entries()) {
+        for (const type_b of types.slice(idx + 1)) {
+          const [lab_a, lab_b] = [oklab(type_a, backdrop), oklab(type_b, backdrop)]
+          const dist = 100 * Math.hypot(...lab_a.map((val, dim) => val - lab_b[dim]))
+          expect(dist, `${type_a}/${type_b} on rgb(${backdrop})`).toBeGreaterThanOrEqual(10)
+        }
+      }
+    }
   })
   it(`file_type_paint rejects unresolved colors`, () => {
     expect(() => file_type_paint(`var(--file-badge)`)).toThrow(
@@ -178,7 +225,7 @@ describe(`FilePicker`, () => {
     ],
     [
       `CSS-variable badge after token change`,
-      { badge: `var(--file-badge)`, item: `rgba(0, 0, 0, 0.08)` },
+      { badge: `var(--file-badge)`, item: `rgba(0, 0, 0, 0.2)` },
       `--file-badge`,
     ],
   ])(`recomputes contrast for %s`, async (_desc, paint, token) => {

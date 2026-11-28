@@ -180,6 +180,7 @@
     <div
       class={[`file-item`, { active: is_active }]}
       style:background-color={paint.item}
+      style:--file-type-color={paint.badge}
       draggable="true"
       ondragstart={handle_drag_start(file)}
       onpointerdown={allow_text_select}
@@ -289,10 +290,10 @@
     max-width: 100%;
     min-width: 0;
     padding: 2pt 8pt;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
+    /* the type color: a faint wash alone can't tell 8 types apart (OKLab distance < 5) */
+    border: 1px solid var(--file-type-color);
     border-radius: 9px;
     cursor: grab;
-    background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
     gap: 4pt;
     &:has(.file-type-badge) {

@@ -5,7 +5,7 @@
   import type { FileInfo } from '#lib/io/index'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import { plot_color, PLOT_COLORS } from '#lib/colors/index'
+  import { PLOT_COLORS } from '#lib/colors/index'
   import { file_type_paint } from '#lib/io/index'
   import type { Matrix3x3, Vec3 } from '#lib/math'
   import type { LatticePlane } from '#lib/structure/index'
@@ -42,19 +42,19 @@
   const gsas = { category: `GSAS/Rietveld`, color: `rgba(255, 215, 0, 0.8)` }
   const xrd_formats: Record<string, XrdFormat> = {
     xy: { ...ascii, color: `rgba(50, 205, 50, 0.8)` },
-    xye: { ...ascii, color: `rgba(34, 139, 34, 0.8)` }, // darker green: XY with errors
-    csv: { ...ascii, color: `rgba(46, 139, 87, 0.8)` },
+    xye: { ...ascii, color: `rgba(21, 128, 61, 0.8)` }, // darker green: XY with errors
+    csv: { ...ascii, color: `rgba(210, 180, 140, 0.8)` },
     dat: { ...ascii, color: `rgba(100, 149, 237, 0.8)` },
-    asc: { ...ascii, color: `rgba(147, 112, 219, 0.8)` },
+    asc: { ...ascii, color: `rgba(138, 43, 226, 0.8)` },
     txt: { ...ascii, color: `rgba(128, 128, 128, 0.8)` },
     gsas,
     gsa: gsas,
     gda: gsas,
     fxye: gsas,
-    xrdml: { category: `PANalytical`, color: `rgba(70, 130, 180, 0.8)` },
+    xrdml: { category: `PANalytical`, color: `rgba(0, 188, 212, 0.8)` },
     brml: { category: `Bruker HRXRD`, color: `rgba(255, 140, 0, 0.8)` },
-    raw: { category: `Bruker Binary`, color: `rgba(255, 99, 71, 0.8)` },
-    ras: { category: `Rigaku`, color: `rgba(138, 43, 226, 0.8)` },
+    raw: { category: `Bruker Binary`, color: `rgba(139, 69, 19, 0.8)` },
+    ras: { category: `Rigaku`, color: `rgba(255, 0, 255, 0.8)` },
     uxd: { category: `Siemens`, color: `rgba(220, 20, 60, 0.8)` },
   }
   const xrd_file_paints = Object.fromEntries(
