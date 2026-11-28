@@ -52,10 +52,12 @@
   {min_select}
   bind:value={() => scheme_name(value), (scheme) => (value = with_scheme(value, scheme))}
   {placeholder}
-  li_option_style="padding: 3pt 6pt;"
-  li_selected_style="width: 100%; background-color: transparent;"
-  ul_selected_style="display: contents;"
-  input_style="min-width: 0; width: 0; padding: 0; border: none; caret-color: transparent;"
+  li_option_props={{ style: `padding: 3pt 6pt;` }}
+  li_selected_props={{ style: `width: 100%; background-color: transparent;` }}
+  ul_selected_props={{ style: `display: contents;` }}
+  input_props={{
+    style: `min-width: 0; width: 0; padding: 0; border: none; caret-color: transparent;`,
+  }}
   bind:open
   {...rest}
   style={`min-width: 14em; ${rest.style ?? ``}`}

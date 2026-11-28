@@ -3,6 +3,7 @@
   import { fuzzy_match } from 'svelte-widgets/match'
   import { highlight_matches } from 'svelte-widgets/attachments'
   import { Search } from 'svelte-widgets/icons'
+  import { copy_text } from 'svelte-widgets/browser'
   import type { IconData } from 'svelte-widgets'
   import Usage from './usage.md'
 
@@ -10,14 +11,6 @@
   let { data }: { data: { icons: Record<string, IconData> } } = $props()
 
   let filter_text = $state(``)
-  let copied_text = $state<string | null>(null)
-
-  async function copy(text: string) {
-    await navigator.clipboard.writeText(text)
-    copied_text = text
-    setTimeout(() => (copied_text = null), 1500)
-  }
-
   // dev SSR keeps export order but browsers sort namespace keys: sort so both render alike
   const icon_entries = $derived(
     Object.entries(data.icons).toSorted(([name_a], [name_b]) => (name_a < name_b ? -1 : 1)),
@@ -63,15 +56,15 @@
   {#each filtered_icons as [icon_name, glyph] (icon_name)}
     <div class="icon-card">
       <button
-        class={['svg-btn', { copied: copied_text === icon_svg(glyph) }]}
-        onclick={() => copy(icon_svg(glyph))}
+        class="svg-btn"
+        onclick={(event) => copy_text(icon_svg(glyph), { anchor: event.currentTarget })}
         title="Click to copy SVG path"
       >
         <Icon icon={glyph} style="font-size: 2em" />
       </button>
       <button
-        class={['name-btn', { copied: copied_text === icon_name }]}
-        onclick={() => copy(icon_name)}
+        class="name-btn"
+        onclick={(event) => copy_text(icon_name, { anchor: event.currentTarget })}
         title="Click to copy icon name"
       >
         <code>{icon_name}</code>
@@ -178,9 +171,6 @@
   }
   .icon-card :is(.svg-btn:hover, .name-btn:hover code) {
     background: color-mix(in srgb, currentColor 10%, transparent);
-  }
-  .icon-card :is(.svg-btn.copied, .name-btn.copied code) {
-    color: var(--success-color, #4caf50);
   }
   .no-results {
     display: flex;

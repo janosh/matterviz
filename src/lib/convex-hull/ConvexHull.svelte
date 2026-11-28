@@ -7,7 +7,6 @@
   import { shortcut_attrs } from 'svelte-widgets/shortcuts'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
-  import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
@@ -525,12 +524,6 @@
       />
     </PlotTooltip>
   {/if}
-
-  <!-- Copy-to-clipboard feedback (double-click on point) -->
-  <ClickFeedback
-    visible={selection.copy_feedback.visible}
-    position={selection.copy_feedback.position}
-  />
 
   <!-- z-index 1: above auto-stacked siblings after the chrome (3D gizmo, gas controls), below z-2 sliders -->
   <DragOverlay

@@ -16,7 +16,6 @@
   import { on_change } from '#lib/plot/core/interactions'
   import { structure_drop_zone } from '#lib/plot/core/structure-input'
   import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input'
-  import type { Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index'
   import BarPlot from './BarPlot.svelte'
 

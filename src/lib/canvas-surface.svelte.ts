@@ -42,7 +42,7 @@ export function create_canvas_surface(
       text_color = canvas_text_color(canvas, dark)
     }
     read()
-    return watch_dark_mode(read, canvas)
+    return canvas ? watch_dark_mode(canvas, read) : undefined
   })
   const surface = create_surface({
     ...inputs,

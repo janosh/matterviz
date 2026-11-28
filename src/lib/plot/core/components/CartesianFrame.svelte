@@ -356,6 +356,7 @@
   }
   svg {
     width: var(--plot-frame-svg-width);
+    outline: none; /* focusable for keyboard pan/zoom; no ring around the whole plot */
     height: var(--plot-frame-svg-height);
     max-height: var(--plot-frame-svg-max-height);
     flex: var(--plot-frame-svg-flex);
@@ -368,6 +369,25 @@
   svg :global(:is(path.selected-mark, .selected-mark > :is(.iqr-box, .violin-area))) {
     stroke: var(--plot-selected-stroke, currentColor);
     stroke-width: var(--plot-selected-stroke-width, 2px);
+    stroke-opacity: 1;
+  }
+  /* keyboard focus on a plot item: a dashed text-color stroke traces its shape (not the browser's
+     bounding-box ring), contrasting any fill and unlike an Alt+drag selection's solid stroke */
+  svg :global([tabindex]:focus) {
+    outline: none;
+  }
+  svg
+    :global(
+      :is(
+        path[tabindex]:focus-visible,
+        [tabindex]:focus-visible > :is(.marker, .iqr-box, .violin-area),
+        .fill-region:focus-visible > path,
+        .reference-line:focus-visible line:not([stroke='transparent'])
+      )
+    ) {
+    stroke: var(--plot-focus-stroke, var(--text-color, currentColor));
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
     stroke-opacity: 1;
   }
 </style>

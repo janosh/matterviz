@@ -1857,7 +1857,7 @@
             () => hovered_atom ?? atom_link.linked, (atom) => (hovered_site_idx = atom)
           }
           export_filename="structure-sites"
-          scroll_style={DOCKED_SCROLL_STYLE}
+          scroll_props={{ style: DOCKED_SCROLL_STYLE }}
           {...site_table_props}
         />
         {#if !SiteTableComponent}

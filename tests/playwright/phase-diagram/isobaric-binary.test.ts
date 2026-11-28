@@ -136,7 +136,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(diagram.locator(`.tooltip-container`)).toBeVisible()
 
     await region.dblclick()
-    await expect(diagram.locator(`.click-feedback`)).toBeVisible()
+    await expect(page.locator(`.copy-toast`)).toHaveText(`Copied!`)
 
     const text = await page.evaluate(() => navigator.clipboard.readText())
     expect(text).toContain(`Temperature:`)

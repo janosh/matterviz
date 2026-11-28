@@ -7,7 +7,6 @@
   import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { format_num } from 'svelte-widgets/format'
   import type { Vec2 } from '#lib/math'
-  import * as math from '#lib/math'
   import { ScatterPlot } from '#lib/plot/index'
   import type { Crystal } from '#lib/structure/index'
   import { clamp, to_error } from 'svelte-widgets/utils'

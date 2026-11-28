@@ -4,6 +4,8 @@
   import { page } from '$app/state'
   // oxlint-disable-next-line import/no-unassigned-import -- global app styles
   import '#lib/app.css'
+  // oxlint-disable-next-line import/no-unassigned-import -- reveals heading anchors on hover/focus
+  import 'svelte-widgets/heading-anchors.css'
   // Starry-night syntax highlighting. Imported here (not via app.css @import) so
   // starry_night_theme_plugin in vite.config.ts can re-target its dark palette
   // from OS preference to the app's data-theme. See that plugin for details.
@@ -190,7 +192,7 @@
     min-height: 1.5rem;
     padding: 0 4pt;
     border: none;
-    border-radius: var(--nav-border-radius);
+    border-radius: var(--nav-radius);
     background: var(--nav-link-bg);
     color: inherit;
     text-align: start;

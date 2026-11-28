@@ -1293,10 +1293,10 @@
             mode="single"
             min_select={1}
             bind:value={color_scheme}
-            li_option_style="padding: 3pt 6pt;"
-            li_selected_style="background-color: transparent;"
-            ul_selected_style="display: contents;"
-            input_style="flex: none; min-width: 0; width: 0; opacity: 0;"
+            li_option_props={{ style: `padding: 3pt 6pt;` }}
+            li_selected_props={{ style: `background-color: transparent;` }}
+            ul_selected_props={{ style: `display: contents;` }}
+            input_props={{ style: `flex: none; min-width: 0; width: 0; opacity: 0;` }}
             style="min-width: 0; border: none"
             aria-label="Color scheme"
           >

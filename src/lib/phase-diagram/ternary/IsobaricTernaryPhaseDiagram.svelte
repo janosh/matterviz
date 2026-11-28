@@ -156,7 +156,7 @@
   let dark_mode = $state(is_dark_mode())
   $effect(() => {
     dark_mode = is_dark_mode(wrapper)
-    return watch_dark_mode((dark) => (dark_mode = dark), wrapper)
+    return wrapper ? watch_dark_mode(wrapper, (dark) => (dark_mode = dark)) : undefined
   })
   // Theme-aware --ternary-pin resolved to a concrete colour for canvas and three.js materials
   const pin_color = resolve_css_color(() => wrapper, {

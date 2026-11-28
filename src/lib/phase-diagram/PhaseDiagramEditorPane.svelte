@@ -12,14 +12,12 @@
     editor_open = $bindable(false),
     data = null,
     on_data,
-    icon_style = ``,
     toggle_props: caller_toggle_props = {},
   }: {
     editor_open?: boolean
     data?: BinaryPhaseDiagram | null
     // Receives each valid edit; without it the tree is read-only
     on_data?: (data: BinaryPhaseDiagram) => void
-    icon_style?: string
     toggle_props?: PaneToggleProps
   } = $props()
 
@@ -52,11 +50,10 @@
   toggle_props={caller_toggle_props}
   max_width="600px"
   closed_icon={Edit}
-  {icon_style}
 >
-  {#if rejection.value}
+  {#if rejection.current}
     {#key rejection_seq}
-      <div class="rejection-flash">{rejection.value}</div>
+      <div class="rejection-flash">{rejection.current}</div>
     {/key}
   {/if}
   {#if data}

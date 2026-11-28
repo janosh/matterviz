@@ -53,7 +53,7 @@ tooltip hiding) leaves the popup open. With several popups open, the first mount
 a pan behind it must not make it vanish under the cursor -->
 <div
   {@attach click_outside({
-    enabled: close_on_outside,
+    disabled: !close_on_outside,
     dismiss_on: `release`,
     callback: () => on_close?.(),
   })}

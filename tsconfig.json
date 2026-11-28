@@ -2,6 +2,9 @@
   "extends": "$app/tsconfig",
   "compilerOptions": {
     "strict": true,
+    // svelte-check is the only Svelte-aware linter for script-only names; oxlint skips .svelte
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     // allow importing @wooorm/starry-night/style/both.css (types via its .d.css.ts) from +layout.svelte
     "allowArbitraryExtensions": true,
     "paths": {

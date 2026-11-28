@@ -2,7 +2,7 @@
 // create_hull_selection covers what 2D/3D/4D all do (selection, hover, structure popup,
 // clipboard copy, keyboard and file drop); create_canvas_interactions adds the canvas-specific
 // mouse handling, sizing and render scheduling behind ConvexHullCanvas.
-import { create_flash } from 'svelte-widgets/browser'
+import { copy_text } from 'svelte-widgets/browser'
 import { clamp } from 'svelte-widgets/utils'
 import { create_canvas_surface } from '#lib/canvas-surface.svelte'
 import type { ColorScale } from '#lib/plot/core/types'
@@ -57,15 +57,11 @@ export const HOVER_PREVIEW_DELAY_MS = 600 // hover this long to preview an entry
 
 export function create_hull_selection(inputs: HullSelectionInputs) {
   let hover_data = $state.raw<HoverData3D | null>(null)
-  // Hiding drops the position with it: ClickFeedback unmounts the node when `visible` goes
-  // false, so the coordinates it kept on the way out were never read
-  const copy_feedback = create_flash({ visible: false, position: { x: 0, y: 0 } }, 1500)
   let dragover = $state(false)
   let modal_open = $state(false)
   // Raw: a deep proxy (fresh per re-assignment) would trip Structure's identity checks
   let selected_structure = $state.raw<AnyStructure | null>(null)
   let modal_place_right = $state(true)
-  let selection_version = 0
   // Hover preview: opens after a delay, then follows the pointer instantly; never while pinned
   let preview = $state.raw<{ entry: ConvexHullEntry; structure: AnyStructure } | null>(null)
   let preview_key: string | undefined // entry_id the pending or shown preview is for
@@ -148,20 +144,8 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     inputs.set_selected_entry(null)
   }
 
-  async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
-    const version = selection_version
-    try {
-      await navigator.clipboard.writeText(
-        build_entry_tooltip_text(entry, inputs.entry_category()),
-      )
-    } catch (error) {
-      // callers fire and forget (void), so a denied clipboard must not become an unhandled
-      // rejection; like the other copy actions it logs and shows no copied feedback
-      console.error(`Failed to copy entry data:`, error)
-      return
-    }
-    if (version === selection_version) copy_feedback.show({ visible: true, position })
-  }
+  const copy_entry_data = (entry: ConvexHullEntry, anchor: { x: number; y: number }) =>
+    copy_text(build_entry_tooltip_text(entry, inputs.entry_category()), { anchor })
 
   // Keys from the focused canvas bubble to the root, or reach it hovered (viewer_keys)
   const keys = viewer_keys(() => ({
@@ -207,9 +191,6 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     get hover_data() {
       return hover_data
     },
-    get copy_feedback() {
-      return copy_feedback.value
-    },
     get dragover() {
       return dragover
     },
@@ -226,13 +207,11 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
       return preview
     },
     reset() {
-      selection_version++
       clear_preview()
       hover_data = null
       modal_open = false
       selected_structure = null
       dragover = false
-      copy_feedback.reset()
     },
     set_hover,
     clear_preview,

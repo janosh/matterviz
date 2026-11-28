@@ -1,6 +1,6 @@
 <script lang="ts">
   import { InformationOutline } from 'svelte-widgets/icons'
-  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { copy_text } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import type {
     InfoPaneCard,
@@ -81,8 +81,6 @@
   } = $props()
   const palette = get_element_palette()
 
-  const { copy } = create_clipboard_feedback(1000, console.error)
-
   // Whether the hover came from this pane's site cards. Closing the pane (Esc) unmounts them
   // under the pointer without a mouseleave, so the close clears their hover itself, leaving
   // one from the 3D scene alone.
@@ -116,7 +114,7 @@
       select_site(card.idx, event)
     } else if (event.key === `c` && plain_key) {
       event.preventDefault()
-      copy(`${card.title}: ${site_summary(card)}`, `site-${card.idx}-summary`)
+      void copy_text(`${card.title}: ${site_summary(card)}`) // beside the focused card
     } else if (plain_key && [`ArrowDown`, `ArrowUp`].includes(event.key)) {
       event.preventDefault()
       const current_card = event.currentTarget

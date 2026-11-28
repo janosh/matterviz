@@ -672,7 +672,7 @@
     --iso-ctrl-bg: light-dark(#fff, #1e1e1e);
     --sms-min-height: var(--iso-ctrl-h);
     --sms-border: var(--iso-ctrl-border);
-    --sms-border-radius: var(--iso-ctrl-radius);
+    --sms-radius: var(--iso-ctrl-radius);
     --sms-bg: var(--iso-ctrl-bg);
     font-size: 0.95em;
   }

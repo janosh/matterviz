@@ -14,7 +14,6 @@
     image_sources = {},
     filename: source_filename = `phase-diagram`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
-    icon_style = ``,
     toggle_props: caller_toggle_props = {},
     export_formats,
     on_export,
@@ -30,7 +29,6 @@
       image_sources?: ExportSources
       filename?: string
       png_dpi?: number
-      icon_style?: string
       toggle_props?: PaneToggleProps
     } = $props()
 
@@ -51,7 +49,6 @@
   {sources}
   {export_formats}
   {on_export}
-  {icon_style}
   toggle_props={{
     class: `pd-export-toggle`,
     title: export_pane_open ? `` : `Export phase diagram`,

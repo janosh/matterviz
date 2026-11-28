@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { create_flash } from 'svelte-widgets/browser'
+  import { copy_text } from 'svelte-widgets/browser'
   import { format_num } from 'svelte-widgets/format'
   import { add_alpha } from '#lib/colors/index'
   import { DEFAULT_PNG_DPI } from 'svelte-widgets/figure-export'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { file_drop_zone } from '#lib/io/file-drop'
@@ -1079,21 +1078,13 @@
   })
   const remote_region = $derived(remote_cursor?.region ?? null)
 
-  // Copy feedback position; ClickFeedback's CSS animation fades it out and the template keys
-  // on the position object so back-to-back copies each remount and restart the animation
-  const copy_feedback_pos = create_flash<{ x: number; y: number } | null>(null, 1500)
-
-  async function handle_double_click(event: MouseEvent) {
+  function handle_double_click(event: MouseEvent) {
     const info = effective_hover_info
     if (!info) return
-    try {
-      await navigator.clipboard.writeText(
-        format_hover_info_text(info, data, { overlays: overlay_slots, temp_unit, comp_unit }),
-      )
-      copy_feedback_pos.show({ x: event.clientX, y: event.clientY })
-    } catch (error) {
-      console.error(`Failed to copy phase data:`, error)
-    }
+    void copy_text(
+      format_hover_info_text(info, data, { overlays: overlay_slots, temp_unit, comp_unit }),
+      { anchor: { x: event.clientX, y: event.clientY } },
+    )
   }
 
   // Item of `items` nearest to (svg_x, svg_y) within `threshold` px, else null
@@ -1983,12 +1974,6 @@
       </PlotTooltip>
     {/if}
 
-    {#key copy_feedback_pos.value}
-      {#if copy_feedback_pos.value}
-        <ClickFeedback visible position={copy_feedback_pos.value} />
-      {/if}
-    {/key}
-
     {@render children?.({ width, height, fullscreen })}
   {/if}
 </div>
@@ -1996,6 +1981,7 @@
 <style>
   .binary-phase-diagram {
     position: relative;
+    outline: none; /* clicks focus it for keyboard shortcuts; no ring around the whole plot */
     width: 100%;
     height: 100%;
     min-height: 400px;
