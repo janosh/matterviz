@@ -63,10 +63,7 @@ const find_tooltip_hit_point = async (
 
 // First point on a coarse grid (centre outwards along rows) where `surface` itself is the hit
 // target, i.e. no pane, legend or label sits over it.
-const find_uncovered_point = async (
-  page: Page,
-  surface: Locator,
-): Promise<{ x: number; y: number }> => {
+const find_uncovered_point = async (surface: Locator): Promise<{ x: number; y: number }> => {
   const box = await require_bbox(surface, `uncovered-point surface`)
   for (const y_frac of [0.5, 0.65, 0.35, 0.8, 0.2]) {
     for (const x_frac of [0.5, 0.35, 0.65, 0.2, 0.8]) {
@@ -316,7 +313,7 @@ test.describe(`ChemPot Diagram interactions`, { tag: `@webgl` }, () => {
     await expect_download_suffix(page, get_export_button(export_pane, `SVG`), `.svg`)
     const initial_zoom = await read_view_zoom(page, export_pane)
     // the open export pane covers the canvas centre of a side-by-side demo, so aim past it
-    const free_point = await find_uncovered_point(page, canvas)
+    const free_point = await find_uncovered_point(canvas)
     await page.mouse.move(free_point.x, free_point.y)
     await zoom_wheel(page, -200)
     expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)

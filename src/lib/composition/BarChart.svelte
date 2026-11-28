@@ -3,7 +3,14 @@
   import { hover_tooltip } from '#lib/tooltip/hover.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'
-  import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
+  import {
+    CHARGE_RISE_EM,
+    composition_segments,
+    fit_font_scale,
+    segment_suffix,
+    segment_title,
+    subscript_dy,
+  } from './chart'
   import SegmentTooltip from './SegmentTooltip.svelte'
 
   const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
@@ -54,7 +61,7 @@
       const width = segment.fraction * size
       const coord_x = cursor
       cursor += width
-      const label = segment.element + segment_suffix(segment, label_opts)
+      const label = segment.species + segment_suffix(segment, label_opts)
       const base_scale = clamp(width / 40, 1, 2)
       const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
       // thin segments get external labels, alternating above/below to avoid overlap
@@ -91,7 +98,7 @@
     stroke="var(--bar-border, none)"
   />
   <g clip-path="url(#{clip_path_id})">
-    {#each segments as segment (segment.element)}
+    {#each segments as segment (segment.species)}
       {#snippet segment_tooltip()}
         <SegmentTooltip {segment} />
       {/snippet}
@@ -112,7 +119,7 @@
   </g>
 
   {#if show_labels}
-    {#each segments as segment (segment.element)}
+    {#each segments as segment (segment.species)}
       {#if segment.label_pos}
         {@const inside = segment.label_pos === `inside`}
         <text
@@ -127,14 +134,19 @@
           class={inside ? `bar-label` : `external-label`}
           style:fill={inside ? segment.text_color : segment.color}
         >
-          <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px">
-            {segment.element}
-          </tspan>
-          {#if show_amounts || show_percentages}
-            <tspan class="amount" style:font-size="{6.5 * segment.font_scale}px" dx="1" dy="5">
-              {segment_suffix(segment, label_opts)}
-            </tspan>
-          {/if}
+          <!-- abutting tspans and em offsets: see SegmentLabel -->
+          <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px"
+            >{segment.element}</tspan
+          >{#if segment.charge}<tspan
+              class="charge"
+              style:font-size="{6.5 * segment.font_scale}px"
+              dy="-{CHARGE_RISE_EM}em">{segment.charge}</tspan
+            >{/if}{#if show_amounts || show_percentages}<tspan
+              class="amount"
+              style:font-size="{6.5 * segment.font_scale}px"
+              dx="0.1em"
+              dy="{subscript_dy(segment)}em">{segment_suffix(segment, label_opts)}</tspan
+            >{/if}
         </text>
       {/if}
     {/each}
@@ -142,6 +154,10 @@
 </svg>
 
 <style>
+  /* no browser focus ring around the chart (Composition makes it focusable) */
+  svg {
+    outline: none;
+  }
   .bar-chart {
     display: inline-block;
     --bar-bg: light-dark(#fff, #333);
@@ -162,7 +178,8 @@
   .element-symbol {
     font-weight: 700;
   }
-  .amount {
+  .amount,
+  .charge {
     font-weight: 500;
   }
 </style>

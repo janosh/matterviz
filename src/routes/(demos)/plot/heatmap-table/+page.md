@@ -350,7 +350,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 <HeatmapTable
   {data}
   {columns}
-  scroll_style="max-height: 500px;"
+  scroll_props={{ style: `max-height: 500px;` }}
   search
   export_formats={TABLE_EXPORT_FORMATS}
   show_column_toggle
@@ -544,7 +544,7 @@ ML model benchmark with a sticky first column. Scroll horizontally to compare mo
 <HeatmapTable
   {data}
   {columns}
-  scroll_style="max-height: 400px; border-inline: none"
+  scroll_props={{ style: `max-height: 400px; border-inline: none` }}
   style="margin: 0 auto"
 />
 ```

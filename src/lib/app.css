@@ -214,30 +214,7 @@
     }
   }
 }
-/* :where() so SettingsSection's own title margin (0) wins whatever order stylesheets load in */
-.draggable-pane :where(h4) {
-  margin: var(--pane-h4-margin, 2pt 0);
-  font-size: var(--pane-h4-font-size, 0.95em);
-}
-.draggable-pane hr {
-  border: none;
-  background: var(--pane-hr-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
-  margin: var(--pane-hr-margin, 4pt 0);
-  height: 1px;
-}
-.draggable-pane :where(label) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--pane-label-gap, 2pt);
-}
-/* Native row inputs fill the row; composite widgets manage their own fields. */
-.draggable-pane :where(label > input[type='text'], .setting > input[type='text']) {
-  flex: 1;
-  /* line-height: normal, not the pane's 1.5, so a text box is no taller than its text */
-  line-height: normal;
-  padding: var(--pane-input-padding, 2px 6px);
-  margin: var(--pane-input-margin, 0 0 0 5pt);
-}
+/* matterviz's own pane controls; generic ones (h4, hr, button, ...) come from DraggablePane */
 .draggable-pane input[type='text'].invalid {
   border-color: var(--error-color, #ff6b6b);
   background: rgba(255, 107, 107, 0.1);
@@ -267,20 +244,8 @@
 .draggable-pane input::-webkit-inner-spin-button {
   display: none;
 }
-.draggable-pane :where(button) {
-  background-color: var(
-    --pane-btn-bg,
-    var(--btn-bg, light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.1)))
-  );
-}
-/* (0,1,0): above a host's bare `button` rule, below component styles such as svelte-widgets'
-   0.65em reset button (0,2,0), whatever order the stylesheets load in */
-.draggable-pane :where(.pane-content) :where(button) {
-  font-size: 1em;
-  padding: var(--pane-btn-padding, 3px 6px);
-}
 /* export panes' download and copy icon buttons: compact, with a hover that stands out from
-   their resting shade (the generic pane hover below barely does) */
+   their resting shade (the generic pane hover barely does) */
 .draggable-pane :is(.export-grid, .export-buttons) button {
   display: inline-flex;
   align-items: center;
@@ -301,23 +266,6 @@
     background-color: color-mix(in srgb, currentColor 22%, transparent);
     color: var(--accent-color, cornflowerblue);
   }
-}
-/* tables in panes span the pane, leaving no blank strip beside them */
-.draggable-pane :where(table) {
-  width: 100%;
-}
-.draggable-pane :where(button:hover) {
-  background-color: var(
-    --pane-btn-bg-hover,
-    var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.2)))
-  );
-}
-.draggable-pane :where(select) {
-  margin: 0 0 0 5pt;
-  flex: 1;
-  border-radius: 3px;
-  padding: 2px 4px;
-  font-size: 0.8em;
 }
 /* Control panes scale with the viewer they float over (its container, else the viewport):
    12px at phone widths up to 13.5px on wide viewers. Set on the pane itself so its em-based
@@ -600,6 +548,7 @@
   :where(h1, h2, h3, h4, h5, h6) {
     scroll-margin-top: 100px;
     text-wrap-style: balance; /* longhand keeps an inherited white-space: nowrap */
+    --heading-anchor-gap: calc(0.3em + 4pt);
   }
   :where(p, li, figcaption) {
     text-wrap-style: pretty;
@@ -609,15 +558,6 @@
   }
   body main > :where(h1, h2, h3, h4, h5, h6) {
     text-align: center;
-  }
-  /* style heading anchors added by heading_anchors attachment from svelte-widgets */
-  :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
-    transition: 0.3s;
-    margin-left: 4pt;
-    opacity: 0;
-  }
-  :where(h2, h3, h4, h5, h6):hover a[aria-hidden='true'] {
-    opacity: 1;
   }
   .full-bleed {
     --margin: 5vw;

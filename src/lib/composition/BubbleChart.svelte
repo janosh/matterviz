@@ -41,7 +41,7 @@
     const max_radius = Math.max(...leaves.map((leaf) => leaf.r))
     return leaves.map((leaf) => {
       const segment = leaf.data as ChartSegment
-      const label = segment.element + segment_suffix(segment, label_opts)
+      const label = segment.species + segment_suffix(segment, label_opts)
       const base_scale = 0.6 + (leaf.r / max_radius) * 1.4
       return {
         ...segment,
@@ -62,7 +62,7 @@
   bind:this={svg_node}
 >
   <defs><PatternDefs patterns={bubbles.map((bubble) => bubble.pattern)} /></defs>
-  {#each bubbles as bubble (bubble.element)}
+  {#each bubbles as bubble (bubble.species)}
     {#snippet segment_tooltip()}
       <SegmentTooltip segment={bubble} />
     {/snippet}
@@ -82,7 +82,7 @@
   {/each}
 
   {#if show_labels}
-    {#each bubbles as bubble (bubble.element)}
+    {#each bubbles as bubble (bubble.species)}
       <SegmentLabel
         x={bubble.x}
         y={bubble.y}
@@ -95,6 +95,10 @@
 </svg>
 
 <style>
+  /* no browser focus ring around the chart (Composition makes it focusable) */
+  svg {
+    outline: none;
+  }
   .bubble {
     transition: all 0.2s ease;
   }

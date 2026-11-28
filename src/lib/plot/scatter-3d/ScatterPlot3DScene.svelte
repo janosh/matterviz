@@ -38,7 +38,7 @@
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
-  import { type ComponentProps, onDestroy, type Snippet, untrack } from 'svelte'
+  import { type ComponentProps, onDestroy, untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'

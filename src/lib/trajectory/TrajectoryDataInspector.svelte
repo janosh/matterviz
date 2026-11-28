@@ -344,7 +344,7 @@ so a closed inspector builds no tables -->
             export_formats={[`csv`, `json`]}
             export_filename={`frame-${display_idx(shown_step_idx)}-attributes`}
             {...DATA_TABLE_PROPS}
-            scroll_style={DOCKED_SCROLL_STYLE}
+            scroll_props={{ style: DOCKED_SCROLL_STYLE }}
             virtual={false}
           />
         {:else if selected && item.value === `frames`}
@@ -367,7 +367,7 @@ so a closed inspector builds no tables -->
                 if (typeof row.frame_idx === `number`) on_step_change(row.frame_idx)
               })}
             {...DATA_TABLE_PROPS}
-            scroll_style={DOCKED_SCROLL_STYLE}
+            scroll_props={{ style: DOCKED_SCROLL_STYLE }}
           />
         {:else if selected && item.value === `atoms`}
           {#if n_sites === 0}
@@ -385,7 +385,7 @@ so a closed inspector builds no tables -->
               bind:hovered_atom
               export_filename={sample ? `frame-atoms-sample` : `frame-atoms`}
               search={{ placeholder: `Filter atoms`, fuzzy: true }}
-              scroll_style={DOCKED_SCROLL_STYLE}
+              scroll_props={{ style: DOCKED_SCROLL_STYLE }}
             />
           {/if}
         {:else if selected && item.value === `info`}

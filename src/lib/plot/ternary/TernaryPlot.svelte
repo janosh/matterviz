@@ -703,6 +703,7 @@
 <style>
   svg {
     width: var(--ternary-svg-width, 100%);
+    outline: none; /* focusable in canvas mode; no ring around the whole plot */
     height: var(--ternary-svg-height, 100%);
     flex: var(--ternary-svg-flex, 1);
     overflow: var(--ternary-svg-overflow, visible);

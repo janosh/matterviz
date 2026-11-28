@@ -1,6 +1,6 @@
 import type { FileInfo, FileTypePaint } from '#lib/io/index'
 import type { ElectronEnergyUnit } from '#lib/spectral/types'
-import { file_type_paint } from '#lib/io/file-type-paint'
+import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-paint'
 import { fixture_ext, site_file_info } from '#site/imports'
 
 // The static symlink serves these fixtures at /fermi-surfaces/<name>.
@@ -51,5 +51,5 @@ export const fermi_surface_files: FileInfo[] = Object.keys(fermi_file_modules)
 export const fermi_file_paints: Record<string, FileTypePaint> = {
   bxsf: file_type_paint(`rgba(70, 130, 180, 0.8)`), // Steel blue for XCrySDen
   frmsf: file_type_paint(`rgba(255, 140, 0, 0.8)`), // Orange for FermiSurfer
-  json: file_type_paint(`rgba(138, 43, 226, 0.8)`), // Purple for JSON
+  json: DEFAULT_FILE_TYPE_PAINTS.json,
 }

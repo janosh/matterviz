@@ -30,7 +30,6 @@
     state = new FileExportState(() => filename),
     busy = false,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
-    icon_style = ``,
     toggle_props = {},
     pane_props = {},
     header,
@@ -48,7 +47,6 @@
     state?: FileExportState
     busy?: boolean
     png_dpi?: number
-    icon_style?: string
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     // Pane-specific controls rendered above the sections (e.g. a frame range shared by them)
@@ -100,7 +98,6 @@
     pane_props={{ ...rest, ...pane_props, class: [rest.class, pane_props.class] }}
     {toggle_props}
     closed_icon={export_variant}
-    {icon_style}
   >
     {#if export_pane_open}
       <ExportDestination {state} disabled={busy} />

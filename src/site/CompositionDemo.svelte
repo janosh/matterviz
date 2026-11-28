@@ -5,21 +5,22 @@
   import {
     Composition,
     get_electro_neg_formula,
-    parse_composition,
+    parse_species_composition,
+    type SpeciesComposition,
   } from 'matterviz/composition'
 
   let { show_grid = false, show_interactive = false } = $props()
 
   let formula = $state(``)
   // Typing passes through invalid input (`{Fe: 2`, `Xy`): keep the last valid charts, show why
-  let parsed = $state<{ composition: CompositionType; error: string | null }>({
+  let parsed = $state<{ composition: SpeciesComposition; error: string | null }>({
     composition: {},
     error: null,
   })
   const set_formula = (value: string): void => {
     formula = value
     try {
-      parsed = { composition: parse_composition(value), error: null }
+      parsed = { composition: parse_species_composition(value), error: null }
     } catch (error) {
       parsed.error = to_error(error).message
     }
@@ -74,7 +75,8 @@
 
 {#if show_interactive}
   <label>
-    Enter a chemical formula (e.g. Fe2O3, H2O, ...) or a composition object (e.g. {`{Li: 1, Fe: 1, P: 1, O: 4}`}):
+    Enter a chemical formula (e.g. Fe2O3, H2O, Fe2+Fe3+2O2-4 with oxidation states, ...) or a
+    composition object (e.g. {`{Li: 1, Fe: 1, P: 1, O: 4}`}):
     <input
       bind:value={() => formula, set_formula}
       placeholder={`e.g. Fe2O3, H2O, or {Fe: 2, O: 3}`}

@@ -2,16 +2,19 @@
 import { format_num } from 'svelte-widgets/format'
 import type { ColorSchemeName } from '#lib/colors/index'
 import { ELEMENT_COLOR_SCHEMES, opaque_contrast_color } from '#lib/colors/index'
-import type { CompositionType } from '#lib/composition/index'
 import type { ElementSymbol } from '#lib/element/index'
+import { superscript_digits } from '#lib/labels'
 import type { FillPattern, ResolvedPattern } from '#lib/plot/core/patterns'
 import { resolve_pattern } from '#lib/plot/core/patterns'
 import type { SVGAttributes } from 'svelte/elements'
 import { format_amount } from './format'
-import { fractional_composition } from './parse'
+import type { SpeciesComposition } from './parse'
+import { format_charge, parse_species_composition, parse_species_key } from './parse'
 
 export type ChartSegment = {
-  element: ElementSymbol
+  species: string // canonical species key (Fe2+, O2-, or the bare element), unique per chart
+  element: ElementSymbol // colors and patterns follow the element, not the species
+  charge: string // drawn as a superscript after the element (2+, -), empty for none
   amount: number
   fraction: number
   color: string
@@ -26,7 +29,8 @@ export type ChartLabelOptions = { show_amounts: boolean; show_percentages: boole
 
 // Shared SVG, data, color and label contract for all three composition charts.
 export type CompositionChartProps = SVGAttributes<SVGSVGElement> & {
-  composition: CompositionType
+  // Amounts keyed by element or species (Fe2+, O2-), see parse_species_composition
+  composition: SpeciesComposition
   size?: number
   show_labels?: boolean
   show_amounts?: boolean
@@ -37,33 +41,50 @@ export type CompositionChartProps = SVGAttributes<SVGSVGElement> & {
   svg_node?: SVGSVGElement | null
 }
 
-// Positive-amount elements in insertion order with their atomic fraction and scheme color.
+// Fill for elements a color scheme has no entry for
+export const MISSING_ELEMENT_COLOR = `#cccccc`
+
+// Positive-amount species in insertion order with their atomic fraction and the scheme
+// color of their element. Keys are canonicalized by parse_species_composition (Fe^2+ ->
+// Fe2+); one element in two oxidation states gives two segments of the same color.
 // `pattern_prefix` scopes the SVG <pattern> ids so several charts can share a page.
 export const composition_segments = (
-  composition: CompositionType,
+  composition: SpeciesComposition,
   color_scheme: ColorSchemeName,
   patterns: ElementPatterns,
   pattern_prefix: string,
 ): ChartSegment[] => {
-  const fractions = fractional_composition(composition)
+  const amounts = Object.entries(parse_species_composition(composition)) as [string, number][]
+  const total = amounts.reduce((sum, [, amount]) => sum + amount, 0)
   const colors = ELEMENT_COLOR_SCHEMES[color_scheme] ?? ELEMENT_COLOR_SCHEMES.Vesta
-  return (Object.entries(fractions) as [ElementSymbol, number][]).map(
-    ([element, fraction]) => {
-      const color = colors[element] ?? `#cccccc`
-      const spec = patterns[element]
-      const pattern = spec && resolve_pattern(spec, color, pattern_prefix)
-      return {
-        element,
-        amount: composition[element] ?? 0,
-        fraction,
-        color,
-        // Labels sit on the tile backdrop: the segment color, or the page in `replace` mode
-        text_color: opaque_contrast_color(pattern?.bg ?? color),
-        pattern,
-      }
-    },
-  )
+  return amounts.map(([species, amount]) => {
+    const { element, oxidation_state } = parse_species_key(species)
+    const color = colors[element] ?? MISSING_ELEMENT_COLOR
+    const spec = patterns[element]
+    const pattern = spec && resolve_pattern(spec, color, pattern_prefix)
+    return {
+      species,
+      element,
+      charge: format_charge(oxidation_state),
+      amount,
+      fraction: amount / total,
+      color,
+      // Labels sit on the tile backdrop: the segment color, or the page in `replace` mode
+      text_color: opaque_contrast_color(pattern?.bg ?? color),
+      pattern,
+    }
+  })
 }
+
+// Labels' superscript charge rises this far (em of the small font); the amount subscript that
+// follows drops 0.75em below the baseline, so its dy undoes the rise first
+export const CHARGE_RISE_EM = 0.8
+export const subscript_dy = ({ charge }: ChartSegment): number =>
+  0.75 + (charge ? CHARGE_RISE_EM : 0)
+
+// Species as one plain string with a Unicode superscript charge (Fe²⁺), for tooltips and aria
+export const segment_name = ({ element, charge }: ChartSegment): string =>
+  element + superscript_digits(charge)
 
 // Amount/percentage suffix rendered after the element symbol; `=` separates amount from
 // percentage when both are shown (Fe2=20%)
@@ -77,9 +98,9 @@ export const segment_suffix = (
 
 // Hover/aria text: "Fe: 2 atoms (40%)", amount rounded like the visible labels
 // Noun follows the shown number so 1.0000001 reads "1 atom"
-export const segment_title = ({ element, amount, fraction }: ChartSegment): string => {
-  const shown = format_amount(amount)
-  return `${element}: ${shown} ${shown === `1` ? `atom` : `atoms`} (${format_num(fraction, `.1~%`)})`
+export const segment_title = (segment: ChartSegment): string => {
+  const shown = format_amount(segment.amount)
+  return `${segment_name(segment)}: ${shown} ${shown === `1` ? `atom` : `atoms`} (${format_num(segment.fraction, `.1~%`)})`
 }
 
 // Shrink `base_scale` so a label of `n_chars` characters (≈0.6em each) fits `available_space`

@@ -27,6 +27,6 @@
     (label) => (key = ELEM_HEATMAP_LABELS[label ?? ``] ?? null)
   }
   placeholder="Select a heatmap"
-  input_style="padding: 3pt 6pt;"
+  input_props={{ style: `padding: 3pt 6pt;` }}
   {...rest}
 />

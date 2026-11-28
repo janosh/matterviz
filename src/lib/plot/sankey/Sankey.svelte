@@ -663,6 +663,21 @@
   .node {
     transition: opacity 0.15s ease;
   }
+  /* keyboard focus, not the browser's bounding-box ring: a dashed text-color border on nodes,
+     a glow around link ribbons (their stroke is the ribbon itself) */
+  :is(.links path, .node rect):focus {
+    outline: none;
+  }
+  .node rect:focus-visible {
+    stroke: var(--sankey-focus-stroke, var(--text-color, currentColor));
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
+  }
+  .links path:focus-visible {
+    stroke-opacity: 0.9;
+    filter: drop-shadow(0 0 1.5px var(--sankey-focus-stroke, var(--text-color, currentColor)))
+      drop-shadow(0 0 1.5px var(--sankey-focus-stroke, var(--text-color, currentColor)));
+  }
   .node-label {
     pointer-events: none;
     paint-order: stroke;

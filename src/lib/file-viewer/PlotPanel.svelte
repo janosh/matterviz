@@ -246,7 +246,7 @@
             allow_better_toggle
             show_controls
             virtual
-            scroll_style="max-height: 100%"
+            scroll_props={{ style: `max-height: 100%` }}
             style="height: 100%; text-align: left"
           />
         {/if}

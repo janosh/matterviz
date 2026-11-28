@@ -404,9 +404,10 @@
     columns={table_columns}
     sort={[{ column: `E<sub>hull</sub>`, dir: `asc` }]}
     virtual
-    scroll_style="height: {table_height}; min-height: {table_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto"
-    style="width: 100%"
-    root_style="min-width: 0; margin-inline: 0; flex: 1 1 0"
+    scroll_props={{
+      style: `height: ${table_height}; min-height: ${table_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto`,
+    }}
+    style="width: 100%; min-width: 0; margin-inline: 0; flex: 1 1 0"
     on_row_click={on_entry_click ? handle_row_click : undefined}
     on_row_hover={link_hover === undefined
       ? undefined

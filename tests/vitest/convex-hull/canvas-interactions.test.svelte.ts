@@ -2,6 +2,7 @@ import {
   create_hull_selection,
   HOVER_PREVIEW_DELAY_MS,
 } from '#lib/convex-hull/canvas-interactions.svelte'
+import { build_entry_tooltip_text } from '#lib/convex-hull/helpers'
 import { create_hull_data_pipeline } from '#lib/convex-hull/hull-state.svelte'
 import type { AnyStructure } from '#lib/structure/index'
 import { MAGNETIC_ORDERING_CATEGORY, type ConvexHullEntry } from '#lib/convex-hull/types'
@@ -49,7 +50,7 @@ function mount_selection(
   return { selection, destroy }
 }
 
-describe(`create_hull_selection timers: copy feedback and hover preview`, () => {
+describe(`create_hull_selection: copy and hover preview`, () => {
   beforeEach(() => {
     vi.useFakeTimers()
     Object.defineProperty(navigator, `clipboard`, {
@@ -59,49 +60,20 @@ describe(`create_hull_selection timers: copy feedback and hover preview`, () => 
   })
   afterEach(() => vi.useRealTimers())
 
-  it(`a second copy restarts the hide timer instead of hiding the fresh feedback early`, async () => {
+  // a denied clipboard resolves false (the toast says so) rather than rejecting unseen
+  it.each([
+    [true, `lands`],
+    [false, `is denied`],
+  ])(`copy_entry_data resolves %s when the write %s`, async (lands) => {
     const { selection, destroy } = mount_selection()
-    await selection.copy_entry_data(entry, { x: 1, y: 2 })
-    await vi.advanceTimersByTimeAsync(1000)
-    await selection.copy_entry_data(entry, { x: 3, y: 4 })
-    expect(vi.getTimerCount()).toBe(1)
-    await vi.advanceTimersByTimeAsync(1000) // first copy's 1.5 s window has passed
-    expect(selection.copy_feedback).toEqual({ visible: true, position: { x: 3, y: 4 } })
-    await vi.advanceTimersByTimeAsync(500)
-    expect(selection.copy_feedback.visible).toBe(false)
+    if (!lands)
+      vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error(`denied`))
+    expect(await selection.copy_entry_data(entry, { x: 1, y: 2 })).toBe(lands)
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      build_entry_tooltip_text(entry, null),
+    )
     destroy()
   })
-
-  it(`a denied clipboard logs instead of rejecting and shows no copied feedback`, async () => {
-    const { selection, destroy } = mount_selection()
-    const denied = new DOMException(`denied`, `NotAllowedError`)
-    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(denied)
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    await expect(selection.copy_entry_data(entry, { x: 1, y: 2 })).resolves.toBeUndefined()
-    expect(error_spy).toHaveBeenCalledWith(`Failed to copy entry data:`, denied)
-    expect(selection.copy_feedback.visible).toBe(false)
-    error_spy.mockRestore()
-    destroy()
-  })
-
-  it.each([`reset`, `destroy`] as const)(
-    `%s clears the pending hide timer`,
-    async (action) => {
-      const { selection, destroy } = mount_selection()
-      await selection.copy_entry_data(entry, { x: 1, y: 2 })
-      selection.set_hover({ entry, position: { x: 1, y: 2 } })
-      expect(vi.getTimerCount()).toBe(1)
-      if (action === `reset`) {
-        const pending_copy = selection.copy_entry_data(entry, { x: 3, y: 4 })
-        selection.reset()
-        await pending_copy
-        expect(selection.hover_data).toBeNull()
-        expect(selection.copy_feedback.visible).toBe(false)
-      } else destroy()
-      expect(vi.getTimerCount()).toBe(0)
-      if (action === `reset`) destroy()
-    },
-  )
 
   // === Hover preview ===
   const with_structure = (entry_id: string) => ({

@@ -1,7 +1,8 @@
-<!-- Element symbol with an amount/percentage subscript, centered on (x, y) inside a chart
+<!-- Element symbol with optional superscript charge and an amount/percentage subscript, centered on (x, y) inside a chart
 SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export. -->
 <script lang="ts">
-  import { type ChartLabelOptions, type ChartSegment, segment_suffix } from './chart'
+  import type { ChartLabelOptions, ChartSegment } from './chart'
+  import { CHARGE_RISE_EM, segment_suffix, subscript_dy } from './chart'
 
   let {
     x: coord_x,
@@ -27,11 +28,20 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
   dominant-baseline="central"
   style:fill={segment.text_color}
 >
-  <tspan style:font-size="{14 * font_scale}px" font-weight="500">{segment.element}</tspan>
-  {#if suffix}
-    <tspan style:font-size="{8 * font_scale}px" font-weight="400" dx="1" dy="5">{suffix}</tspan
-    >
-  {/if}
+  <!-- tspans abut: whitespace between them renders as a space before the subscript. Offsets
+  are em of the small font, so they scale with it. dy accumulates: the subscript drops back
+  past the charge's rise. -->
+  <tspan style:font-size="{14 * font_scale}px" font-weight="500">{segment.element}</tspan
+  >{#if segment.charge}<tspan
+      style:font-size="{8 * font_scale}px"
+      font-weight="500"
+      dy="-{CHARGE_RISE_EM}em">{segment.charge}</tspan
+    >{/if}{#if suffix}<tspan
+      style:font-size="{8 * font_scale}px"
+      font-weight="400"
+      dx="0.1em"
+      dy="{subscript_dy(segment)}em">{suffix}</tspan
+    >{/if}
 </text>
 
 <style>

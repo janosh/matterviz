@@ -4,6 +4,7 @@ import { display_idx } from '#lib/labels'
 import { element_by_symbol } from '#lib/element/data'
 import { ase_velocity } from '#lib/trajectory/parse/ase'
 import { get_electro_neg_formula } from '#lib/composition/format'
+import { format_species_key } from '#lib/composition/parse'
 import type { Matrix3x3, Vec3 } from '#lib/math'
 import * as math from '#lib/math'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index'
@@ -412,13 +413,6 @@ const unique_cif_labels = (labels: readonly string[]): string[] => {
   })
 }
 
-// CIF type symbol of a species: the element plus its charge when decorated (`Fe2+`, `O2-`,
-// `Ag+`, `Fe2.5+`, `Fe0+`), the form pymatgen's CifWriter writes and parse_cif reads back
-const cif_type_symbol = (element: string, ox: number | undefined): string =>
-  ox === undefined
-    ? element
-    : `${element}${Math.abs(ox) === 1 ? `` : Math.abs(ox)}${ox < 0 ? `-` : `+`}`
-
 // CIF and POSCAR write fractional coordinates against the cell, so both need a lattice matrix
 function require_lattice(structure: AnyStructure | undefined, format: string): Crystal {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
@@ -676,7 +670,7 @@ export function structure_to_cif_str(
     all_species.length > 0 && all_species.every((spec) => spec.oxidation_state !== undefined)
   if (decorated) {
     const symbols = all_species.map(
-      ({ element, oxidation_state: ox }) => `${cif_type_symbol(element, ox)} ${ox}`,
+      (species) => `${format_species_key(species)} ${species.oxidation_state}`,
     )
     lines.push(``, `loop_`, `_atom_type_symbol`, `_atom_type_oxidation_number`)
     for (const row of new Set(symbols)) lines.push(`  ${row}`)
@@ -740,7 +734,7 @@ export function structure_to_cif_str(
     // parse_cif names a merged site after its first row, so that row keeps the site label
     const site_label = site_labels[idx]
     for (const [spec_idx, species] of site.species.entries()) {
-      const symbol = cif_type_symbol(species.element, species.oxidation_state)
+      const symbol = format_species_key(species)
       const label = spec_idx
         ? claim_free_label(`${site_label}_${spec_idx}`, taken)
         : site_label

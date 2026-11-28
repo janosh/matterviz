@@ -596,10 +596,10 @@ describe(`transform_cell carries site properties`, () => {
       expect(Math.hypot(...c_vec)).toBeCloseTo(5, 6)
       const c_hat = c_vec.map((comp) => comp / 5) as Vec3
       const [site] = result.sites
-      const parallel = (vec: Vec3, length: number) =>
+      const along_c = (length: number) =>
         c_hat.map((comp) => expect.closeTo(comp * length, 10))
-      expect(site.properties.force).toEqual(parallel([2, 0, 0], 2))
-      expect(site.properties.magmom).toEqual(parallel([0.5, 0, 0], 0.5))
+      expect(site.properties.force).toEqual(along_c(2))
+      expect(site.properties.magmom).toEqual(along_c(0.5))
       // U = 0.01 I + 0.02 ĉĉᵀ: the large thermal axis follows the unique axis
       const expected_adp = c_hat.map((comp_i, row) =>
         c_hat.map((comp_j, col) =>
